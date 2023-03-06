@@ -3,13 +3,35 @@
 <head>
 	<title>My First Web Page</title>
 
+	<style type="text/tailwindcss">
+		@layer utilities {
+			.content-auto {
+				content-visibility: auto;
+			}
+		}
+	</style>
+
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+	<script>
+		tailwind.config = {
+			theme: {
+				extend: {
+					colors: {
+						clifford: '#da373d',
+					}
+				}
+			}
+		}
+	</script>
+
 	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
 	<link rel="stylesheet" href="../uhd-chart.css">
 	<link rel="stylesheet" href="./style.css">
 
 	<script defer type="module" src="./index.js"></script>
 </head>
-<body>
+<body class="container mx-auto px-4 bg-neutral-100 dark:bg-neutral-800">
 	<div class="demo sample_0">
 		<div class="uhd chart" type="progress" value="10%"></div>
 	</div>
@@ -38,9 +60,11 @@
 import { UHDChart } from '../uhd-chart.js'
 
 const chart = UHDChart(document.querySelector('.uhd.chart'))
-	</code></pre>
+		</code>
+	</pre>
 	<label>uhd-chart.js</label>
-	<pre><code class="language-js">
+	<pre>
+		<code class="language-js">
 class UHDChartCore {
 	target = null
 
