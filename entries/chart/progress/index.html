@@ -38,34 +38,27 @@
 
 	<label>index.js</label>
 	<pre>
-		<code class="language-html">
-&lt;link rel=&quot;stylesheet&quot; href=&quot;./style.css&quot;&gt;
+		<code class="language-html">&lt;link rel=&quot;stylesheet&quot; href=&quot;./style.css&quot;&gt;
 &lt;script defer type=&quot;module&quot; src=&quot;./index.js&quot;&gt;&lt;/script&gt;
 
-&lt;div class=&quot;uhd chart&quot; type=&quot;progress&quot; value=&quot;10%&quot;&gt;&lt;/div&gt;
-		</code>
+&lt;div class=&quot;uhd chart&quot; type=&quot;progress&quot; value=&quot;10%&quot;&gt;&lt;/div&gt;	</code>
 	</pre>
 	<label>style.css</label>
 	<pre>
-		<code class="language-css">
-.uhd.chart {
+		<code class="language-css">.uhd.chart {
 	width: 50vw;
 	height: 50px;
-}
-		</code>
+}</code>
 	</pre>
 	<label>index.js</label>
 	<pre>
-		<code class="language-js">
-import { UHDChart } from '../uhd-chart.js'
+		<code class="language-js">import { UHDChart } from '../uhd-chart.js'
 
-const chart = UHDChart(document.querySelector('.uhd.chart'))
-		</code>
+const chart = UHDChart(document.querySelector('.uhd.chart'))</code>
 	</pre>
 	<label>uhd-chart.js</label>
 	<pre>
-		<code class="language-js">
-class UHDChartCore {
+		<code class="language-js">class UHDChartCore {
 	target = null
 
 	constructor(target) {
@@ -160,8 +153,7 @@ function UHDChart(target) {
 	return eval(`new ${types[target.getAttribute('type')]}(target)`) //! variable 'target' used here
 }
 
-export { UHDChart, Progress }
-		</code>
+export { UHDChart, Progress }</code>
 	</pre>
 </body>
 </html>
