@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>My First Web Page</title>
+
+	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
+	<link rel="stylesheet" href="../uhd-chart.css">
+	<link rel="stylesheet" href="./style.css">
+
+	<script defer type="module" src="./index.js"></script>
+</head>
+<body>
+	<div class="demo sample_0">
+		<uhd-chart type="progress" value="10%" data-value="50%"></uhd-chart>
+		<div is="uhd-chart" type="progress" value="10%" data-value="50%"></div>
+	</div>
+
+	<label>index.js</label>
+	<pre>
+		<code class="language-html">
+&lt;div class=&quot;uhd chart&quot; data-chart-type=&quot;progress&quot; data-chart-value=&quot;40%&quot;&gt; &lt;lable&gt;UHD Chart: Progress type&lt;/lable&gt; &lt;div style=&quot;width: 100%; height: 30px; background-color: aqua;&quot;&gt;&lt;/div&gt; &lt;/div&gt;
+		</code>
+	</pre>
+	<label>index.js</label>
+	<pre><code class="language-js">
+// import hljs from 'highlight.min.js'
+
+document.querySelectorAll('pre code').forEach((el) => {
+	hljs.highlightElement(el)
+})
+	</code></pre>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>My First Web Page</title>
+
+	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
+	<link rel="stylesheet" href="../uhd-chart.css">
+	<link rel="stylesheet" href="./style.css">
+
+	<script defer type="module" src="./index.js"></script>
+</head>
+<body>
+	<div class="demo sample_0">
+		<div class="uhd chart" type="progress" value="10%"></div>
+	</div>
+
+	<label>index.js</label>
+	<pre>
+		<code class="language-html">
+&lt;link rel=&quot;stylesheet&quot; href=&quot;./style.css&quot;&gt;
+&lt;script defer type=&quot;module&quot; src=&quot;./index.js&quot;&gt;&lt;/script&gt;
+
+&lt;div class=&quot;uhd chart&quot; type=&quot;progress&quot; value=&quot;10%&quot;&gt;&lt;/div&gt;
+		</code>
+	</pre>
+	<label>style.css</label>
+	<pre>
+		<code class="language-css">
+.uhd.chart {
+	width: 50vw;
+	height: 50px;
+}
+		</code>
+	</pre>
+	<label>index.js</label>
+	<pre>
+		<code class="language-js">
+import { UHDChart } from '../uhd-chart.js'
+
+const chart = UHDChart(document.querySelector('.uhd.chart'))
+	</code></pre>
+	<label>uhd-chart.js</label>
+	<pre><code class="language-js">
+class UHDChartCore {
+	target = null
+
+	constructor(target) {
+		this.target = target
+	}
+
+	init = target => {
+		target.attachShadow({ mode: 'open' })
+
+		const style = document.createElement('style')
+		style.innerHTML = `
+			.value {
+				width: var(--chart-value, 0);
+				height: 100%;
+				background-color: #f00;
+			}
+		`
+		target.shadowRoot.appendChild(style)
+
+		this.#definePropertiesForTriggers(target)
+		this.#bindEvents(target)
+		this.#setStyles(target)
+		this.initDom(target)
+	}
+	#setStyles = target => {
+		for(const key of ['value']) {
+			target.style.setProperty(`--chart-${key}`, target[key])
+		}
+	}
+	#trigger_Change = target => {
+		target.dispatchEvent(new Event('change', {
+			bubbles: true,
+			cancelable: true
+		}))
+	}
+
+	#definePropertiesForTriggers = target => {
+		Object.defineProperty(target, 'value', {
+			get: () => target.getAttribute('value'),
+			set: (value = '0%') => {
+				//TODO: check value is valid (format: percentage:string. default: 0%)
+				target.setAttribute('value', value)
+				this.#trigger_Change(target)
+			}
+		})
+
+		Object.defineProperty(target, 'type', {
+			get: () => target.getAttribute('type'),
+			set: value => {
+				//TODO: check value is valid (format: string)
+				target.setAttribute('type', value)
+			}
+		})
+	}
+	#bindEvents = target => {
+		target.addEventListener('change', e => {
+			this.#setStyles(e.currentTarget)
+		})
+	}
+}
+
+class Progress extends UHDChartCore {
+	constructor(target, value, params = {}) {
+		super(target)
+
+		this.init(this.target)
+	}
+
+	initDom = target => {
+		const title = document.createElement('label')
+		title.innerText = 'Hello World'
+
+		const value = document.createElement('div')
+		value.classList.add('value')
+
+		const container = document.createElement('div')
+		container.style.width = '100%'
+		container.style.height = '30px'
+		container.style.backgroundColor = '#f0f0f0'
+		container.appendChild(value)
+
+		target.shadowRoot.appendChild(title)
+		target.shadowRoot.appendChild(container)
+	}
+}
+
+function UHDChart(target) {
+	const types = {
+		progress            : 'Progress',
+	}
+
+	return eval(`new ${types[target.getAttribute('type')]}(target)`) //! variable 'target' used here
+}
+
+export { UHDChart, Progress }
+		</code>
+	</pre>
+</body>
+</html>
