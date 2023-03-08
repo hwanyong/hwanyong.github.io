@@ -33,21 +33,63 @@
 </head>
 <body class="container mx-auto px-4 bg-neutral-100 dark:bg-neutral-800">
 	<div class="demo sample_0">
-		<div class="uhd chart" type="progress" value="10%"></div>
+		<div
+			class="uhd chart"
+			type="progress"
+			value="10%"
+			max-value=""
+			min-value=""
+
+			data-step-value-0="5%"
+			data-step-color-0="#f00"
+			data-step-value-1="10%"
+			data-step-color-1="#0f0"
+			data-step-value-2="20%"
+			data-step-color-2="#00f"
+			data-step-value-3="30%"
+			data-step-color-3="#ff0"
+			data-step-value-4="40%"
+			data-step-color-4="#0ff"
+			data-step-value-5="50%"
+			data-step-color-5="#f0f">
+		</div>
 	</div>
 
 	<label>index.js</label>
 	<pre>
-		<code class="language-html">&lt;link rel=&quot;stylesheet&quot; href=&quot;./style.css&quot;&gt;
-&lt;script defer type=&quot;module&quot; src=&quot;./index.js&quot;&gt;&lt;/script&gt;
+		<code class="language-html">&lt;div
+	class=&quot;uhd chart&quot;
+	type=&quot;progress&quot;
+	value=&quot;10%&quot;
+	max-value=&quot;&quot;
+	min-value=&quot;&quot;
 
-&lt;div class=&quot;uhd chart&quot; type=&quot;progress&quot; value=&quot;10%&quot;&gt;&lt;/div&gt;	</code>
+	data-step-value-0=&quot;5%&quot;
+	data-step-color-0=&quot;#f00&quot;
+	data-step-value-1=&quot;10%&quot;
+	data-step-color-1=&quot;#0f0&quot;
+	data-step-value-2=&quot;20%&quot;
+	data-step-color-2=&quot;#00f&quot;
+	data-step-value-3=&quot;30%&quot;
+	data-step-color-3=&quot;#ff0&quot;
+	data-step-value-4=&quot;40%&quot;
+	data-step-color-4=&quot;#0ff&quot;
+	data-step-value-5=&quot;50%&quot;
+	data-step-color-5=&quot;#f0f&quot;&gt;
+&lt;/div&gt;</code>
 	</pre>
 	<label>style.css</label>
 	<pre>
 		<code class="language-css">.uhd.chart {
 	width: 50vw;
-	height: 50px;
+}
+.uhd.chart[type='progress']::part(container) {
+	border-radius: 50px 50px;
+	background-color: white;
+}
+.uhd.chart[type='progress']::part(value) {
+	border-radius: 50px 50px;
+	background-color: #ff0000;
 }</code>
 	</pre>
 	<label>index.js</label>
@@ -68,12 +110,21 @@ const chart = UHDChart(document.querySelector('.uhd.chart'))</code>
 	init = target => {
 		target.attachShadow({ mode: 'open' })
 
+		//#region not supported in Safari : Feb 18, 2023
+		// const sheet = new CSSStyleSheet()
+		// style.replaceSync(`:host { display: block; width: 100%; height: 100%; }`)
+		// this.shadowRoot.adoptedStyleSheets = [style]
+		//#endregion not supported in Safari : Feb 18, 2023
+
 		const style = document.createElement('style')
 		style.innerHTML = `
 			.value {
 				width: var(--chart-value, 0);
 				height: 100%;
 				background-color: #f00;
+				transition:
+					width 0.5s ease,
+					background-color 0.5s ease;
 			}
 		`
 		target.shadowRoot.appendChild(style)
@@ -84,6 +135,10 @@ const chart = UHDChart(document.querySelector('.uhd.chart'))</code>
 		this.initDom(target)
 	}
 	#setStyles = target => {
+		//!TypeError: undefined is not an object (evaluating 'console.trace(target['value']) at UHDChartCore.#setStyles')
+		//TODO: Why is this not working?
+		// ['value'].forEach(key => {})
+
 		for(const key of ['value']) {
 			target.style.setProperty(`--chart-${key}`, target[key])
 		}
@@ -112,6 +167,23 @@ const chart = UHDChart(document.querySelector('.uhd.chart'))</code>
 				target.setAttribute('type', value)
 			}
 		})
+
+		let idx = 0
+		while(true) {
+			const stepValue = target.getAttribute(`step-value-${idx}`)
+			const stepColor = target.getAttribute(`step-color-${idx}`)
+
+			if (!stepValue || !stepColor) break
+
+			Object.defineProperty(target, `stepValue-${idx}`, {
+				set: value => this.#trigger_Change(target)
+			})
+			Object.defineProperty(target, `stepColor-${idx}`, {
+				set: value => this.#trigger_Change(target)
+			})
+
+			idx += 1
+		}
 	}
 	#bindEvents = target => {
 		target.addEventListener('change', e => {
@@ -128,19 +200,17 @@ class Progress extends UHDChartCore {
 	}
 
 	initDom = target => {
-		const title = document.createElement('label')
-		title.innerText = 'Hello World'
-
 		const value = document.createElement('div')
+		value.part = 'value'
 		value.classList.add('value')
 
 		const container = document.createElement('div')
+		container.part = 'container'
 		container.style.width = '100%'
 		container.style.height = '30px'
 		container.style.backgroundColor = '#f0f0f0'
 		container.appendChild(value)
 
-		target.shadowRoot.appendChild(title)
 		target.shadowRoot.appendChild(container)
 	}
 }
@@ -148,6 +218,27 @@ class Progress extends UHDChartCore {
 function UHDChart(target) {
 	const types = {
 		progress            : 'Progress',
+	// 	pie                 : null,
+	// 	bar                 : null,
+	// 	line                : null,
+	// 	radar               : null,
+	// 	polarArea           : null,
+	// 	doughnut            : null,
+	// 	bubble              : null,
+	// 	scatter             : null,
+	// 	area                : null,
+	// 	step                : null,
+	// 	horizontalBar       : null,
+	// 	stackedBar          : null,
+	// 	stackedArea         : null,
+	// 	stackedStep         : null,
+	// 	stackedHorizontalBar: null,
+	// 	stackedLine         : null,
+	// 	stackedRadar        : null,
+	// 	stackedPolarArea    : null,
+	// 	stackedDoughnut     : null,
+	// 	stackedBubble       : null,
+	// 	stackedScatter      : null,
 	}
 
 	return eval(`new ${types[target.getAttribute('type')]}(target)`) //! variable 'target' used here

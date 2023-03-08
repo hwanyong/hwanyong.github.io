@@ -7,7 +7,6 @@ html, body {
 .hljs {
 	background: #fff;
 }
-
 .sample_0 {
 	width: 100%;
 	height: 100px;
@@ -15,7 +14,14 @@ html, body {
 	justify-content: center;
 	align-items: center;
 }
-
-uhd-chart-progress {
+.uhd.chart {
 	width: 50vw;
+}
+.uhd.chart[type='progress']::part(container) {
+	border-radius: 50px 50px;
+	background-color: white;
+}
+.uhd.chart[type='progress']::part(value) {
+	border-radius: 50px 50px;
+	background-color: #ff0000;
 }

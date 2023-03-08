@@ -20,6 +20,9 @@ class UHDChartCore {
 				width: var(--chart-value, 0);
 				height: 100%;
 				background-color: #f00;
+				transition:
+					width 0.5s ease,
+					background-color 0.5s ease;
 			}
 		`
 		target.shadowRoot.appendChild(style)
@@ -62,6 +65,23 @@ class UHDChartCore {
 				target.setAttribute('type', value)
 			}
 		})
+
+		let idx = 0
+		while(true) {
+			const stepValue = target.getAttribute(`step-value-${idx}`)
+			const stepColor = target.getAttribute(`step-color-${idx}`)
+
+			if (!stepValue || !stepColor) break
+
+			Object.defineProperty(target, `stepValue-${idx}`, {
+				set: value => this.#trigger_Change(target)
+			})
+			Object.defineProperty(target, `stepColor-${idx}`, {
+				set: value => this.#trigger_Change(target)
+			})
+
+			idx += 1
+		}
 	}
 	#bindEvents = target => {
 		target.addEventListener('change', e => {
@@ -78,19 +98,17 @@ class Progress extends UHDChartCore {
 	}
 
 	initDom = target => {
-		const title = document.createElement('label')
-		title.innerText = 'Hello World'
-
 		const value = document.createElement('div')
+		value.part = 'value'
 		value.classList.add('value')
 
 		const container = document.createElement('div')
+		container.part = 'container'
 		container.style.width = '100%'
 		container.style.height = '30px'
 		container.style.backgroundColor = '#f0f0f0'
 		container.appendChild(value)
 
-		target.shadowRoot.appendChild(title)
 		target.shadowRoot.appendChild(container)
 	}
 }
