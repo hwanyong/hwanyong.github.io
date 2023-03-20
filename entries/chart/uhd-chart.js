@@ -33,13 +33,9 @@ class UHDChartCore {
 		this.initDom(target)
 	}
 	#setStyles = target => {
-		//!TypeError: undefined is not an object (evaluating 'console.trace(target['value']) at UHDChartCore.#setStyles')
-		//TODO: Why is this not working?
-		// ['value'].forEach(key => {})
+		const value = this.setValue?.(target) || target.value;
 
-		for(const key of ['value']) {
-			target.style.setProperty(`--chart-${key}`, target[key])
-		}
+		['value'].forEach(key => target.style.setProperty(`--chart-${key}`, `${value}`))
 	}
 	#trigger_Change = target => {
 		target.dispatchEvent(new Event('change', {
@@ -51,9 +47,37 @@ class UHDChartCore {
 	#definePropertiesForTriggers = target => {
 		Object.defineProperty(target, 'value', {
 			get: () => target.getAttribute('value'),
-			set: (value = '0%') => {
-				//TODO: check value is valid (format: percentage:string. default: 0%)
+			set: (value = 0) => {
+				if (typeof value != 'number') {
+					console.error('value must be a number')
+					return
+				}
+
 				target.setAttribute('value', value)
+				this.#trigger_Change(target)
+			}
+		})
+		Object.defineProperty(target, 'maxValue', {
+			get: () => target.getAttribute('max-value'),
+			set: (value = 0) => {
+				if (typeof value != 'number') {
+					console.error('value must be a number')
+					return
+				}
+
+				target.setAttribute('max-value', value)
+				this.#trigger_Change(target)
+			}
+		})
+		Object.defineProperty(target, 'minValue', {
+			get: () => target.getAttribute('min-value'),
+			set: (value = 0) => {
+				if (typeof value != 'number') {
+					console.error('value must be a number')
+					return
+				}
+
+				target.setAttribute('min-value', value)
 				this.#trigger_Change(target)
 			}
 		})
@@ -61,7 +85,11 @@ class UHDChartCore {
 		Object.defineProperty(target, 'type', {
 			get: () => target.getAttribute('type'),
 			set: value => {
-				//TODO: check value is valid (format: string)
+				if (typeof value != 'string') {
+					console.error('type must be a string')
+					return
+				}
+
 				target.setAttribute('type', value)
 			}
 		})
@@ -91,6 +119,8 @@ class UHDChartCore {
 }
 
 class Progress extends UHDChartCore {
+	percent = 0
+
 	constructor(target, value, params = {}) {
 		super(target)
 
@@ -110,6 +140,17 @@ class Progress extends UHDChartCore {
 		container.appendChild(value)
 
 		target.shadowRoot.appendChild(container)
+	}
+	setValue = target => {
+		const value = +target.value
+		const maxValue = +target.maxValue
+		const minValue = +target.minValue
+		const actualMinValue = Math.min(minValue, value)
+		const actualValue = value - (minValue > value ? 0 : minValue)
+
+		this.percent = actualValue / (maxValue - actualMinValue) * 100
+
+		return `${Math.abs(this.percent)}%`
 	}
 }
 
