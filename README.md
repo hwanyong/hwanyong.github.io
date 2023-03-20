@@ -1,3 +1,6 @@
 # UHD Labs in Github
 ## Javascript Labs
-- [UHDChart.js: Shadow DOM & Cumstom Atribute](/entries/chart/progress/)
+- UHDChart.js [Demo](/entries/chart/progress/)
+	- Shadow DOM
+	- Custom Attribute
+	- CSS Variable
