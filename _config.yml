@@ -1,31 +1,31 @@
 #-------------------------------
 # General Site Settings
-title: Norlin
+title: UHD
 logo: # You can add own logo. For example '/images/logo.png'.
 description: Norlin – A Beautiful Dark Blog Theme for Jekyll.
-baseurl: "" # The subpath of your site, e.g. /blog
-url: "" # The base hostname & protocol for your site, e.g. http://example.com
+baseurl: "/" # The subpath of your site, e.g. /blog
+url: "https://hwanyong.github.io" # The base hostname & protocol for your site, e.g. http://example.com
 
 
 #-------------------------------
 # Author Settings
 author:
-  name: Robert Wilson
+  name: Hwanyong Yoo (UHD)
   avatar: '/images/15.jpg'
 
 
 #-------------------------------
 # Hero Settings
 hero:
-  title: Robert Wilson
-  description: Thoughts, stories and ideas.
+  title: Hwanyong Yoo
+  description: Senior Software Engineer.
   image: '/images/01.jpg'
 
 
 #-------------------------------
 # Contact Settings
 contact:
-  email: your@email.com # Add your email for contact form
+  email: yoo.hwanyong@gmail.com # Add your email for contact form
   description: Norlin comes with a built-in contact form, that you can use with Formspree service to handle up to 50 submissions per month for free. You could also easily switch to another contact form service if you want. # Add a description of your form
 
 # NOTE
