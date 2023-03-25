@@ -1,0 +1,24 @@
+lsi: false
+safe: true
+source: /
+incremental: false
+highlighter: rouge
+gist:
+  noscript: false
+kramdown:
+  math_engine: mathjax
+  syntax_highlighter: rouge
+
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+include:
+  # - CONTRIBUTING.md
+  - README.md
+  # - LICENSE.md
+  # - COPYING.md
+  # - CODE_OF_CONDUCT.md
+  # - ISSUE_TEMPLATE.md
+  # - PULL_REQUEST_TEMPLATE.md
