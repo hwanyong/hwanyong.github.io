@@ -10,7 +10,7 @@ url: "https://hwanyong.github.io" # The base hostname & protocol for your site, 
 #-------------------------------
 # Author Settings
 author:
-  name: Hwanyong Yoo (UHD)
+  name: Hwanyong Yoo
   avatar: '/images/users/uhd.jpg'
 
 
@@ -19,7 +19,7 @@ author:
 hero:
   title: UHD's Playground
   description: Senior Software Engineer.
-  image: '/images/605.jpg'
+  image: '/images/12.jpg'
 
 
 #-------------------------------

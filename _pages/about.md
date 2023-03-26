@@ -2,8 +2,8 @@
 layout: page
 title: About
 permalink: /about/
-image: '/images/60.jpg'
+image: '/images/501.jpg'
 ---
-## Hwanyong Yoo (UHD)
+## Hwanyong Yoo
 ### Senior Software Engineer
 
