@@ -25,6 +25,3 @@ wekfjqwefi
 lwjaefliawjfleji
 
 lijewalifjelawijef
-
-liwajefliawjef
-fasdfasdf
