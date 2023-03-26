@@ -8,7 +8,7 @@ tags:   [graphic engine, sprite, v1.0]
 ---
 
 <canvas id="gameScreen" width="640px" height="400px" tabindex="1"></canvas>
-
+---
 ###### Instructions
 sprite animation test
 - FPS: 30
@@ -18,5 +18,6 @@ Development: HWANYONG YOO (UHD)
 - Game engine: (none)
 - Published: Sep 20, 2018
 - Sources:
-	- [Spriters Resource](https://www.spriters-resource.com/)
-	- [Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
+
+⋅⋅⋅[Spriters Resource](https://www.spriters-resource.com/)⋅⋅
+⋅⋅⋅[Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
