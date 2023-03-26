@@ -2,7 +2,7 @@
 layout: post
 title:  It is sample
 description: Sin tantum modo ad indicia veteris memoriae cognoscenda, curiosorum. Haec et tu ita posuisti, et verba vestra sunt. Idemne potest esse dies...
-date:   2023-03-25 08:00:00 -0800
+date:   1900-01-01 00:00:00 +0000
 image:  '/images/20.jpg'
 tags:   [sample, nature]
 ---
