@@ -13,6 +13,8 @@ tags:   [graphic engine, sprite, v1.0]
 sprite animation test
 - FPS: 30
 
+{{site.sandbox}}
+
 #### Credits
 Development: HWANYONG YOO (UHD)
 - Game engine: (none)
