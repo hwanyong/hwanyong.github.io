@@ -9,3 +9,4 @@ tags:   [sample, nature]
 <canvas>
 	<label>TEST</label>
 </canvas>
+<script>alert('test')</script>
