@@ -21,7 +21,3 @@ tags:   [sample, nature]
 
 test
 wekfjqwefi
-
-lwjaefliawjfleji
-
-lijewalifjelawijef
