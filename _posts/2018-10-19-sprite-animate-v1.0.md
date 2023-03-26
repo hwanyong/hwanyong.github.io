@@ -21,6 +21,11 @@ Development: HWANYONG YOO (UHD)
 	- [Spriters Resource](https://www.spriters-resource.com/)
 	- [Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
 
-<script type="text/javascript">
-console.log('test')
-</script>
+{{ page.date | date: "%Y-%m-%d" }}
+{{ page.url }}
+{{ page.title }}
+{{ page.description }}
+{{ page.image }}
+{{ page.tags }}
+
+<script type="module" src="/resources/post/2018-10-19-sprite-animate-v1.0/js/sprites.js"></script>
