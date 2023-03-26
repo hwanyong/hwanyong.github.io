@@ -18,6 +18,5 @@ Development: HWANYONG YOO (UHD)
 - Game engine: (none)
 - Published: Sep 20, 2018
 - Sources:
-
-⋅⋅⋅[Spriters Resource](https://www.spriters-resource.com/)⋅⋅
-⋅⋅⋅[Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
+... [Spriters Resource](https://www.spriters-resource.com/)
+...[Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
