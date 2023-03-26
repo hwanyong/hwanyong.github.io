@@ -25,7 +25,7 @@ Development: HWANYONG YOO (UHD)
 #### Source
 You can see the source code in Inspector > Sources > [sprite.js](/resources/post/2018-10-19-sprite-animate-v1.0/js/sprites.js)
 ###### sprite.js
-```javascript
+{% highlight js %}
 'use strict';
 import Graphic from '/resources/lib/Engine/1.0.180920/Graphic.js';
 import GameObject from '/resources/lib/Engine/1.0.180920/GameObject.js';
@@ -71,6 +71,6 @@ var Emotes = new GameObject({
 
 Graphic.addRenderList(Emotes);
 Graphic.addRenderList(Bulbasaur);
-```
+{% endhighlight %}
 
 <script type="module" src="{{page.resourceUrl}}/js/sprites.js"></script>
