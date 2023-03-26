@@ -6,5 +6,5 @@ date:   2018-10-19 00:00:00 +0000
 image:  '/images/20.jpg'
 tags:   [sample, nature]
 ---
-<div style="width: 20px; height: 100px; background-color: red;">
+<div style="width: 20px; height: 200px; background-color: red;">
 </div>
