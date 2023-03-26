@@ -28,13 +28,16 @@
     }
   }
 
-  window.addEventListener('scroll', function (e) {
+  <!-- window.addEventListener('scroll', function (e) {
     var currentScroll = document.scrollingElement.scrollTop;
     var disqus_target = document.getElementById('disqus_thread');
 
     if (disqus_target && (currentScroll > disqus_target.getBoundingClientRect().top - 150)) {
       load_disqus('disqus_shortname');
     }
+  }, false); -->
+  window.addEventListener('DOMContentLoaded', e => {
+    load_disqus('disqus_shortname');
   }, false);
 
 </script>
