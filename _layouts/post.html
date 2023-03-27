@@ -75,46 +75,7 @@ layout: default
 			</div>
 		</div>
 
-		{% assign isCheckingNext = false %}
-		{% assign previousPost = null %}
-		{% assign nextPost = null %}
-
-		{% for post in site.posts %}
-			{% if post == page %}
-				{% assign isCheckingNext = true %}
-			{% endif %}
-
-			{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest %}
-				<p>{{post.projectIdx}}:{{page.projectIdx}}</p>
-				{% assign previousPost = post %}
-			{% endif %}
-
-			{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest && nextPost == null %}
-				<p>{{post.projectIdx}}:{{page.projectIdx}}</p>
-				{% assign nextPost = post %}
-			{% endif %}
-		{% endfor %}
-
-		<div class="post__navigation">
-			{% if previousPost.url && previousPost.projectIdx != page.projectIdx %}
-			<a class="prev" href="{{previousPost.url}}">
-				<img class="post__nav-image lazy" data-src="{{previousPost.image}}" alt="{{previousPost.title}}">
-				<div class="post__nav-box">
-					<div class="post__nav post__nav__prev"><i class="ion ion-md-arrow-round-back"></i> Previous Post</div>
-					<h4 class="post__nav__title">{{previousPost.title}}</h4>
-				</div>
-			</a>
-			{% endif %}
-			{% if nextPost.url && nextPost.projectIdx != page.projectIdx %}
-			<a class="next" href="{{nextPost.url}}">
-				<img class="post__nav-image lazy" data-src="{{nextPost.image}}" alt="{{nextPost.title}}">
-				<div class="post__nav-box">
-					<div class="post__nav post__nav__next">Next Post <i class="ion ion-md-arrow-forward"></i></div>
-					<h4 class="post__nav__title">{{nextPost.title}}</h4>
-				</div>
-			</a>
-			{% endif %}
-		</div>
+		{% include post-navigation.html %}
 
 	</article>
 </div>
