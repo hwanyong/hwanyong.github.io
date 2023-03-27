@@ -12,10 +12,10 @@ layout: default
         </div>
       </div>
       {% endif %}
-  
+
       <div class="col col-6 col-t-12">
         <div class="post-head__box">
-        
+
           <div class="post__meta">
             <span class="post__minutes">
               {% assign words = page.content | number_of_words %}
@@ -28,16 +28,16 @@ layout: default
                 datetime="{{ page.date | date_to_xmlschema }}">{% assign date_format = site.minima.date_format | default: "%b %-d, %Y" %}{{ page.date | date: date_format }}</time>
             </span>
           </div>
-        
+
           <h2 class="post__title">{{page.title}}</h2>
-        
+
           <div class="post__bottom">
-        
+
             <div class="post__author">
               <a href="{{site.baseurl}}/about/" aria-label="{{site.author.name}}"><img class="post__author-image"
                   src="{{site.baseurl}}{{site.author.avatar}}" alt="{{site.author.name}}'s Picture"></a>
             </div>
-        
+
             <div class="post__bottom-meta">
               <a href="{{site.baseurl}}/about/" class="post__author-link">{{site.author.name}}</a>
               {% if page.tags.size >= 1 %}
@@ -50,7 +50,7 @@ layout: default
               {% endif %}
             </div>
           </div>
-        
+
         </div>
       </div>
     </div>
@@ -76,7 +76,7 @@ layout: default
     </div>
 
     <div class="post__navigation">
-      {% if page.previous.url %}
+      {% if page.previous.url && page.previous.project != page.project %}
       <a class="prev" href="{{page.previous.url}}">
         <img class="post__nav-image lazy" data-src="{{page.previous.image}}" alt="{{page.previous.title}}">
         <div class="post__nav-box">
@@ -85,7 +85,7 @@ layout: default
         </div>
       </a>
       {% endif %}
-      {% if page.next.url %}
+      {% if page.next.url && page.next.project != page.project %}
       <a class="next" href="{{page.next.url}}">
         <img class="post__nav-image lazy" data-src="{{page.next.image}}" alt="{{page.next.title}}">
         <div class="post__nav-box">

@@ -38,7 +38,9 @@ permalink: /blog/
         <div class="row grid">
           {% if site.posts.size > 0 %}
             {% for post in paginator.posts %}
-              {% include article-content.html %}
+              {% if post.layout == 'blog' %}
+                {% include article-content.html %}
+              {% endif %}
             {% endfor %}
           {% endif %}
         </div>
