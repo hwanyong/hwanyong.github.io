@@ -37,9 +37,11 @@ layout: default
         <div class="row grid">
           {% if site.posts.size > 0 %}
             {% for post in paginator.posts %}
-              {% if post.isLatest && post.layout == 'playground' %}
-                {% include article-content.html %}
+              {% if !post.enable or !post.isLatest or post.postType == 'playground' %}
+                {% continue %}
               {% endif %}
+
+              {% include article-content.html %}
             {% endfor %}
           {% endif %}
         </div>

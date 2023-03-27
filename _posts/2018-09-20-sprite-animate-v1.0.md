@@ -1,6 +1,7 @@
 ---
 layout: post
 enable: true
+postType: playground
 title:  Sprite Animate v1.0
 description: Sprite animation test
 date:   2018-09-20 00:00:00 +0000
