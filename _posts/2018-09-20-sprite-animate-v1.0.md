@@ -4,7 +4,7 @@ title:  Sprite Animate v1.0
 description: Sprite animation test
 date:   2018-10-19 00:00:00 +0000
 image:  '/resources/post/2018-09-20-sprite-animate-v1.0/img/thumnail.png'
-project: {{ site.projectIDs[0] }}
+project: {{ site.projectIDs.0 }}
 version: '1.0'
 isLatest: false
 tags:   [graphic engine, sprite, v1.0]
