@@ -85,7 +85,7 @@ layout: default
 				</div>
 			</a>
 			{% endif %}
-			{% if page.next.url && page.next.project != page.project %}
+			{% if page.next.url && page.next.projectIdx != page.projectIdx %}
 			<a class="next" href="{{page.next.url}}">
 				<img class="post__nav-image lazy" data-src="{{page.next.image}}" alt="{{page.next.title}}">
 				<div class="post__nav-box">
