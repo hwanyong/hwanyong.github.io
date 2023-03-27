@@ -3,13 +3,13 @@ layout: post
 enable: true
 title:  Sprite Animate v1.0
 description: Sprite animation test
-date:   2018-10-19 00:00:00 +0000
+date:   2018-09-20 00:00:00 +0000
 image:  '/resources/post/2018-09-20-sprite-animate-v1.0/img/thumnail.png'
 projectIdx: 0
 version: '1.0'
 isLatest: false
 tags:   [graphic engine, sprite, v1.0]
-resourceUrl: '/resources/post/2018-09-20-sprite-animate-v1.0/'
+resourceUrl: '/resources/post/2018-09-20-sprite-animate-v1.0'
 ---
 project: {{ site.data.projects[page.projectIdx].name }}
 project: {{ site.projectIDs[page.projectIdx] }}
@@ -28,7 +28,7 @@ Development: HWANYONG YOO (UHD)
 	- [Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
 
 #### Source
-You can see the source code in Inspector > Sources > [sprite.js](/resources/post/2018-09-20-sprite-animate-v1.0/js/sprites.js)
+You can see the source code in Inspector > Sources > [sprite.js]({{page.resourceUrl}}/js/sprites.js)
 ###### sprite.js
 {% highlight js %}
 'use strict';
@@ -61,7 +61,7 @@ var Emotes = new GameObject({
 	height: 57,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-09-20-sprite-animate-v1.0/img/kenney-emotes-pack.png'
+		path: '/images/assets/kenney-emotes-pack.png'
 	},
 	spriteOptions: {
 		x: 0,
