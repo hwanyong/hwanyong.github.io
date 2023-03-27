@@ -95,13 +95,6 @@ layout: default
 			{% endif %}
 		{% endfor %}
 
-		<p>
-			{{previousPost.title}}
-		</p>
-		<p>
-			{{nextPost.title}}
-		</p>
-
 		<div class="post__navigation">
 			{% if previousPost.url && previousPost.projectIdx != page.projectIdx %}
 			<a class="prev" href="{{previousPost.url}}">
