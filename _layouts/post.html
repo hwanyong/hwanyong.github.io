@@ -99,10 +99,10 @@ layout: default
 		{% assign page.next = nextPost %}
 
 		<p>
-			{{previousPost | inspect}}
+			{{previousPost.title}}
 		</p>
 		<p>
-			{{nextPost | inspect}}
+			{{nextPost.title}}
 		</p>
 
 		<div class="post__navigation">
