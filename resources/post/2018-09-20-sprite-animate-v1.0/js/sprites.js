@@ -9,7 +9,7 @@ var Bulbasaur = new GameObject({
 	height: 148,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-10-19-sprite-animate-v1.0/img/Pokemon - Bulbasaur_40by37.png'
+		path: '/resources/post/2018-09-20-sprite-animate-v1.0/img/Pokemon - Bulbasaur_40by37.png'
 	},
 	spriteOptions: {
 		x: 1,
@@ -28,7 +28,7 @@ var Emotes = new GameObject({
 	height: 57,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-10-19-sprite-animate-v1.0/img/kenney-emotes-pack.png'
+		path: '/resources/post/2018-09-20-sprite-animate-v1.0/img/kenney-emotes-pack.png'
 	},
 	spriteOptions: {
 		x: 0,
