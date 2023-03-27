@@ -37,10 +37,6 @@ layout: default
         <div class="row grid">
           {% if site.posts.size > 0 %}
             {% for post in paginator.posts %}
-              {% post.enable %}
-              {% post.isLatest %}
-              {% post.postType %}
-
               {% if !post.enable or !post.isLatest or post.postType != playground %}
                 {% continue %}
               {% endif %}
