@@ -75,13 +75,23 @@ layout: default
 			</div>
 		</div>
 
+		{% assign isCheckingNext = false %}
+		{% assign previousPost = null %}
+		{% assign nextPost = null %}
+
 		{% for post in site.posts %}
-		{{ post.title }},
-		{{ post.url }},
-		{{ post.image }},
-		{{ site.data.projects[post.projectIdx] }}|
+			{% if post == page %}
+				{% assign isCheckingNext = true %}
+			{% endif %}
+
+			{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest %}
+				{% assign previousPost = post %}
+			{% endif %}
+
+			{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest && nextPost == null %}
+				{% assign nextPost = post %}
+			{% endif %}
 		{% endfor %}
-		TESTTEST: {{page.previous.projectIdx}} != {{page.projectIdx}}
 
 		<div class="post__navigation">
 			{% if page.previous.url && page.previous.projectIdx != page.projectIdx %}
