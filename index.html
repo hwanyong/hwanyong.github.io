@@ -34,10 +34,12 @@ layout: default
   <div class="row">
     <div class="col col-12">
       <div class="container__inner">
-        <div class="row grid">UHD
+        <div class="row grid">
           {% if site.posts.size > 0 %}
             {% for post in paginator.posts %}
-              {% include article-content.html %}
+              {% if post.isLatest %}
+                {% include article-content.html %}
+              {% endif %}
             {% endfor %}
           {% endif %}
         </div>
