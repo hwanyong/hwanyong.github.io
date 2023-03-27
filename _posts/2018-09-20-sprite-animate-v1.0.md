@@ -61,7 +61,7 @@ var Emotes = new GameObject({
 	height: 57,
 	resource: {
 		type: 'sprite',
-		path: '/images/assets/kenney-emotes-pack.png'
+		path: '/resources/post/2018-09-20-sprite-animate-v1.0/img/kenney-emotes-pack.png'
 	},
 	spriteOptions: {
 		x: 0,
