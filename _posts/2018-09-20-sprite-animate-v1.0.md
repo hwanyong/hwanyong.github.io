@@ -11,6 +11,7 @@ tags:   [graphic engine, sprite, v1.0]
 resourceUrl: '/resources/post/2018-09-20-sprite-animate-v1.0/'
 ---
 project: {{ page.project }}
+project: {{ site.projectIDs[0] }}
 <canvas id="gameScreen" width="640px" height="400px" tabindex="1" style="width: 100%;"></canvas>
 ---
 #### Instructions

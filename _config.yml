@@ -5,7 +5,7 @@ logo: # You can add own logo. For example '/images/logo.png'.
 description: #Norlin – A Beautiful Dark Blog Theme for Jekyll.
 baseurl: "/" # The subpath of your site, e.g. /blog
 url: "https://hwanyong.github.io" # The base hostname & protocol for your site, e.g. http://example.com
-projectIDs: ['sprite_animate']
+projectIDs: [ sprite_animation ]
 
 
 #-------------------------------
