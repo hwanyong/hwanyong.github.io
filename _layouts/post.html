@@ -75,7 +75,10 @@ layout: default
 			</div>
 		</div>
 
-		TESTTEST: {{page.previous}}
+		{% for post in site.posts %}
+		{{ post.title }}
+		{{ site.data.projects[post.projectIdx] }}
+		{% endfor %}
 		TESTTEST: {{page.previous.projectIdx}} != {{page.projectIdx}}
 
 		<div class="post__navigation">
