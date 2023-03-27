@@ -37,7 +37,7 @@ layout: default
         <div class="row grid">
           {% if site.posts.size > 0 %}
             {% for post in paginator.posts %}
-              {% post | inspect %}
+              {% post %}
               {% include article-content.html %}
             {% endfor %}
           {% endif %}
