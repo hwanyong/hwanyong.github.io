@@ -98,6 +98,13 @@ layout: default
 		{% assign page.previous = previousPost %}
 		{% assign page.next = nextPost %}
 
+		<p>
+			{{previousPost | inspect}}
+		</p>
+		<p>
+			{{nextPost | inspect}}
+		</p>
+
 		<div class="post__navigation">
 			{% if page.previous.url && page.previous.projectIdx != page.projectIdx %}
 			<a class="prev" href="{{page.previous.url}}">
