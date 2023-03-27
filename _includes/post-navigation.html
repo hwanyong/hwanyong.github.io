@@ -7,11 +7,11 @@
 		{% assign isCheckingNext = true %}
 	{% endif %}
 
-	{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest %}
+	{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest and post.enable %}
 		{% assign previousPost = post %}
 	{% endif %}
 
-	{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest && nextPost == null %}
+	{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest and post.enable && nextPost == null %}
 		{% assign nextPost = post %}
 	{% endif %}
 {% endfor %}
