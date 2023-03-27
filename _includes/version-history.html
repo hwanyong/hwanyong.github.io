@@ -6,7 +6,12 @@
 	{% endif %}
 
 	<li>
-		<a href="{{ post.url }}">v{{ post.version }}</a>
+		<a href="{{ post.url }}">
+			v{{ post.version }}
+			{% if post == page %}
+				<span class="badge badge--primary">Current</span>
+			{% endif %}
+		</a>
 	</li>
 {% endfor %}
 </ul>
