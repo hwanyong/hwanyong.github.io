@@ -1,5 +1,5 @@
 ---
-layout: playground
+layout: post
 title:  Sprite Animate v1.0
 description: Sprite animation test
 date:   2018-10-19 00:00:00 +0000

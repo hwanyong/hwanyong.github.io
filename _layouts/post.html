@@ -75,8 +75,11 @@ layout: default
 			</div>
 		</div>
 
+		TESTTEST: {{page.previous}}
+		TESTTEST: {{page.previous.projectIdx}} != {{page.projectIdx}}
+
 		<div class="post__navigation">
-			{% if page.previous.url && page.previous.project != page.project %}
+			{% if page.previous.url && page.previous.projectIdx != page.projectIdx %}
 			<a class="prev" href="{{page.previous.url}}">
 				<img class="post__nav-image lazy" data-src="{{page.previous.image}}" alt="{{page.previous.title}}">
 				<div class="post__nav-box">
