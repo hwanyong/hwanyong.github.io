@@ -8,12 +8,10 @@
 	{% endif %}
 
 	{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest %}
-		<p>{{post.projectIdx}}:{{page.projectIdx}}</p>
 		{% assign previousPost = post %}
 	{% endif %}
 
 	{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest && nextPost == null %}
-		<p>{{post.projectIdx}}:{{page.projectIdx}}</p>
 		{% assign nextPost = post %}
 	{% endif %}
 {% endfor %}
