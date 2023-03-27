@@ -1,4 +1,4 @@
-#### Related Releases
+<h4>Related Release Links</h4>
 <ul>
 {% for post in site.posts %}
 	{% if post.projectIdx != page.projectIdx and !post.enable %}
@@ -6,7 +6,7 @@
 	{% endif %}
 
 	<li>
-		[v{{ post.version }}]({{ post.url }})
+		<a href="{{ post.url }}">v{{ post.version }}</a>
 	</li>
 {% endfor %}
 </ul>
