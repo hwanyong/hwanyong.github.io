@@ -11,7 +11,6 @@ isLatest: true
 tags:   [graphic engine, sprite, v1.1]
 resourceUrl: '/resources/post/2018-10-19-sprite-animate-v1.1/'
 ---
-
 <canvas id="gameScreen" width="640px" height="400px" tabindex="1" style="width: 100%;"></canvas>
 ---
 #### Instructions
