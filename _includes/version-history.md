@@ -5,6 +5,6 @@
 		{% continue %}
 	{% endif %}
 
-	<li><a href="{{ post.url }}">{{ post.title }}</a></li>
+	<li><a href="{{ post.url }}">{{ post.version }}</a></li>
 {% endfor %}
 </ul>
