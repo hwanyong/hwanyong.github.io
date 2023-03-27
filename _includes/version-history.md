@@ -1,4 +1,4 @@
-<h4>Related Releases</h4>
+#### Related Releases
 <ul>
 {% for post in site.posts %}
 	{% if post.projectIdx != page.projectIdx and !post.enable %}
