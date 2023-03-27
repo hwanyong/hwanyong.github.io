@@ -61,15 +61,15 @@ A paragraph looks like this — dolor amet cray stumptown fingerstache neutra fo
 ### Table
 
 <div class="table-container">
-  <table>
-    <tr><th>Header 1</th><th>Header 2</th><th>Header 3</th><th>Header 4</th><th>Header 5</th></tr>
-    <tr><td>Row:1 Cell:1</td><td>Row:1 Cell:2</td><td>Row:1 Cell:3</td><td>Row:1 Cell:4</td><td>Row:1 Cell:5</td></tr>
-    <tr><td>Row:2 Cell:1</td><td>Row:2 Cell:2</td><td>Row:2 Cell:3</td><td>Row:2 Cell:4</td><td>Row:2 Cell:5</td></tr>
-    <tr><td>Row:3 Cell:1</td><td>Row:3 Cell:2</td><td>Row:3 Cell:3</td><td>Row:3 Cell:4</td><td>Row:3 Cell:5</td></tr>
-    <tr><td>Row:4 Cell:1</td><td>Row:4 Cell:2</td><td>Row:4 Cell:3</td><td>Row:4 Cell:4</td><td>Row:4 Cell:5</td></tr>
-    <tr><td>Row:5 Cell:1</td><td>Row:5 Cell:2</td><td>Row:5 Cell:3</td><td>Row:5 Cell:4</td><td>Row:5 Cell:5</td></tr>
-    <tr><td>Row:6 Cell:1</td><td>Row:6 Cell:2</td><td>Row:6 Cell:3</td><td>Row:6 Cell:4</td><td>Row:6 Cell:5</td></tr>
-  </table>
+	<table>
+		<tr><th>Header 1</th><th>Header 2</th><th>Header 3</th><th>Header 4</th><th>Header 5</th></tr>
+		<tr><td>Row:1 Cell:1</td><td>Row:1 Cell:2</td><td>Row:1 Cell:3</td><td>Row:1 Cell:4</td><td>Row:1 Cell:5</td></tr>
+		<tr><td>Row:2 Cell:1</td><td>Row:2 Cell:2</td><td>Row:2 Cell:3</td><td>Row:2 Cell:4</td><td>Row:2 Cell:5</td></tr>
+		<tr><td>Row:3 Cell:1</td><td>Row:3 Cell:2</td><td>Row:3 Cell:3</td><td>Row:3 Cell:4</td><td>Row:3 Cell:5</td></tr>
+		<tr><td>Row:4 Cell:1</td><td>Row:4 Cell:2</td><td>Row:4 Cell:3</td><td>Row:4 Cell:4</td><td>Row:4 Cell:5</td></tr>
+		<tr><td>Row:5 Cell:1</td><td>Row:5 Cell:2</td><td>Row:5 Cell:3</td><td>Row:5 Cell:4</td><td>Row:5 Cell:5</td></tr>
+		<tr><td>Row:6 Cell:1</td><td>Row:6 Cell:2</td><td>Row:6 Cell:3</td><td>Row:6 Cell:4</td><td>Row:6 Cell:5</td></tr>
+	</table>
 </div>
 
 ***
@@ -93,16 +93,16 @@ A paragraph looks like this — dolor amet cray stumptown fingerstache neutra fo
 ## Syntax Highlighter
 
 {% highlight js %}
-  $('.top').click(function () {
-    $('html, body').stop().animate({ scrollTop: 0 }, 'slow', 'swing');
-  });
-  $(window).scroll(function () {
-    if ($(this).scrollTop() > $(window).height()) {
-      $('.top').addClass("top-active");
-    } else {
-      $('.top').removeClass("top-active");
-    };
-  });
+	$('.top').click(function () {
+		$('html, body').stop().animate({ scrollTop: 0 }, 'slow', 'swing');
+	});
+	$(window).scroll(function () {
+		if ($(this).scrollTop() > $(window).height()) {
+			$('.top').addClass("top-active");
+		} else {
+			$('.top').removeClass("top-active");
+		};
+	});
 {% endhighlight %}
 
 ***
@@ -110,43 +110,43 @@ A paragraph looks like this — dolor amet cray stumptown fingerstache neutra fo
 ## Images
 
 <div class="gallery-box">
-  <div class="gallery">
-    <img src="/images/501.jpg">
-    <img src="/images/901.jpg">
-    <img src="/images/509.jpg">
-    <img src="/images/511.jpg">
-    <img src="/images/520.jpg">
-    <img src="/images/516.jpg">
-    <img src="/images/517.jpg">
-    <img src="/images/519.jpg">
-    <img src="/images/521.jpg">
-  </div>
-  <em>Gallery / <a href="https://unsplash.com/" target="_blank">Unsplash</a></em>
+	<div class="gallery">
+		<img src="/images/501.jpg">
+		<img src="/images/901.jpg">
+		<img src="/images/509.jpg">
+		<img src="/images/511.jpg">
+		<img src="/images/520.jpg">
+		<img src="/images/516.jpg">
+		<img src="/images/517.jpg">
+		<img src="/images/519.jpg">
+		<img src="/images/521.jpg">
+	</div>
+	<em>Gallery / <a href="https://unsplash.com/" target="_blank">Unsplash</a></em>
 </div>
 
 {% highlight markdown %}
-  <div class="gallery-box">
-    <div class="gallery">
-      <img src="/images/501.jpg">
-      <img src="/images/901.jpg">
-      <img src="/images/509.jpg">
-      <img src="/images/511.jpg">
-      <img src="/images/520.jpg">
-      <img src="/images/516.jpg">
-      <img src="/images/517.jpg">
-      <img src="/images/519.jpg">
-      <img src="/images/521.jpg">
-    </div>
-    <em>Gallery / <a href="https://unsplash.com/" target="_blank">Unsplash</a></em>
-  </div>
+	<div class="gallery-box">
+		<div class="gallery">
+			<img src="/images/501.jpg">
+			<img src="/images/901.jpg">
+			<img src="/images/509.jpg">
+			<img src="/images/511.jpg">
+			<img src="/images/520.jpg">
+			<img src="/images/516.jpg">
+			<img src="/images/517.jpg">
+			<img src="/images/519.jpg">
+			<img src="/images/521.jpg">
+		</div>
+		<em>Gallery / <a href="https://unsplash.com/" target="_blank">Unsplash</a></em>
+	</div>
 {% endhighlight %}
 
 ![]({{site.baseurl}}/images/140.jpg)
 *Minimalism*
 
 {% highlight markdown %}
-  ![]({{site.baseurl}}/images/140.jpg)
-  *Minimalism*
+	![]({{site.baseurl}}/images/140.jpg)
+	*Minimalism*
 {% endhighlight %}
 
 ***
@@ -156,7 +156,7 @@ A paragraph looks like this — dolor amet cray stumptown fingerstache neutra fo
 <p><iframe src="https://www.youtube.com/embed/Hd1_EXhr_fg" frameborder="0" allowfullscreen></iframe></p>
 
 {% highlight html %}
-  <iframe src="https://www.youtube.com/embed/Hd1_EXhr_fg" frameborder="0" allowfullscreen></iframe>
+	<iframe src="https://www.youtube.com/embed/Hd1_EXhr_fg" frameborder="0" allowfullscreen></iframe>
 {% endhighlight %}
 
 ## Vimeo Embed
@@ -164,7 +164,7 @@ A paragraph looks like this — dolor amet cray stumptown fingerstache neutra fo
 <p><iframe src="https://player.vimeo.com/video/107654760" width="640" height="360" frameborder="0" allowfullscreen></iframe></p>
 
 {% highlight html %}
-  <iframe src="https://player.vimeo.com/video/107654760" width="640" height="360" frameborder="0" allowfullscreen></iframe>
+	<iframe src="https://player.vimeo.com/video/107654760" width="640" height="360" frameborder="0" allowfullscreen></iframe>
 {% endhighlight %}
 
 ***
