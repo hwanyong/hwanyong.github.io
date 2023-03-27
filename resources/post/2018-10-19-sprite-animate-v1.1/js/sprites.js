@@ -1,34 +1,49 @@
 'use strict';
-import Graphic from '/resources/lib/Engine/1.0.180920/Graphic.js';
-import GameObject from '/resources/lib/Engine/1.0.180920/GameObject.js';
+import Graphic from '/resources/lib/Engine/1.0.181019/Graphic.js';
+import GameObject from '/resources/lib/Engine/1.0.181019/GameObject.js';
 
-var Bulbasaur = new GameObject({
-	name: 'Bulbasaur',
-	position: { x: 240, y: 174},
-	width: 160,
-	height: 148,
+var BuilderIdle = new GameObject({
+	name: 'Builder-idle',
+	position: { x: 210, y: 143},
+	width: 192,
+	height: 192,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-10-19-sprite-animate-v1.0/img/Pokemon - Bulbasaur_40by37.png'
+		path: '/resources/post/2018-10-19-sprite-animate-v1.1/img/Builder-idle-v2-64px-8x2.png'
 	},
 	spriteOptions: {
-		x: 1,
+		x: 0,
 		y: 0,
-		width: 40,
-		height: 37,
-		interval: 120,
-		frame: 21,
+		width: 64,
+		height: 64,
+		interval: 80,
+		frame: {
+			length: 16,
+			row: 2,
+			col: 8
+		},
 		repeatMode: 'loop'
 	}
+}).setRender((ctx, self, opts) => {
+	ctx.drawImage(
+		opts.resource.img,
+		opts.animate.target.x,
+		opts.animate.target.y,
+		opts.spriteOptions.width,
+		opts.spriteOptions.height,
+		opts.position.x,
+		opts.position.y,
+		opts.width,
+		opts.height);
 });
 var Emotes = new GameObject({
 	name: 'Emotes',
-	position: { x: 280, y: 130},
-	width: 48,
-	height: 57,
+	position: { x: 270, y: 100},
+	width: 64,
+	height: 74,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-10-19-sprite-animate-v1.0/img/kenney-emotes-pack.png'
+		path: '/resources/post/2018-10-19-sprite-animate-v1.1/img/kenney-emotes-pack.png'
 	},
 	spriteOptions: {
 		x: 0,
@@ -36,10 +51,28 @@ var Emotes = new GameObject({
 		width: 32,
 		height: 38,
 		interval: 1000,
-		frame: 6,
+		frame: {
+			length: 6,
+			row: 1,
+			col: 6
+		},
 		repeatMode: 'loop'
 	}
+}).setRender((ctx, self, opts) => {
+	ctx.drawImage(
+		opts.resource.img,
+		opts.animate.target.x,
+		opts.animate.target.y,
+		opts.spriteOptions.width,
+		opts.spriteOptions.height,
+		opts.position.x,
+		opts.position.y,
+		opts.width,
+		opts.height);
 });
 
+Graphic.SetBackgroundColor('#ffffff');
+BuilderIdle.startSprite();
+Emotes.startSprite();
+Graphic.addRenderList(BuilderIdle);
 Graphic.addRenderList(Emotes);
-Graphic.addRenderList(Bulbasaur);
