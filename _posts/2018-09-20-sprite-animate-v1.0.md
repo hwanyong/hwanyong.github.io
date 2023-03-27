@@ -3,12 +3,12 @@ layout: playground
 title:  Sprite Animate v1.0
 description: Sprite animation test
 date:   2018-10-19 00:00:00 +0000
-image:  '/resources/post/2018-10-19-sprite-animate-v1.0/img/thumnail.png'
+image:  '/resources/post/2018-09-20-sprite-animate-v1.0/img/thumnail.png'
 project: 'sprite_animate'
 version: '1.0'
 isLatest: false
 tags:   [graphic engine, sprite, v1.0]
-resourceUrl: '/resources/post/2018-10-19-sprite-animate-v1.0/'
+resourceUrl: '/resources/post/2018-09-20-sprite-animate-v1.0/'
 ---
 project: {{ page.project }}
 <canvas id="gameScreen" width="640px" height="400px" tabindex="1" style="width: 100%;"></canvas>
@@ -26,7 +26,7 @@ Development: HWANYONG YOO (UHD)
 	- [Kenney Emotes Pack](https://www.kenney.nl/assets/emotes-pack)
 
 #### Source
-You can see the source code in Inspector > Sources > [sprite.js](/resources/post/2018-10-19-sprite-animate-v1.0/js/sprites.js)
+You can see the source code in Inspector > Sources > [sprite.js](/resources/post/2018-09-20-sprite-animate-v1.0/js/sprites.js)
 ###### sprite.js
 {% highlight js %}
 'use strict';
@@ -40,7 +40,7 @@ var Bulbasaur = new GameObject({
 	height: 148,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-10-19-sprite-animate-v1.0/img/Pokemon - Bulbasaur_40by37.png'
+		path: '/resources/post/2018-09-20-sprite-animate-v1.0/img/Pokemon - Bulbasaur_40by37.png'
 	},
 	spriteOptions: {
 		x: 1,
@@ -59,7 +59,7 @@ var Emotes = new GameObject({
 	height: 57,
 	resource: {
 		type: 'sprite',
-		path: '/resources/post/2018-10-19-sprite-animate-v1.0/img/kenney-emotes-pack.png'
+		path: '/resources/post/2018-09-20-sprite-animate-v1.0/img/kenney-emotes-pack.png'
 	},
 	spriteOptions: {
 		x: 0,
