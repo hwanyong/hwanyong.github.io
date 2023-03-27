@@ -95,9 +95,6 @@ layout: default
 			{% endif %}
 		{% endfor %}
 
-		{% assign page.previous = previousPost %}
-		{% assign page.next = nextPost %}
-
 		<p>
 			{{previousPost.title}}
 		</p>
@@ -106,21 +103,21 @@ layout: default
 		</p>
 
 		<div class="post__navigation">
-			{% if page.previous.url && page.previous.projectIdx != page.projectIdx %}
-			<a class="prev" href="{{page.previous.url}}">
-				<img class="post__nav-image lazy" data-src="{{page.previous.image}}" alt="{{page.previous.title}}">
+			{% if previousPost.url && previousPost.projectIdx != page.projectIdx %}
+			<a class="prev" href="{{previousPost.url}}">
+				<img class="post__nav-image lazy" data-src="{{previousPost.image}}" alt="{{previousPost.title}}">
 				<div class="post__nav-box">
 					<div class="post__nav post__nav__prev"><i class="ion ion-md-arrow-round-back"></i> Previous Post</div>
-					<h4 class="post__nav__title">{{page.previous.title}}</h4>
+					<h4 class="post__nav__title">{{previousPost.title}}</h4>
 				</div>
 			</a>
 			{% endif %}
-			{% if page.next.url && page.next.projectIdx != page.projectIdx %}
-			<a class="next" href="{{page.next.url}}">
-				<img class="post__nav-image lazy" data-src="{{page.next.image}}" alt="{{page.next.title}}">
+			{% if nextPost.url && nextPost.projectIdx != page.projectIdx %}
+			<a class="next" href="{{nextPost.url}}">
+				<img class="post__nav-image lazy" data-src="{{nextPost.image}}" alt="{{nextPost.title}}">
 				<div class="post__nav-box">
 					<div class="post__nav post__nav__next">Next Post <i class="ion ion-md-arrow-forward"></i></div>
-					<h4 class="post__nav__title">{{page.next.title}}</h4>
+					<h4 class="post__nav__title">{{nextPost.title}}</h4>
 				</div>
 			</a>
 			{% endif %}
