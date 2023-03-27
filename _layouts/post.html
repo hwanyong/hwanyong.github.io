@@ -75,7 +75,7 @@ layout: default
 			</div>
 		</div>
 
-		{% for post in site.posts %}
+		{% for post in site.posts reversed %}
 		{{ post.title }},
 		{{ post.url }},
 		{{ post.image }},
