@@ -85,6 +85,7 @@ layout: default
 			{% endif %}
 
 			{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest %}
+				<p>{{post.projectIdx}}:{{page.projectIdx}}</p>
 				{% assign previousPost = post %}
 			{% endif %}
 
@@ -92,6 +93,9 @@ layout: default
 				{% assign nextPost = post %}
 			{% endif %}
 		{% endfor %}
+
+		{% assign page.previous = previousPost %}
+		{% assign page.next = nextPost %}
 
 		<div class="post__navigation">
 			{% if page.previous.url && page.previous.projectIdx != page.projectIdx %}
