@@ -90,6 +90,7 @@ layout: default
 			{% endif %}
 
 			{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest && nextPost == null %}
+				<p>{{post.projectIdx}}:{{page.projectIdx}}</p>
 				{% assign nextPost = post %}
 			{% endif %}
 		{% endfor %}
