@@ -7,17 +7,17 @@
 		{% assign isCheckingNext = true %}
 	{% endif %}
 
-	{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.isLatest and post.enable %}
+	{% if isCheckingNext == false and post.projectIdx != page.projectIdx and post.postType == page.postType and post.isLatest and post.enable %}
 		{% assign previousPost = post %}
 	{% endif %}
 
-	{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.isLatest and post.enable && nextPost == null %}
+	{% if isCheckingNext == true and post.projectIdx != page.projectIdx and post.postType == page.postType and post.isLatest and post.enable && nextPost == null %}
 		{% assign nextPost = post %}
 	{% endif %}
 {% endfor %}
 
 <div class="post__navigation">
-	{% if previousPost.url && previousPost.projectIdx != page.projectIdx %}
+	{% if previousPost.url %}
 	<a class="prev" href="{{previousPost.url}}">
 		<img class="post__nav-image lazy" data-src="{{previousPost.image}}" alt="{{previousPost.title}}">
 		<div class="post__nav-box">
@@ -26,7 +26,7 @@
 		</div>
 	</a>
 	{% endif %}
-	{% if nextPost.url && nextPost.projectIdx != page.projectIdx %}
+	{% if nextPost.url %}
 	<a class="next" href="{{nextPost.url}}">
 		<img class="post__nav-image lazy" data-src="{{nextPost.image}}" alt="{{nextPost.title}}">
 		<div class="post__nav-box">

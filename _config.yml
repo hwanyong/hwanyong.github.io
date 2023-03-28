@@ -70,7 +70,7 @@ mailchimp-identifier: # Add your MailChimp form identifier. For example - blogen
 markdown: kramdown
 permalink: pretty
 plugins:
-  - jekyll-paginate
+  - jekyll-paginate #https://jekyllrb.com/docs/pagination/
   - jekyll-sitemap
   - jekyll/tagging
 

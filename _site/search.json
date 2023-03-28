@@ -31,6 +31,16 @@
     } ,
   
     {
+      "title"    : "abc-post",
+      "category" : "",
+      "tags"     : "graphic engine, sprite, and v1.1",
+      "url"      : "/2018/10/18/ABC-copy/",
+      "date"     : "Oct 18, 2018",
+      "content"  : "Instructionssprite animation test  FPS: 30CreditsDevelopment: HWANYONG YOO (UHD)  Game engine: (none)  Published: Sep 20, 2018  Sources:          Spriters Resource      Kenney Emotes Pack      SourceYou can see the source code in Inspector &gt; Sources &gt; sprite.jssprite.js'use strict';import Graphic from '/resources/lib/Engine/1.0.180920/Graphic.js';import GameObject from '/resources/lib/Engine/1.0.180920/GameObject.js';var Bulbasaur = new GameObject({	name: 'Bulbasaur',	position: { x: 240, y: 174},	width: 160,	height: 148,	resource: {		type: 'sprite',		path: '/resources/post/2018-10-19-sprite-animate-v1.1/img/Pokemon - Bulbasaur_40by37.png'	},	spriteOptions: {		x: 1,		y: 0,		width: 40,		height: 37,		interval: 120,		frame: 21,		repeatMode: 'loop'	}});var Emotes = new GameObject({	name: 'Emotes',	position: { x: 280, y: 130},	width: 48,	height: 57,	resource: {		type: 'sprite',		path: '/resources/post/2018-10-19-sprite-animate-v1.1/img/kenney-emotes-pack.png'	},	spriteOptions: {		x: 0,		y: 0,		width: 32,		height: 38,		interval: 1000,		frame: 6,		repeatMode: 'loop'	}});Graphic.addRenderList(Emotes);Graphic.addRenderList(Bulbasaur);",
+      "article"  : "<div class='article col col-4 col-d-6 col-t-12 grid__post animate'> <div class='article__inner'><a class='article__image' href='/2018/10/18/ABC-copy/'> <img src='/resources/post/2018-10-19-sprite-animate-v1.1/img/thumnail.png' alt='abc-post'> </a><div class='article__content'> <div class='article__meta'> <span class='article__minutes'>1 min read <time class='article__date' datetime='2018-10-18T17:00:00-07:00'>Oct 18, 2018</time> </span> </div><h2 class='article__title'>abc-post</h2> <p class='article__excerpt'>abc test</p><div class='article__bottom'><div class='article__author'> <a href='/about/' aria-label='Hwanyong Yoo'><img class='article__author-image' src='/images/users/uhd.jpg' alt='Hwanyong Yoo's Picture'></a> </div><div class='article__bottom-meta'><a href='/about/' class='article__author-link'>Hwanyong Yoo</a><span> in </span> <span class='article-tags'> <a href='/tag/graphic engine' class='article__tag'>graphic engine</a>  <a href='/tag/sprite' class='article__tag'>sprite</a>  <a href='/tag/v1.1' class='article__tag'>v1.1</a> </span></div></div></div></div></div>"
+    } ,
+  
+    {
       "title"    : "Sprite Animate v1.0",
       "category" : "",
       "tags"     : "graphic engine, sprite, and v1.0",

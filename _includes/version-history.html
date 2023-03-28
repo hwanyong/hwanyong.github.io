@@ -1,7 +1,7 @@
 <h4>Related Release Links</h4>
 <ul>
 {% for post in site.posts %}
-	{% if post.projectIdx != page.projectIdx and !post.enable %}
+	{% if post.projectIdx != page.projectIdx or post.postType != page.postType or post.enable == false %}
 		{% continue %}
 	{% endif %}
 

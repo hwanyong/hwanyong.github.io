@@ -1,3 +1,5 @@
+{% assign is-featured = false %}
+
 {% for post in site.posts %}
   {% if post.featured == true %}
     {% assign is-featured = true %}

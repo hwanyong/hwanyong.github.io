@@ -26,6 +26,10 @@
           <div class="row grid">
 
           {% for post in site.posts %}
+            {% if post.enable == false or post.isLatest == false %}
+              {% continue %}
+            {% endif %}
+
             {% assign sameTagCount = 0 %}
             {% assign commonTags = '' %}
 

@@ -75,7 +75,9 @@ layout: default
 			</div>
 		</div>
 
-		{% include version-history.html %}
+		{% if page.postType == 'playground' %}
+			{% include version-history.html %}
+		{% endif %}
 
 	</article>
 

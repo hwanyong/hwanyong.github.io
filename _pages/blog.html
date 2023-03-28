@@ -1,7 +1,7 @@
 ---
 layout: default
-# title: Blog
 permalink: /blog/
+postType: post
 ---
 
 <!-- begin hero -->
@@ -37,10 +37,12 @@ permalink: /blog/
       <div class="container__inner">
         <div class="row grid">
           {% if site.posts.size > 0 %}
-            {% for post in paginator.posts %}
-              {% if post.layout == 'blog' %}
-                {% include article-content.html %}
+            {% for post in site.posts %}
+              {% if post.postType != 'post' or post.enable == false or post.isLatest == false %}
+                {% continue %}
               {% endif %}
+
+              {% include article-content.html %}
             {% endfor %}
           {% endif %}
         </div>
