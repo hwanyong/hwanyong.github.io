@@ -5,9 +5,36 @@
     <description></description>
     <link>http://localhost:4000/</link>
     <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Tue, 28 Mar 2023 12:53:20 -0700</pubDate>
-    <lastBuildDate>Tue, 28 Mar 2023 12:53:20 -0700</lastBuildDate>
+    <pubDate>Sun, 09 Apr 2023 08:31:38 -0700</pubDate>
+    <lastBuildDate>Sun, 09 Apr 2023 08:31:38 -0700</lastBuildDate>
     <generator>Jekyll v4.3.2</generator>
+    
+      <item>
+        <title>Budget Calendar v1.0</title>
+        <description>&lt;canvas id=&quot;gameScreen&quot; width=&quot;640px&quot; height=&quot;400px&quot; tabindex=&quot;1&quot; style=&quot;width: 100%;&quot;&gt;&lt;/canvas&gt;
+&lt;hr /&gt;
+&lt;h4 id=&quot;instructions&quot;&gt;Instructions&lt;/h4&gt;
+
+&lt;h4 id=&quot;credits&quot;&gt;Credits&lt;/h4&gt;
+&lt;p&gt;Development: HWANYONG YOO (UHD)&lt;/p&gt;
+
+&lt;script defer=&quot;&quot; type=&quot;text/javascript&quot; src=&quot;/js/vendors/datejs/date.js&quot;&gt;&lt;/script&gt;
+
+&lt;script defer=&quot;&quot; type=&quot;module&quot; src=&quot;/resources/post/2023-04-05-budget-calendar-v1.0//js/index.js&quot;&gt;&lt;/script&gt;
+
+</description>
+        <pubDate>Wed, 05 Apr 2023 13:00:00 -0700</pubDate>
+        <link>http://localhost:4000/2023/04/05/budget-calendar-v1.0/</link>
+        <guid isPermaLink="true">http://localhost:4000/2023/04/05/budget-calendar-v1.0/</guid>
+        
+        <category>budget</category>
+        
+        <category>calendar</category>
+        
+        <category>v1.0</category>
+        
+        
+      </item>
     
       <item>
         <title>test</title>

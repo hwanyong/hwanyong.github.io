@@ -2,5 +2,8 @@
 	{
 		"id": "sprite_animation",
 		"name": "Sprite Animation"
+	}, {
+		"id": "budget_calendar",
+		"name": "Budget Calendar"
 	}
 ]

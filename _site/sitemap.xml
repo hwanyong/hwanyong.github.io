@@ -21,6 +21,10 @@
 <lastmod>2018-10-18T17:00:00-07:00</lastmod>
 </url>
 <url>
+<loc>http://localhost:4000/2023/04/05/budget-calendar-v1.0/</loc>
+<lastmod>2023-04-05T13:00:00-07:00</lastmod>
+</url>
+<url>
 <loc>http://localhost:4000/about/</loc>
 </url>
 <url>
@@ -46,5 +50,11 @@
 </url>
 <url>
 <loc>http://localhost:4000/tag/v1.1/</loc>
+</url>
+<url>
+<loc>http://localhost:4000/tag/budget/</loc>
+</url>
+<url>
+<loc>http://localhost:4000/tag/calendar/</loc>
 </url>
 </urlset>
