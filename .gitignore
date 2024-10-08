@@ -15,3 +15,4 @@ _site
 /_site/**/*
 _site/feed.xml
 _site/feed.xml
+.DS_Store
