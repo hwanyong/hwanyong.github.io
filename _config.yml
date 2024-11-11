@@ -42,11 +42,13 @@ social:
 # - {icon: "ion-logo-twitter", link: "https://twitter.com"}
 # - {icon: "ion-logo-facebook", link: "https://facebook.com"}
 # - {icon: "ion-logo-dribbble", link: "https://dribbble.com"}
-- {icon: "ion-logo-instagram", link: "https://instagram.com/uhd_tech"}
 # - {icon: "ion-logo-pinterest", link: "https://pinterest.com"}
+# - {icon: "ion ion-logo-vimeo", link: "https://vimeo.com/"}
+- {icon: "ion-logo-instagram", link: "https://instagram.com/uhd_tech"}
+# - {icon: "ion-logo-youtube", link: "https://www.youtube.com/@uhd_kr"}
 - {icon: "ion-logo-youtube", link: "https://www.youtube.com/@uhd_tech"}
 - {icon: "ion-logo-github", link: "https://github.com/hwanyong"}
-# - {icon: "ion ion-logo-vimeo", link: "https://vimeo.com/"}
+- {icon: "ion-logo-youtube", link: "https://discord.gg/KcqHTZS35c"}
 
 
 #-------------------------------
@@ -56,7 +58,7 @@ disqus-identifier: anvodstudio-demo # Add your shortname for Disqus Comment. For
 
 #-------------------------------
 # Google Analytics
-google-analytics: # Add your identifier. For example UA-99631805-1.
+google-analytics: G-7BRW73VC18
 
 
 #-------------------------------
