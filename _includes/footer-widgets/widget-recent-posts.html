@@ -5,9 +5,18 @@
       <h3 class="widget__title">Latest Posts</h3>
     </div>
 
-    {% for post in site.posts limit:2 %}
-      {% if post.enable == false or post.postType != page.postType %}
+    {% assign latest_count = 0 %}
+    {% for post in site.posts %}
+      {% if post.enable == false or post.isLatest == false %}
         {% continue %}
+      {% endif %}
+
+      {% if post.isLatest %}
+        {% assign latest_count = latest_count | plus: 1 %}
+      {% endif %}
+
+      {% if latest_count > 2 %}
+        {% break %}
       {% endif %}
 
     <div class="recent-posts">
