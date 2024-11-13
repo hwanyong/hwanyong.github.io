@@ -38,7 +38,7 @@ postType: post
         <div class="row grid">
           {% if site.posts.size > 0 %}
             {% for post in site.posts %}
-              {% if post.postType != 'post' or post.enable == false or post.isLatest == false %}
+              {% if post.postType != 'blog' or post.enable == false or post.isLatest == false %}
                 {% continue %}
               {% endif %}
 

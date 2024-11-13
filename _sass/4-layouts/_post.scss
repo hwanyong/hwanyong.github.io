@@ -11,6 +11,7 @@
 
   .row {
     align-items: center;
+    justify-content: center;
   }
 
   .post-head__box {
@@ -215,7 +216,7 @@
 
   @media only screen and (max-width: $mobile) {
     margin: 48px 0;
-    
+
     .share__list {
       .share__link {
         padding: 24px 20px;
@@ -247,7 +248,7 @@
   .next img {
     border-radius: 0 16px 16px 0;
   }
-  
+
 
   .prev, .next {
     position: relative;
