@@ -54,7 +54,7 @@ This function parses tool call information from the model's response and invokes
 아래는 함수의 주요 코드 스니펫입니다:
 Below is the main code snippet of the function:
 
-```javascript
+{% highlight js %}
 import { debugLog } from "./debugLogger.mjs";
 
 export async function handleToolCall(responseContent, tools) {
@@ -81,7 +81,7 @@ export async function handleToolCall(responseContent, tools) {
   debugLog(`Tool "${parsed.action}" returned:`, toolResult);
   return toolResult;
 }
-```
+{% endhighlight %}
 
 ### 2. `invokeModelWithToolHandling`
 ### 2. `invokeModelWithToolHandling`
@@ -101,7 +101,7 @@ This function handles tool invocations when calling the model to ensure that the
 아래는 해당 함수의 주요 코드입니다:
 Below is the main code for this function:
 
-```javascript
+{% highlight js %}
 import { AIMessage } from "@langchain/core/messages";
 import { debugLog } from "./debugLogger.mjs";
 
@@ -127,7 +127,7 @@ export async function invokeModelWithToolHandling(messages, model, tools) {
   }
   return content;
 }
-```
+{% endhighlight %}
 
 ## 디버깅 로거: `debugLogger`
 ## Debug Logger: `debugLogger`
@@ -135,7 +135,7 @@ export async function invokeModelWithToolHandling(messages, model, tools) {
 함수의 동작 과정을 추적하기 위해 `debugLogger` 모듈을 활용합니다. 환경 변수 `DEBUG_OUTPUT`이 `true`로 설정되어 있을 경우, 디버깅 로그가 콘솔에 출력됩니다.
 The `debugLogger` module is used to trace the flow of operations in the functions. When the environment variable `DEBUG_OUTPUT` is set to `true`, debug logs will be printed to the console.
 
-```javascript
+{% highlight js %}
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -146,7 +146,7 @@ export function debugLog(...args) {
     console.log(...args);
   }
 }
-```
+{% endhighlight %}
 
 ## 결론
 ## Conclusion
