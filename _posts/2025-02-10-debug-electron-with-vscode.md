@@ -29,18 +29,18 @@ Electron 애플리케이션을 개발하다 보면 메인 프로세스와 렌더
 ## 프로젝트 구조
 예제에서 사용할 프로젝트는 TypeScript 기반의 Electron 애플리케이션입니다. 기본적인 프로젝트 구조는 다음과 같습니다:
 
-```bash
+{% highlight bash %}
 src/
   ├── main.ts      // 메인 프로세스
   └── renderer.ts  // 렌더러 프로세스
 package.json
 tsconfig.json
-```
+{% endhighlight %}
 
 ## 1. .gitignore 설정
 VS Code의 디버깅 설정을 팀원들과 공유하기 위해 .vscode 디렉토리를 버전 관리에 포함시켜야 합니다. .gitignore 파일을 다음과 같이 수정합니다:
 
-```bash
+{% highlight bash %}
 # Dependencies
 /node_modules
 /.pnp
@@ -64,12 +64,12 @@ yarn-error.log*
 
 # IDE
 !.vscode  # .vscode 디렉토리 포함
-```
+{% endhighlight %}
 
 ## 2. VS Code 디버깅 설정
 .vscode/launch.json 파일을 생성하여 메인 프로세스와 렌더러 프로세스의 디버깅 설정을 추가합니다:
 
-```json
+{% highlight json %}
 {
   "version": "0.2.0",
   "configurations": [
@@ -104,12 +104,12 @@ yarn-error.log*
     }
   ]
 }
-```
+{% endhighlight %}
 
 ## 3. TypeScript 설정
 디버깅을 위해 소스맵을 활성화하고 출력 디렉토리를 설정합니다. tsconfig.json 파일을 다음과 같이 구성합니다:
 
-```json
+{% highlight json %}
 {
   "compilerOptions": {
     "target": "ESNext",
@@ -128,12 +128,12 @@ yarn-error.log*
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
-```
+{% endhighlight js %}
 
 ## 4. 스크립트 설정
 package.json에 디버그 모드 실행을 위한 스크립트를 추가합니다:
 
-```json
+{% highlight json %}
 {
   "scripts": {
     "build": "tsc",
@@ -144,7 +144,7 @@ package.json에 디버그 모드 실행을 위한 스크립트를 추가합니�
     "debug": "tsc && electron . --remote-debugging-port=9223"
   }
 }
-```
+{% endhighlight %}
 
 ## 디버깅 방법
 설정이 완료되면 다음과 같은 방법으로 디버깅을 시작할 수 있습니다:
