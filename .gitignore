@@ -1,13 +1,6 @@
 
 hwanyong.github.io.code-workspace
 .DS_Store
-*/.DS_Store
-**/.DS_Store
-.DS_Store
-_includes/.DS_Store
-images/.DS_Store
-.DS_Store
-images/.DS_Store
 styleguide.md
 _site
 /_site
@@ -15,5 +8,4 @@ _site
 /_site/**/*
 _site/feed.xml
 _site/feed.xml
-.DS_Store
-.DS_Store
+.mcp-debug-tools/
