@@ -12,9 +12,9 @@
  */
 import { ADSENSE } from '../lib/site';
 
-// 계정이 비활성이거나 slot ID 가 없으면 로더 자체를 내보내지 않는다.
-// 존재하지 않는 광고 단위로 요청을 보내지 않기 위함이다.
-const show = import.meta.env.PROD && ADSENSE.enabled;
+// loader 축만 본다 — units 와 일부러 다르다.
+// 심사 단계에서는 로더만 실려 있어야 하고 슬롯은 나가면 안 된다(site.ts 주석 참조).
+const show = import.meta.env.PROD && ADSENSE.loader;
 const loaderSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE.client}`;
 ---
 

@@ -48,7 +48,7 @@ export const VENDORS: Record<VendorId, Vendor> = {
   adsense: {
     name: 'Google AdSense',
     policyHref: 'https://policies.google.com/technologies/ads',
-    active: ADSENSE.enabled,
+    active: ADSENSE.loader,
   },
 };
 

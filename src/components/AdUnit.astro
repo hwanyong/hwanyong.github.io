@@ -29,9 +29,10 @@ interface Props {
 
 const { adSlot, collapseOnUnfilled = true } = Astro.props;
 
-// AdSenseHead 와 같은 조건이어야 한다. 한쪽만 켜지면
-// 로더 없는 빈 <ins> 가 남거나, 슬롯 없는 로더가 실린다.
-const show = import.meta.env.PROD && ADSENSE.enabled;
+// units 축을 읽는다. AdSenseHead(loader)와 달라도 되는 게 아니라 달라야 한다:
+// 슬롯만 켜지면 로더 없는 빈 <ins> 가 남으므로 units ⊆ loader 가 지켜져야 하고,
+// 그 역(로더만 켜짐)은 심사 단계의 정상 상태다.
+const show = import.meta.env.PROD && ADSENSE.loader && ADSENSE.units;
 ---
 
 {
