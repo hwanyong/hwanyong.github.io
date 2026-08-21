@@ -14,6 +14,16 @@ export default defineConfig({
 
   // 'static' | 'server' — 기본값이 'static' 이라 생략 가능하지만 의도를 남긴다.
   output: 'static',
+  // 'error' | 'warn'(기본) | 'ignore'. 두 라우트가 같은 정적 경로를 내면 빌드를 죽인다.
+  //
+  // 기본값 'warn' 은 경고 한 줄만 남기고 "마지막에 그려진 쪽"을 배포한다 —
+  // 즉 한쪽 페이지가 조용히 사라진 채 빌드가 성공한다. 실측으로 확인했다:
+  //   최상위 error → [PrerenderRouteConflict] 로 빌드 실패, 파일 생성 안 됨
+  //   build 안 error → [WARN] 만 나오고 뒤에 그려진 쪽이 dist 에 남음
+  //
+  // ★ build 블록 안이 아니라 최상위다. 소비처가 config.prerenderConflictBehavior 를 읽는다
+  //   (core/build/generate.js:125). build 안에 넣으면 조용히 무시된다.
+  prerenderConflictBehavior: 'error',
 
   // 기본값. /log/foo/ 형태의 디렉터리 URL 이 생성된다.
   // giscus mapping="pathname" 의 term 이 이 값에 의존하므로
