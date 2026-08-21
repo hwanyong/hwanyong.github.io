@@ -82,6 +82,23 @@ export type StorageKey = (typeof STORAGE_KEYS)[number];
 export const REGIMES = ['PIPA', 'GDPR'] as const;
 export type Regime = (typeof REGIMES)[number];
 
+/**
+ * 광고가 지금 어느 상태인가. site.ts 의 두 플래그에서 파생한다.
+ *
+ * ★ 왜 문장이 아니라 상태인가:
+ *   법적 근거 절의 광고 문단은 실제 구성이 바뀌면 함께 바뀌어야 한다. 고정 문자열로
+ *   두었더니 로더가 켜진 날 벤더 표는 "게재 중" 인데 법적 근거는 "게재하지 않는다" 가
+ *   되어, 한 페이지 안에서 두 문장이 서로를 부정했다(실제로 그렇게 배포됐다).
+ *   상태를 키로 쓰면 Record<AdState, string> 이 세 문장을 모두 요구하므로,
+ *   플래그를 바꾸는 것만으로 방침이 따라온다.
+ *
+ *   off         로더도 광고 단위도 없다
+ *   loaderOnly  Google 의 광고 스크립트는 실리지만 광고 단위가 아직 없다 (심사 대기)
+ *   serving     광고를 게재한다
+ */
+export const AD_STATE: AdState = !ADSENSE.loader ? 'off' : ADSENSE.units ? 'serving' : 'loaderOnly';
+export type AdState = 'off' | 'loaderOnly' | 'serving';
+
 export const POLICY = {
   /**
    * ★ string 이 아니라 Date 다. 화면 표기는 date.ts 의 formatDate 가 맡아
@@ -160,7 +177,10 @@ export interface PolicyRights {
     paragraphs: readonly string[];
     /** 관리자(제13조 제1항 (a))의 라벨만. 이름·연락처는 officerLabel 과 같은 이유로 없다. */
     controllerLabel: string;
-    legalBasis: Block;
+    legalBasis: Block & {
+      /** 광고 문단만은 실제 구성에서 파생한다. AD_STATE 참조. */
+      advertising: Record<AdState, string>;
+    };
     transfers: Block;
     supervisoryAuthority: { label: string; text: string };
   };
@@ -303,8 +323,14 @@ const ko: PolicyText = {
         paragraphs: [
           '댓글 — 이용자가 GitHub 로 로그인해 직접 남길 때만 처리됩니다. 근거는 동의(제6조 제1항 (a))입니다.',
           '방문 통계 — 개인을 식별하지 않는 집계 통계입니다. 근거는 사이트의 운영 현황을 파악하려는 정당한 이익(제6조 제1항 (f))입니다.',
-          '광고 — 현재 게재하지 않습니다. 게재하게 되면 근거는 동의(제6조 제1항 (a))이며, 동의를 받는 절차를 그때 이 페이지에 함께 안내합니다.',
         ],
+        advertising: {
+          off: '광고 — 현재 게재하지 않으며 관련 스크립트도 싣지 않습니다. 게재하게 되면 근거는 동의(제6조 제1항 (a))이며, 동의를 받는 절차를 그때 이 페이지에 함께 안내합니다.',
+          loaderOnly:
+            '광고 — 아직 광고를 게재하지 않지만, 심사를 위해 Google 의 광고 스크립트가 페이지에 실려 있습니다. 그 스크립트는 이용자의 브라우저에서 Google 로 직접 요청을 보내며 Google 이 쿠키를 설정할 수 있습니다. 실제 광고 게재를 시작할 때의 근거는 동의(제6조 제1항 (a))이며, 동의를 받는 절차를 그때 이 페이지에 함께 안내합니다.',
+          serving:
+            '광고 — 게재 중입니다. 근거는 동의(제6조 제1항 (a))입니다. 유럽경제지역 방문자에게는 게재 전에 동의를 받습니다.',
+        },
       },
       transfers: {
         label: '유럽경제지역 밖으로의 이전',
@@ -443,8 +469,14 @@ const en: PolicyText = {
         paragraphs: [
           'Comments — processed only when you log in with GitHub and write one yourself. The basis is consent, Article 6(1)(a).',
           'Visit statistics — aggregate figures that identify no one. The basis is the legitimate interest of understanding how the site is used, Article 6(1)(f).',
-          'Advertising — not currently served. If it is, the basis will be consent, Article 6(1)(a), and how that consent is obtained will be described on this page at the same time.',
         ],
+        advertising: {
+          off: 'Advertising — not served, and the script that would serve it is not loaded either. If that changes, the basis will be consent, Article 6(1)(a), and how that consent is obtained will be described on this page at the same time.',
+          loaderOnly:
+            'Advertising — no ads are shown yet, but Google’s advertising script is loaded on the page for review purposes. That script makes requests from your browser directly to Google, and Google may set cookies through it. When ads actually begin to be served the basis will be consent, Article 6(1)(a), and how that consent is obtained will be described on this page at the same time.',
+          serving:
+            'Advertising — served. The basis is consent, Article 6(1)(a). Visitors in the European Economic Area are asked for consent before ads are shown.',
+        },
       },
       transfers: {
         label: 'Transfers outside the European Economic Area',

@@ -17,6 +17,7 @@ export const getStaticPaths = () =>
   LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
 import { formatDate, isoDate } from '../../../lib/date';
 import {
+  AD_STATE,
   POLICY,
   POLICY_TEXT,
   STORAGE_KEYS,
@@ -132,6 +133,9 @@ const effective = formatDate(POLICY.effective);
       </p>
       <p><strong>{t.rights.gdpr.legalBasis.label}</strong></p>
       {t.rights.gdpr.legalBasis.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+      {/* 광고 문단은 site.ts 의 플래그에서 파생한다 — 벤더 표의 active 와 같은 출처를 보므로
+          "표는 게재 중인데 법적 근거는 게재하지 않는다" 는 모순이 생길 수 없다. */}
+      <p>{t.rights.gdpr.legalBasis.advertising[AD_STATE]}</p>
       <p><strong>{t.rights.gdpr.transfers.label}</strong></p>
       {t.rights.gdpr.transfers.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
       <p>
