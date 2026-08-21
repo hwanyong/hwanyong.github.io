@@ -24,8 +24,6 @@ interface Props {
   ads?: boolean;
   /** 헤더 우측 시스템 상태 표시. 예: "4 ENTRIES", "REV 2 / 2" */
   status?: string;
-  /** 홈에서만 사이트 설명을 로고 옆에 노출한다 */
-  tagline?: boolean;
   /** 현재 위치를 aria-current 로 표시할 상위 섹션. 값이 곧 URL 첫 세그먼트다. */
   section?: 'log' | 'lecture' | 'project' | 'about' | null;
 }
@@ -46,7 +44,6 @@ const {
   publishedTime,
   ads = true,
   status,
-  tagline = false,
   section = null,
 } = Astro.props;
 ---
@@ -111,7 +108,9 @@ const {
       <a class="site-header__brand" href="/">
         <img src="/icon.png" alt="UHD" width="512" height="512" />
       </a>
-      {tagline && <span class="site-header__tagline">{SITE.description}</span>}
+      {/* 헤더는 모든 페이지에서 같은 모양이어야 한다. 페이지마다 구성이 달라지면
+          "여기선 왜 안 나오지" 가 되어 버그로 읽힌다. 좁은 화면에서만 CSS 가 접는다. */}
+      <span class="site-header__tagline">{SITE.description}</span>
       {/* RSS 는 여기 두지 않는다 —
           피드 발견은 <head> 의 rel="alternate" 가, 사람이 누르는 링크는 푸터가 맡는다. */}
       <nav class="site-nav">
