@@ -1,0 +1,32 @@
+---
+/**
+ * 글 위·아래에 같은 모양으로 놓이는 이동 줄.
+ *
+ * 위와 아래가 같은 마크업이어야 "같은 곳으로 돌아간다"는 사실이 한눈에 읽힌다.
+ * 그래서 두 자리에 각각 손으로 쓰지 않고 ArticleShell 이 이 컴포넌트를 두 번 부른다.
+ * 자리에 따라 다른 것은 여백·구분선뿐이며 place 로 구분한다.
+ */
+interface Props {
+  /** 되돌아갈 곳 */
+  href: string;
+  /** 되돌아갈 곳 이름. 앞의 화살표는 이 컴포넌트가 붙인다. */
+  label: string;
+  /** 'head' = 글 머리 위, 'foot' = 본문이 끝난 뒤(구분선이 붙는다) */
+  place?: 'head' | 'foot';
+  /**
+   * 오른쪽에 붙는 페이지 내 건너뛰기 링크. 둘 다 있어야 렌더된다.
+   *
+   * 무엇으로 건너뛰는지는 이 컴포넌트가 알지 않는다 — 부르는 쪽이 정한다.
+   * 사이드 열이 닫혀 대상이 본문 아래로 내려가는 좁은 화면에서만 보인다(CSS).
+   */
+  jumpHref?: string;
+  jumpLabel?: string;
+}
+
+const { href, label, place = 'head', jumpHref, jumpLabel } = Astro.props;
+---
+
+<nav class:list={['post-nav', `post-nav--${place}`]} aria-label="글 이동">
+  <a class="back-link" href={href}>← {label}</a>
+  {jumpHref && jumpLabel && <a class="rev-jump" href={jumpHref}>{jumpLabel}</a>}
+</nav>

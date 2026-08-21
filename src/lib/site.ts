@@ -4,12 +4,12 @@
 
 export const SITE = {
   /** astro.config.mjs 의 site 와 반드시 같아야 한다. */
-  origin: 'https://hwanyong.github.io',
-  title: '유환용 기술 블로그',
-  description: '프론트엔드와 AI 에이전트에 관한 기록',
+  origin: 'https://blog.hwanyong.com',
+  title: 'Hwanyong Yoo 기술 블로그',
+  description: 'Computer에 관한 모든 기록',
   lang: 'ko',
   locale: 'ko-KR',
-  author: '유환용',
+  author: 'Hwanyong Yoo',
 } as const;
 
 /** giscus 설정. Discussions 활성화 후 categoryId 를 실제 값으로 교체할 것. */
@@ -27,7 +27,7 @@ export const GISCUS = {
   categoryId: 'DIC_kwDOJBJzTM4DD2Rq',
   origin: 'https://giscus.app',
   /** 커스텀 테마 CSS 의 배포 경로 (public/giscus/*.css) */
-  themeBase: 'https://hwanyong.github.io/giscus',
+  themeBase: 'https://blog.hwanyong.com/giscus',
   /** dev 서버에서는 커스텀 CSS 가 CORS 로 막히므로 빌트인 테마를 쓴다 */
   devTheme: { reflect: 'light', emit: 'dark_dimmed' },
 } as const;

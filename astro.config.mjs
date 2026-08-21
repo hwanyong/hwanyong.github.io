@@ -10,7 +10,7 @@ export default defineConfig({
   // site 가 없으면 Astro.site 가 undefined 가 되어
   // new URL(path, Astro.site) 가 TypeError 로 빌드를 죽이고,
   // @astrojs/sitemap 도 동작하지 않는다. 반드시 필요하다.
-  site: 'https://hwanyong.github.io',
+  site: 'https://blog.hwanyong.com',
 
   // 'static' | 'server' — 기본값이 'static' 이라 생략 가능하지만 의도를 남긴다.
   output: 'static',

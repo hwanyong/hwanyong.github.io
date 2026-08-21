@@ -11,7 +11,17 @@ import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 
-// 두 컬렉션이 공유하는 공통 필드 (SSOT)
+/**
+ * 축이 셋이다.
+ *   log     — 시간축. 날짜순으로 쌓이기만 한다.
+ *   lecture — 개정축. 강의 자료는 고쳐 나가므로 버전이 남는다.
+ *   project — 개정축. 개인 프로젝트도 같은 이유로 버전이 남는다.
+ *
+ * 개정축 둘은 스키마·URL·화면 구조가 같다. 같은 것을 두 번 쓰지 않도록
+ * 공통 필드를 revisionFields 로 묶고, 축마다 다른 것만 각자 얹는다.
+ */
+
+// 세 컬렉션이 모두 공유하는 필드 (SSOT)
 const baseFields = {
   title: z.string(),
   description: z.string(),
@@ -20,8 +30,27 @@ const baseFields = {
   draft: z.boolean().default(false),
 };
 
+// 개정축 둘이 공유하는 필드
+const revisionFields = {
+  ...baseFields,
+  /**
+   * 개정 계열의 키. 같은 series 값을 가진 항목들이 한 묶음의 개정본이 된다.
+   * URL 세그먼트로 그대로 쓰이므로 소문자·숫자·하이픈만 허용해 강제한다.
+   * 잘못된 값이 런타임이 아니라 빌드 시점에 걸린다.
+   */
+  series: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
+    // Zod 4 의 커스텀 메시지 키는 message 가 아니라 error 다.
+    error: 'series 는 소문자·숫자·하이픈만 사용할 수 있습니다. 예: analysis-video',
+  }),
+  /**
+   * 화면 표시용 버전 문자열. 점을 포함해도 된다. 예: "1.0", "1.1"
+   * URL 세그먼트로는 쓰지 않는다(파일명이 URL 을 결정한다).
+   */
+  version: z.string(),
+};
+
 /**
- * log — 일반 글 (시간축)
+ * log — 개인 글·생각 (시간축)
  * 파일 경로: src/content/log/<파일명>.md
  * URL:      /log/<id>/
  *
@@ -37,26 +66,61 @@ const log = defineCollection({
 });
 
 /**
- * work — 작업물 (개정축)
- * 파일 경로: src/content/work/<project>/<version-slug>.md
- * URL:      /work/<project>/ (개정 이력)  /work/<project>/<version-slug>/ (개정 상세)
- *
- * 같은 project 값을 가진 항목이 여러 version 으로 존재한다.
+ * lecture — 강의 (개정축)
+ * 파일 경로: src/content/lecture/<series>/<version-slug>.md
+ * URL:      /lecture/<series>/ (최신)  /lecture/<series>/<version-slug>/ (구버전)
  */
-const work = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/work' }),
+const lecture = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: './src/content/lecture' }),
   schema: z.object({
-    ...baseFields,
-    // URL 세그먼트로 그대로 쓰이므로 소문자/숫자/하이픈만 허용해 강제한다.
-    // 잘못된 값이 런타임이 아니라 빌드 시점에 걸린다.
-    project: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
-      // Zod 4 의 커스텀 메시지 키는 message 가 아니라 error 다.
-      error: 'project 는 소문자·숫자·하이픈만 사용할 수 있습니다. 예: orca-cli',
-    }),
-    // 화면 표시용 버전 문자열. 점을 포함해도 된다. 예: "1.0", "1.1"
-    // URL 세그먼트로는 쓰지 않는다(파일명이 URL 을 결정한다).
-    version: z.string(),
+    ...revisionFields,
   }),
 });
 
-export const collections = { log, work };
+/**
+ * project — 개인 프로젝트 (개정축)
+ * 파일 경로: src/content/project/<series>/<version-slug>.md
+ * URL:      /project/<series>/ (최신)  /project/<series>/<version-slug>/ (구버전)
+ *
+ * stack·links 는 이 축에만 있다. 강의에는 기술 스택도 저장소 링크도 없다.
+ * 두 필드 모두 상세 화면에 실제로 렌더된다 — 화면에 나오지 않는 필드는 두지 않는다.
+ */
+const project = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: './src/content/project' }),
+  schema: z.object({
+    ...revisionFields,
+    /** 사용 기술. 상세 화면 머리에 나열된다. */
+    stack: z.array(z.string()).default([]),
+    /**
+     * 대표 이미지. public/ 기준 절대 경로.
+     * 목록의 썸네일이자 영상이 있을 때는 재생 전 포스터로도 쓰인다.
+     * 비워 두면 목록이 이름으로 플레이트를 그린다 — 없는 그림을 지어내지 않는다.
+     */
+    thumbnail: z.string().startsWith('/').optional(),
+    /**
+     * YouTube 영상. 링크가 아니라 상세 화면에서 재생되는 대상이라 links 와 분리한다.
+     * 재생 전에는 thumbnail 만 그리고, 누를 때 iframe 을 만든다(src/scripts/video.ts).
+     */
+    video: z
+      .object({
+        /** YouTube video id. 전체 URL 이 아니다. 임베드 주소를 코드가 만든다. */
+        id: z.string().regex(/^[A-Za-z0-9_-]{11}$/, {
+          error: 'YouTube video id 는 11자여야 합니다. 예: 0lE4-jZ9hTQ',
+        }),
+        title: z.string(),
+      })
+      .optional(),
+    /** 외부 링크. 있는 것만 채우면 있는 것만 렌더된다. */
+    // Zod 4 에서 문자열 포맷 검사는 z.string().url() 이 아니라 최상위 z.url() 이다
+    // (전자는 deprecated). astro/zod 가 Zod 4 를 재수출하므로 그대로 쓸 수 있다.
+    links: z
+      .object({
+        repo: z.url().optional(),
+        demo: z.url().optional(),
+        package: z.url().optional(),
+      })
+      .default({}),
+  }),
+});
+
+export const collections = { log, lecture, project };

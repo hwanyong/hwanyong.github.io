@@ -10,6 +10,7 @@
  * 있다. 렌더 중에 누적 개수를 세려 하면 조건이 중첩돼 읽기 어려워진다.
  */
 import AdUnit from './AdUnit.astro';
+import Thumb from './Thumb.astro';
 import { formatDate, isoDate } from '../lib/date';
 import type { TimelineItem, YearGroup } from '../lib/content';
 
@@ -18,9 +19,11 @@ interface Props {
   /** 이만큼 항목이 지나간 뒤 광고를 한 번 넣는다. null 이면 광고 없음. */
   adAfter?: number | null;
   adSlot?: string;
+  /** 항목이 하나도 없을 때 그 자리에 대신 놓을 문구 */
+  empty?: string;
 }
 
-const { groups, adAfter = null, adSlot } = Astro.props;
+const { groups, adAfter = null, adSlot, empty = '아직 없습니다.' } = Astro.props;
 
 type Row =
   | { type: 'year'; year: number }
@@ -50,6 +53,9 @@ const marks = (count: number): boolean[] =>
 ---
 
 <div class="column">
+  {/* 빈 목록을 아무것도 없는 화면으로 두면 "로딩이 덜 됐나"로 읽힌다.
+      비었다는 사실 자체를 화면에 적는다. */}
+  {rows.length === 0 && <p class="empty">{empty}</p>}
   {
     rows.map((row) =>
       row.type === 'year' ? (
@@ -66,20 +72,28 @@ const marks = (count: number): boolean[] =>
               : null}
           </div>
           <div class="entry__body">
-            <div class="entry__meta">
-              <time datetime={isoDate(row.item.date)}>{formatDate(row.item.date)}</time>
-              {row.item.version && (
-                <span class="rev-count">
-                  v{row.item.version} · 개정 {row.item.revisionCount}
-                </span>
+            <Thumb src={row.item.thumbnail} label={row.item.title} sub={row.item.tags[0]} />
+            <div class="entry__text">
+              <div class="entry__meta">
+                <time datetime={isoDate(row.item.date)}>{formatDate(row.item.date)}</time>
+                {/* 개정이 하나뿐이면 "개정 1" 은 아무것도 알려주지 않는다.
+                    눈금(entry__marks)과 같은 기준(2 이상)으로 맞춘다. */}
+                {row.item.version && (
+                  <span class="rev-count">
+                    v{row.item.version}
+                    {row.item.revisionCount && row.item.revisionCount > 1
+                      ? ` · 개정 ${row.item.revisionCount}`
+                      : ''}
+                  </span>
+                )}
+              </div>
+              <h3 class="entry__title">
+                <a href={row.item.href}>{row.item.title}</a>
+              </h3>
+              {row.item.tags.length > 0 && (
+                <p class="entry__tags">{row.item.tags.join(' · ')}</p>
               )}
             </div>
-            <h3 class="entry__title">
-              <a href={row.item.href}>{row.item.title}</a>
-            </h3>
-            {row.item.tags.length > 0 && (
-              <p class="entry__tags">{row.item.tags.join(' · ')}</p>
-            )}
           </div>
         </article>
       ),

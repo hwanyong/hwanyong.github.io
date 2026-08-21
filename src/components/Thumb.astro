@@ -1,0 +1,32 @@
+---
+/**
+ * 목록의 대표 이미지 자리.
+ *
+ * 이미지가 있으면 이미지를, 없으면 이름을 새긴 플레이트를 같은 크기로 그린다.
+ * 있는 항목만 이미지를 붙이면 줄 높이가 항목마다 달라져 목록이 들쭉날쭉해진다.
+ * 플레이트는 없는 화면을 지어낸 그림이 아니라 자리를 지키는 식별자다.
+ */
+interface Props {
+  /** public/ 기준 절대 경로. 없으면 플레이트를 그린다. */
+  src?: string;
+  /** 플레이트에 새길 이름. 이미지가 있을 때는 alt 로 쓰인다. */
+  label: string;
+  /** 플레이트 아래 줄. 보통 대표 태그 하나. */
+  sub?: string;
+}
+
+const { src, label, sub } = Astro.props;
+---
+
+{
+  src ? (
+    /* 목록 이미지는 화면 밖에서 미리 받을 이유가 없다 */
+    <img class="thumb" src={src} alt={label} width="480" height="270" loading="lazy" />
+  ) : (
+    /* 바로 옆에 같은 제목이 글자로 있으므로 보조기기에는 읽히지 않게 둔다 */
+    <div class="thumb thumb--plate" aria-hidden="true">
+      <span class="thumb__label">{label}</span>
+      {sub && <span class="thumb__sub">{sub}</span>}
+    </div>
+  )
+}

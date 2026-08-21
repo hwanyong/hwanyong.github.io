@@ -8,7 +8,7 @@ title: UHD                        # 사이트 제목
 logo: '/images/logo.png'         # 사이트 로고 경로
 description: ''                  # 사이트 설명
 baseurl: ""                     # 사이트 하위 경로
-url: "https://hwanyong.github.io" # 사이트 도메인
+url: "https://blog.hwanyong.com" # 사이트 도메인
 ```
 
 ### 작성자 설정

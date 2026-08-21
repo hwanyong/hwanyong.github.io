@@ -1,0 +1,29 @@
+---
+/**
+ * YouTube 영상. 누르기 전에는 포스터 이미지 한 장뿐이다.
+ *
+ * 바로 <iframe> 을 심으면 페이지에 들어오기만 해도 YouTube 스크립트와 쿠키가
+ * 실린다. 볼지 안 볼지 모르는 영상 때문에 모든 방문자가 그 비용을 낼 이유가 없다.
+ * 누를 때 iframe 을 만드는 일은 src/scripts/video.ts 가 맡는다 —
+ * 이 컴포넌트는 <script> 를 갖지 않는다(body 스크립트가 되기 때문).
+ *
+ * 임베드 주소는 youtube-nocookie.com 이다. 재생 전까지 추적 쿠키를 심지 않는다.
+ */
+interface Props {
+  /** YouTube video id (11자) */
+  id: string;
+  title: string;
+  /** 재생 전에 보여줄 포스터. public/ 기준 절대 경로. */
+  poster: string;
+}
+
+const { id, title, poster } = Astro.props;
+---
+
+<figure class="video">
+  <button class="video__play" type="button" data-video={id} aria-label={`${title} 재생`}>
+    <img src={poster} alt="" width="1280" height="720" loading="lazy" />
+    <span class="video__mark" aria-hidden="true">▶</span>
+  </button>
+  <figcaption>{title}</figcaption>
+</figure>

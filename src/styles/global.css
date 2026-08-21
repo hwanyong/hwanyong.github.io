@@ -173,7 +173,8 @@ a {
    컨테이너가 넓어져도(사이드가 없는 페이지) 한 줄이 길어지지 않게 한다. */
 .prose,
 .post-header,
-.stale-notice {
+.stale-notice,
+.fact {
   max-width: var(--col);
 }
 
@@ -222,13 +223,22 @@ a {
   letter-spacing: 0.08em;
 }
 
+/* 아이콘 원본이 흰 바탕이라 두 테마 모두에서 흰 원반으로 보인다.
+   테두리를 둘러 "떠 있는 이미지"가 아니라 테두리 안의 표식으로 읽히게 한다.
+   원본 그림은 정사각 캔버스의 가운데 88% 폭만 차지하므로 원형으로 잘라도
+   양 끝의 > < 가 잘리지 않는다(원의 최대폭 지점에 눈이 놓인다). */
 .site-header__brand {
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  font-size: 12px;
-  background: var(--ink);
-  color: var(--bg);
-  padding: 0.22rem 0.6rem;
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.site-header__brand img {
+  display: block;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
 }
 
 .site-header__tagline {
@@ -344,6 +354,62 @@ a {
 .entry__body {
   grid-column: 2;
   padding: 0.4rem 0.7rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+/* 썸네일 옆의 글 묶음. min-width:0 이 없으면 긴 제목이 썸네일을 밀어낸다. */
+.entry__text {
+  min-width: 0;
+  flex: 1;
+}
+
+/* ─── 목록 썸네일 ──────────────────────────────────────────── */
+/* 이미지가 있든 없든 같은 크기를 차지한다. 한쪽만 이미지면 줄 높이가 항목마다
+   달라져 목록이 들쭉날쭉해진다. 없을 때는 이름을 새긴 플레이트가 자리를 지킨다. */
+
+.thumb {
+  flex: none;
+  width: 7.5rem;
+  /* height:auto 가 반드시 있어야 한다. <img> 의 height 속성은 프레젠테이션 힌트로
+     height:270px 이 되어 aspect-ratio 를 무력화한다(세로로 늘어난다).
+     auto 로 되돌려야 aspect-ratio 가 높이를 계산한다. */
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+}
+
+img.thumb {
+  display: block;
+  object-fit: cover;
+  /* 스크린샷은 위쪽에 제목·툴바가 있어 가운데를 자르면 알아볼 수 없다 */
+  object-position: center top;
+}
+
+.thumb--plate {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.55rem;
+  overflow: hidden;
+  font-family: var(--font-mono), monospace;
+}
+
+.thumb__label {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.thumb__sub {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 
 /* NieR 선택 상태 — 행 반전 + 좌측 커서.
@@ -374,6 +440,27 @@ a {
 .entry:focus-within .rev-count {
   color: var(--bg);
   border-color: var(--bg-3);
+}
+
+/* 행이 반전되면 플레이트도 같이 뒤집혀야 한다 — 혼자 밝게 남으면 구멍처럼 보인다 */
+.entry[data-active] .thumb,
+.entry:focus-within .thumb {
+  border-color: var(--bg-3);
+}
+
+.entry[data-active] .thumb--plate,
+.entry:focus-within .thumb--plate {
+  background: transparent;
+}
+
+.entry[data-active] .thumb__label,
+.entry:focus-within .thumb__label {
+  color: var(--bg);
+}
+
+.entry[data-active] .thumb__sub,
+.entry:focus-within .thumb__sub {
+  color: var(--bg-3);
 }
 
 .entry[data-active] .entry__marks::before {
@@ -452,6 +539,44 @@ a {
   color: var(--ink-3);
   display: inline-block;
   margin-block-end: 2.25rem;
+}
+
+/* 글 위·아래에 같은 모양으로 놓이는 이동 줄(PostNav).
+   왼쪽은 되돌아가기, 오른쪽은 개정 이력 건너뛰기. */
+.post-nav {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.post-nav .back-link {
+  margin-block-end: 0;
+}
+
+.post-nav--head {
+  margin-block-end: 2.25rem;
+}
+
+/* 아래쪽 줄은 본문을 닫는 가로선을 함께 그어 본문과 후속 블록을 가른다 */
+.post-nav--foot {
+  margin-block-start: 2.5rem;
+  padding-block-start: 1.15rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.rev-jump {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-block-end: 1px solid var(--rule);
+}
+
+.rev-jump:hover {
+  color: var(--ink);
+  border-block-end-color: var(--ink);
 }
 
 .post-header {
@@ -533,8 +658,11 @@ a {
 }
 
 .prose img {
+  display: block;
   max-width: 100%;
   height: auto;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
 }
 
 .prose table {
@@ -566,11 +694,27 @@ a {
 
 /* 코드 블록 스타일은 src/styles/code.css 에 있다(Prism 토큰 클래스 기반). */
 
+/* 빈 목록 안내 */
+.empty {
+  margin: 0;
+  padding-block: 3.5rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
 /* ─── 개정 이력 (signature 확장) ───────────────────────────── */
 
 .revisions {
-  margin: 0 0 2rem;
+  margin: 0;
   border: 1px solid var(--rule);
+}
+
+/* 사이드 열이 닫힌 폭에서는 이 패널이 본문 끝(개정 이동 줄 아래)에 흐른다.
+   위 여백은 여기서, 아래 여백은 이웃한 .comments 의 위 여백이 잡는다. */
+.revisions.aside {
+  margin-block-start: 2.5rem;
 }
 
 .revisions__head {
@@ -653,6 +797,64 @@ a {
 .revisions li a:hover {
   color: var(--ink);
   border-color: var(--ink);
+}
+
+/* ─── 영상 (재생 전에는 그림 한 장) ───────────────────────── */
+
+.video {
+  margin: 0 0 1.75rem;
+  max-width: var(--col);
+}
+
+.video__play {
+  display: block;
+  position: relative;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.video__play img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.video__mark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--bg);
+  background: rgba(0, 0, 0, 0.28);
+  transition: background 0.15s ease;
+}
+
+.video__play:hover .video__mark {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+/* 눌러서 만들어진 iframe. 자리와 액자는 버튼과 같아야 화면이 튀지 않는다. */
+.video__frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+}
+
+.video figcaption {
+  margin-block-start: 0.55rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
 }
 
 /* ─── 실행 데모 (LCD 안의 LCD) ─────────────────────────────── */
@@ -770,7 +972,7 @@ a {
   flex: none;
 }
 
-/* ─── 개정본 상태 안내 · 개정 이동 ─────────────────────────── */
+/* ─── 개정본 상태 안내 ─────────────────────────────────────── */
 
 .stale-notice {
   font-family: var(--font-mono), monospace;
@@ -784,21 +986,231 @@ a {
   margin-block: 0 1.75rem;
 }
 
-.rev-nav {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-block-start: 2.5rem;
-  padding-block-start: 1.15rem;
+/* ─── 소개 (About) ─────────────────────────────────────────── */
+
+/* 자리표시자 표시. 아직 안 채운 내용이 실제 내용으로 읽히면 안 된다.
+   점선 + TBD 배지로 "여기는 비어 있다"를 화면에서 바로 알아보게 한다.
+   전부 채우고 profile.ts 의 draft 를 지우면 이 표시는 자동으로 사라진다. */
+[data-tbd] {
+  border: 1px dashed var(--ink-3);
+  padding: 0.9rem 1rem;
+  background: var(--bg-2);
+}
+
+.tbd-note {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.about-intro {
+  margin-block-end: 2.75rem;
+}
+
+.career {
+  list-style: none;
+  margin: 0 0 2.75rem;
+  padding: 0;
+  max-width: var(--col);
+}
+
+.career li + li {
+  margin-block-start: 1.1rem;
+}
+
+.career li:not([data-tbd]) {
   border-block-start: 1px solid var(--rule);
+  padding-block-start: 1rem;
+}
+
+.career li:not([data-tbd]):first-child {
+  border-block-start: 0;
+  padding-block-start: 0;
+}
+
+.career__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.career__period {
   font-family: var(--font-mono), monospace;
   font-size: 11.5px;
   letter-spacing: 0.08em;
   color: var(--ink-3);
 }
 
-.rev-nav a:hover {
+.career__tbd {
+  font-style: normal;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  background: var(--ink-3);
+  color: var(--bg);
+  padding: 0.1rem 0.4rem;
+}
+
+.career__where {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.35rem 0 0;
+  font-size: 17px;
+}
+
+.career__where b {
+  font-weight: 600;
+}
+
+.career__where span {
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.career__summary {
+  margin: 0.3rem 0 0;
+  color: var(--ink-2);
+}
+
+/* ─── 계정 ─────────────────────────────────────────────────── */
+
+.accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: var(--col);
+}
+
+.accounts a {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 0;
+  border-block-start: 1px solid var(--rule);
+}
+
+.accounts li:first-child a {
+  border-block-start: 0;
+}
+
+.accounts__mark {
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--bg-2);
+}
+
+img.accounts__mark {
+  display: block;
+  object-fit: cover;
+}
+
+/* 아바타가 없는 계정. 같은 크기의 자리를 글자 하나로 채운다. */
+.accounts__mark--plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.accounts__text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.accounts__text b {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.accounts__handle {
+  color: var(--ink-3);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.accounts__note {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.accounts__go {
+  flex: none;
+  font-family: var(--font-mono), monospace;
+  color: var(--ink-3);
+}
+
+.accounts a:hover .accounts__go,
+.accounts a:hover .accounts__text b {
   color: var(--ink);
+}
+
+/* ─── 사실 표 ──────────────────────────────────────────────── */
+/* 본문을 읽기 전에 알아야 하는 값(기술 스택·외부 링크)을 좁은 표로 낸다.
+   본문 산문과 섞이지 않게 mono 로 두고, 가로선만으로 칸을 나눈다. */
+
+.fact {
+  margin: 0 0 1.75rem;
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+}
+
+.fact__row {
+  display: flex;
+  gap: 0.9rem;
+  padding-block: 0.55rem;
+  border-block-end: 1px solid var(--rule);
+}
+
+.fact dt {
+  flex: none;
+  width: 4rem;
+  padding-block-start: 0.15rem;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.fact dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink-2);
+}
+
+.fact__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.7rem;
+}
+
+.fact__links a {
+  border: 1px solid var(--rule);
+  padding: 0.05rem 0.45rem;
+}
+
+.fact__links a:hover {
+  color: var(--ink);
+  border-color: var(--ink);
 }
 
 /* ─── 댓글 ─────────────────────────────────────────────────── */
@@ -889,6 +1301,17 @@ a {
     --gutter: 1.35rem;
   }
 
+  /* 키와 값이 한 줄에 안 들어간다. 키를 위로 접어 세로로 쌓는다. */
+  .fact__row {
+    flex-wrap: wrap;
+    gap: 0.15rem 0.9rem;
+  }
+
+  .fact dt {
+    width: auto;
+    flex-basis: 100%;
+  }
+
   .site-header,
   .site-main,
   .site-footer {
@@ -916,6 +1339,20 @@ a {
   /* 반전 배경이 화면 폭을 꽉 채우지 않게 좌우 여백을 줄인다 */
   .entry__body {
     padding-inline: 0.5rem;
+    gap: 0.6rem;
+  }
+
+  /* 좁은 화면에서 7.5rem 은 글이 설 자리를 뺏는다 */
+  .thumb {
+    width: 5.25rem;
+  }
+
+  .thumb--plate {
+    padding: 0.3rem 0.4rem;
+  }
+
+  .thumb__label {
+    font-size: 10px;
   }
 
   /* 버전·날짜·배지·링크가 한 줄에 다 들어가지 않는다.
@@ -928,12 +1365,6 @@ a {
   .revisions li time {
     order: 3;
     flex-basis: 100%;
-  }
-
-  /* 이전/이력/다음이 한 줄에 안 들어가면 가운데 링크를 아래로 */
-  .rev-nav {
-    flex-wrap: wrap;
-    gap: 0.6rem 1rem;
   }
 
   .demo canvas {
@@ -966,10 +1397,15 @@ a {
     top: 2rem;
   }
 
-  /* 사이드로 올라간 개정 이력은 본문 흐름의 아래 여백이 필요 없다 */
+  /* 사이드 열로 올라가면 본문 흐름의 여백이 오히려 열을 아래로 민다 */
   .revisions.aside {
-    margin-block-end: 0;
+    margin-block-start: 0;
     font-size: 11.5px;
+  }
+
+  /* 이력이 사이드 열에 항상 떠 있으므로 상단의 건너뛰기 링크는 할 일이 없다 */
+  .rev-jump {
+    display: none;
   }
 
   .revisions.aside li {

@@ -1,0 +1,88 @@
+---
+// src/pages/about/index.astro — 소개.
+//
+// 데이터는 전부 src/lib/profile.ts 에 있다. 이 파일은 배치만 한다.
+// INTRO·CAREER 는 아직 자리표시자이며, draft 인 동안 화면에 TBD 표시가 붙는다.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { SITE } from '../../lib/site';
+import { ROLE, INTRO, CAREER, ACCOUNTS } from '../../lib/profile';
+
+// 아직 채우지 않은 항목 수. 헤더 상태 칸에 그대로 띄워 잊지 못하게 한다.
+const pending = (INTRO.draft ? 1 : 0) + CAREER.filter((entry) => entry.draft).length;
+---
+
+<BaseLayout
+  title="About"
+  description={`${SITE.author} — ${ROLE}`}
+  section="about"
+  status={pending > 0 ? `${pending} TBD` : ROLE.toUpperCase()}
+>
+  <div class="column">
+    <header class="post-header">
+      <div class="post-header__meta">
+        <span>{ROLE}</span>
+      </div>
+      <h1 class="post-header__title">{SITE.author}</h1>
+      <p class="post-header__lead">{SITE.description}</p>
+    </header>
+
+    <section class="prose about-intro" data-tbd={INTRO.draft || undefined}>
+      {INTRO.draft && <p class="tbd-note">아직 채우지 않은 자리표시자 문단입니다.</p>}
+      {INTRO.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+    </section>
+
+    <h2 class="section-bar"><b>근무 이력</b></h2>
+
+    <ol class="career">
+      {CAREER.map((entry) => (
+        <li data-tbd={entry.draft || undefined}>
+          <div class="career__head">
+            <time class="career__period">{entry.period}</time>
+            {entry.draft && <em class="career__tbd">TBD</em>}
+          </div>
+          <p class="career__where">
+            <b>{entry.company}</b>
+            <span>{entry.role}</span>
+          </p>
+          <p class="career__summary">{entry.summary}</p>
+        </li>
+      ))}
+    </ol>
+
+    <h2 class="section-bar"><b>계정</b></h2>
+
+    <ul class="accounts">
+      {ACCOUNTS.map((account) => (
+        <li>
+          <a href={account.href} rel="me noopener noreferrer" target="_blank">
+            {account.avatar ? (
+              <img
+                class="accounts__mark"
+                src={account.avatar}
+                alt=""
+                width="108"
+                height="108"
+                loading="lazy"
+              />
+            ) : (
+              /* 아바타가 없으면 서비스 이름 첫 글자로 같은 크기의 자리를 채운다 */
+              <span class="accounts__mark accounts__mark--plate" aria-hidden="true">
+                {account.platform.slice(0, 1)}
+              </span>
+            )}
+            <span class="accounts__text">
+              <b>
+                {account.platform} <span class="accounts__handle">{account.handle}</span>
+              </b>
+              <span class="accounts__note">{account.note}</span>
+            </span>
+            <span class="accounts__go" aria-hidden="true">→</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+</BaseLayout>
+
+{/* .career / .accounts / .tbd-note 스타일은 src/styles/global.css 에 있다.
+    스타일이 페이지마다 흩어지면 토큰 SSOT 가 깨진다. */}

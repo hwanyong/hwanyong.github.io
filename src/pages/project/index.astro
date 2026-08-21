@@ -1,0 +1,19 @@
+---
+// 개인 프로젝트 목록 (개정축). 정렬·draft 필터는 src/lib/content.ts 에 있다.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Timeline from '../../components/Timeline.astro';
+import { getSeriesTimeline, groupByYear } from '../../lib/content';
+import { AD_SLOTS } from '../../lib/site';
+
+const items = await getSeriesTimeline('project');
+const groups = groupByYear(items);
+---
+
+<BaseLayout
+  title="Project"
+  description="만들고 고쳐 온 개인 프로젝트"
+  section="project"
+  status={`${items.length} PROJECTS`}
+>
+  <Timeline groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
+</BaseLayout>

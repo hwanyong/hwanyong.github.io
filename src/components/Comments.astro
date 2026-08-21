@@ -2,9 +2,11 @@
 /**
  * giscus 댓글 위젯.
  *
- * - 일반 글(log):  <Comments />                          → mapping="pathname"
- * - 작업물(work):  <Comments mapping="specific" term={`work:${project}`} />
- *                  → v1-0 / v1-1 페이지가 URL 이 달라도 같은 Discussion 을 공유한다.
+ * - 시간축(log):  <Comments />                          → mapping="pathname"
+ * - 개정축(lecture·project):
+ *     <Comments mapping="specific" term={`project:analysis-video`} />
+ *     → 계열 루트와 v1-0 페이지가 URL 이 달라도 같은 Discussion 을 공유한다.
+ *     실제 호출은 ArticleShell 의 commentTerm prop 이 대신한다.
  *
  * 설정을 data 속성으로 넘기고 동작은 src/scripts/giscus.ts 가 맡는다.
  * 인라인 <script define:vars> 로 값을 주입하면 그 코드가 번들·타입체크 밖으로
