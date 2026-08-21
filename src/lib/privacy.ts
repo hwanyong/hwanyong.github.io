@@ -37,6 +37,11 @@ export interface StorageRow {
  * 2026-08-21 기준 실측: 저장소 전체에서 localStorage·sessionStorage·document.cookie
  * 사용처는 public/theme-init.js 와 src/scripts/theme.ts 두 곳뿐이고, 둘 다 같은
  * 키('mode')를 읽고 쓴다. 즉 자체 쿠키는 0개다.
+ *
+ * 그리고 theme-init.js 는 읽기만 한다 — 쓰기는 setMode() 뿐이고 그것은 토글을
+ * 누를 때만 호출된다. 배포본에서 실측한 결과, 조명을 바꾸지 않은 방문자의
+ * 브라우저에는 쿠키도 로컬 저장소 항목도 하나도 남지 않았다.
+ *
  * 저장 코드를 새로 추가하면 이 표에도 반드시 한 줄을 추가할 것.
  */
 export const STORAGE: readonly StorageRow[] = [
@@ -51,6 +56,7 @@ export const STORAGE: readonly StorageRow[] = [
 
 export const STORAGE_NOTE: readonly string[] = [
   '이 사이트가 자체적으로 설정하는 쿠키는 없습니다. 위 값은 쿠키가 아니라 로컬 저장소(local storage — 브라우저가 사이트별로 보관하는 저장 공간)에 담기며, 개인을 식별하지 않고 서버로 전송되지도 않습니다.',
+  '그나마도 이용자가 화면 조명을 직접 바꿨을 때만 기록됩니다. 바꾸지 않고 읽기만 하면 브라우저에 아무것도 남지 않습니다.',
   '브라우저 설정의 "사이트 데이터 삭제"로 언제든 지울 수 있습니다. 지워도 열람에는 아무 지장이 없고 화면 조명 상태만 기본값으로 돌아갑니다.',
 ];
 
