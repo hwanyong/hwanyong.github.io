@@ -28,6 +28,8 @@
  *   상태로 두고, CI 는 "빠졌다 + 이 명령을 돌려라" 까지만 말한다.
  *   강제력은 같다 — 어느 쪽이든 불변식이 깨진 채로는 배포가 안 된다.
  */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { readGroups, sourceOf, missingLocales, LOCALE_CODES } from './i18n-content.ts';
 
 const FILL = 'pnpm run i18n:fill';
@@ -100,11 +102,68 @@ for (const group of readGroups()) {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   화면 문구가 UI 사전 밖에 있지 않은가.
+
+   src/lib/ui.ts 는 Record<Locale, …> 라 "번역을 빠뜨리는" 실수는 타입이 막는다.
+   막지 못하는 것은 ★사전을 아예 거치지 않고 한 언어를 직접 박는★ 실수다.
+
+   실제로 그렇게 샜다: src/styles/global.css 의 --scan-label 에 '세로줄' 이 박혀 있어
+   영어 화면 하단 칩이 한국어로 나갔다. CSS 는 타입 시스템이 닿지 않고, content: 로
+   들어가는 값이라 산출 HTML 에도 나타나지 않는다 — 소스에서 볼 수밖에 없다.
+
+   src/lib 은 검사하지 않는다. 사전 자신(ui.ts)과 양어 데이터(privacy.ts·profile.ts)가
+   거기 있고, 그것들은 한국어를 갖고 있는 것이 정상이다.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/** 한글·가나·한자. 라틴만으로 된 화면 골격에 이것이 있으면 사전을 거치지 않은 것이다. */
+const NON_LATIN = /[\u3131-\uD79D\u3040-\u30FF\u4E00-\u9FFF]/;
+
+/**
+ * 개발자 진단은 검사 대상이 아니다.
+ * console 로 나가는 글은 화면에 렌더되지 않고 읽는 사람이 정해져 있다.
+ */
+const isDiagnostic = (line: string): boolean => /\bconsole\.\w+\(/.test(line);
+
+/** 문구가 아니라 설명인 부분. 주석은 무엇으로 쓰든 자유다. */
+const stripComments = (source: string): string =>
+  source
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(?<![:'"`])\/\/.*$/gm, '');
+
+const walkFiles = (dir: string, out: string[] = []): string[] => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkFiles(path, out);
+    else if (/\.(astro|css|ts)$/.test(entry.name)) out.push(path);
+  }
+  return out;
+};
+
+for (const dir of ['src/components', 'src/layouts', 'src/pages', 'src/styles', 'src/scripts']) {
+  for (const path of walkFiles(dir)) {
+    const lines = stripComments(readFileSync(path, 'utf8')).split('\n');
+    lines.forEach((line, i) => {
+      if (!NON_LATIN.test(line) || isDiagnostic(line)) return;
+      problems.push(
+        `${path}:${i + 1}\n` +
+          `    화면 문구를 여기 직접 적었습니다: ${line.trim().slice(0, 70)}\n` +
+          `    src/lib/ui.ts 의 UI 사전에 넣고 UI[locale] 로 읽으세요.\n` +
+          `    CSS 라면 그 자리가 계기판 어휘인지 먼저 보세요 — REFLECT/EMIT 처럼\n` +
+          `    로케일 불변으로 두는 편이 맞을 수 있습니다.`,
+      );
+    });
+  }
+}
+
 if (problems.length > 0) {
-  console.error('\n✗ i18n 완전쌍 불변식 위반\n');
+  console.error('\n✗ i18n 규약 위반\n');
   for (const problem of problems) console.error(`  ${problem}\n`);
   console.error(`  ${problems.length}건.\n`);
   process.exit(1);
 }
 
-console.log('✓ i18n-verify: 모든 항목이 모든 로케일 판본을 갖습니다');
+console.log(
+  '✓ i18n-verify: 모든 항목이 모든 로케일 판본을 갖고, 화면 문구가 전부 UI 사전에서 나옵니다',
+);

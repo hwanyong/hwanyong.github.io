@@ -162,26 +162,33 @@ body::before {
    화면이 맨 배경으로 뜨지 않게 하기 위해서다.
 
    --scan-icon 의 currentColor 는 커스텀 속성이 치환된 뒤 사용처에서 해석되므로
-   커맨드 바의 글자색(--cmd-fg)을 그대로 따라간다. */
+   커맨드 바의 글자색(--cmd-fg)을 그대로 따라간다.
+
+   ★ 라벨은 로케일 불변이다. 바로 옆 칩의 REFLECT / EMIT 과 같은 계기판 어휘군이고,
+     둘이 나란히 붙어 있는데 한쪽만 번역되면 그 자리가 언어가 섞인 자리가 된다.
+     예전에는 여기 한국어(세로줄·가로줄·격자·없음)가 박혀 있어서 영어 화면에서도
+     한국어가 보였다 — CSS 는 UI 사전이 닿지 않는 곳이라 타입이 막아 주지 못한다.
+     로케일별 라벨이 정말 필요해지면 CSS 를 로케일마다 복제하는 대신
+     이 라벨을 버튼의 텍스트로 옮기고 UI 사전에서 읽어야 한다. */
 :root {
-  --scan-label: '세로줄';
+  --scan-label: 'VERTICAL';
   --scan-icon: repeating-linear-gradient(to right, currentColor 0 1px, transparent 1px 3px);
 }
 
 html[data-scan='horizontal'] {
-  --scan-label: '가로줄';
+  --scan-label: 'HORIZONTAL';
   --scan-icon: repeating-linear-gradient(to bottom, currentColor 0 1px, transparent 1px 3px);
 }
 
 html[data-scan='grid'] {
-  --scan-label: '격자';
+  --scan-label: 'GRID';
   --scan-icon:
     repeating-linear-gradient(to right, currentColor 0 1px, transparent 1px 3px),
     repeating-linear-gradient(to bottom, currentColor 0 1px, transparent 1px 3px);
 }
 
 html[data-scan='none'] {
-  --scan-label: '없음';
+  --scan-label: 'NONE';
   --scan-icon: none;
 }
 
