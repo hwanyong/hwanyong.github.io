@@ -19,15 +19,25 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# ── 액션을 커밋 SHA 로 고정하는 이유 ────────────────────────────────
+# 태그(@v6)는 변경 가능한 참조다. 액션 저장소가 손상되면 공격자가 태그를 악의적
+# 커밋으로 옮길 수 있고, 그러면 이 워크플로가 다음 실행부터 그 코드를 실행한다.
+# 이 잡은 pages: write 와 id-token: write 를 쥐고 있어 사이트 변조로 직결된다.
+# first-party(actions/*)도 예외로 두지 않는다 — 태그가 소급 변조된 전례가 있다.
+#
+# 부작용: SHA 를 고정하면 보안 패치를 자동으로 받지 못한다.
+# 이는 .github/dependabot.yml 이 주간 갱신 PR 을 올려 해소한다.
+# SHA 를 손으로 바꿀 때는 반드시 옆 주석의 버전 표기도 함께 고칠 것.
+# ────────────────────────────────────────────────────────────────
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout your repository using git
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install, build, and upload your site
-        uses: withastro/action@v6
+        uses: withastro/action@e84f40bd8d2caa9e768ec82ad30dd81f0b280853 # v6.1.2
         with:
           # 액션 기본값은 24다. 로컬(26)과 맞춘다.
           node-version: 26
@@ -53,4 +63,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
