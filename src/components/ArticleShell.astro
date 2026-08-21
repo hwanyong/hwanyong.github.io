@@ -24,11 +24,22 @@ import Comments from './Comments.astro';
 import AdUnit from './AdUnit.astro';
 import { formatDate, isoDate } from '../lib/date';
 import { AD_SLOTS } from '../lib/site';
-import type { Locale } from '../lib/i18n';
+import { LOCALES, type Alternate, type Locale } from '../lib/i18n';
 import type { NavSection } from '../lib/routes';
+import { UI } from '../lib/ui';
 
 interface Props {
   locale: Locale;
+  /** 이 글의 언어별 주소. BaseLayout 이 head 와 언어 스위처에 그대로 넘긴다. */
+  alternates: Alternate[];
+  /**
+   * 이 판본이 아직 번역되지 않은 사본이면 원문의 로케일.
+   *
+   * 값이 있으면 화면이 셋을 한다: 본문 위 안내 · <article lang> 을 원문 언어로 ·
+   * (목록에서는) 배지. 스크린리더가 한국어 골격 안의 영어 본문을 영어로 읽게 하려면
+   * lang 이 반드시 실제 본문 언어여야 한다 — 안내 문구만으로는 부족하다.
+   */
+  untranslated?: Locale;
   /** 화면의 h1. 별도 지정이 없으면 <title> 로도 쓰인다. */
   title: string;
   /** 브라우저 탭·OG 제목을 h1 과 다르게 둘 때만 준다. 예: "analysis-video v1.0" */
@@ -47,11 +58,10 @@ interface Props {
   jumpHref?: string;
   jumpLabel?: string;
   /**
-   * giscus 검색어. 주면 mapping="specific" 으로 그 검색어에 묶이고,
-   * 없으면 기본값인 pathname 기준이 된다. 개정축처럼 URL 이 여럿이어도
-   * 한 Discussion 을 공유해야 하는 축이 이 값을 준다.
+   * giscus 검색어. 언어 무관·개정 무관 통합 키다.
+   * ★ 필수다 — URL 이 댓글의 정체성을 소유하지 않는다.
    */
-  commentTerm?: string;
+  commentTerm: string;
   /**
    * 광고 게재 여부. 로더(BaseLayout)와 슬롯을 한 값으로 함께 켜고 끈다 —
    * 한쪽만 켜지면 로더 없는 빈 <ins> 가 남거나 슬롯 없는 로더가 실린다.
@@ -61,6 +71,8 @@ interface Props {
 
 const {
   locale,
+  alternates,
+  untranslated,
   title,
   documentTitle,
   description,
@@ -75,10 +87,13 @@ const {
   commentTerm,
   ads = true,
 } = Astro.props;
+
+const t = UI[locale];
 ---
 
 <BaseLayout
   locale={locale}
+  alternates={alternates}
   title={documentTitle ?? title}
   description={description}
   type="article"
@@ -98,7 +113,9 @@ const {
 
     <slot name="aside" />
 
-    <article>
+    {/* lang 은 ★실제 본문 언어★ 다. 번역이 없어 원문을 그대로 싣고 있으면
+        페이지 골격(<html lang>)과 다른 값이 되며, 그것이 정확한 서술이다. */}
+    <article lang={untranslated ? LOCALES[untranslated].htmlLang : undefined}>
       <header class="post-header">
         <div class="post-header__meta">
           <time datetime={isoDate(date)}>{formatDate(date)}</time>
@@ -109,6 +126,14 @@ const {
         <h1 class="post-header__title">{title}</h1>
         <p class="post-header__lead">{description}</p>
       </header>
+
+      {/* 안내문은 읽는 사람의 언어로 쓴다 — 이 문장만은 본문 언어를 따르지 않는다.
+          원문을 못 읽는 사람에게 "못 읽는 언어로 못 읽는다고 알리는" 꼴이 되기 때문이다. */}
+      {untranslated && (
+        <p class="stale-notice" lang={LOCALES[locale].htmlLang}>
+          {t.untranslatedNotice(t.languageNames[untranslated])}
+        </p>
+      )}
 
       <slot name="notice" />
 
@@ -121,7 +146,7 @@ const {
 
     <slot name="after" />
 
-    <Comments locale={locale} mapping={commentTerm ? 'specific' : 'pathname'} term={commentTerm} />
+    <Comments locale={locale} term={commentTerm} />
 
     {/*
       광고는 반드시 이동 줄에서 떨어진 맨 아래. 네비게이션에 붙여 두면 오클릭을

@@ -3,15 +3,20 @@
 //
 // 데이터는 전부 src/lib/profile.ts 에 있다. 이 파일은 배치만 한다.
 // INTRO·CAREER 는 아직 자리표시자이며, draft 인 동안 화면에 TBD 표시가 붙는다.
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import { SITE } from '../../lib/site';
-import { DEFAULT_LOCALE } from '../../lib/i18n';
-import { UI } from '../../lib/ui';
-import { ROLE, INTRO, CAREER, ACCOUNTS } from '../../lib/profile';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { SITE } from '../../../lib/site';
+import { LOCALE_CODES } from '../../../lib/i18n';
+import { langParam, staticAlternates } from '../../../lib/routes';
+import type { Locale } from '../../../lib/i18n';
 
-// S3 에서 Astro.props.locale 로 대체된다.
-const locale = DEFAULT_LOCALE;
+export const getStaticPaths = () =>
+  LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
+import { UI } from '../../../lib/ui';
+import { ROLE, INTRO, CAREER, ACCOUNTS } from '../../../lib/profile';
+
+const { locale } = Astro.props as { locale: Locale };
 const t = UI[locale];
+const alternates = staticAlternates('about');
 
 // 아직 채우지 않은 항목 수. 헤더 상태 칸에 그대로 띄워 잊지 못하게 한다.
 const pending = (INTRO.draft ? 1 : 0) + CAREER.filter((entry) => entry.draft).length;
@@ -19,6 +24,7 @@ const pending = (INTRO.draft ? 1 : 0) + CAREER.filter((entry) => entry.draft).le
 
 <BaseLayout
   locale={locale}
+  alternates={alternates}
   title="About"
   description={`${SITE.author} — ${ROLE}`}
   section="about"

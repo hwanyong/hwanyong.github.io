@@ -1,0 +1,50 @@
+---
+// src/pages/404.astro — [...lang] 트리 ★밖★ 이다.
+//
+// GitHub Pages 는 루트의 404.html 하나만 본다. [...lang] 안에 두면 /ko/404/ 도 생기는데
+// GitHub Pages 는 그것을 쓰지 않는다 — 쓰이지 않는 URL 이 sitemap 밖에 하나 더 생길 뿐이다.
+// build.format:'directory' 여도 이 파일만은 dist/404.html 로 나온다.
+//
+// alternates={[]} 이므로 hreflang 0줄이고 언어 스위처도 렌더되지 않는다 —
+// 별도 분기 없이 같은 규칙(alternates.length)에서 나온다.
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { DEFAULT_LOCALE, LOCALE_CODES, LOCALES } from '../lib/i18n';
+import { homeHref } from '../lib/routes';
+import { UI } from '../lib/ui';
+
+const locale = DEFAULT_LOCALE;
+const t = UI[locale];
+---
+
+<BaseLayout
+  locale={locale}
+  alternates={[]}
+  indexable={false}
+  title={t.notFound.title}
+  description={t.notFound.description}
+  status="404"
+  ads={false}
+>
+  <div class="column prose">
+    {/*
+      GitHub Pages 는 존재하지 않는 ★모든★ 경로에 이 파일을 서빙한다 →
+      self-canonical 이 매번 거짓이 되므로 indexable={false} 로 canonical 을 빼고
+      noindex 를 낸다.
+
+      ★ Cloudflare 비콘은 AnalyticsHead 가 ads 게이트 밖이라 여기서도 실린다 —
+        리다이렉트를 두지 않은 대가(옛 URL 유입)를 관측하는 유일한 수단이므로 빼지 말 것.
+
+      두 언어를 모두 적는다. 여기 도착한 사람이 어느 언어를 읽는지 알 수 없고,
+      이 화면에는 언어를 고를 스위처도 없기 때문이다.
+      lang 속성이 문단마다 붙으므로 :lang(ko) 조판 규칙이 한국어 문단에만 적용된다.
+    */}
+    {
+      LOCALE_CODES.map((code) => (
+        <p lang={LOCALES[code].htmlLang}>
+          {UI[code].notFound.description}{' '}
+          <a href={homeHref(code)}>{UI[code].notFound.goHome(LOCALES[code].endonym)}</a>
+        </p>
+      ))
+    }
+  </div>
+</BaseLayout>

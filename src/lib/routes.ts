@@ -6,7 +6,7 @@
 // 왜 이 파일이 필요한가: 접두사(`/ko`)가 붙는 순간, 뷰에 흩어진 `/${collection}/` 같은
 // 템플릿 리터럴은 전부 영어 트리를 가리키는 버그가 된다. 순수 문자열이라 어떤 타입
 // 변경으로도 잡히지 않는다 — 그래서 URL 을 만드는 곳을 여기 하나로 못박는다.
-import { DEFAULT_LOCALE, type Locale } from './i18n';
+import { DEFAULT_LOCALE, LOCALE_CODES, type Alternate, type Locale } from './i18n';
 
 /** 헤더 네비에 나오는 축. 배열 순서가 곧 화면 순서다. */
 export const NAV_SECTIONS = ['log', 'lecture', 'project', 'about'] as const;
@@ -61,3 +61,24 @@ export const revisionHref = (
   version === null
     ? `${prefix(locale)}/${collection}/${series}/`
     : `${prefix(locale)}/${collection}/${series}/${version}/`;
+
+/**
+ * [...lang] 라우트의 params.lang.
+ * 기본 로케일은 세그먼트가 없어야 하므로 undefined 를 낸다 —
+ * rest 파라미터에 undefined 를 주면 그 세그먼트가 URL 에서 통째로 사라진다.
+ */
+export const langParam = (locale: Locale): string | undefined =>
+  locale === DEFAULT_LOCALE ? undefined : locale;
+
+/**
+ * 홈 · 목록 3개 · about · privacy 의 alternates.
+ *
+ * section === null 이면 홈이다. 이 함수가 다루는 화면은 정의상 모든 로케일에
+ * 존재하므로 항상 LOCALE_CODES.length 개를 내며 behind 는 항상 0 이다.
+ */
+export const staticAlternates = (section: Section | null): Alternate[] =>
+  LOCALE_CODES.map((locale) => ({
+    locale,
+    href: section === null ? homeHref(locale) : sectionHref(locale, section),
+    behind: 0,
+  }));

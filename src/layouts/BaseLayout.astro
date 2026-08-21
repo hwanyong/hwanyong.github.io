@@ -1,9 +1,10 @@
 ---
 import BaseHead from '../components/BaseHead.astro';
+import LangSwitch from '../components/LangSwitch.astro';
 import AdSenseHead from '../components/AdSenseHead.astro';
 import AnalyticsHead from '../components/AnalyticsHead.astro';
 import { SITE } from '../lib/site';
-import { LOCALES, type Locale } from '../lib/i18n';
+import { LOCALES, type Alternate, type Locale } from '../lib/i18n';
 import { NAV_SECTIONS, type NavSection, feedHref, homeHref, sectionHref, sectionLabel } from '../lib/routes';
 import { UI } from '../lib/ui';
 import { GITHUB } from '../lib/profile';
@@ -21,6 +22,14 @@ interface Props {
    *   피드 링크가 전부 다른 언어의 트리를 가리키게 된다.
    */
   locale: Locale;
+  /**
+   * 이 화면의 언어별 주소. head 의 hreflang 과 헤더의 언어 스위처가 같은 값을 읽는다 —
+   * 둘이 다른 출처를 보면 "스위처는 있는데 hreflang 이 없는" 화면이 생긴다.
+   * 언어축 밖(404)은 빈 배열이고, 그러면 스위처도 hreflang 도 렌더되지 않는다.
+   */
+  alternates: Alternate[];
+  /** false 면 canonical 대신 noindex 를 낸다(404 전용). */
+  indexable?: boolean;
   title: string;
   description: string;
   type?: 'website' | 'article';
@@ -45,6 +54,8 @@ interface Props {
 
 const {
   locale,
+  alternates,
+  indexable = true,
   title,
   description,
   type,
@@ -62,6 +73,8 @@ const t = UI[locale];
   <head>
     <BaseHead
       locale={locale}
+      alternates={alternates}
+      indexable={indexable}
       title={title}
       description={description}
       type={type}
@@ -138,6 +151,9 @@ const t = UI[locale];
         ))}
       </nav>
       {status && <span class="site-status">{status}</span>}
+      {/* 스위처는 .site-status 뒤에 온다 — 그 앞에 끼우면 .site-nav 의
+          margin-inline-start:auto 가 만드는 우측 정렬 사이에 들어가 헤더 배치가 흐트러진다. */}
+      {alternates.length > 0 && <LangSwitch locale={locale} alternates={alternates} />}
     </header>
 
     <main class="site-main">

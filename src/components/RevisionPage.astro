@@ -14,12 +14,14 @@
 import ArticleShell from './ArticleShell.astro';
 import { versionSlug } from '../lib/content';
 import type { RevisionEntry } from '../lib/content';
-import type { Locale } from '../lib/i18n';
+import type { Alternate, Locale } from '../lib/i18n';
 import { revisionHref, sectionHref, sectionLabel, type RevisionCollection } from '../lib/routes';
 import { UI } from '../lib/ui';
 
 interface Props {
   locale: Locale;
+  /** 이 개정본의 언어별 주소. ArticleShell 을 지나 head 와 언어 스위처로 간다. */
+  alternates: Alternate[];
   collection: RevisionCollection;
   /** 한 계열의 전체 개정본. 최신순으로 정렬되어 있어야 한다. */
   revisions: RevisionEntry[];
@@ -28,7 +30,7 @@ interface Props {
 }
 
 // rootLabel prop 은 없다 — sectionLabel(collection) 이 만든다. 축 이름은 비번역이다.
-const { locale, collection, revisions, index }: Props = Astro.props;
+const { locale, alternates, collection, revisions, index }: Props = Astro.props;
 
 const t = UI[locale];
 
@@ -49,6 +51,8 @@ const backLabel = isLatest ? sectionLabel(collection) : entry.data.title;
 
 <ArticleShell
   locale={locale}
+  alternates={alternates}
+  untranslated={entry.data.untranslated}
   title={entry.data.title}
   documentTitle={isLatest ? entry.data.title : `${entry.data.title} v${entry.data.version}`}
   description={entry.data.description}

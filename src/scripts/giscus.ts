@@ -13,8 +13,18 @@ interface GiscusConfig {
   repoId: string;
   category: string;
   categoryId: string;
-  mapping: string;
-  term?: string;
+  /**
+   * 항상 'specific' 이다. term 이 URL 이 아니라 항목의 정체성에서 나오므로,
+   * 같은 글의 언어별 URL 이 한 Discussion 을 공유한다.
+   */
+  mapping: 'specific';
+  /** 언어 무관 통합 키. 예: 'log:first-post', 'project:analysis-video' */
+  term: string;
+  /**
+   * 위젯 UI 언어. LOCALES[locale].giscusLang 에서 온다.
+   * ★ 이것은 위젯 UI 의 언어일 뿐이고 스레드는 언어 무관 통합이다. 두 축은 독립이다.
+   */
+  lang: string;
   /** REFLECT/EMIT 각각에 넘길 data-theme 값 (URL 또는 빌트인 테마명) */
   theme: Record<Mode, string>;
 }
@@ -50,9 +60,9 @@ const buildScript = (config: GiscusConfig): HTMLScriptElement => {
   script.dataset.emitMetadata = '0';
   script.dataset.inputPosition = 'bottom';
   script.dataset.theme = config.theme[currentMode()]; // data-theme 은 기본값이 없다. 필수.
-  script.dataset.lang = 'ko';
+  script.dataset.lang = config.lang;
   script.dataset.loading = 'lazy';
-  if (config.term) script.dataset.term = config.term;
+  script.dataset.term = config.term;
 
   return script;
 };

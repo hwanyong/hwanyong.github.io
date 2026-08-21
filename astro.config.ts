@@ -1,6 +1,6 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
-import { ORIGIN } from './src/lib/i18n';
+import { DEFAULT_LOCALE, LOCALES, ORIGIN, SITEMAP_LOCALES } from './src/lib/i18n';
 
 export default defineConfig({
   // GitHub Pages user site(hwanyong/hwanyong.github.io) 이므로
@@ -62,8 +62,11 @@ export default defineConfig({
   prerenderConflictBehavior: 'error',
 
   // 기본값. /log/foo/ 형태의 디렉터리 URL 이 생성된다.
-  // giscus mapping="pathname" 의 term 이 이 값에 의존하므로
-  // 사이트를 시작한 뒤에는 절대 바꾸지 말 것(댓글이 통째로 끊긴다).
+  //
+  // 예전에는 여기에 "giscus term 이 이 값에 의존하므로 절대 바꾸지 말 것" 이라는
+  // 경고가 붙어 있었다. 그 제약은 사라졌다 — mapping 이 'specific' 이 되면서
+  // 검색어가 URL 이 아니라 항목의 정체성('log:first-post')에서 나온다.
+  // ★ URL 이 더 이상 댓글의 정체성을 소유하지 않는다.
   build: {
     format: 'directory',
 
@@ -97,7 +100,27 @@ export default defineConfig({
   // 한국어 본문에서 실제로 물리므로 이전 동작(true)으로 되돌린다.
   compressHTML: true,
 
-  integrations: [sitemap()],
+  integrations: [
+    sitemap({
+      i18n: { defaultLocale: DEFAULT_LOCALE, locales: SITEMAP_LOCALES },
+
+      // x-default 는 @astrojs/sitemap 이 자동으로 붙이지 않는다. 여기서 주입한다.
+      // ★ 캐시된 배열을 변형하지 않고 새 배열을 만든다.
+      serialize(item) {
+        if (!item.links || item.links.length < 2) return item;
+        const fallback = item.links.find((link) => link.lang === LOCALES[DEFAULT_LOCALE].hreflang);
+        if (fallback) item.links = [...item.links, { url: fallback.url, lang: 'x-default' }];
+        return item;
+      },
+    }),
+  ],
+
+  // ★ Astro 의 i18n 설정 블록은 두지 않는다.
+  //   @astrojs/sitemap 의 i18n 은 그 블록 없이 동작하고, astro:i18n 헬퍼·fallbackType·
+  //   redirectToDefaultLocale 중 이 사이트가 쓰는 것이 하나도 없다(자동 감지·폴백을
+  //   두지 않기로 했으므로). 두면 쓰이지 않는 설정이 남는다.
+  //   로케일은 getStaticPaths 의 props 로 명시 전달한다 — URL 파싱보다 결정적이다.
+  //   같은 이유로 Astro.currentLocale 도 쓰지 않는다(이 설계에서는 undefined 다).
 
   // Astro 내장 fonts API(<Font />)는 쓰지 않는다.
   // Font.astro 가 <style set:html> 로 하드코딩되어 @font-face 규칙(한글 서브셋

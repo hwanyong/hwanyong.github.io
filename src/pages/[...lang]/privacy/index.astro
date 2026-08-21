@@ -7,20 +7,25 @@
 // 광고를 띄우지 않는다: 고지 문서는 publisher content 가 아니다.
 // 그리고 이 페이지는 광고 승인 요건상 어느 화면에서나 1클릭에 닿아야 하므로
 // 푸터 링크(BaseLayout)와 짝을 이룬다.
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import { SITE } from '../../lib/site';
-import { DEFAULT_LOCALE } from '../../lib/i18n';
-import { formatDate, isoDate } from '../../lib/date';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { SITE } from '../../../lib/site';
+import { LOCALE_CODES } from '../../../lib/i18n';
+import { langParam, staticAlternates } from '../../../lib/routes';
+import type { Locale } from '../../../lib/i18n';
+
+export const getStaticPaths = () =>
+  LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
+import { formatDate, isoDate } from '../../../lib/date';
 import {
   POLICY,
   POLICY_TEXT,
   STORAGE_KEYS,
   VENDOR_IDS,
   VENDORS,
-} from '../../lib/privacy';
+} from '../../../lib/privacy';
 
-// S3 에서 Astro.props.locale 로 대체된다.
-const locale = DEFAULT_LOCALE;
+const { locale } = Astro.props as { locale: Locale };
+const alternates = staticAlternates('privacy');
 
 // ★ 폴백 헬퍼를 거치지 않는다. 방침은 모든 로케일에 반드시 있어야 하고,
 //   없으면 화면이 조용히 다른 언어를 보여주는 대신 컴파일이 죽는 것이 맞다.
@@ -30,6 +35,7 @@ const effective = formatDate(POLICY.effective);
 
 <BaseLayout
   locale={locale}
+  alternates={alternates}
   title={t.title}
   description={t.metaDescription}
   ads={false}

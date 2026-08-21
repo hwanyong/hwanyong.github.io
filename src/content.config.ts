@@ -10,6 +10,7 @@
 import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
+import { LOCALE_CODES } from './lib/i18n';
 
 /**
  * 축이 셋이다.
@@ -28,6 +29,17 @@ const baseFields = {
   date: z.coerce.date(),
   tags: z.array(z.string()).default([]),
   draft: z.boolean().default(false),
+  /**
+   * 이 판본이 아직 번역되지 않은 사본임을 밝힌다. 값은 원문이 있는 로케일이다.
+   *
+   * ★ lang 필드가 아니다. 이 파일이 어느 언어인지는 파일 이름(en.md · ko.md)이
+   *   유일하게 정한다 — 두 곳에 적으면 어긋날 수 있고, 어긋나면 hreflang 이 거짓말을 한다.
+   *   이 필드가 말하는 것은 "무슨 언어인가" 가 아니라 "번역되었는가" 다.
+   *
+   * 넣고 지우는 것은 tools/i18n-fill.ts 와 사람이다. 번역을 마치면 이 줄을 지운다.
+   * tools/i18n-verify.ts 가 이 값과 원문 본문의 동기 상태를 검사한다.
+   */
+  untranslated: z.enum(LOCALE_CODES).optional(),
 };
 
 // 개정축 둘이 공유하는 필드
@@ -51,8 +63,8 @@ const revisionFields = {
 
 /**
  * log — 개인 글·생각 (시간축)
- * 파일 경로: src/content/log/<파일명>.md
- * URL:      /log/<id>/
+ * 파일 경로: src/content/log/<groupKey>/<locale>.md
+ * URL:      /log/<groupKey>/  ·  /ko/log/<groupKey>/
  *
  * 패턴을 `**\/*.md` 로 좁힌 이유: `.mdx` 를 포함시키면 @astrojs/mdx 통합 설치가
  * 필수가 되고, 미설치 상태에서 .mdx 파일이 들어오면 빌드가 깨진다.
@@ -67,8 +79,9 @@ const log = defineCollection({
 
 /**
  * lecture — 강의 (개정축)
- * 파일 경로: src/content/lecture/<series>/<version-slug>.md
+ * 파일 경로: src/content/lecture/<series>/<version-slug>/<locale>.md
  * URL:      /lecture/<series>/ (최신)  /lecture/<series>/<version-slug>/ (구버전)
+ *           ko 는 앞에 /ko 가 붙는다.
  */
 const lecture = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/lecture' }),
@@ -79,8 +92,9 @@ const lecture = defineCollection({
 
 /**
  * project — 개인 프로젝트 (개정축)
- * 파일 경로: src/content/project/<series>/<version-slug>.md
+ * 파일 경로: src/content/project/<series>/<version-slug>/<locale>.md
  * URL:      /project/<series>/ (최신)  /project/<series>/<version-slug>/ (구버전)
+ *           ko 는 앞에 /ko 가 붙는다.
  *
  * stack·links 는 이 축에만 있다. 강의에는 기술 스택도 저장소 링크도 없다.
  * 두 필드 모두 상세 화면에 실제로 렌더된다 — 화면에 나오지 않는 필드는 두지 않는다.

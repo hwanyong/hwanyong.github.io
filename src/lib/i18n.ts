@@ -54,3 +54,39 @@ export const LOCALES: Record<Locale, LocaleMeta> = {
   en: { htmlLang: 'en', ogLocale: 'en_US', hreflang: 'en', giscusLang: 'en', label: 'EN', endonym: 'English' },
   ko: { htmlLang: 'ko', ogLocale: 'ko_KR', hreflang: 'ko', giscusLang: 'ko', label: 'KO', endonym: '한국어' },
 };
+
+export const isLocale = (value: string): value is Locale =>
+  (LOCALE_CODES as readonly string[]).includes(value);
+
+/**
+ * @astrojs/sitemap 의 i18n.locales.
+ * LOCALES 에서 파생한다 — 같은 표를 두 번 적지 않는다.
+ */
+export const SITEMAP_LOCALES = Object.fromEntries(
+  LOCALE_CODES.map((code) => [code, LOCALES[code].hreflang]),
+) as Record<Locale, string>;
+
+/**
+ * 한 화면이 어느 로케일에서 어느 주소를 갖는가.
+ * head(hreflang) · 언어 스위처 · sitemap 이 같은 값을 읽는다.
+ */
+export interface Alternate {
+  locale: Locale;
+  /** 사이트 루트 기준 절대 경로. 항상 '/' 로 시작하고 '/' 로 끝난다(rss.xml 제외). */
+  href: string;
+  /**
+   * 기준 언어보다 몇 개정 뒤처졌는가. 0 이면 동기.
+   * 시간축과 고정 페이지는 개정 개념이 없어 항상 0 이다.
+   */
+  behind: number;
+}
+
+/**
+ * RSS guid 네임스페이스.
+ *
+ * ★ ORIGIN 에서 파생하지 않는다. 도메인을 바꾸는 날 모든 guid 가 함께 바뀌면
+ *   전 구독자의 리더에 전 글이 새 글로 다시 뜬다.
+ *   guid 는 SSOT 대상이 아니라 ★영구 동결★ 대상이다 —
+ *   "도메인 문자열은 ORIGIN 한 곳" 규칙의 명시적 예외이며, 그것이 이 상수의 존재 이유다.
+ */
+export const FEED_URN_NS = 'urn:blog.hwanyong.com';

@@ -2,28 +2,36 @@
 /**
  * giscus 댓글 위젯.
  *
- * - 시간축(log):  <Comments />                          → mapping="pathname"
- * - 개정축(lecture·project):
- *     <Comments mapping="specific" term={`project:analysis-video`} />
- *     → 계열 루트와 v1-0 페이지가 URL 이 달라도 같은 Discussion 을 공유한다.
- *     실제 호출은 ArticleShell 의 commentTerm prop 이 대신한다.
+ * 스레드는 언어와 개정을 가로질러 하나다. 검색어(term)가 URL 이 아니라 항목의
+ * 정체성에서 나오기 때문이다 — 'log:first-post' 는 /log/first-post/ 와
+ * /ko/log/first-post/ 에서 같은 값이고, 'project:analysis-video' 는 계열 루트와
+ * 구버전 페이지에서 같은 값이다.
+ *   → 한국어로 읽는 사람과 영어로 읽는 사람이 같은 자리에서 대화한다.
+ *   → 위젯 UI 언어만 로케일을 따른다. 두 축은 독립이다.
+ * 실제 호출은 ArticleShell 의 commentTerm prop 이 대신한다.
  *
  * 설정을 data 속성으로 넘기고 동작은 src/scripts/giscus.ts 가 맡는다.
  * 인라인 <script define:vars> 로 값을 주입하면 그 코드가 번들·타입체크 밖으로
  * 빠져 유지보수가 안 된다.
  */
 import { UI } from '../lib/ui';
-import type { Locale } from '../lib/i18n';
+import { LOCALES, type Locale } from '../lib/i18n';
 import { GISCUS } from '../lib/site';
 
 interface Props {
   locale: Locale;
-  mapping?: 'pathname' | 'url' | 'title' | 'og:title' | 'specific' | 'number';
-  /** mapping 이 'specific'(검색어) 또는 'number'(Discussion 번호)일 때만 사용 */
-  term?: string;
+  /**
+   * giscus 검색어. 언어 무관 통합 키다 — 'log:first-post', 'project:analysis-video'.
+   * URL 이 언어마다 달라도 한 Discussion 을 공유한다.
+   *
+   * ★ 필수다. mapping 은 언제나 'specific' 이라 pathname 폴백이 존재하지 않는다.
+   *   URL 이 댓글의 정체성을 소유하지 않는다는 뜻이기도 하다 —
+   *   그래서 build.format 을 바꿔도, 글이 이사해도 댓글이 끊기지 않는다.
+   */
+  term: string;
 }
 
-const { locale, mapping = 'pathname', term } = Astro.props;
+const { locale, term } = Astro.props;
 
 // dev 서버(http://localhost:4321)는 CORS 헤더를 주지 않으므로
 // giscus iframe 이 crossorigin="anonymous" 로 커스텀 테마 CSS 를 못 읽는다.
@@ -41,8 +49,9 @@ const config = {
   repoId: GISCUS.repoId,
   category: GISCUS.category,
   categoryId: GISCUS.categoryId,
-  mapping,
-  ...(term ? { term } : {}),
+  mapping: 'specific',
+  term,
+  lang: LOCALES[locale].giscusLang,
   theme,
 };
 const t = UI[locale];

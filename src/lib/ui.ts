@@ -49,6 +49,27 @@ export interface UIStrings {
   hints: Record<'move' | 'open' | 'backlight', string>;
 
   about: { career: string; accounts: string; tbdNote: string; present: string };
+
+  /**
+   * 이 언어가 각 언어를 부르는 이름.
+   * 영어 화면에서는 'Korean', 한국어 화면에서는 '영어' 여야 한다 — endonym(자기 언어로
+   * 쓴 이름)과 다른 축이다. Record<Locale,…> 라 로케일을 늘리면 두 표가 함께 에러를 낸다.
+   */
+  languageNames: Record<Locale, string>;
+
+  /** 언어 스위처의 접근성 이름. */
+  languageNav: string;
+  /** 그 언어판이 이전 개정본의 번역일 때 스위처 링크에 붙는 설명. */
+  languageBehind: (languageName: string) => string;
+
+  /**
+   * 아직 번역되지 않아 원문을 그대로 싣고 있는 글의 본문 위 안내.
+   * 이 상태는 tools/i18n-verify.ts 가 강제하는 완전쌍 불변식의 결과다 —
+   * 판본이 없는 대신 원문 사본이 있고, 그 사실을 화면이 숨기지 않는다.
+   */
+  untranslatedNotice: (languageName: string) => string;
+
+  notFound: { title: string; description: string; goHome: (endonym: string) => string };
 }
 
 const en: UIStrings = {
@@ -90,6 +111,19 @@ const en: UIStrings = {
     tbdNote: 'This paragraph is a placeholder and has not been written yet.',
     present: 'Present',
   },
+
+  languageNames: { en: 'English', ko: 'Korean' },
+  languageNav: 'Language',
+  languageBehind: (name) => `${name} — translation of an earlier revision`,
+
+  untranslatedNotice: (name) =>
+    `Not translated yet. The text below is the ${name} original.`,
+
+  notFound: {
+    title: 'Not found',
+    description: 'There is no page at this address.',
+    goHome: (endonym) => `Go to the ${endonym} home page →`,
+  },
 };
 
 const ko: UIStrings = {
@@ -130,6 +164,18 @@ const ko: UIStrings = {
     accounts: '계정',
     tbdNote: '아직 채우지 않은 자리표시자 문단입니다.',
     present: '재직 중',
+  },
+
+  languageNames: { en: '영어', ko: '한국어' },
+  languageNav: '언어',
+  languageBehind: (name) => `${name} — 이전 개정본의 번역입니다`,
+
+  untranslatedNotice: (name) => `아직 번역되지 않았습니다. 아래는 ${name} 원문입니다.`,
+
+  notFound: {
+    title: '페이지 없음',
+    description: '이 주소에는 페이지가 없습니다.',
+    goHome: (endonym) => `${endonym} 홈으로 →`,
   },
 };
 

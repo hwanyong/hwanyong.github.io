@@ -4,12 +4,21 @@
  * astro.config.ts 의 site 가 설정되어 있어야 한다 —
  * 없으면 Astro.site 가 undefined 라 new URL(..., undefined) 이 TypeError 를 던진다.
  */
-import { LOCALES, type Locale } from '../lib/i18n';
+import { DEFAULT_LOCALE, LOCALE_CODES, LOCALES, type Alternate, type Locale } from '../lib/i18n';
 import { feedHref } from '../lib/routes';
 import { UI } from '../lib/ui';
 
 interface Props {
   locale: Locale;
+  /**
+   * 이 화면이 어느 로케일에서 어느 주소를 갖는가. LOCALE_CODES 순서이고
+   * 자기 자신을 항상 포함한다.
+   *   length >= 2 → hreflang 을 낸다(각 언어 + x-default). sitemap 과 정확히 같은 규칙.
+   *   length == 0 → 언어축 밖(404). hreflang 도 스위처도 없다.
+   */
+  alternates: Alternate[];
+  /** false 면 canonical·og:url 을 내지 않고 noindex 를 낸다(404 전용). */
+  indexable?: boolean;
   title: string;
   description: string;
   /** public/ 기준 절대 경로 또는 절대 URL */
@@ -20,6 +29,8 @@ interface Props {
 
 const {
   locale,
+  alternates,
+  indexable = true,
   title,
   description,
   image = '/og-default.png',
@@ -30,6 +41,7 @@ const {
 const t = UI[locale];
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImageURL = new URL(image, Astro.site);
+const xDefault = alternates.find((alternate) => alternate.locale === DEFAULT_LOCALE);
 ---
 
 <meta charset="utf-8" />
@@ -38,7 +50,10 @@ const ogImageURL = new URL(image, Astro.site);
 
 <title>{title}</title>
 <meta name="description" content={description} />
-<link rel="canonical" href={canonicalURL} />
+{/* GitHub Pages 는 존재하지 않는 모든 경로에 404.html 을 서빙한다 —
+    그 화면에서 self-canonical 은 매번 거짓이 되므로 canonical 자체를 내지 않는다. */}
+{indexable && <link rel="canonical" href={canonicalURL} />}
+{!indexable && <meta name="robots" content="noindex" />}
 <link rel="icon" href="/favicon.ico" sizes="any" />
 <link rel="icon" type="image/png" sizes="512x512" href="/icon.png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -47,9 +62,16 @@ const ogImageURL = new URL(image, Astro.site);
 <meta property="og:site_name" content={t.site.title} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
-<meta property="og:url" content={canonicalURL} />
+{indexable && <meta property="og:url" content={canonicalURL} />}
 <meta property="og:image" content={ogImageURL} />
 <meta property="og:locale" content={LOCALES[locale].ogLocale} />
+{
+  alternates
+    .filter((alternate) => alternate.locale !== locale)
+    .map((alternate) => (
+      <meta property="og:locale:alternate" content={LOCALES[alternate.locale].ogLocale} />
+    ))
+}
 {publishedTime && (
   <meta property="article:published_time" content={publishedTime.toISOString()} />
 )}
@@ -59,12 +81,50 @@ const ogImageURL = new URL(image, Astro.site);
 <meta name="twitter:description" content={description} />
 <meta name="twitter:image" content={ogImageURL} />
 
-{/* ★ 피드 링크와 (S3 의) hreflang 링크는 둘 다 rel="alternate" 다. 절대 같은 헬퍼로 내지 말 것.
-    피드는 type="application/rss+xml" 을 붙이고 hreflang 을 붙이지 않는다 —
-    섞이면 검색엔진이 XML 을 그 언어의 대체 '페이지' 로 읽는다. */}
-<link
-  rel="alternate"
-  type="application/rss+xml"
-  title={t.site.title}
-  href={new URL(feedHref(locale), Astro.site)}
-/>
+{/*
+  hreflang.
+
+  ★ behind > 0 인 짝도 그대로 낸다. 검색엔진은 부분·시차 번역을 허용하며,
+    빼면 짝이 깨져 더 나쁘다. "정확하지 않으니 빼자" 로 가지 말 것 —
+    시차라는 사실은 화면(개정 배너)과 언어 스위처가 말한다.
+
+  ★ 계약: head 는 alternates 가 2개 이상일 때만, sitemap 과 같은 줄을 낸다.
+    @astrojs/sitemap 은 양쪽에 실제 URL 이 있을 때만 xhtml:link 를 내므로,
+    이 규칙이 head ↔ sitemap 일치를 구조적으로 보장한다.
+*/}
+{
+  alternates.length >= 2 && (
+    <>
+      {alternates.map((alternate) => (
+        <link
+          rel="alternate"
+          hreflang={LOCALES[alternate.locale].hreflang}
+          href={new URL(alternate.href, Astro.site)}
+        />
+      ))}
+      {xDefault && (
+        <link rel="alternate" hreflang="x-default" href={new URL(xDefault.href, Astro.site)} />
+      )}
+    </>
+  )
+}
+
+{/*
+  피드.
+
+  ★ 피드 링크와 hreflang 링크는 둘 다 rel="alternate" 다. 절대 같은 헬퍼로 내지 말 것 —
+    피드에 hreflang 을 붙이면 검색엔진이 XML 을 그 언어의 대체 '페이지' 로 읽는다.
+    구분은 type 과 title 이 한다.
+
+  ★ 두 피드를 모두 낸다. 그러지 않으면 영어 화면에서 한국어 피드를 발견할 경로가 없다.
+*/}
+{
+  LOCALE_CODES.map((code) => (
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={`${UI[code].site.title} (${LOCALES[code].label})`}
+      href={new URL(feedHref(code), Astro.site)}
+    />
+  ))
+}

@@ -1,0 +1,35 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Timeline from '../../components/Timeline.astro';
+import { getTimeline, groupByYear } from '../../lib/content';
+import { AD_SLOTS } from '../../lib/site';
+import { LOCALE_CODES } from '../../lib/i18n';
+import { langParam, staticAlternates } from '../../lib/routes';
+import { UI } from '../../lib/ui';
+import type { Locale } from '../../lib/i18n';
+
+// 홈 — 글과 작업물을 하나의 시간축에 섞어 보여준다.
+// 두 축을 나눠 놓으면 "언제 무엇을 했는지"가 두 목록으로 쪼개져 읽히지 않는다.
+
+// 모든 로케일에 항상 존재하는 화면이다. 로케일은 콘텐츠가 아니라 이 표에서 나온다 —
+// 방침·소개·목록은 번역이 없어도 URL 이 있어야 하는 유일한 부류다.
+export const getStaticPaths = () =>
+  LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
+
+const { locale } = Astro.props as { locale: Locale };
+const t = UI[locale];
+const alternates = staticAlternates(null);
+
+const items = await getTimeline(locale);
+const groups = groupByYear(items);
+---
+
+<BaseLayout
+  locale={locale}
+  alternates={alternates}
+  title={t.site.title}
+  description={t.site.description}
+  status={`${items.length} ENTRIES`}
+>
+  <Timeline locale={locale} groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
+</BaseLayout>

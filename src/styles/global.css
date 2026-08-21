@@ -1661,3 +1661,48 @@ img.accounts__mark {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+  언어 스위처. .site-status 뒤에 온다 — 그 앞에 끼우면 .site-nav 의
+  margin-inline-start: auto 가 만드는 우측 정렬 사이에 들어가 헤더 배치가 흐트러진다.
+
+  저하(*) 표시가 없는 이유: 완전쌍 불변식 덕분에 모든 화면에 정확한 짝이 있다.
+  남는 것은 개정 시차(data-behind) 하나뿐이다.
+*/
+.lang-switch {
+  display: flex;
+  gap: 0.5rem;
+  margin-inline-start: 0.9rem;
+}
+
+.lang-switch a {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+
+.lang-switch a[aria-current='page'] {
+  color: var(--ink);
+}
+
+/* 그 언어판이 이전 개정본의 번역일 때. 링크는 살아 있고 사실만 표시한다. */
+.lang-switch a[data-behind] {
+  opacity: 0.6;
+}
+
+.lang-switch a[data-behind]::after {
+  content: '·';
+}
+
+/* 목록에서 "이 항목은 아직 번역되지 않아 원문을 싣고 있다" 를 알리는 배지.
+   제목 옆의 계기판 표기라 언어 불변(EN / KO)이고, 설명은 title 속성이 맡는다. */
+.entry__lang {
+  margin-inline-start: 0.45rem;
+  padding-inline: 0.28rem;
+  border: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  vertical-align: middle;
+}

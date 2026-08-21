@@ -1,0 +1,72 @@
+---
+// src/pages/[...lang]/log/[key].astro — 글 상세 (시간축).
+//
+// [key] 가 단일 세그먼트인 이유: groupKey 정규식이 '/' 를 금지하므로 rest 파라미터가
+// 필요 없고, 단일 세그먼트가 URL 형태를 타입 수준에서 좁힌다.
+//
+// 화면 골격(이동 줄·글 머리·댓글·광고 순서)은 ArticleShell 이 전부 갖는다.
+// 이 파일은 "이 축이 무엇을 채우는가" 만 말한다.
+//
+// ★ getStaticPaths 는 격리 호이스팅된다. 프론트매터 최상단의 const 를 함수 안에서
+//   참조하면 "X is not defined" 로 빌드가 죽는다 — import 와 함수 내부 선언만 쓴다.
+import { render } from 'astro:content';
+import ArticleShell from '../../../components/ArticleShell.astro';
+import Toc from '../../../components/Toc.astro';
+import { getLogGroups } from '../../../lib/content';
+import type { LogEntry } from '../../../lib/content';
+import { langParam, logHref, sectionHref, sectionLabel } from '../../../lib/routes';
+import type { Alternate, Locale } from '../../../lib/i18n';
+
+export const getStaticPaths = async () => {
+  const groups = await getLogGroups();
+
+  // 로케일은 실재하는 판본에서 나온다 — LOCALE_CODES 를 곱하지 않는다.
+  // 완전쌍 불변식(tools/i18n-verify.ts) 덕분에 결과적으로 전 로케일이 나오지만,
+  // 그것은 파일이 실제로 있기 때문이지 로케일 표 때문이 아니다.
+  return groups.flatMap((group) =>
+    group.translations.map(({ locale, entry }) => ({
+      params: { lang: langParam(locale), key: group.groupKey },
+      props: {
+        locale,
+        entry,
+        groupKey: group.groupKey,
+        alternates: group.translations.map((translation) => ({
+          locale: translation.locale,
+          href: logHref(translation.locale, group.groupKey),
+          // 시간축에는 개정 개념이 없다.
+          behind: 0,
+        })),
+      },
+    })),
+  );
+};
+
+type Props = {
+  locale: Locale;
+  entry: LogEntry;
+  groupKey: string;
+  alternates: Alternate[];
+};
+
+const { locale, entry, groupKey, alternates }: Props = Astro.props;
+const { Content, headings } = await render(entry);
+---
+
+<ArticleShell
+  locale={locale}
+  alternates={alternates}
+  untranslated={entry.data.untranslated}
+  title={entry.data.title}
+  description={entry.data.description}
+  date={entry.data.date}
+  meta={entry.data.tags}
+  section="log"
+  backHref={sectionHref(locale, 'log')}
+  backLabel={sectionLabel('log')}
+  commentTerm={`log:${groupKey}`}
+>
+  {/* 넓은 화면에서 오른쪽 사이드 열로 빠진다(1280px 미만에서는 숨김). */}
+  <Toc locale={locale} headings={headings} slot="aside" />
+
+  <Content />
+</ArticleShell>
