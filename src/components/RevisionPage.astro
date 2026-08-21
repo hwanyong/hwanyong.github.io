@@ -12,20 +12,25 @@
  * 덕분에 같은 본문이 두 URL 로 중복 배포되지 않는다.
  */
 import ArticleShell from './ArticleShell.astro';
-import { revisionHref } from '../lib/content';
-import type { RevisionCollection, RevisionEntry } from '../lib/content';
+import { versionSlug } from '../lib/content';
+import type { RevisionEntry } from '../lib/content';
+import type { Locale } from '../lib/i18n';
+import { revisionHref, sectionHref, sectionLabel, type RevisionCollection } from '../lib/routes';
+import { UI } from '../lib/ui';
 
 interface Props {
+  locale: Locale;
   collection: RevisionCollection;
-  /** 목록 화면의 표시 이름. 최신 개정본에서 되돌아갈 곳의 라벨이 된다. */
-  rootLabel: string;
   /** 한 계열의 전체 개정본. 최신순으로 정렬되어 있어야 한다. */
   revisions: RevisionEntry[];
   /** 지금 보여줄 개정본의 위치. 0 이 최신. */
   index: number;
 }
 
-const { collection, rootLabel, revisions, index } = Astro.props;
+// rootLabel prop 은 없다 — sectionLabel(collection) 이 만든다. 축 이름은 비번역이다.
+const { locale, collection, revisions, index }: Props = Astro.props;
+
+const t = UI[locale];
 
 const entry = revisions[index]!;
 const latest = revisions[0]!;
@@ -37,31 +42,32 @@ const series = entry.data.series;
 // 위·아래 이동 줄이 가리키는 곳. 최신 개정본이 곧 계열 페이지이므로
 // 최신에서 한 단계 위는 목록이고, 구버전에서 한 단계 위는 그 계열이다.
 const backHref = isLatest
-  ? `/${collection}/`
-  : revisionHref(collection, series, latest, true);
-const backLabel = isLatest ? rootLabel : entry.data.title;
+  ? sectionHref(locale, collection)
+  : revisionHref(locale, collection, series, null);
+const backLabel = isLatest ? sectionLabel(collection) : entry.data.title;
 ---
 
 <ArticleShell
+  locale={locale}
   title={entry.data.title}
   documentTitle={isLatest ? entry.data.title : `${entry.data.title} v${entry.data.version}`}
   description={entry.data.description}
   date={entry.data.date}
-  meta={[`v${entry.data.version}`, ...(isLatest ? ['현재'] : [])]}
+  meta={[`v${entry.data.version}`, ...(isLatest ? [t.revision.current] : [])]}
   section={collection}
   status={`REV ${position} / ${total}`}
   backHref={backHref}
   backLabel={backLabel}
   jumpHref={total > 1 ? '#revisions' : undefined}
-  jumpLabel="개정 이력 ↓"
+  jumpLabel={t.revision.jump}
   commentTerm={`${collection}:${series}`}
   ads={isLatest}
 >
   <Fragment slot="notice">
     {!isLatest && (
       <p class="stale-notice">
-        이 문서는 최신 개정본이 아닙니다.{' '}
-        <a href={revisionHref(collection, series, latest, true)}>최신 개정본 보기 →</a>
+        {t.revision.stale}{' '}
+        <a href={revisionHref(locale, collection, series, null)}>{t.revision.seeLatest}</a>
       </p>
     )}
     {/* 축마다 다른 머리 정보. 강의는 비고, 프로젝트는 기술 스택·링크가 들어온다. */}
@@ -70,9 +76,9 @@ const backLabel = isLatest ? rootLabel : entry.data.title;
 
   {/* 넓은 화면에서는 .aside 가 이 패널을 사이드 열로 빼내 본문과 나란히 놓는다.
       좁은 화면에서는 사이드 열이 닫혀 이 자리 — 본문 끝, 댓글 바로 위 — 에 흐른다. */}
-  <nav id="revisions" class="aside revisions brk" slot="after" aria-label="개정 이력">
+  <nav id="revisions" class="aside revisions brk" slot="after" aria-label={t.revision.history}>
     <div class="revisions__head">
-      개정 이력
+      {t.revision.history}
       <span class="revisions__count">{total} REV</span>
     </div>
     <ol>
@@ -81,9 +87,11 @@ const backLabel = isLatest ? rootLabel : entry.data.title;
           <span class="mark" data-on={i === 0 || undefined} aria-hidden="true" />
           <b>v{rev.data.version}</b>
           {i === index ? (
-            <em class="revisions__badge">보는 중</em>
+            <em class="revisions__badge">{t.revision.viewing}</em>
           ) : (
-            <a href={revisionHref(collection, series, rev, i === 0)}>보기</a>
+            <a href={revisionHref(locale, collection, series, i === 0 ? null : versionSlug(rev))}>
+              {t.revision.view}
+            </a>
           )}
         </li>
       ))}

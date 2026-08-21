@@ -24,8 +24,11 @@ import Comments from './Comments.astro';
 import AdUnit from './AdUnit.astro';
 import { formatDate, isoDate } from '../lib/date';
 import { AD_SLOTS } from '../lib/site';
+import type { Locale } from '../lib/i18n';
+import type { NavSection } from '../lib/routes';
 
 interface Props {
+  locale: Locale;
   /** 화면의 h1. 별도 지정이 없으면 <title> 로도 쓰인다. */
   title: string;
   /** 브라우저 탭·OG 제목을 h1 과 다르게 둘 때만 준다. 예: "analysis-video v1.0" */
@@ -34,7 +37,7 @@ interface Props {
   date: Date;
   /** 날짜 뒤에 " · " 로 이어 붙는 항목들. 예: 태그, 버전, "현재" */
   meta?: string[];
-  section?: 'log' | 'lecture' | 'project' | null;
+  section?: NavSection | null;
   /** 헤더 우측 상태 표시 */
   status?: string;
   /** 되돌아갈 곳. 위·아래 이동 줄이 같은 곳을 가리킨다. */
@@ -57,6 +60,7 @@ interface Props {
 }
 
 const {
+  locale,
   title,
   documentTitle,
   description,
@@ -74,6 +78,7 @@ const {
 ---
 
 <BaseLayout
+  locale={locale}
   title={documentTitle ?? title}
   description={description}
   type="article"
@@ -83,7 +88,13 @@ const {
   ads={ads}
 >
   <div class="column">
-    <PostNav href={backHref} label={backLabel} jumpHref={jumpHref} jumpLabel={jumpLabel} />
+    <PostNav
+      locale={locale}
+      href={backHref}
+      label={backLabel}
+      jumpHref={jumpHref}
+      jumpLabel={jumpLabel}
+    />
 
     <slot name="aside" />
 
@@ -106,11 +117,11 @@ const {
       </div>
     </article>
 
-    <PostNav href={backHref} label={backLabel} place="foot" />
+    <PostNav locale={locale} href={backHref} label={backLabel} place="foot" />
 
     <slot name="after" />
 
-    <Comments mapping={commentTerm ? 'specific' : 'pathname'} term={commentTerm} />
+    <Comments locale={locale} mapping={commentTerm ? 'specific' : 'pathname'} term={commentTerm} />
 
     {/*
       광고는 반드시 이동 줄에서 떨어진 맨 아래. 네비게이션에 붙여 두면 오클릭을

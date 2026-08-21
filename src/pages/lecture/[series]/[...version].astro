@@ -7,6 +7,7 @@ import { render } from 'astro:content';
 import RevisionPage from '../../../components/RevisionPage.astro';
 import { getSeriesHistories, versionSlug } from '../../../lib/content';
 import type { LectureEntry } from '../../../lib/content';
+import { DEFAULT_LOCALE } from '../../../lib/i18n';
 
 export const getStaticPaths = async () => {
   const histories = await getSeriesHistories('lecture');
@@ -24,9 +25,12 @@ export const getStaticPaths = async () => {
 type Props = { revisions: LectureEntry[]; index: number };
 
 const { revisions, index }: Props = Astro.props;
+
+// S3 에서 Astro.props.locale 로 대체된다.
+const locale = DEFAULT_LOCALE;
 const { Content } = await render(revisions[index]!);
 ---
 
-<RevisionPage collection="lecture" rootLabel="Lecture" revisions={revisions} index={index}>
+<RevisionPage locale={locale} collection="lecture" revisions={revisions} index={index}>
   <Content />
 </RevisionPage>

@@ -6,13 +6,16 @@
  * 끼어들면 읽기를 방해하기만 한다. 그래서 CSS 에서 1280px 미만일 때 숨긴다
  * (내용이 중복이지 소실이 아니다 — 본문에 같은 제목이 그대로 있다).
  */
+import { UI } from '../lib/ui';
+import type { Locale } from '../lib/i18n';
 import type { MarkdownHeading } from 'astro';
 
 interface Props {
+  locale: Locale;
   headings: MarkdownHeading[];
 }
 
-const { headings } = Astro.props;
+const { locale, headings } = Astro.props;
 
 // h2·h3 만. h4 이하까지 넣으면 사이드가 본문의 축소판이 되어 훑는 기능을 잃는다.
 const items = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
@@ -20,8 +23,8 @@ const items = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
 {
   items.length > 1 && (
-    <nav class="aside toc" aria-label="목차">
-      <div class="toc__head">목차</div>
+    <nav class="aside toc" aria-label={UI[locale].toc}>
+      <div class="toc__head">{UI[locale].toc}</div>
       <ol>
         {items.map((h) => (
           <li data-depth={h.depth}>

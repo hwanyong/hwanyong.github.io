@@ -9,16 +9,13 @@
 // 제네릭 함수 한 벌로 처리하고, 축마다 복사하지 않는다.
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
+import type { RevisionCollection } from './routes';
+
+export type { RevisionCollection };
 
 export type LogEntry = CollectionEntry<'log'>;
 export type LectureEntry = CollectionEntry<'lecture'>;
 export type ProjectEntry = CollectionEntry<'project'>;
-
-/**
- * 개정축 컬렉션의 이름. 값이 곧 URL 첫 세그먼트다(/lecture/…, /project/…).
- * 둘을 일치시켜 두면 경로를 따로 매핑하는 표가 필요 없다.
- */
-export type RevisionCollection = 'lecture' | 'project';
 
 /** 개정축 항목. 두 컬렉션이 revisionFields 를 공유하므로 공통 필드는 항상 있다. */
 export type RevisionEntry<C extends RevisionCollection = RevisionCollection> =
@@ -29,6 +26,16 @@ const isVisible = (entry: { data: { draft: boolean } }): boolean =>
   import.meta.env.PROD ? entry.data.draft !== true : true;
 
 /**
+ * 동점 시 tie-break.
+ *
+ * ★ localeCompare 를 쓰지 않는다. 인자 없는 localeCompare 는 런타임 기본 로케일에
+ *   의존해서, "어느 기계에서나 같은 순서" 라는 이 함수의 목적과 정면으로 어긋난다
+ *   (이 저장소의 log id 는 이미 비ASCII 를 포함한 적이 있다).
+ *   필요한 것은 사람이 읽을 순서가 아니라 결정적인 순서이고, 코드포인트 비교가 그 도구다.
+ */
+const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
  * date 최신순 정렬.
  * getCollection() 의 반환 순서는 공식 문서가 "non-deterministic and
  * platform-dependent" 라고 명시한 값이다. 정렬을 빠뜨리면 로컬과 CI 에서
@@ -37,7 +44,7 @@ const isVisible = (entry: { data: { draft: boolean } }): boolean =>
  */
 const byDateDesc = <T extends { id: string; data: { date: Date } }>(a: T, b: T): number => {
   const diff = b.data.date.valueOf() - a.data.date.valueOf();
-  return diff !== 0 ? diff : b.id.localeCompare(a.id);
+  return diff !== 0 ? diff : byCodePoint(b.id, a.id);
 };
 
 /** 공개 대상 log 항목을 최신순으로 반환한다. */
@@ -60,23 +67,6 @@ export const versionSlug = (entry: RevisionEntry): string => {
   if (!last) throw new Error(`개정축 항목의 id 가 비어 있습니다: ${entry.id}`);
   return last;
 };
-
-/**
- * 개정본의 URL.
- *
- * 최신 개정본은 계열 루트(/project/analysis-video/)가 곧 그 개정본의 주소다 —
- * 버전을 고르기만 하는 중간 페이지를 두지 않는다. 구버전만 버전 세그먼트를 갖는다.
- * 이 규칙을 아는 곳은 여기 하나뿐이어야 한다(라우트·목록·이웃 링크가 모두 여길 부른다).
- */
-export const revisionHref = (
-  collection: RevisionCollection,
-  series: string,
-  entry: RevisionEntry,
-  isLatest: boolean,
-): string =>
-  isLatest
-    ? `/${collection}/${series}/`
-    : `/${collection}/${series}/${versionSlug(entry)}/`;
 
 /** 한 계열의 개정 이력. revisions 는 최신순으로 정렬되어 있다. */
 export interface SeriesHistory<E extends RevisionEntry = RevisionEntry> {
@@ -127,7 +117,12 @@ export interface TimelineItem {
   title: string;
   description: string;
   date: Date;
-  href: string;
+  /**
+   * log 이면 항목 id, 개정축이면 series.
+   * ★ URL 이 아니다 — 뷰가 routes.ts 로 로케일에 맞는 주소를 만든다.
+   *   여기에 완성된 href 를 두면 접두사가 붙는 순간 전부 영어 트리를 가리킨다.
+   */
+  slug: string;
   tags: string[];
   /** 개정축 전용 — 개정본 개수. 눈금 개수와 같다. */
   revisionCount?: number;
@@ -143,7 +138,7 @@ const toLogItem = (entry: LogEntry): TimelineItem => ({
   title: entry.data.title,
   description: entry.data.description,
   date: entry.data.date,
-  href: `/log/${entry.id}/`,
+  slug: entry.id,
   tags: entry.data.tags,
 });
 
@@ -158,7 +153,7 @@ const toSeriesItem = ({
   title: latest.data.title,
   description: latest.data.description,
   date: latest.data.date,
-  href: revisionHref(collection, series, latest, true),
+  slug: series,
   tags: latest.data.tags,
   revisionCount: revisions.length,
   version: latest.data.version,
@@ -186,7 +181,7 @@ export const getTimeline = async (): Promise<TimelineItem[]> => {
 
   return parts.flat().sort((a, b) => {
     const diff = b.date.valueOf() - a.date.valueOf();
-    return diff !== 0 ? diff : b.key.localeCompare(a.key);
+    return diff !== 0 ? diff : byCodePoint(b.key, a.key);
   });
 };
 

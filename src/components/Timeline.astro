@@ -13,17 +13,33 @@ import AdUnit from './AdUnit.astro';
 import Thumb from './Thumb.astro';
 import { formatDate, isoDate } from '../lib/date';
 import type { TimelineItem, YearGroup } from '../lib/content';
+import type { Locale } from '../lib/i18n';
+import { logHref, revisionHref } from '../lib/routes';
+import { UI } from '../lib/ui';
 
 interface Props {
+  locale: Locale;
   groups: YearGroup[];
   /** 이만큼 항목이 지나간 뒤 광고를 한 번 넣는다. null 이면 광고 없음. */
   adAfter?: number | null;
   adSlot?: string;
-  /** 항목이 하나도 없을 때 그 자리에 대신 놓을 문구 */
+  /**
+   * 항목이 하나도 없을 때 그 자리에 대신 놓을 문구.
+   * 기본값은 그 로케일의 일반 문구이고, 축마다 더 구체적인 문장이 있으면 넘긴다.
+   */
   empty?: string;
 }
 
-const { groups, adAfter = null, adSlot, empty = '아직 없습니다.' } = Astro.props;
+const { locale, groups, adAfter = null, adSlot, empty } = Astro.props;
+
+const t = UI[locale];
+const emptyText = empty ?? t.emptyList;
+
+/** 항목의 주소. 로케일 접두사가 여기서 한 번에 붙는다. */
+const href = (item: TimelineItem): string =>
+  item.kind === 'log'
+    ? logHref(locale, item.slug)
+    : revisionHref(locale, item.kind, item.slug, null);
 
 type Row =
   | { type: 'year'; year: number }
@@ -55,7 +71,7 @@ const marks = (count: number): boolean[] =>
 <div class="column">
   {/* 빈 목록을 아무것도 없는 화면으로 두면 "로딩이 덜 됐나"로 읽힌다.
       비었다는 사실 자체를 화면에 적는다. */}
-  {rows.length === 0 && <p class="empty">{empty}</p>}
+  {rows.length === 0 && <p class="empty">{emptyText}</p>}
   {
     rows.map((row) =>
       row.type === 'year' ? (
@@ -82,13 +98,13 @@ const marks = (count: number): boolean[] =>
                   <span class="rev-count">
                     v{row.item.version}
                     {row.item.revisionCount && row.item.revisionCount > 1
-                      ? ` · 개정 ${row.item.revisionCount}`
+                      ? t.revision.count(row.item.revisionCount)
                       : ''}
                   </span>
                 )}
               </div>
               <h3 class="entry__title">
-                <a href={row.item.href}>{row.item.title}</a>
+                <a href={href(row.item)}>{row.item.title}</a>
               </h3>
               {row.item.tags.length > 0 && (
                 <p class="entry__tags">{row.item.tags.join(' · ')}</p>

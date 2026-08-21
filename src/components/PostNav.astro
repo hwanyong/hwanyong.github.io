@@ -1,4 +1,6 @@
 ---
+import { UI } from '../lib/ui';
+import type { Locale } from '../lib/i18n';
 /**
  * 글 위·아래에 같은 모양으로 놓이는 이동 줄.
  *
@@ -7,6 +9,7 @@
  * 자리에 따라 다른 것은 여백·구분선뿐이며 place 로 구분한다.
  */
 interface Props {
+  locale: Locale;
   /** 되돌아갈 곳 */
   href: string;
   /** 되돌아갈 곳 이름. 앞의 화살표는 이 컴포넌트가 붙인다. */
@@ -23,10 +26,10 @@ interface Props {
   jumpLabel?: string;
 }
 
-const { href, label, place = 'head', jumpHref, jumpLabel } = Astro.props;
+const { locale, href, label, place = 'head', jumpHref, jumpLabel } = Astro.props;
 ---
 
-<nav class:list={['post-nav', `post-nav--${place}`]} aria-label="글 이동">
+<nav class:list={['post-nav', `post-nav--${place}`]} aria-label={UI[locale].postNav}>
   <a class="back-link" href={href}>← {label}</a>
   {jumpHref && jumpLabel && <a class="rev-jump" href={jumpHref}>{jumpLabel}</a>}
 </nav>

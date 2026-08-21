@@ -1,115 +1,148 @@
 ---
 // src/pages/privacy/index.astro — 개인정보처리방침.
 //
-// 내용은 전부 src/lib/privacy.ts 에 있다. 이 파일은 배치만 한다
-// (profile.ts ↔ about/index.astro 와 같은 구조).
+// 본문은 전부 src/lib/privacy.ts 에 있다. 이 파일은 배치만 한다
+// (profile.ts ↔ about 과 같은 구조).
 //
-// ads={false} 인 이유: 본문이 얇은 고지 화면이다. Google Publisher Policies 는
-// publisher-content 가 빈약한 페이지에 광고를 붙이는 것을 금지한다.
-// 분석(AnalyticsHead)은 ads 와 무관하게 켜지므로 이 페이지 방문도 집계된다.
+// 광고를 띄우지 않는다: 고지 문서는 publisher content 가 아니다.
+// 그리고 이 페이지는 광고 승인 요건상 어느 화면에서나 1클릭에 닿아야 하므로
+// 푸터 링크(BaseLayout)와 짝을 이룬다.
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { SITE } from '../../lib/site';
+import { DEFAULT_LOCALE } from '../../lib/i18n';
+import { formatDate, isoDate } from '../../lib/date';
 import {
   POLICY,
-  INTRO,
-  STORAGE,
-  STORAGE_NOTE,
-  THIRD_PARTIES,
-  RETENTION,
-  RIGHTS,
-  CHANGES,
+  POLICY_TEXT,
+  STORAGE_KEYS,
+  VENDOR_IDS,
+  VENDORS,
 } from '../../lib/privacy';
+
+// S3 에서 Astro.props.locale 로 대체된다.
+const locale = DEFAULT_LOCALE;
+
+// ★ 폴백 헬퍼를 거치지 않는다. 방침은 모든 로케일에 반드시 있어야 하고,
+//   없으면 화면이 조용히 다른 언어를 보여주는 대신 컴파일이 죽는 것이 맞다.
+const t = POLICY_TEXT[locale];
+const effective = formatDate(POLICY.effective);
 ---
 
 <BaseLayout
-  title="개인정보처리방침"
-  description="이 블로그가 어떤 정보를 어떻게 다루는지에 대한 안내"
+  locale={locale}
+  title={t.title}
+  description={t.metaDescription}
   ads={false}
-  status={POLICY.effective}
+  status={effective}
 >
   <div class="column">
     <header class="post-header">
       <div class="post-header__meta">
-        <time datetime={POLICY.effective}>시행 {POLICY.effective}</time>
+        <time datetime={isoDate(POLICY.effective)}>{t.effectiveLabel} {effective}</time>
       </div>
-      <h1 class="post-header__title">개인정보처리방침</h1>
-      <p class="post-header__lead">
-        이 블로그가 어떤 정보를 어떻게 다루는지 적어둔 문서입니다.
-      </p>
+      <h1 class="post-header__title">{t.title}</h1>
+      <p class="post-header__lead">{t.lead}</p>
     </header>
 
     <section class="prose">
-      {INTRO.map((paragraph) => <p>{paragraph}</p>)}
+      {(['noAccount', 'thirdPartyOnly'] as const).map((key) => <p>{t.intro[key]}</p>)}
     </section>
 
-    <h2 class="section-bar"><b>브라우저에 남는 값</b></h2>
-
+    {/* <h2 class="section-bar"> 는 계기판 요소지만 그 안의 글자는 문서 목차다.
+        Log/Lecture 같은 축 이름이 아니므로 비번역 대상이 아니다. */}
+    <h2 class="section-bar"><b>{t.headings.storage}</b></h2>
     <section class="prose">
       <table>
         <thead>
           <tr>
-            <th>이름</th>
-            <th>종류</th>
-            <th>주체</th>
-            <th>목적</th>
-            <th>보관</th>
+            <th>{t.tableHead.name}</th>
+            <th>{t.tableHead.kind}</th>
+            <th>{t.tableHead.owner}</th>
+            <th>{t.tableHead.purpose}</th>
+            <th>{t.tableHead.retention}</th>
           </tr>
         </thead>
         <tbody>
-          {STORAGE.map((row) => (
+          {STORAGE_KEYS.map((key) => (
             <tr>
-              <td><code>{row.name}</code></td>
-              <td>{row.kind}</td>
-              <td>{row.owner}</td>
-              <td>{row.purpose}</td>
-              <td>{row.retention}</td>
+              <td><code>{key}</code></td>
+              <td>{t.storage[key].kind}</td>
+              <td>{t.storage[key].owner}</td>
+              <td>{t.storage[key].purpose}</td>
+              <td>{t.storage[key].retention}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      {STORAGE_NOTE.map((paragraph) => <p>{paragraph}</p>)}
+      {(['notCookie', 'onlyIfToggled', 'howToDelete'] as const).map((key) => (
+        <p>{t.storageNote[key]}</p>
+      ))}
     </section>
 
-    <h2 class="section-bar"><b>제3자 서비스</b></h2>
-
+    <h2 class="section-bar"><b>{t.headings.thirdParty}</b></h2>
     <section class="prose">
-      {THIRD_PARTIES.map((party) => (
+      {VENDOR_IDS.map((id) => (
         <>
-          <h3>{party.name}</h3>
+          <h3>{VENDORS[id].name}</h3>
           <p>
-            <strong>용도</strong> {party.purpose} · <strong>쿠키</strong> {party.cookies}
-            {!party.active && <> · <strong>현재 사용하지 않음</strong></>}
+            <strong>{t.purposeLabel}</strong> {t.vendors[id].purpose} ·{' '}
+            <strong>{t.cookiesLabel}</strong> {t.vendors[id].cookies}
+            {!VENDORS[id].active && <> · <strong>{t.inactiveNote}</strong></>}
           </p>
-          <p>{party.detail}</p>
+          <p>{t.vendors[id].detail}</p>
           <p>
-            <a href={party.policyHref} rel="noopener noreferrer" target="_blank">
-              {party.name} 개인정보 정책
+            <a href={VENDORS[id].policyHref} rel="noopener noreferrer" target="_blank">
+              {t.vendorPolicyLink(VENDORS[id].name)}
             </a>
           </p>
         </>
       ))}
     </section>
 
-    <h2 class="section-bar"><b>보유와 파기</b></h2>
-
+    <h2 class="section-bar"><b>{t.headings.retention}</b></h2>
     <section class="prose">
-      {RETENTION.map((paragraph) => <p>{paragraph}</p>)}
+      {(['nothingHeld', 'whereItLives'] as const).map((key) => <p>{t.retention[key]}</p>)}
     </section>
 
-    <h2 class="section-bar"><b>이용자의 권리와 문의</b></h2>
-
+    {/* 관할 고지. 두 관할이 모두 실린다 —
+        운영자가 한국에 있어 PIPA 가 항상 적용되고, EEA 방문자에게는 GDPR 이 적용된다.
+        읽는 언어가 아니라 정보주체의 소재로 갈리므로 언어별로 나누지 않는다. */}
+    <h2 class="section-bar"><b>{t.rights.heading}</b></h2>
     <section class="prose">
-      {RIGHTS.map((paragraph) => <p>{paragraph}</p>)}
+      {t.rights.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+
+      <h3>{t.rights.pipa.label}</h3>
+      {t.rights.pipa.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
       <p>
-        <strong>문의</strong>{' '}
+        <strong>{t.rights.pipa.officerLabel}</strong> {SITE.author} ·{' '}
+        <a href={`mailto:${POLICY.contact}`}>{POLICY.contact}</a>
+      </p>
+
+      <h3>{t.rights.gdpr.label}</h3>
+      {t.rights.gdpr.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+      <p>
+        <strong>{t.rights.gdpr.controllerLabel}</strong> {SITE.author} ·{' '}
+        <a href={`mailto:${POLICY.contact}`}>{POLICY.contact}</a>
+      </p>
+      <p><strong>{t.rights.gdpr.legalBasis.label}</strong></p>
+      {t.rights.gdpr.legalBasis.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+      <p><strong>{t.rights.gdpr.transfers.label}</strong></p>
+      {t.rights.gdpr.transfers.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+      <p>
+        <strong>{t.rights.gdpr.supervisoryAuthority.label}</strong>{' '}
+        {t.rights.gdpr.supervisoryAuthority.text}
+      </p>
+
+      <p>
+        <strong>{t.contactLabel}</strong>{' '}
         <a href={`mailto:${POLICY.contact}`}>{POLICY.contact}</a>
       </p>
     </section>
 
-    <h2 class="section-bar"><b>변경</b></h2>
-
+    <h2 class="section-bar"><b>{t.headings.changes}</b></h2>
     <section class="prose">
-      {CHANGES.map((paragraph) => <p>{paragraph}</p>)}
-      <p>시행일 {POLICY.effective}</p>
+      <p>{t.changes.weWillPost}</p>
+      <p>{t.effectiveDateLabel} {effective}</p>
     </section>
   </div>
 </BaseLayout>

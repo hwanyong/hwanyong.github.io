@@ -46,7 +46,12 @@ export const ENTRY_SELECTOR = '.entry';
 
 export interface Hint {
   keys: readonly KeyBinding[];
-  label: string;
+  /**
+   * UI[locale].hints 의 키.
+   * ★ 문구가 아니라 키다 — 이 파일은 로케일을 모른다. 여기 완성된 문자열을 두면
+   *   단축키 표가 언어를 하나 알게 되어, 언어를 늘릴 때 이 파일까지 따라 늘어난다.
+   */
+  labelKey: 'move' | 'open' | 'backlight';
   /**
    * 이 안내가 성립하려면 페이지에 있어야 하는 요소의 선택자.
    * 없는 페이지에서는 커맨드 바가 이 항목을 감춘다 — 목록이 없는 상세 화면에서
@@ -61,9 +66,9 @@ export interface Hint {
  * keys 는 BINDINGS 를 참조하므로 각인과 실제 키가 어긋날 수 없다.
  */
 export const HINTS: readonly Hint[] = [
-  { keys: [BINDINGS.moveDown, BINDINGS.moveUp], label: '이동', needs: ENTRY_SELECTOR },
-  { keys: [BINDINGS.open], label: '열기', needs: ENTRY_SELECTOR },
-  { keys: [BINDINGS.toggleMode], label: '백라이트' },
+  { keys: [BINDINGS.moveDown, BINDINGS.moveUp], labelKey: 'move', needs: ENTRY_SELECTOR },
+  { keys: [BINDINGS.open], labelKey: 'open', needs: ENTRY_SELECTOR },
+  { keys: [BINDINGS.toggleMode], labelKey: 'backlight' },
 ];
 
 /**

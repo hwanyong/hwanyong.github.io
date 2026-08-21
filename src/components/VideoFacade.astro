@@ -1,4 +1,6 @@
 ---
+import { UI } from '../lib/ui';
+import type { Locale } from '../lib/i18n';
 /**
  * YouTube 영상. 누르기 전에는 포스터 이미지 한 장뿐이다.
  *
@@ -10,6 +12,7 @@
  * 임베드 주소는 youtube-nocookie.com 이다. 재생 전까지 추적 쿠키를 심지 않는다.
  */
 interface Props {
+  locale: Locale;
   /** YouTube video id (11자) */
   id: string;
   title: string;
@@ -17,11 +20,11 @@ interface Props {
   poster: string;
 }
 
-const { id, title, poster } = Astro.props;
+const { locale, id, title, poster } = Astro.props;
 ---
 
 <figure class="video">
-  <button class="video__play" type="button" data-video={id} aria-label={`${title} 재생`}>
+  <button class="video__play" type="button" data-video={id} aria-label={UI[locale].videoPlay(title)}>
     <img src={poster} alt="" width="1280" height="720" loading="lazy" />
     <span class="video__mark" aria-hidden="true">▶</span>
   </button>

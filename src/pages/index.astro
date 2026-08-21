@@ -4,16 +4,23 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Timeline from '../components/Timeline.astro';
 import { getTimeline, groupByYear } from '../lib/content';
-import { SITE, AD_SLOTS } from '../lib/site';
+import { AD_SLOTS } from '../lib/site';
+import { DEFAULT_LOCALE } from '../lib/i18n';
+import { UI } from '../lib/ui';
+
+// S3 에서 Astro.props.locale 로 대체된다. 지금은 정문 하나뿐이다.
+const locale = DEFAULT_LOCALE;
+const t = UI[locale];
 
 const items = await getTimeline();
 const groups = groupByYear(items);
 ---
 
 <BaseLayout
-  title={SITE.title}
-  description={SITE.description}
+  locale={locale}
+  title={t.site.title}
+  description={t.site.description}
   status={`${items.length} ENTRIES`}
 >
-  <Timeline groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
+  <Timeline locale={locale} groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
 </BaseLayout>

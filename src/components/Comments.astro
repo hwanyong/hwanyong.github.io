@@ -12,15 +12,18 @@
  * 인라인 <script define:vars> 로 값을 주입하면 그 코드가 번들·타입체크 밖으로
  * 빠져 유지보수가 안 된다.
  */
+import { UI } from '../lib/ui';
+import type { Locale } from '../lib/i18n';
 import { GISCUS } from '../lib/site';
 
 interface Props {
+  locale: Locale;
   mapping?: 'pathname' | 'url' | 'title' | 'og:title' | 'specific' | 'number';
   /** mapping 이 'specific'(검색어) 또는 'number'(Discussion 번호)일 때만 사용 */
   term?: string;
 }
 
-const { mapping = 'pathname', term } = Astro.props;
+const { locale, mapping = 'pathname', term } = Astro.props;
 
 // dev 서버(http://localhost:4321)는 CORS 헤더를 주지 않으므로
 // giscus iframe 이 crossorigin="anonymous" 로 커스텀 테마 CSS 를 못 읽는다.
@@ -42,10 +45,11 @@ const config = {
   ...(term ? { term } : {}),
   theme,
 };
+const t = UI[locale];
 ---
 
-<section class="comments" aria-label="댓글">
-  <h2 class="comments__title">댓글</h2>
+<section class="comments" aria-label={t.comments}>
+  <h2 class="comments__title">{t.comments}</h2>
   {/* giscus client.js 가 이 요소를 찾아 내부를 비우고 iframe 을 삽입한다. */}
   <div class="giscus" data-giscus={JSON.stringify(config)}></div>
 </section>

@@ -4,9 +4,12 @@
  * astro.config.ts 의 site 가 설정되어 있어야 한다 —
  * 없으면 Astro.site 가 undefined 라 new URL(..., undefined) 이 TypeError 를 던진다.
  */
-import { SITE } from '../lib/site';
+import { LOCALES, type Locale } from '../lib/i18n';
+import { feedHref } from '../lib/routes';
+import { UI } from '../lib/ui';
 
 interface Props {
+  locale: Locale;
   title: string;
   description: string;
   /** public/ 기준 절대 경로 또는 절대 URL */
@@ -16,6 +19,7 @@ interface Props {
 }
 
 const {
+  locale,
   title,
   description,
   image = '/og-default.png',
@@ -23,6 +27,7 @@ const {
   publishedTime,
 } = Astro.props;
 
+const t = UI[locale];
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImageURL = new URL(image, Astro.site);
 ---
@@ -39,12 +44,12 @@ const ogImageURL = new URL(image, Astro.site);
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
 <meta property="og:type" content={type} />
-<meta property="og:site_name" content={SITE.title} />
+<meta property="og:site_name" content={t.site.title} />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
 <meta property="og:url" content={canonicalURL} />
 <meta property="og:image" content={ogImageURL} />
-<meta property="og:locale" content="ko_KR" />
+<meta property="og:locale" content={LOCALES[locale].ogLocale} />
 {publishedTime && (
   <meta property="article:published_time" content={publishedTime.toISOString()} />
 )}
@@ -54,9 +59,12 @@ const ogImageURL = new URL(image, Astro.site);
 <meta name="twitter:description" content={description} />
 <meta name="twitter:image" content={ogImageURL} />
 
+{/* ★ 피드 링크와 (S3 의) hreflang 링크는 둘 다 rel="alternate" 다. 절대 같은 헬퍼로 내지 말 것.
+    피드는 type="application/rss+xml" 을 붙이고 hreflang 을 붙이지 않는다 —
+    섞이면 검색엔진이 XML 을 그 언어의 대체 '페이지' 로 읽는다. */}
 <link
   rel="alternate"
   type="application/rss+xml"
-  title={SITE.title}
-  href={new URL('rss.xml', Astro.site)}
+  title={t.site.title}
+  href={new URL(feedHref(locale), Astro.site)}
 />

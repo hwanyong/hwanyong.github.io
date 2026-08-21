@@ -97,9 +97,29 @@ body {
   font-family: var(--font-serif), 'Apple SD Gothic Neo', serif;
   font-size: 17px;
   line-height: 1.8;
-  word-break: keep-all; /* 한글은 단어 단위로 끊는다 */
-  overflow-wrap: anywhere;
+  /* 줄바꿈 기본은 라틴(기본 로케일)에 맞춘다. 한국어 규칙은 아래 :lang(ko) 에 있다. */
+  word-break: normal;
+  overflow-wrap: break-word;
+  /* 명시적 기각: 자동 하이픈은 analysis-video 같은 식별자를 뜻 없는 자리에서 끊는다. */
+  hyphens: none;
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+  한국어는 단어(어절) 단위로 끊는다. 라틴 문장에 keep-all 을 걸면 긴 문장이
+  통째로 한 줄이 되어 가로 스크롤이 생기므로 언어로 한정해야 한다.
+
+  ★ :root:lang(ko) 가 아니라 맨 :lang(ko) 다. 실측 결과 :root:lang() 은
+    부분 lang 속성(예: 번역 없는 글의 <article lang="ko">)에 매칭되지 않는다.
+    맨 :lang() 만 해당 요소와 그 자손까지 매칭한다 — 한 페이지 안에 두 언어가
+    섞이는 경우가 실제로 있으므로(아직 번역되지 않은 본문) 이쪽이어야 한다.
+
+  코드블록에는 영향이 없다: code.css 가 white-space: pre 와 overflow-x: auto 를
+  이미 걸어 두어 이 규칙이 애초에 닿지 않는다.
+*/
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* LCD 격자(주사선). 화면 전체를 덮되 광고 슬롯 위는 비켜간다 —

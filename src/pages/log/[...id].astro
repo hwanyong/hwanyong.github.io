@@ -13,6 +13,8 @@ import ArticleShell from '../../components/ArticleShell.astro';
 import Toc from '../../components/Toc.astro';
 import { getLogEntries } from '../../lib/content';
 import type { LogEntry } from '../../lib/content';
+import { DEFAULT_LOCALE } from '../../lib/i18n';
+import { sectionHref, sectionLabel } from '../../lib/routes';
 
 export const getStaticPaths = async () => {
   const posts = await getLogEntries();
@@ -26,19 +28,23 @@ type Props = { post: LogEntry };
 
 const { post } = Astro.props;
 const { Content, headings } = await render(post);
+
+// S3 에서 Astro.props.locale 로 대체된다.
+const locale = DEFAULT_LOCALE;
 ---
 
 <ArticleShell
+  locale={locale}
   title={post.data.title}
   description={post.data.description}
   date={post.data.date}
   meta={post.data.tags}
   section="log"
-  backHref="/log/"
-  backLabel="Log"
+  backHref={sectionHref(locale, 'log')}
+  backLabel={sectionLabel('log')}
 >
   {/* 넓은 화면에서 오른쪽 사이드 열로 빠진다(1280px 미만에서는 숨김). */}
-  <Toc headings={headings} slot="aside" />
+  <Toc locale={locale} headings={headings} slot="aside" />
 
   <Content />
 </ArticleShell>

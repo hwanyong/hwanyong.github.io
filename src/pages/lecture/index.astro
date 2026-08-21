@@ -4,16 +4,32 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import Timeline from '../../components/Timeline.astro';
 import { getSeriesTimeline, groupByYear } from '../../lib/content';
 import { AD_SLOTS } from '../../lib/site';
+import { DEFAULT_LOCALE } from '../../lib/i18n';
+import { sectionLabel } from '../../lib/routes';
+import { UI } from '../../lib/ui';
+
+// S3 에서 Astro.props.locale 로 대체된다.
+const locale = DEFAULT_LOCALE;
+const t = UI[locale];
 
 const items = await getSeriesTimeline('lecture');
 const groups = groupByYear(items);
 ---
 
 <BaseLayout
-  title="Lecture"
-  description="가르치며 고쳐 나가는 자료"
+  locale={locale}
+  title={sectionLabel('lecture')}
+  description={t.lists.lecture.description}
   section="lecture"
+  ads={items.length > 0}
   status={`${items.length} SERIES`}
 >
-  <Timeline groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} empty="아직 공개한 강의가 없습니다." />
+  {/* 인피드 슬롯에는 게이트가 없다 — 항목이 adAfter 개보다 적으면 Timeline 의
+      루프가 애초에 광고 행을 만들지 않는다. 게이트가 필요한 곳은 로더 쪽(ads)이다. */}
+  <Timeline
+    locale={locale}
+    groups={groups}
+    adAfter={3}
+    adSlot={AD_SLOTS.inFeed} empty={t.emptyLecture}
+  />
 </BaseLayout>
