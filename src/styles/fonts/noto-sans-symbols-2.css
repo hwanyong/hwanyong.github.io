@@ -1,0 +1,4 @@
+/* 생성물 — 손으로 고치지 마세요. pnpm fonts:build 가 다시 씁니다.
+   출처: noto-sans-symbols-2.lock.json (https://fonts.googleapis.com/css2?family=Noto+Sans+Symbols+2&display=swap)
+   1개 선언 → 1개 @font-face */
+@font-face{font-family:"Noto Sans Symbols 2";src:url("/fonts/b7dc9b298ce3d96a.woff2") format("woff2");font-display:swap;unicode-range:U+2190-21FF;font-weight:400;font-style:normal;}

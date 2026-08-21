@@ -16,11 +16,14 @@
     "preview": "astro preview",
     "check": "astro check",
     "sync": "astro sync",
-    "ci": "node tools/check-collisions.mjs && node tools/i18n-verify.ts && astro check && astro build && node tools/verify-site.ts",
+    "ci": "node tools/check-collisions.mjs && node tools/i18n-verify.ts && node tools/fonts.mjs build --check && astro check && astro build && node tools/verify-site.ts",
     "astro": "astro",
     "check:collisions": "node tools/check-collisions.mjs",
     "i18n:fill": "node tools/i18n-fill.ts",
-    "i18n:verify": "node tools/i18n-verify.ts"
+    "i18n:verify": "node tools/i18n-verify.ts",
+    "fonts:build": "node tools/fonts.mjs build",
+    "fonts:check": "node tools/fonts.mjs build --check",
+    "fonts:fetch": "node tools/fonts.mjs fetch"
   },
   "dependencies": {
     "@astrojs/rss": "4.0.19",

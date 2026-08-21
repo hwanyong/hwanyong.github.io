@@ -1,0 +1,23 @@
+{
+  "family": "Noto Sans Symbols 2",
+  "slug": "noto-sans-symbols-2",
+  "upstream": "https://fonts.googleapis.com/css2?family=Noto+Sans+Symbols+2&display=swap",
+  "license": "SIL Open Font License 1.1",
+  "copyright": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)",
+  "copyrightSource": "https://github.com/google/fonts/blob/main/ofl/notosanssymbols2/OFL.txt",
+  "why": "← → ↵ ↩ 네 글자 때문이다. Noto Serif KR 에서 ← 는 43.9KB, → 는 42.3KB 짜리 한글 빈도 버킷 안에 들어 있고, ↵ 와 ↩ 는 어느 서브셋에도 없어 시스템 폴백이었다. 화살표는 언어 중립이라 이 페이스는 로케일이 늘어도 그대로 쓴다.",
+  "keepCovering": [
+    "U+21B5"
+  ],
+  "declareRange": "U+2190-21FF",
+  "subsets": [
+    {
+      "file": "b7dc9b298ce3d96a.woff2",
+      "url": "https://fonts.gstatic.com/s/notosanssymbols2/v25/I_uyMoGduATTei9eI8daxVHDyfisHr71-ujgfFz26AMgGw.woff2",
+      "unicodeRange": "U+2190-21FF",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 7920
+    }
+  ]
+}

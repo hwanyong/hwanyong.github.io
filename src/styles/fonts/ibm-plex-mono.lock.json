@@ -1,0 +1,58 @@
+{
+  "family": "IBM Plex Mono",
+  "slug": "ibm-plex-mono",
+  "upstream": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap",
+  "license": "SIL Open Font License 1.1",
+  "copyright": "Copyright © 2017 IBM Corp. with Reserved Font Name \"Plex\"",
+  "copyrightSource": "https://github.com/google/fonts/blob/main/ofl/ibmplexmono/OFL.txt",
+  "subsets": [
+    {
+      "file": "04dd54f8b9dc7022.woff2",
+      "url": "",
+      "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+      "weight": 400,
+      "style": "italic",
+      "bytes": 11568
+    },
+    {
+      "file": "6289d3ddfa5c9533.woff2",
+      "url": "",
+      "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+      "weight": 500,
+      "style": "italic",
+      "bytes": 11588
+    },
+    {
+      "file": "f7a5011e02f4baeb.woff2",
+      "url": "",
+      "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+      "weight": 600,
+      "style": "italic",
+      "bytes": 11608
+    },
+    {
+      "file": "45f5561f938fa232.woff2",
+      "url": "",
+      "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 10052
+    },
+    {
+      "file": "e24ff982d90e3401.woff2",
+      "url": "",
+      "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+      "weight": 500,
+      "style": "normal",
+      "bytes": 10060
+    },
+    {
+      "file": "f276da2ba24f5203.woff2",
+      "url": "",
+      "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+      "weight": 600,
+      "style": "normal",
+      "bytes": 10120
+    }
+  ]
+}
