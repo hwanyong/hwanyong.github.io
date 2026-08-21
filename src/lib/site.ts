@@ -17,9 +17,14 @@ export const GISCUS = {
   repo: 'hwanyong/hwanyong.github.io',
   /** GraphQL repository.id 로 실측 확인된 값 */
   repoId: 'R_kgDOJBJzTA',
+  /**
+   * Announcements 를 쓰는 이유: Discussion Format 이 Announcement 라
+   * 유지관리자와 giscus 만 새 스레드를 만들 수 있다. Open-ended 카테고리로 두면
+   * 누구나 빈 스레드를 만들어 댓글 스레드와 섞인다.
+   */
   category: 'Announcements',
-  /** TODO: Discussions 를 켠 뒤 GraphQL 로 조회해 DIC_kwDO... 로 교체 */
-  categoryId: 'DIC_kwDO__REPLACE_ME__',
+  /** GraphQL discussionCategories 로 실측 확인 (2026-08-20) */
+  categoryId: 'DIC_kwDOJBJzTM4DD2Rq',
   origin: 'https://giscus.app',
   /** 커스텀 테마 CSS 의 배포 경로 (public/giscus/*.css) */
   themeBase: 'https://hwanyong.github.io/giscus',
