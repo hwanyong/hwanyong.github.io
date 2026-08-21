@@ -49,28 +49,12 @@ const config = {
 </section>
 
 {/*
-  초기화 스크립트를 여기 두지 않는다.
-  Astro 5+ 는 컴포넌트의 <script> 를 head 로 hoist 하지 않고 선언된 자리에
-  그대로 남긴다. 이 컴포넌트는 <body> 안에 놓이므로 여기에 <script> 를 쓰면
-  body 안 스크립트가 되어버린다.
-  → 진입점은 BaseLayout 의 <head> 하나로 통합했다(initGiscus 는 .giscus
-    컨테이너가 없는 페이지에서는 즉시 반환하므로 무해하다).
+  이 컴포넌트는 <script> 도 <style> 도 갖지 않는다.
+
+  <script>: Astro 5+ 는 컴포넌트 스크립트를 head 로 hoist 하지 않고 선언된 자리에
+    남긴다. 이 컴포넌트는 <body> 안에 놓이므로 여기 쓰면 body 스크립트가 된다.
+    → 진입점은 BaseLayout 의 <head> 하나(initGiscus 는 .giscus 가 없으면 즉시 반환).
+
+  <style>: 스타일이 컴포넌트마다 흩어지면 토큰 SSOT 가 깨진다.
+    → .comments 규칙은 src/styles/global.css 에 있다.
 */}
-
-<style>
-  .comments {
-    margin-block-start: 4rem;
-  }
-
-  .comments__title {
-    font-family: var(--font-mono), monospace;
-    font-size: 10.5px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    background: var(--ink-2);
-    color: var(--bg);
-    padding: 0.42rem 0.9rem;
-    margin-block: 0 1.25rem;
-    display: inline-block;
-  }
-</style>

@@ -131,15 +131,23 @@ a {
   padding-inline: 1.25rem;
 }
 
-/* 본문 열 하나. 왼쪽 gutter 는 개정 눈금 전용이라 목록에서만 쓴다. */
+/* 본문 열 하나. 왼쪽 gutter 는 개정 눈금 전용이라 목록에서만 쓴다.
+ *
+ * 본문 트랙이 minmax(0, var(--col)) 이 아니라 minmax(0, 1fr) 인 이유:
+ * max 가 고정 길이면 화면이 그보다 좁아도 트랙이 그 크기를 고집해
+ * 가로 스크롤이 생긴다(390px 화면에서 개정 이력 패널이 잘려 나갔다).
+ * 1fr 은 남은 공간만 차지하므로 절대 넘치지 않고, 상한은 max-width 가 잡는다.
+ * overflow-x:hidden 으로 덮지 않는다 — 그건 잘린 콘텐츠를 감출 뿐이다. */
 .column {
   display: grid;
-  grid-template-columns: var(--gutter) minmax(0, var(--col));
-  justify-content: center;
+  grid-template-columns: var(--gutter) minmax(0, 1fr);
+  max-width: calc(var(--gutter) + var(--col));
+  margin-inline: auto;
 }
 
 .column > * {
   grid-column: 2;
+  min-width: 0; /* grid 자식의 기본 min-width:auto 가 긴 콘텐츠에 밀리는 것을 막는다 */
 }
 
 /* ─── NieR 모서리 브래킷 ───────────────────────────────────── */
@@ -201,6 +209,12 @@ a {
   font-size: 13px;
   letter-spacing: 0;
   color: var(--ink-2);
+  /* 좁은 화면에서 이 문구가 네비게이션을 화면 밖으로 밀어내면 안 된다.
+     줄어들 수 있게 두고, 더 좁아지면 아래 미디어쿼리에서 숨긴다. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .site-nav {
@@ -729,30 +743,194 @@ a {
   flex: none;
 }
 
-/* 모바일에서는 커맨드 바를 숨긴다.
-   물리 키보드가 없어 안내가 무의미하고, 좁은 화면 높이만 잡아먹는다. */
-@media (max-width: 720px) {
+/* ─── 개정본 상태 안내 · 개정 이동 ─────────────────────────── */
+
+.stale-notice {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+  color: var(--ink-2);
+  background: var(--bg-2);
+  border-inline-start: 2px solid var(--accent);
+  padding: 0.7rem 0.9rem;
+  margin-block: 0 1.75rem;
+}
+
+.rev-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-block-start: 2.5rem;
+  padding-block-start: 1.15rem;
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.rev-nav a:hover {
+  color: var(--ink);
+}
+
+/* ─── 댓글 ─────────────────────────────────────────────────── */
+
+.comments {
+  margin-block-start: 4rem;
+}
+
+.comments__title {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: var(--ink-2);
+  color: var(--bg);
+  padding: 0.42rem 0.9rem;
+  margin-block: 0 1.25rem;
+  display: inline-block;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   반응형
+
+   본문 폭(--col)은 화면이 커져도 크게 늘리지 않는다. 한 줄이 길어지면
+   다음 줄 첫 글자를 찾는 눈의 이동 거리가 늘어 오히려 읽기 어려워진다.
+   초광폭에서 여백이 넓어 보이는 것은 낭비가 아니라 의도다.
+
+   대신 화면이 좁아질 때 무엇을 줄이고 무엇을 버릴지를 단계로 정한다.
+     1024px  개정 눈금 여백 축소 — 본문 폭을 먼저 지킨다
+      768px  커맨드 바 제거(물리 키보드 없음), 헤더 2줄, 광고 높이 축소
+      480px  눈금 여백 최소, 제목 축소, 개정 이력 세로 배치
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 태블릿 가로 — 눈금 여백부터 줄여 본문 폭을 지킨다 */
+@media (max-width: 1024px) {
+  :root {
+    --gutter: 1.9rem;
+  }
+}
+
+/* 태블릿 세로 이하 */
+@media (max-width: 768px) {
+  /* 물리 키보드가 없어 단축키 안내가 무의미하고, 좁은 화면 높이만 잡아먹는다.
+     display:none 이므로 안내와 동작이 함께 사라진다(키 핸들러는 남지만
+     터치 기기에서 발화하지 않는다). */
   .command-bar {
     display: none;
   }
 
   body {
     padding-block-end: 1rem;
+    font-size: 16px;
   }
-}
 
-@media (max-width: 820px) {
-  :root {
-    --gutter: 1.9rem;
+  /* 로고·태그라인 / 네비·상태로 2줄 배치 */
+  .site-header {
+    flex-wrap: wrap;
+    gap: 0.55rem 0.9rem;
+    padding-block: 1.5rem 1.75rem;
+  }
+
+  .site-nav {
+    margin-inline-start: 0;
+  }
+
+  .site-status {
+    margin-inline-start: auto;
   }
 
   .post-header__title {
-    font-size: 27px;
+    font-size: 28px;
+  }
+
+  .entry__title {
+    font-size: 18.5px;
+  }
+
+  /* 세로 공간이 귀한 화면에서 280px 예약은 과하다.
+     AdSense 반응형 단위의 모바일 최소 높이에 맞춘다. */
+  .ad-slot__frame {
+    min-height: 250px;
+  }
+}
+
+/* 모바일 */
+@media (max-width: 480px) {
+  :root {
+    --gutter: 1.35rem;
+  }
+
+  .site-header,
+  .site-main,
+  .site-footer {
+    padding-inline: 1rem;
+  }
+
+  /* 로고 + 네비 + 상태만으로도 한 줄이 빠듯하다. 사이트 설명은 접는다. */
+  .site-header__tagline {
+    display: none;
+  }
+
+  .site-nav {
+    gap: 0.8rem;
+  }
+
+  .post-header__title {
+    font-size: 24px;
+  }
+
+  .post-header__lead,
+  body {
+    font-size: 15.5px;
+  }
+
+  /* 반전 배경이 화면 폭을 꽉 채우지 않게 좌우 여백을 줄인다 */
+  .entry__body {
+    padding-inline: 0.5rem;
+  }
+
+  /* 버전·날짜·배지·링크가 한 줄에 다 들어가지 않는다.
+     날짜와 배지를 아래로 접어 세로로 쌓는다. */
+  .revisions li {
+    flex-wrap: wrap;
+    gap: 0.5rem 0.7rem;
+  }
+
+  .revisions li time {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  /* 이전/이력/다음이 한 줄에 안 들어가면 가운데 링크를 아래로 */
+  .rev-nav {
+    flex-wrap: wrap;
+    gap: 0.6rem 1rem;
+  }
+
+  .demo canvas {
+    width: 100%;
+  }
+}
+
+/* 초광폭 — 본문 폭을 크게 늘리지는 않되, 화면 대비 너무 작아 보이지 않게
+   글자와 열을 한 단계만 키운다. 여백이 넓은 것 자체는 의도다(가독성). */
+@media (min-width: 1800px) {
+  :root {
+    --col: 40rem;
+  }
+
+  body {
+    font-size: 17.5px;
   }
 
   .site-header {
-    flex-wrap: wrap;
-    gap: 0.6rem;
+    font-size: 12.5px;
+  }
+
+  .post-header__title {
+    font-size: 36px;
   }
 }
 
