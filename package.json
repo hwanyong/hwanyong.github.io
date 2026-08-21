@@ -18,7 +18,9 @@
     "sync": "astro sync",
     "ci": "node tools/check-collisions.mjs && astro check && astro build",
     "astro": "astro",
-    "check:collisions": "node tools/check-collisions.mjs"
+    "check:collisions": "node tools/check-collisions.mjs",
+    "i18n:fill": "node tools/i18n-fill.ts",
+    "i18n:verify": "node tools/i18n-verify.ts"
   },
   "dependencies": {
     "@astrojs/rss": "4.0.19",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "@types/node": "^26.2.0",
     "sharp": "0.35.3",
     "typescript": "6.0.3"
   }
