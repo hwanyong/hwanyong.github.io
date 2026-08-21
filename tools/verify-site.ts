@@ -151,16 +151,47 @@ for (const code of LOCALE_CODES) {
   if (!xml.includes('isPermaLink="false"')) fail.push(`${path} guid 가 URL 이다`);
 }
 
-// ⑧ 모든 로케일에 반드시 있어야 하는 화면. 고정 불변식이라 하드코딩해도 안전하다.
+// ⑧ 콘텐츠와 무관하게 모든 로케일에 반드시 있어야 하는 화면.
+//    개정축(lecture·project)은 여기 없다 — 항목이 0개면 화면을 만들지 않기 때문이다(⑨).
 for (const code of LOCALE_CODES) {
   const base = code === DEFAULT_LOCALE ? 'dist' : `dist/${code}`;
-  for (const section of ['', 'log', 'lecture', 'project', 'about', 'privacy']) {
+  for (const section of ['', 'log', 'about', 'privacy']) {
     const path = `${base}${section ? '/' + section : ''}/index.html`;
     if (!pages.includes(path)) fail.push(`필수 화면 없음: ${path}`);
   }
 }
 
-// ⑨ 404 는 언어축 밖이다 — canonical 이 없고 noindex 여야 한다.
+// ⑨ 개정축은 "네비에 링크가 있다" 와 "목록 화면이 있다" 가 반드시 함께 참이거나 함께 거짓이다.
+//    한쪽만 참이면 네비가 404 를 가리키거나(전자), 네비에서 닿을 수 없는 화면이 sitemap 에
+//    남는다(후자). 둘 다 src/lib/content.ts 의 hasSeries 하나에서 나오지만, 그 사실을
+//    믿지 않고 산출물에서만 읽어 확인한다 — 소스를 다시 읽으면 같은 버그를 두 번 믿게 된다.
+for (const code of LOCALE_CODES) {
+  const base = code === DEFAULT_LOCALE ? 'dist' : `dist/${code}`;
+  const prefix = code === DEFAULT_LOCALE ? '' : `/${code}`;
+  const nav = readFileSync(`${base}/index.html`, 'utf8').match(
+    /<nav class="site-nav">(.*?)<\/nav>/s,
+  )?.[1];
+
+  // 네비를 못 읽으면 아래 비교가 전부 "링크 없음" 으로 통과해 버린다. 그 침묵을 막는다.
+  if (!nav) {
+    fail.push(`${base}/index.html 에서 .site-nav 를 찾지 못했다 — 아래 축 검사가 무의미해진다`);
+    continue;
+  }
+
+  for (const axis of ['lecture', 'project']) {
+    const linked = nav.includes(`href="${prefix}/${axis}/"`);
+    const path = `${base}/${axis}/index.html`;
+    const built = pages.includes(path);
+    if (linked === built) continue;
+    fail.push(
+      linked
+        ? `네비에 ${axis} 링크가 있는데 목록 화면이 없다: ${path}`
+        : `네비에 ${axis} 링크가 없는데 목록 화면이 있다: ${path}`,
+    );
+  }
+}
+
+// ⑩ 404 는 언어축 밖이다 — canonical 이 없고 noindex 여야 한다.
 const notFound = readFileSync(OFF_AXIS, 'utf8');
 if (notFound.includes('rel="canonical"'))
   fail.push('404.html 에 canonical 이 있다 — 존재하지 않는 모든 경로에 서빙되므로 항상 거짓이다');

@@ -22,7 +22,8 @@ export type NavSection = (typeof NAV_SECTIONS)[number];
 export type Section = NavSection | 'privacy';
 
 /** 개정축 컬렉션. 값이 곧 URL 첫 세그먼트다. */
-export type RevisionCollection = 'lecture' | 'project';
+export const REVISION_COLLECTIONS = ['lecture', 'project'] as const;
+export type RevisionCollection = (typeof REVISION_COLLECTIONS)[number];
 
 /**
  * 화면 라벨.

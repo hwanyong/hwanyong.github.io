@@ -21,7 +21,13 @@
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 import { LOCALE_CODES, isLocale, type Alternate, type Locale } from './i18n';
-import { revisionHref, type RevisionCollection } from './routes';
+import {
+  NAV_SECTIONS,
+  REVISION_COLLECTIONS,
+  revisionHref,
+  type NavSection,
+  type RevisionCollection,
+} from './routes';
 
 export type { RevisionCollection };
 
@@ -252,6 +258,43 @@ export const getSeriesTimeline = async (
   (await getSeriesHistories(collection))
     .filter((history) => history.locale === locale)
     .map(toSeriesItem);
+
+/**
+ * 그 축에 계열이 하나라도 있는가.
+ *
+ * 로케일을 묻지 않는다 — tools/i18n-verify.ts 가 "모든 항목이 모든 로케일 판본을 갖는다"를
+ * 강제하므로 한 로케일에만 존재하는 축은 만들어질 수 없다.
+ */
+export const hasSeries = async (collection: RevisionCollection): Promise<boolean> =>
+  (await getSeriesHistories(collection)).length > 0;
+
+/**
+ * 헤더 네비에 실제로 내보낼 축.
+ *
+ * 항목이 0개인 개정축을 네비에 남기면 누른 사람이 "아직 없습니다" 한 줄만 보고 돌아간다.
+ * 목록 라우트의 getStaticPaths 도 같은 hasSeries 를 쓴다 — 안내에서는 뺐는데 sitemap 에는
+ * 남는 불일치를 만들지 않기 위해서다. 축을 지우는 게 아니라 비어 있는 동안만 감추는 것이고,
+ * 첫 항목이 들어오면 네비와 URL 이 함께 되살아난다.
+ *
+ * log·about 은 개정축이 아니므로 이 판정의 대상이 아니다.
+ */
+let navCache: NavSection[] | null = null;
+
+export const liveNavSections = async (): Promise<NavSection[]> => {
+  if (navCache) return navCache;
+
+  const empty = new Set<string>();
+  for (const collection of REVISION_COLLECTIONS) {
+    if (!(await hasSeries(collection))) empty.add(collection);
+  }
+  const sections = NAV_SECTIONS.filter((section) => !empty.has(section));
+
+  // 빌드 1회분 메모. BaseLayout 은 모든 페이지에서 이걸 부르는데, 빈 컬렉션을 조회할 때마다
+  // Astro 가 [glob-loader] 경고를 한 줄씩 찍는다. 메모가 없으면 페이지 수만큼 경고가 쌓여
+  // 진짜 경고가 그 속에 묻힌다. dev 는 콘텐츠가 바뀌면 모듈을 다시 평가하므로 안전하다.
+  navCache = sections;
+  return sections;
+};
 
 /**
  * 홈과 피드가 쓰는 통합 목록. 세 축을 하나의 시간축에 섞는다.

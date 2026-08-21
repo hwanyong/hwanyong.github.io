@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import Timeline from '../../../components/Timeline.astro';
-import { getSeriesTimeline, groupByYear } from '../../../lib/content';
+import { getSeriesTimeline, groupByYear, hasSeries } from '../../../lib/content';
 import { AD_SLOTS } from '../../../lib/site';
 import { LOCALE_CODES } from '../../../lib/i18n';
 import { langParam, staticAlternates, sectionLabel } from '../../../lib/routes';
@@ -12,8 +12,12 @@ import type { Locale } from '../../../lib/i18n';
 
 // 모든 로케일에 항상 존재하는 화면이다. 로케일은 콘텐츠가 아니라 이 표에서 나온다 —
 // 방침·소개·목록은 번역이 없어도 URL 이 있어야 하는 유일한 부류다.
-export const getStaticPaths = () =>
-  LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
+export const getStaticPaths = async () => {
+  // 빈 축은 URL 을 만들지 않는다 — 헤더 네비에서 빠지는 것과 같은 규칙이고 같은 판정이다
+  // (content.ts 의 liveNavSections). 한쪽만 적용하면 네비에 없는 화면이 sitemap 에 남는다.
+  if (!(await hasSeries('lecture'))) return [];
+  return LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
+};
 
 const { locale } = Astro.props as { locale: Locale };
 const t = UI[locale];

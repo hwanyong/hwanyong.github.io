@@ -5,7 +5,8 @@ import AdSenseHead from '../components/AdSenseHead.astro';
 import AnalyticsHead from '../components/AnalyticsHead.astro';
 import { SITE } from '../lib/site';
 import { LOCALES, type Alternate, type Locale } from '../lib/i18n';
-import { NAV_SECTIONS, type NavSection, feedHref, homeHref, sectionHref, sectionLabel } from '../lib/routes';
+import { type NavSection, feedHref, homeHref, sectionHref, sectionLabel } from '../lib/routes';
+import { liveNavSections } from '../lib/content';
 import { UI } from '../lib/ui';
 import { GITHUB } from '../lib/profile';
 import { HINTS } from '../lib/shortcuts';
@@ -50,7 +51,8 @@ interface Props {
   section?: NavSection | null;
 }
 
-// 메뉴는 routes.ts 의 NAV_SECTIONS 하나에서 나온다. 경로·표기·키를 여기서 다시 적지 않는다.
+// 메뉴는 routes.ts 의 NAV_SECTIONS 에서 나오되, 항목이 0개인 개정축은 빠진다.
+// 경로·표기·키를 여기서 다시 적지 않는다. 판정은 content.ts 의 liveNavSections 가 한다.
 
 const {
   locale,
@@ -64,6 +66,8 @@ const {
   status,
   section = null,
 } = Astro.props;
+
+const navSections = await liveNavSections();
 
 const t = UI[locale];
 ---
@@ -144,7 +148,7 @@ const t = UI[locale];
       {/* RSS 는 여기 두지 않는다 —
           피드 발견은 <head> 의 rel="alternate" 가, 사람이 누르는 링크는 푸터가 맡는다. */}
       <nav class="site-nav">
-        {NAV_SECTIONS.map((key) => (
+        {navSections.map((key) => (
           <a href={sectionHref(locale, key)} aria-current={section === key ? 'page' : undefined}>
             {sectionLabel(key)}
           </a>
