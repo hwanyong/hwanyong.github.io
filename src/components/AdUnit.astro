@@ -1,7 +1,7 @@
 ---
 /**
  * 수동 광고 단위(manual ad unit) 하나. 반드시 <body> 안에 놓는다.
- * push({}) 는 여기서 하지 않는다 — AdSenseHead.astro 의 초기화기가 전담한다.
+ * push({}) 는 여기서 하지 않는다 — src/scripts/adsense.ts 가 전담한다.
  *
  * ★ prop 이름이 adSlot 인 이유:
  *   `slot` 은 Astro 의 예약 속성이다. 다른 Astro 컴포넌트의 자식으로 놓인 요소에
@@ -9,9 +9,11 @@
  *   <slot name="x" /> 가 없으면 컴포넌트가 통째로 버려진다(에러도 경고도 없음).
  *   <AdUnit slot="1234567890" /> 로 쓰면 광고가 하나도 렌더되지 않는다.
  *
- * 스타일을 컴포넌트 <style> 이 아니라 전역 CSS 로 뺀 이유:
- *   scoped style 을 쓰면 Astro 가 <ins> 에까지 data-astro-cid-* 를 주입한다.
- *   Google 스니펫을 원형 그대로 유지하려면 전역 CSS 를 쓴다.
+ * 스타일이 전부 전역 CSS(ads.css)에 있는 이유:
+ *   1) 인라인 style 속성을 쓰지 않는다. Google 예시 스니펫의 style="display:block"
+ *      도 CSS 규칙으로 옮겼다 — 필수 식별자(class="adsbygoogle", data-ad-client,
+ *      data-ad-slot)는 원형 그대로이므로 정책상 문제가 없다.
+ *   2) 컴포넌트 <style> 을 쓰면 Astro 가 <ins> 에까지 data-astro-cid-* 를 주입한다.
  */
 import { ADSENSE } from '../lib/site';
 
@@ -23,35 +25,30 @@ interface Props {
    * 뷰포트 안(본문 상단) 슬롯은 false 권장 — 접으면 레이아웃이 튄다(CLS).
    */
   collapseOnUnfilled?: boolean;
-  /** CLS 방지를 위해 미리 잡아두는 높이 */
-  minHeight?: string;
 }
 
-const { adSlot, collapseOnUnfilled = true, minHeight = '280px' } = Astro.props;
+const { adSlot, collapseOnUnfilled = true } = Astro.props;
 
 const isProd = import.meta.env.PROD;
 ---
+
 {
   isProd && (
-    <aside
-      class="ad-slot"
-      data-collapse={collapseOnUnfilled ? 'true' : 'false'}
-      style={`--ad-min-height:${minHeight}`}
-    >
+    <aside class="ad-slot" data-collapse={collapseOnUnfilled ? 'true' : 'false'}>
       {/* 정책상 허용되는 라벨은 "Advertisements"(복수) 또는 "Sponsored Links" 뿐이다.
           "Advertisement"(단수), "광고", "추천 링크" 등은 문서상 근거가 없다. */}
       <span class="ad-slot__label">Advertisements</span>
       {/* 지면(액자). 광고가 풀블리드로 붙지 않게 감싸고,
-          LCD 격자가 광고 위를 덮지 않도록 z-index 를 올리는 것도 이 요소다. */}
+          LCD 격자가 광고 위를 덮지 않도록 z-index 를 올리는 것도 이 요소다.
+          CLS 예약 높이도 여기 CSS 에 고정되어 있다. */}
       <div class="ad-slot__frame">
         <ins
           class="adsbygoogle"
-          style="display:block"
           data-ad-client={ADSENSE.client}
           data-ad-slot={adSlot}
           data-ad-format="auto"
           data-full-width-responsive="true"
-        ></ins>
+        />
       </div>
     </aside>
   )

@@ -35,15 +35,23 @@
 }
 
 /* 지면(액자). 광고가 슬롯을 풀블리드로 채우지 않게 여백을 두면
-   지면이 액자 역할을 해서 컬러 소재의 충격이 줄어든다. */
+   지면이 액자 역할을 해서 컬러 소재의 충격이 줄어든다.
+   min-height 는 CLS 예약이다 — 광고가 늦게 도착해도 본문이 밀리지 않는다. */
 .ad-slot__frame {
-  min-height: var(--ad-min-height, 280px);
+  min-height: 280px;
   padding: 14px;
   background: var(--bg-2);
   box-shadow: inset 0 1px 3px var(--inset);
   /* body::before 의 LCD 격자(z-index 100)보다 위 */
   position: relative;
   z-index: 200;
+}
+
+/* Google 예시 스니펫의 style="display:block" 을 CSS 규칙으로 옮긴 것.
+   인라인 style 속성을 쓰지 않기 위함이며, 필수 식별자
+   (class="adsbygoogle", data-ad-client, data-ad-slot)는 원형 그대로다. */
+ins.adsbygoogle {
+  display: block;
 }
 
 /* 광고가 실제로 실린 슬롯만 밝은 지면으로 전환한다.

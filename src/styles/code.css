@@ -1,0 +1,131 @@
+/* ═══════════════════════════════════════════════════════════════
+   코드 블록 — Prism 토큰 클래스 기반 모노크롬 하이라이팅
+
+   왜 색상(hue)이 아니라 명도로 구분하는가:
+     이 사이트의 색 원칙은 "액센트 컬러 0 — 페이지에서 컬러가 허용된 유일한
+     구역은 광고"다. 기성 테마처럼 키워드/문자열/숫자를 서로 다른 색으로 칠하면
+     본문 옆에 컬러 블록이 생겨 그 원칙이 깨진다.
+     여기서는 팔레트를 --ink 계열 하나로 고정하고 명도 단계만 쓴다.
+
+   왜 Shiki 가 아니라 Prism 인가:
+     Shiki dual theme 는 토큰마다 style="--shiki-*" 를 인라인 속성으로 박고,
+     markdown.shikiConfig 는 이를 끌 transformers 옵션을 받지 않는다.
+     Prism 은 <span class="token keyword"> 형태의 클래스만 출력한다.
+
+   명도 4단계:
+     dim     읽지 않아도 되는 것 (주석, 구두점)
+     mid     값 (문자열, 정규식)
+     base    기본 본문
+     strong  구조를 만드는 것 (키워드, 함수, 타입, 숫자)
+   ═══════════════════════════════════════════════════════════════ */
+
+:root[data-mode='reflect'] {
+  --code-dim: #5f564a;
+  --code-mid: #4f463c;
+  --code-strong: #1a1613;
+}
+
+:root[data-mode='emit'] {
+  --code-dim: #6f7d58;
+  --code-mid: #8fa269;
+  --code-strong: #dcefa8;
+}
+
+/* Prism 은 <pre class="language-js"><code class="language-js"> 구조로 출력한다. */
+pre[class*='language-'] {
+  margin-block: 1.75rem;
+  padding: 1rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 0; /* LCD 패널의 사각 프레임 */
+  overflow-x: auto;
+  background: var(--bg-2);
+  box-shadow: inset 0 1px 3px var(--inset);
+  color: var(--ink-2);
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+code[class*='language-'] {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+  color: inherit;
+  white-space: pre;
+}
+
+/* ─── 가장 흐림 — 읽지 않아도 되는 것 ─── */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: var(--code-dim);
+  font-style: italic;
+}
+
+.token.punctuation,
+.token.operator,
+.token.entity {
+  color: var(--code-dim);
+}
+
+/* ─── 중간 — 값 ─── */
+.token.string,
+.token.char,
+.token.attr-value,
+.token.regex,
+.token.url {
+  color: var(--code-mid);
+}
+
+/* ─── 기본 ─── */
+.token.variable,
+.token.property,
+.token.symbol {
+  color: var(--ink-2);
+}
+
+/* ─── 가장 진함 — 구조를 만드는 것 ─── */
+.token.keyword,
+.token.atrule,
+.token.tag,
+.token.selector {
+  color: var(--code-strong);
+  font-weight: 600;
+}
+
+.token.function,
+.token.class-name,
+.token.builtin,
+.token.attr-name,
+.token.number,
+.token.boolean,
+.token.constant {
+  color: var(--code-strong);
+}
+
+/* ─── diff · 강조 — 색 대신 굵기·기울기로 구분한다 ─── */
+.token.inserted {
+  color: var(--code-strong);
+  font-weight: 600;
+}
+
+.token.deleted {
+  color: var(--code-dim);
+  font-style: italic;
+}
+
+.token.bold,
+.token.important {
+  font-weight: 600;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
+.token.namespace {
+  opacity: 0.7;
+}

@@ -1,6 +1,5 @@
-import { defineConfig, fontProviders } from 'astro/config';
+import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
-import { reflectCode, emitCode } from './src/lib/shiki-themes.mjs';
 
 export default defineConfig({
   // GitHub Pages user site(hwanyong/hwanyong.github.io) 이므로
@@ -21,6 +20,30 @@ export default defineConfig({
   // 사이트를 시작한 뒤에는 절대 바꾸지 말 것(댓글이 통째로 끊긴다).
   build: {
     format: 'directory',
+
+    // 'always' | 'auto' | 'never'. 기본값 'auto' 는 작은 CSS 를 <style> 로 HTML 에
+    // 인라인한다. 인라인 산출물을 금지하므로 'never' 로 못박는다.
+    //
+    // 아래 assetsInlineLimit 만으로도 'auto' 경로가 false 로 떨어지지만 함께 둔다 —
+    // 스타일 외부화는 임계값 설정의 부수효과가 아니라 독립된 의도이고,
+    // 나중에 누가 임계값을 올려도 이 규약이 깨지지 않아야 한다.
+    inlineStylesheets: 'never',
+  },
+
+  vite: {
+    build: {
+      // Astro 7 에는 build.inlineScripts 같은 옵션이 없다(config.d.ts 확인).
+      // 번들된 <script> 청크의 인라인 여부는 Astro 가 Vite 의 assetsInlineLimit 을
+      // 그대로 빌려 판정한다:
+      //   core/build/plugins/plugin-scripts.js:24  assetInlineLimit = config.build.assetsInlineLimit
+      //   core/build/plugins/util.js:15            Buffer.byteLength(code) < Number(limit)
+      //
+      // 함수 형태는 undefined 를 반환하면 Vite 기본값(4096B)으로 폴백한다.
+      // .js 에만 false 를 돌려주면 스크립트 인라인만 정확히 끄고, 이미지·폰트 등
+      // 실제 asset 의 base64 인라인 기본 동작은 건드리지 않는다.
+      // (금지 대상은 "HTML 안의 인라인"이지 CSS 안의 data: URI 가 아니다.)
+      assetsInlineLimit: (filePath) => (filePath.endsWith('.js') ? false : undefined),
+    },
   },
 
   // Astro 7 기본값은 'jsx' 로, 인라인 요소를 줄바꿈으로 나눠 쓰면 사이 공백이
@@ -30,29 +53,11 @@ export default defineConfig({
 
   integrations: [sitemap()],
 
-  // Astro 내장 fonts API. 폰트 파일을 빌드 시 다운로드해 자체 호스팅하므로
-  // 외부 요청(fonts.googleapis.com)이 없다 — LCP 와 프라이버시 양쪽에 유리.
-  // 실제 사용은 BaseLayout 의 <Font cssVariable=… preload /> 가 담당한다.
-  fonts: [
-    {
-      // 제목·본문. NieR 계열 시안의 세리프 축.
-      provider: fontProviders.google(),
-      name: 'Noto Serif KR',
-      cssVariable: '--font-serif',
-      weights: [400, 600, 700],
-      subsets: ['latin', 'korean'],
-      fallbacks: ['Apple SD Gothic Neo', 'serif'],
-    },
-    {
-      // 메타데이터·코드·UI 라벨. "기계가 아는 정보"는 전부 이쪽.
-      provider: fontProviders.google(),
-      name: 'IBM Plex Mono',
-      cssVariable: '--font-mono',
-      weights: [400, 500, 600],
-      subsets: ['latin'],
-      fallbacks: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-    },
-  ],
+  // Astro 내장 fonts API(<Font />)는 쓰지 않는다.
+  // Font.astro 가 <style set:html> 로 하드코딩되어 @font-face 규칙(한글 서브셋
+  // 포함 238KB)이 매 페이지 HTML 에 인라인되고, preload 옵션이 서브셋 121개를
+  // 전부 preload 해 6.2MB 를 강제로 받게 한다. 둘 다 config 로 막을 수 없다.
+  // → 폰트 파일은 public/fonts/, 선언은 src/styles/fonts.css 로 직접 관리한다.
 
   markdown: {
     // Astro 7 의 기본 마크다운 처리기는 Sätteri(Rust) 다.
@@ -64,19 +69,16 @@ export default defineConfig({
     //     markdown.processor 를 satteri({ features: { math: true } }) 로 명시해야 한다.
     //   → remark/rehype 플러그인이 필요하면 `pnpm add @astrojs/markdown-remark` 후
     //     markdown.processor 를 unified() 로 되돌려야 한다(더 이상 기본 설치 아님).
-    shikiConfig: {
-      // 기성 테마(github-light 등)는 컬러 구문 강조라 이 사이트의 원칙
-      // "페이지에서 컬러가 허용된 유일한 구역은 광고"와 충돌한다.
-      // 같은 색조 안에서 명도만으로 구문을 구분하는 자체 테마를 쓴다.
-      themes: {
-        light: reflectCode,
-        dark: emitCode,
-      },
-      // 'light' | 'dark' | string | false. 기본값은 'light'.
-      // boolean true 는 스키마에 없는 값이라 넣으면 설정 검증에서 실패한다.
-      // dual theme 를 CSS 변수로만 제어하려면 false.
-      defaultColor: false,
-      wrap: true,
-    },
+    // 'shiki'(기본) | 'prism' | false
+    //
+    // Shiki 를 쓰지 않는 이유: dual theme(themes:{light,dark})는 구조상 토큰마다
+    // style="--shiki-light:…;--shiki-dark:…" 를 인라인 속성으로 박는다.
+    // markdown.shikiConfig 는 transformers 옵션을 받지 않으므로
+    // (transformers 는 <Code /> 컴포넌트 전용) 이를 끌 방법이 없다.
+    // 인라인 산출물을 금지하는 규약상 클래스 기반인 Prism 이 유일한 선택지다.
+    //
+    // Astro 는 Prism 테마 CSS 를 번들하지 않는다 → src/styles/code.css 에 직접 쓴다.
+    // 어차피 "명도만으로 구문을 구분하는" 자체 팔레트가 필요했으므로 손해가 없다.
+    syntaxHighlight: 'prism',
   },
 });

@@ -47,8 +47,8 @@ const { latest, revisions } = history;
       </div>
       <ol>
         {revisions.map((revision, index) => (
-          <li class={index === 0 ? 'is-current' : undefined}>
-            <span class={index === 0 ? 'mark mark--on' : 'mark'} aria-hidden="true"></span>
+          <li data-current={index === 0 || undefined}>
+            <span class="mark" data-on={index === 0 || undefined} aria-hidden="true"></span>
             <b>v{revision.data.version}</b>
             <time datetime={isoDate(revision.data.date)}>
               {formatDate(revision.data.date)}

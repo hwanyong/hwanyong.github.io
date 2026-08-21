@@ -61,7 +61,7 @@ const marks = (count: number): boolean[] =>
           <div class="entry__marks">
             {row.item.revisionCount && row.item.revisionCount > 1
               ? marks(row.item.revisionCount).map((on) => (
-                  <span class={on ? 'mark mark--on' : 'mark'} />
+                  <span class="mark" data-on={on || undefined} />
                 ))
               : null}
           </div>
