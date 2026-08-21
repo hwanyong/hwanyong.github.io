@@ -1,11 +1,27 @@
-
-hwanyong.github.io.code-workspace
+# build output
+dist/
+# generated types / content layer cache
+.astro/
+# dependencies
+node_modules/
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# environment variables
+.env
+.env.production
+# macOS-specific files
 .DS_Store
+# jetbrains setting folder
+.idea/
+
+# 프로젝트 개인 파일
+hwanyong.github.io.code-workspace
 styleguide.md
-_site
-/_site
-/_site/*
-/_site/**/*
-_site/feed.xml
-_site/feed.xml
 .mcp-debug-tools/
+
+# pnpm-lock.yaml 과 pnpm-workspace.yaml 은 절대 무시하지 말 것.
+# 락파일이 없으면 withastro/action 이 패키지 매니저를 감지하지 못해 exit 1 하고,
+# pnpm-workspace.yaml 이 없으면 CI 의 pnpm install 이 ERR_PNPM_IGNORED_BUILDS 로 죽는다.

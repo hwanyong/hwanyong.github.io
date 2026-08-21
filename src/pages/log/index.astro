@@ -1,0 +1,22 @@
+---
+// src/pages/log/index.astro — 일반 글 목록 (시간축)
+// 정렬·draft 필터는 src/lib/content.ts 에 있다. 여기서 재구현하지 않는다.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getLogEntries } from '../../lib/content';
+import { formatDate, isoDate } from '../../lib/date';
+
+const posts = await getLogEntries();
+---
+
+<BaseLayout title="글" description="일반 글 목록">
+  <h1>글</h1>
+  <ul class="entry-list">
+    {posts.map((post) => (
+      <li>
+        <a href={`/log/${post.id}/`}>{post.data.title}</a>
+        <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
+        <p>{post.data.description}</p>
+      </li>
+    ))}
+  </ul>
+</BaseLayout>

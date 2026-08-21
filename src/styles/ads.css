@@ -1,0 +1,37 @@
+/* 광고 슬롯 래퍼: 미리 높이를 잡아 CLS 를 막는다. */
+.ad-slot {
+  display: block;
+  margin: 2.5rem 0;
+  min-height: var(--ad-min-height, 280px);
+  text-align: center;
+}
+
+.ad-slot__label {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted, #8a8a8a);
+  margin-bottom: 0.25rem;
+}
+
+/* Google 공식 문서에 실린 그대로: 채워지지 않은 광고 단위 숨기기.
+   [data-ad-status="unfilled"] 조건 없이 숨기면 정책 위반이다
+   ("Hiding ad units at anytime (e.g., display:none)" 는 금지 항목).
+   또한 처음부터 숨겨두고 filled 일 때 보여주는 패턴도 금지다 —
+   광고 요청 자체가 나가지 않을 수 있다. */
+ins.adsbygoogle[data-ad-status='unfilled'] {
+  display: none !important;
+}
+
+/* 미노출이면 라벨과 예약 높이까지 통째로 접는다(뷰포트 밖 슬롯용). */
+.ad-slot[data-collapse='true']:has(ins.adsbygoogle[data-ad-status='unfilled']) {
+  display: none;
+}
+
+/* 접지 않는 슬롯: 라벨만 감추고 빈 공간은 유지 —
+   Google 이 뷰포트 안 unfilled 슬롯에 대해 하는 기본 동작과 같다. */
+.ad-slot[data-collapse='false']:has(ins.adsbygoogle[data-ad-status='unfilled'])
+  .ad-slot__label {
+  visibility: hidden;
+}

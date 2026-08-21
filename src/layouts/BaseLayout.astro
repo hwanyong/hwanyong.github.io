@@ -1,0 +1,87 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import AdSenseHead from '../components/AdSenseHead.astro';
+import { SITE } from '../lib/site';
+import '../styles/global.css';
+import '../styles/ads.css';
+
+interface Props {
+  title: string;
+  description: string;
+  type?: 'website' | 'article';
+  publishedTime?: Date;
+  /**
+   * 광고를 띄우면 안 되는 화면은 false.
+   * (태그 목록·아카이브·404 등 "publisher-content 가 없는 화면"은
+   *  Google Publisher Policies 상 광고 게재 금지 대상이다.)
+   */
+  ads?: boolean;
+}
+
+const { title, description, type, publishedTime, ads = true } = Astro.props;
+---
+<!doctype html>
+<html lang={SITE.lang} data-mode="reflect">
+  <head>
+    <BaseHead
+      title={title}
+      description={description}
+      type={type}
+      publishedTime={publishedTime}
+    />
+
+    {/* 페인트 전에 REFLECT/EMIT 상태를 확정한다(FOUC 방지).
+        AdSenseHead / Comments 가 이 값을 읽으므로 반드시 먼저 실행되어야 한다. */}
+    <script is:inline>
+      (function () {
+        var saved = localStorage.getItem('mode');
+        document.documentElement.dataset.mode =
+          saved === 'emit' || saved === 'reflect' ? saved : 'reflect';
+      })();
+    </script>
+
+    {/* AdSense 로더는 </head> 안. 페이지당 정확히 1회. */}
+    {ads && <AdSenseHead />}
+
+    {/*
+      ClientRouter(뷰 트랜지션)는 기본적으로 켜지 않는다.
+      - AdSense: 전환마다 슬롯을 다시 push 하면 '사용자 요청 없는 새로고침'
+        정책에 저촉될 수 있고, Google 이 SPA 라우팅을 명시적으로 허용한 문서가 없다.
+      - giscus: 전환마다 위젯을 재초기화해야 하고 옵저버 누적 관리가 필요하다.
+      켤 경우: import { ClientRouter } from 'astro:transitions'; 후 여기에 <ClientRouter />
+      를 넣고, 인라인 스크립트에 data-astro-rerun 을 검토할 것.
+    */}
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-header__brand" href="/">{SITE.title}</a>
+      <nav class="site-nav">
+        <a href="/log/">글</a>
+        <a href="/work/">작업물</a>
+        <a href="/rss.xml">RSS</a>
+      </nav>
+      <button id="mode-toggle" type="button" aria-label="테마 전환">◐</button>
+    </header>
+
+    <main class="site-main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <p>© {new Date().getUTCFullYear()} {SITE.author}</p>
+    </footer>
+
+    <script is:inline>
+      (function () {
+        var btn = document.getElementById('mode-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          var root = document.documentElement;
+          var next = root.dataset.mode === 'emit' ? 'reflect' : 'emit';
+          root.dataset.mode = next; // → giscus MutationObserver 가 전파한다
+          localStorage.setItem('mode', next);
+        });
+      })();
+    </script>
+  </body>
+</html>

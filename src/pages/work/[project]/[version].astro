@@ -1,0 +1,89 @@
+---
+// src/pages/work/[project]/[version].astro — 특정 개정본 상세. 예: /work/orca-cli/v1-1/
+//
+// URL 은 파일명에서 온 v1-1, 화면 표시는 frontmatter 의 version("1.1").
+// 파일명에 점을 쓰면 안 된다 — github-slugger 가 점을 삭제해 v1.0.md → id "v10" 이 되고,
+// v10.md 와 id 가 충돌한다.
+import { render } from 'astro:content';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Comments from '../../../components/Comments.astro';
+import AdUnit from '../../../components/AdUnit.astro';
+import { getProjectHistories, versionSlug } from '../../../lib/content';
+import type { WorkEntry } from '../../../lib/content';
+import { formatDate, isoDate } from '../../../lib/date';
+
+export async function getStaticPaths() {
+  const histories = await getProjectHistories();
+
+  return histories.flatMap(({ project, revisions }) =>
+    revisions.map((entry, index) => ({
+      params: { project, version: versionSlug(entry) },
+      props: {
+        entry,
+        // 개정축 이웃 (revisions 는 최신순)
+        newer: revisions[index - 1] ?? null,
+        older: revisions[index + 1] ?? null,
+        isLatest: index === 0,
+        latestSlug: versionSlug(revisions[0]!),
+      },
+    })),
+  );
+}
+
+type Props = {
+  entry: WorkEntry;
+  newer: WorkEntry | null;
+  older: WorkEntry | null;
+  isLatest: boolean;
+  latestSlug: string;
+};
+
+const { entry, newer, older, isLatest, latestSlug } = Astro.props;
+const { Content } = await render(entry);
+const project = entry.data.project;
+---
+
+<BaseLayout
+  title={`${entry.data.title} v${entry.data.version}`}
+  description={entry.data.description}
+  type="article"
+  publishedTime={entry.data.date}
+>
+  {/* 구버전 개정본은 최신본을 canonical 로 가리켜 중복 콘텐츠 판정을 피한다.
+      (BaseHead 의 canonical 뒤에 오므로 이 값이 실제로 적용되게 하려면
+       BaseHead 에 canonical override prop 을 추가하는 편이 더 깔끔하다.) */}
+  <article>
+    <h1>
+      {entry.data.title} <small>v{entry.data.version}</small>
+    </h1>
+    {!isLatest && (
+      <p>
+        이 문서는 최신 개정본이 아닙니다.{' '}
+        <a href={`/work/${project}/${latestSlug}/`}>최신 개정본 보기</a>
+      </p>
+    )}
+    <time datetime={isoDate(entry.data.date)}>{formatDate(entry.data.date)}</time>
+
+    <Content />
+  </article>
+
+  <nav aria-label="개정 이동">
+    {older && (
+      <a href={`/work/${project}/${versionSlug(older)}/`}>
+        이전 개정 v{older.data.version}
+      </a>
+    )}
+    {newer && (
+      <a href={`/work/${project}/${versionSlug(newer)}/`}>
+        다음 개정 v{newer.data.version}
+      </a>
+    )}
+    <a href={`/work/${project}/`}>개정 이력 전체</a>
+  </nav>
+
+  {/* 개정축은 같은 project 의 모든 버전이 하나의 Discussion 을 공유한다. */}
+  <Comments mapping="specific" term={`work:${project}`} />
+
+  {/* 구버전 개정본에는 광고를 넣지 않는다(replicated content 리스크). */}
+  {isLatest && <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />}
+</BaseLayout>

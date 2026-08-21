@@ -1,0 +1,169 @@
+/* REFLECT / EMIT 2상태 팔레트.
+   OS 설정(prefers-color-scheme)이 아니라 사용자가 직접 고르는 상태이므로
+   data-mode 속성으로 제어한다. */
+:root[data-mode='reflect'] {
+  --bg: #cdc7b0;
+  --fg: #1a1613;
+  --fg-muted: #4c463b;
+  --accent: #4a5c1c;
+  --border: #a8a086;
+  color-scheme: light;
+}
+
+:root[data-mode='emit'] {
+  --bg: #12150d;
+  --fg: #dcefa8;
+  --fg-muted: #9aab6b;
+  --accent: #a8d94a;
+  --border: #333d1f;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  /* 웹폰트를 붙이기 전까지는 시스템 한글 스택을 쓴다.
+     로컬 폰트를 붙일 거라면 astro.config.mjs 의 최상위 fonts 옵션과
+     src/assets/fonts/ 의 서브셋 파일이 먼저 준비되어야 한다. */
+  font-family:
+    Pretendard,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    system-ui,
+    sans-serif;
+  line-height: 1.8;
+  word-break: keep-all; /* 한글 줄바꿈 */
+  overflow-wrap: anywhere;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+a {
+  color: var(--accent);
+}
+
+.site-header,
+.site-main,
+.site-footer {
+  max-width: 46rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+.site-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding-block: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.site-header__brand {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-nav {
+  display: flex;
+  gap: 1rem;
+  margin-inline-start: auto;
+}
+
+#mode-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: inherit;
+  border-radius: 999px;
+  width: 2rem;
+  height: 2rem;
+  cursor: pointer;
+}
+
+.site-footer {
+  margin-block-start: 4rem;
+  padding-block: 2rem;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.entry-list {
+  list-style: none;
+  padding: 0;
+}
+
+.entry-list > li {
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.entry-list time {
+  display: block;
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+}
+
+/* 코드블록: shikiConfig.themes(dual theme) + defaultColor:false 조합이므로
+   어느 쪽 색을 쓸지 CSS 에서 직접 정해야 한다.
+   Shiki 문서의 `.shiki` 클래스는 Astro 에서 `.astro-code` 다. */
+.astro-code,
+.astro-code span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
+}
+
+:root[data-mode='emit'] .astro-code,
+:root[data-mode='emit'] .astro-code span {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-dark-bg);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+  text-decoration: var(--shiki-dark-text-decoration);
+}
+
+.astro-code {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+/* giscus 가 우리 <head> 맨 앞에 giscus.app/default.css 를 prepend 하므로
+   (head 첫 자식 = 우선순위 최하위) 아래 규칙이 항상 이긴다. */
+.giscus,
+.giscus-frame {
+  width: 100%;
+}
+
+:root[data-mode='reflect'] .giscus-frame {
+  color-scheme: light;
+}
+
+:root[data-mode='emit'] .giscus-frame {
+  color-scheme: dark;
+}

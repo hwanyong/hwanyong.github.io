@@ -1,0 +1,64 @@
+---
+// src/pages/log/[...id].astro — 글 상세
+//
+// rest 파라미터([...id])를 쓰는 이유: 하위 디렉터리나 frontmatter 의 slug 키 때문에
+// id 에 "/" 가 들어가도 라우트가 깨지지 않게 하기 위해서다.
+//
+// 본문 렌더링은 entry.render() 가 아니라 astro:content 의 독립 함수 render(entry) 다.
+import { render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Comments from '../../components/Comments.astro';
+import AdUnit from '../../components/AdUnit.astro';
+import { getLogEntries } from '../../lib/content';
+import type { LogEntry } from '../../lib/content';
+import { formatDate, isoDate } from '../../lib/date';
+
+export async function getStaticPaths() {
+  const posts = await getLogEntries();
+  return posts.map((post) => ({
+    params: { id: post.id },
+    props: { post },
+  }));
+}
+
+type Props = { post: LogEntry };
+
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+---
+
+<BaseLayout
+  title={post.data.title}
+  description={post.data.description}
+  type="article"
+  publishedTime={post.data.date}
+>
+  <article>
+    <h1>{post.data.title}</h1>
+    <p>{post.data.description}</p>
+    <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
+    {post.data.tags.length > 0 && (
+      <ul class="tag-list">
+        {post.data.tags.map((tag) => <li>#{tag}</li>)}
+      </ul>
+    )}
+
+    {headings.length > 0 && (
+      <nav aria-label="목차">
+        <ul>
+          {headings.map((h) => (
+            <li><a href={`#${h.slug}`}>{h.text}</a></li>
+          ))}
+        </ul>
+      </nav>
+    )}
+
+    <Content />
+  </article>
+
+  {/* 광고는 본문이 끝난 뒤. 네비게이션 버튼 근처는 오클릭 유발로 정책상 위험하다.
+      prop 이름은 slot 이 아니라 adSlot 이어야 한다(slot 은 Astro 예약 속성). */}
+  <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />
+
+  <Comments />
+</BaseLayout>

@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getLogEntries, getProjectHistories } from '../lib/content';
+import { formatDate, isoDate } from '../lib/date';
+import { SITE } from '../lib/site';
+
+const posts = (await getLogEntries()).slice(0, 5);
+const histories = (await getProjectHistories()).slice(0, 5);
+---
+
+<BaseLayout title={SITE.title} description={SITE.description}>
+  <h1>{SITE.title}</h1>
+  <p>{SITE.description}</p>
+
+  <h2>최근 글</h2>
+  <ul class="entry-list">
+    {posts.map((post) => (
+      <li>
+        <a href={`/log/${post.id}/`}>{post.data.title}</a>
+        <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
+      </li>
+    ))}
+  </ul>
+
+  <h2>작업물</h2>
+  <ul class="entry-list">
+    {histories.map(({ project, latest }) => (
+      <li>
+        <a href={`/work/${project}/`}>{latest.data.title}</a>
+        <time datetime={isoDate(latest.data.date)}>
+          v{latest.data.version} · {formatDate(latest.data.date)}
+        </time>
+      </li>
+    ))}
+  </ul>
+</BaseLayout>

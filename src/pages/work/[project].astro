@@ -1,0 +1,38 @@
+---
+// src/pages/work/[project].astro — 한 프로젝트의 개정 이력(개정축). 예: /work/orca-cli/
+//
+// [project].astro 와 [project]/[version].astro 는 경로 깊이가 달라 충돌하지 않는다.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getProjectHistories, versionSlug } from '../../lib/content';
+import type { ProjectHistory } from '../../lib/content';
+import { formatDate, isoDate } from '../../lib/date';
+
+export async function getStaticPaths() {
+  const histories = await getProjectHistories();
+  return histories.map((history) => ({
+    params: { project: history.project },
+    props: { history },
+  }));
+}
+
+type Props = { history: ProjectHistory };
+
+const { history } = Astro.props;
+const { latest, revisions } = history;
+---
+
+<BaseLayout title={latest.data.title} description={latest.data.description}>
+  <h1>{latest.data.title}</h1>
+  <p>{latest.data.description}</p>
+
+  <h2>개정 이력</h2>
+  <ol class="entry-list">
+    {revisions.map((rev) => (
+      <li>
+        <a href={`/work/${history.project}/${versionSlug(rev)}/`}>v{rev.data.version}</a>
+        <time datetime={isoDate(rev.data.date)}>{formatDate(rev.data.date)}</time>
+        <p>{rev.data.description}</p>
+      </li>
+    ))}
+  </ol>
+</BaseLayout>

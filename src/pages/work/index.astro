@@ -1,0 +1,23 @@
+---
+// src/pages/work/index.astro — 작업물 목록. 프로젝트당 한 줄(최신 개정본 기준).
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getProjectHistories } from '../../lib/content';
+import { formatDate, isoDate } from '../../lib/date';
+
+const histories = await getProjectHistories();
+---
+
+<BaseLayout title="작업물" description="작업물 목록(개정축)">
+  <h1>작업물</h1>
+  <ul class="entry-list">
+    {histories.map(({ project, latest, revisions }) => (
+      <li>
+        <a href={`/work/${project}/`}>{latest.data.title}</a>
+        <time datetime={isoDate(latest.data.date)}>
+          v{latest.data.version} · 개정 {revisions.length}건 · {formatDate(latest.data.date)}
+        </time>
+        <p>{latest.data.description}</p>
+      </li>
+    ))}
+  </ul>
+</BaseLayout>

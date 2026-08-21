@@ -1,0 +1,21 @@
+# pnpm 11 설정 파일. package.json 의 "pnpm" 필드는 pnpm 11 이 더 이상 읽지 않는다.
+# (경고: The "pnpm" field in package.json is no longer read by pnpm.)
+#
+# packages 를 빈 배열로 두면 "워크스페이스가 아니라 단일 패키지"임을 명시한다.
+packages: []
+
+# strictDepBuilds 는 pnpm v10.3.0 부터 기본값 true 다.
+# 승인되지 않은 빌드 스크립트(postinstall 등)가 하나라도 있으면
+# `pnpm install` 이 종료코드 1 로 실패한다 → CI 가 100% 깨진다.
+#
+# pnpm 11 에서 onlyBuiltDependencies / neverBuiltDependencies /
+# ignoredBuiltDependencies / onlyBuiltDependenciesFile / ignoreDepScripts 는
+# 전부 제거되었고 allowBuilds 맵 하나로 통합되었다.
+# 구 키를 이 파일에 남겨두면 pnpm 이 "아무 경고 없이" 무시한다.
+#
+# astro@7.2.4 트리에서 빌드 스크립트 승인이 필요한 패키지는 esbuild 하나뿐이다.
+# (sharp@0.35.3 에는 install/postinstall 스크립트가 없다. 단 sharp 0.34.x 에는
+#  "install": "node install/check.js || npm run build" 가 있으므로, 락파일이
+#  0.34.x 로 내려가면 여기에 sharp: true 를 추가해야 한다.)
+allowBuilds:
+  esbuild: true

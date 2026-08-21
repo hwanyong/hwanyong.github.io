@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+on:
+  # main 에 푸시할 때마다 배포
+  push:
+    branches: [main]
+  # Actions 탭에서 수동 실행
+  workflow_dispatch:
+
+# 이 잡이 저장소를 clone 하고 페이지 배포를 생성할 수 있게 한다
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시 배포는 하나만. 진행 중인 배포는 취소하지 않는다(프로덕션 배포는 끝까지 보낸다).
+# 공식 Astro 문서 YAML 에는 이 블록이 없다 — 직접 추가해야 연속 푸시 시 순서가 엉키지 않는다.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your repository using git
+        uses: actions/checkout@v7
+
+      - name: Install, build, and upload your site
+        uses: withastro/action@v6
+        with:
+          # 액션 기본값은 24다. 로컬(26)과 맞춘다.
+          node-version: 26
+          # 패키지 매니저는 pnpm-lock.yaml 존재로 자동 감지된다.
+          # pnpm 버전은 package.json 의 packageManager 필드(pnpm@11.22.0)에서 온다.
+          # 이 액션의 Install 스텝은 순수 `pnpm install` 한 줄이라
+          # 빌드 스크립트 승인 우회 수단이 없다 →
+          # pnpm-workspace.yaml 의 allowBuilds 가 반드시 커밋되어 있어야 한다.
+          #
+          # 타입 체크까지 CI 에서 막고 싶으면 아래 build-cmd 를 쓴다.
+          # 필요 없으면 이 줄을 지우면 기본값 `pnpm run build` 가 실행된다.
+          build-cmd: pnpm run ci
+          # 액션은 out-dir 기본값 `dist` 를 업로드한다.
+          # astro.config.mjs 에서 outDir 를 바꿨다면 여기도 같이 바꿔야 한다.
+          # (내부적으로 actions/upload-pages-artifact@v5 를 사용한다 — Node 24 런타임)
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
