@@ -934,6 +934,11 @@ img.thumb {
   gap: 0.4rem;
 }
 
+/* display:flex 가 [hidden] 의 기본 display:none 을 이긴다. 명시적으로 되돌린다. */
+.command-bar__item[hidden] {
+  display: none;
+}
+
 .command-bar kbd {
   font: inherit;
   background: var(--cmd-fg);
