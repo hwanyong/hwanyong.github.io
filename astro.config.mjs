@@ -14,15 +14,43 @@ export default defineConfig({
 
   // 'static' | 'server' — 기본값이 'static' 이라 생략 가능하지만 의도를 남긴다.
   output: 'static',
-  // 'error' | 'warn'(기본) | 'ignore'. 두 라우트가 같은 정적 경로를 내면 빌드를 죽인다.
+  // 'error' | 'warn'(기본) | 'ignore'. 두 대상이 같은 경로를 낼 때의 동작이다.
   //
-  // 기본값 'warn' 은 경고 한 줄만 남기고 "마지막에 그려진 쪽"을 배포한다 —
-  // 즉 한쪽 페이지가 조용히 사라진 채 빌드가 성공한다. 실측으로 확인했다:
-  //   최상위 error → [PrerenderRouteConflict] 로 빌드 실패, 파일 생성 안 됨
-  //   build 안 error → [WARN] 만 나오고 뒤에 그려진 쪽이 dist 에 남음
+  // 기본값 'warn' 은 경고만 남기고 exit 0 으로 통과시킨다. 이때 진 쪽은 덮어써지는
+  // 게 아니라 렌더 자체가 생략된다 — core/build/generate.js:105 의 builtPaths(Set)가
+  // pathname 을 중복 제거해 처음 본 경로만 :147 로 보내고 나머지는 :143 의 continue 로
+  // 버린다. 파일이 두 번 써지는 일이 없다. 결과는 같다: 한쪽 페이지가 사라진 채
+  // 빌드가 성공한다. 게다가 [router] 경고가 "다음 버전에서는 hard error" 라고 이미
+  // 예고했으므로, 어차피 깨질 상태를 지금 CI 에서 실패시키는 편이 낫다.
   //
-  // ★ build 블록 안이 아니라 최상위다. 소비처가 config.prerenderConflictBehavior 를 읽는다
-  //   (core/build/generate.js:125). build 안에 넣으면 조용히 무시된다.
+  // ★ build 블록 안이 아니라 최상위다. 소비처가 config.prerenderConflictBehavior 를
+  //   읽는다(core/build/generate.js:125). build 스키마는 zod v4 의 맨 z.object 라
+  //   모르는 키를 에러 없이 잘라낸다(core/config/schemas/base.js:57 — .strict() 가
+  //   붙은 같은 파일 :264 의 env 와 달리 방어가 없다). 실측: build 안에 넣으면 값이
+  //   'NONSENSE' 여도 exit 0 이고, 최상위에 두어야 Invalid option 으로 걸린다.
+  //   즉 최상위 배치는 동작뿐 아니라 오타 방어를 위해서도 필요하다.
+  //
+  // ★ 이름은 prerender 지만 라우트 충돌 전용이 아니다. 설치본(astro@7.2.4)에서
+  //   이 값을 읽는 런타임 분기는 셋이다:
+  //     core/build/generate.js:125/135   PrerenderRouteConflict          build 에서만
+  //     content/loaders/glob.js:118/123  DuplicateContentEntrySlugError  build·sync·dev
+  //     content/loaders/file.js:65/70    같은 에러의 file() 로더 판본. 이 저장소는 미사용
+  //   이 저장소의 컬렉션은 전부 glob() 이라 두 번째가 실제로 물린다. 콘텐츠 슬러그가
+  //   겹치면 'error' 에서는 astro dev 조차 뜨지 않는데, 터미널에는
+  //   "Dev server process exited before becoming ready." 한 줄만 나온다 —
+  //   dev 가 이유 없이 안 뜨면 .astro/dev.log 에서 스택을 볼 것.
+  //
+  // ★ public/ 은 사정권 밖이다. core/build/generate.js:521 의 checkPublicConflict()
+  //   는 이 값을 읽지 않고 무조건 [WARN] Skipping 후 그 라우트를 버린다 →
+  //   'error' 여도 빌드는 성공하고 public/ 쪽이 이긴다. CI 가 못 막으므로
+  //   tools/check-collisions.mjs 가 대신 지킨다.
+  //
+  // 경고문 읽는 법: [build] 쪽의 `higher priority route ...` 이름은 승자가 아닐 수
+  // 있다. 그 값은 matchRoute(core/routing/match.js) 결과라 해당 경로를 하나도
+  // 만들지 않는 제3의 라우트가 찍힐 수 있다(실측: 경고는 /[a], 실제 산출은 /[b]).
+  // 범인 파일을 짚어주는 것은 [router] 경고 쪽이다
+  // (core/routing/create-manifest.js 의 detectRouteCollision — 조건 없이 실행되어
+  //  dev·build 양쪽 터미널에 모두 찍힌다).
   prerenderConflictBehavior: 'error',
 
   // 기본값. /log/foo/ 형태의 디렉터리 URL 이 생성된다.
