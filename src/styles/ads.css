@@ -83,7 +83,8 @@ ins.adsbygoogle[data-ad-status='unfilled'] {
   visibility: hidden;
 }
 
-/* 목록 격자(.column) 안에서는 두 열을 모두 가로지른다. */
+/* 목록 격자(.column) 안에서는 눈금 여백과 본문 열을 가로지른다.
+   사이드 열(3번 트랙)까지 침범하면 목차·개정 이력 아래로 광고가 밀려든다. */
 .column > .ad-slot {
-  grid-column: 1 / -1;
+  grid-column: 1 / 3;
 }

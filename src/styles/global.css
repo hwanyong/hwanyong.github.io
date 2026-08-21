@@ -71,6 +71,9 @@
   --col: 38rem;
   /* 개정 눈금이 사는 왼쪽 여백 */
   --gutter: 2.25rem;
+  /* 사이드 열(목차·개정 이력). 0 이면 열리지 않고 본문 흐름으로 들어간다. */
+  --aside: 0rem;
+  --aside-gap: 0rem;
 }
 
 *,
@@ -122,11 +125,13 @@ a {
 /* ─── 폭 · 격자 ────────────────────────────────────────────── */
 
 /* 헤더·본문·푸터가 모두 같은 폭이어야 세로 축이 하나로 읽힌다.
-   본문 열(--col)과 개정 눈금 여백(--gutter)의 합에 좌우 패딩을 더한 값. */
+   본문 열 + 눈금 여백 + (열려 있다면) 사이드 열의 합에 좌우 패딩을 더한 값. */
 .site-header,
 .site-main,
 .site-footer {
-  max-width: calc(var(--gutter) + var(--col) + 2.5rem);
+  max-width: calc(
+    var(--gutter) + var(--col) + var(--aside-gap) + var(--aside) + 2.5rem
+  );
   margin-inline: auto;
   padding-inline: 1.25rem;
 }
@@ -140,14 +145,36 @@ a {
  * overflow-x:hidden 으로 덮지 않는다 — 그건 잘린 콘텐츠를 감출 뿐이다. */
 .column {
   display: grid;
-  grid-template-columns: var(--gutter) minmax(0, 1fr);
-  max-width: calc(var(--gutter) + var(--col));
+  grid-template-columns: var(--gutter) minmax(0, 1fr) var(--aside);
+  column-gap: var(--aside-gap);
+  max-width: calc(var(--gutter) + var(--col) + var(--aside-gap) + var(--aside));
   margin-inline: auto;
 }
 
 .column > * {
   grid-column: 2;
   min-width: 0; /* grid 자식의 기본 min-width:auto 가 긴 콘텐츠에 밀리는 것을 막는다 */
+}
+
+/* 사이드 열. --aside 가 0 인 좁은 화면에서는 3번 트랙 폭이 0 이므로
+   아래 미디어쿼리가 열어주기 전까지는 자리를 차지하지 않는다. */
+.aside {
+  grid-column: 2;
+}
+
+/* 사이드가 없는 화면(목록 등)에서 3번 트랙이 빈 채로 남지 않도록,
+   가로선 성격의 요소는 전체 열을 가로지른다. */
+.column > .section-bar,
+.column > .foot {
+  grid-column: 1 / -1;
+}
+
+/* 글에서 "읽는 텍스트"는 사이드 유무와 무관하게 --col 폭을 넘지 않는다.
+   컨테이너가 넓어져도(사이드가 없는 페이지) 한 줄이 길어지지 않게 한다. */
+.prose,
+.post-header,
+.stale-notice {
+  max-width: var(--col);
 }
 
 /* ─── NieR 모서리 브래킷 ───────────────────────────────────── */
@@ -914,11 +941,51 @@ a {
   }
 }
 
-/* 초광폭 — 본문 폭을 크게 늘리지는 않되, 화면 대비 너무 작아 보이지 않게
-   글자와 열을 한 단계만 키운다. 여백이 넓은 것 자체는 의도다(가독성). */
-@media (min-width: 1800px) {
+/* ─── 넓은 화면: 사이드 열을 연다 ──────────────────────────────
+ *
+ * 본문 폭만 늘려 화면을 채우면 한 줄이 길어져 가독성이 무너진다.
+ * 대신 남는 가로 공간에 사이드 열(목차·개정 이력)을 열어, 본문은 읽기 좋은
+ * 폭을 유지한 채로 화면을 쓴다. NieR 메뉴의 좌측 목록 / 우측 패널 문법이다.
+ *
+ * 사이드에는 "이미 페이지 안에 있던 정보"만 올린다. 여백을 채우려고 없던 것을
+ * 만들어 넣으면 그건 장식이지 정보가 아니다.
+ * ───────────────────────────────────────────────────────────── */
+
+@media (min-width: 1280px) {
   :root {
-    --col: 40rem;
+    --col: 42rem;
+    --aside: 15rem;
+    --aside-gap: 3rem;
+  }
+
+  .aside {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-self: start;
+    position: sticky;
+    top: 2rem;
+  }
+
+  /* 사이드로 올라간 개정 이력은 본문 흐름의 아래 여백이 필요 없다 */
+  .revisions.aside {
+    margin-block-end: 0;
+    font-size: 11.5px;
+  }
+
+  .revisions.aside li {
+    padding-block: 0.5rem;
+  }
+
+  .revisions.aside li b {
+    min-width: 2.6rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --col: 47rem;
+    --aside: 18rem;
+    --aside-gap: 3.5rem;
   }
 
   body {
@@ -931,6 +998,65 @@ a {
 
   .post-header__title {
     font-size: 36px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --col: 51rem;
+    --aside: 20rem;
+    --aside-gap: 4rem;
+  }
+}
+
+/* ─── 목차 ─────────────────────────────────────────────────── */
+
+.toc {
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  border-inline-start: 1px solid var(--rule);
+  padding-inline-start: 1rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+
+.toc__head {
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-block-end: 0.7rem;
+}
+
+.toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc li {
+  margin-block-end: 0.5rem;
+}
+
+.toc li[data-depth='3'] {
+  padding-inline-start: 0.85rem;
+}
+
+.toc a {
+  color: var(--ink-2);
+}
+
+.toc a:hover {
+  color: var(--ink);
+}
+
+/* 사이드 열이 열리지 않는 폭에서는 목차를 감춘다.
+   본문 흐름 한가운데 목차가 끼어들면 읽기를 방해할 뿐이고,
+   같은 제목이 본문에 그대로 있으므로 정보 소실이 아니다. */
+@media (max-width: 1279px) {
+  .toc {
+    display: none;
   }
 }
 

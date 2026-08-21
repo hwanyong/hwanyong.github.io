@@ -9,6 +9,7 @@ import { render } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Comments from '../../components/Comments.astro';
 import AdUnit from '../../components/AdUnit.astro';
+import Toc from '../../components/Toc.astro';
 import { getLogEntries } from '../../lib/content';
 import type { LogEntry } from '../../lib/content';
 import { formatDate, isoDate } from '../../lib/date';
@@ -24,7 +25,7 @@ export const getStaticPaths = async () => {
 type Props = { post: LogEntry };
 
 const { post } = Astro.props;
-const { Content } = await render(post);
+const { Content, headings } = await render(post);
 ---
 
 <BaseLayout
@@ -36,6 +37,9 @@ const { Content } = await render(post);
 >
   <div class="column">
     <a class="back-link" href="/log/">← Log</a>
+
+    {/* 넓은 화면에서 오른쪽 사이드 열로 빠진다(1280px 미만에서는 숨김). */}
+    <Toc headings={headings} />
 
     <article>
       <header class="post-header">
