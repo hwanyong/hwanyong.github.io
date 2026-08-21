@@ -2,9 +2,10 @@
 // 여기 값들은 여러 파일(BaseHead, rss.xml, Comments, AdSense)에서 참조되므로
 // 문자열을 각 파일에 흩뿌리지 말고 반드시 여기서 import 한다.
 
+import { ORIGIN } from './i18n';
+
 export const SITE = {
-  /** astro.config.mjs 의 site 와 반드시 같아야 한다. */
-  origin: 'https://blog.hwanyong.com',
+  // origin 은 여기 없다 — i18n.ts 의 ORIGIN 이 유일한 출처다.
   title: 'Hwanyong Yoo 기술 블로그',
   description: 'Computer에 관한 모든 기록',
   lang: 'ko',
@@ -27,10 +28,19 @@ export const GISCUS = {
   categoryId: 'DIC_kwDOJBJzTM4DD2Rq',
   origin: 'https://giscus.app',
   /** 커스텀 테마 CSS 의 배포 경로 (public/giscus/*.css) */
-  themeBase: 'https://blog.hwanyong.com/giscus',
+  themeBase: `${ORIGIN}/giscus`,
   /** dev 서버에서는 커스텀 CSS 가 CORS 로 막히므로 빌트인 테마를 쓴다 */
   devTheme: { reflect: 'light', emit: 'dark_dimmed' },
+  /**
+   * 댓글 위젯 게재 여부.
+   * privacy.ts 의 벤더 표가 이 값을 읽는다 — 나머지 두 벤더(ANALYTICS·ADSENSE)와
+   * 형태를 맞춰, 방침 문서가 실제 구성보다 앞서 나가거나 뒤처지지 않게 한다.
+   */
+  enabled: true,
 } as const;
+
+// ★ 도메인을 바꾸면 손으로 고쳐야 하는 곳이 정확히 하나 남는다: 저장소 루트의 giscus.json.
+//   giscus.app 이 그 파일을 GitHub API 로 직접 읽으므로 빌드가 값을 주입할 방법이 없다.
 
 /** AdSense 설정. 광고 코드는 ca-pub-…, ads.txt 는 pub-… 로 접두사가 다르다. */
 export const ADSENSE = {

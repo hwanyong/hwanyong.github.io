@@ -25,3 +25,4 @@ styleguide.md
 # pnpm-lock.yaml 과 pnpm-workspace.yaml 은 절대 무시하지 말 것.
 # 락파일이 없으면 withastro/action 이 패키지 매니저를 감지하지 못해 exit 1 하고,
 # pnpm-workspace.yaml 이 없으면 CI 의 pnpm install 이 ERR_PNPM_IGNORED_BUILDS 로 죽는다.
+.baseline/

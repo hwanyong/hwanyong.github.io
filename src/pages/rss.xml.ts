@@ -4,6 +4,7 @@ import rss from '@astrojs/rss';
 import type { APIContext } from 'astro';
 import { getLogEntries } from '../lib/content';
 import { SITE } from '../lib/site';
+import { ORIGIN } from '../lib/i18n';
 
 export async function GET(context: APIContext) {
   const posts = await getLogEntries();
@@ -11,8 +12,8 @@ export async function GET(context: APIContext) {
   return rss({
     title: SITE.title,
     description: SITE.description,
-    // context.site 는 astro.config.mjs 의 site 에서 온다.
-    site: context.site ?? SITE.origin,
+    // context.site 는 astro.config.ts 의 site 에서 온다.
+    site: context.site ?? ORIGIN,
     items: posts.map((post) => ({
       title: post.data.title,
       pubDate: post.data.date,

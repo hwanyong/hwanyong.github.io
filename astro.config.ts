@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
+import { ORIGIN } from './src/lib/i18n';
 
 export default defineConfig({
   // GitHub Pages user site(hwanyong/hwanyong.github.io) 이므로
@@ -10,7 +11,7 @@ export default defineConfig({
   // site 가 없으면 Astro.site 가 undefined 가 되어
   // new URL(path, Astro.site) 가 TypeError 로 빌드를 죽이고,
   // @astrojs/sitemap 도 동작하지 않는다. 반드시 필요하다.
-  site: 'https://blog.hwanyong.com',
+  site: ORIGIN,
 
   // 'static' | 'server' — 기본값이 'static' 이라 생략 가능하지만 의도를 남긴다.
   output: 'static',
@@ -29,6 +30,13 @@ export default defineConfig({
   //   붙은 같은 파일 :264 의 env 와 달리 방어가 없다). 실측: build 안에 넣으면 값이
   //   'NONSENSE' 여도 exit 0 이고, 최상위에 두어야 Invalid option 으로 걸린다.
   //   즉 최상위 배치는 동작뿐 아니라 오타 방어를 위해서도 필요하다.
+  //
+  // ★ 이 파일이 .mjs 가 아니라 .ts 인 이유가 바로 이것이다.
+  //   .mjs 였을 때는 이 줄을 build 블록 안으로 잘못 옮겨도 조용히 무시되어
+  //   [WARN] 만 나오고 충돌한 페이지 하나가 사라진 채 빌드가 성공했다.
+  //   .ts 에서는 같은 실수가 astro check 에서 ts(2353) 로 죽는다
+  //   (tsconfig 의 include: ["**/*"] 가 이 파일을 타입체크 대상에 넣는다).
+  //   즉 위 주석들은 설명이고, 강제는 타입 시스템이 한다.
   //
   // ★ 이름은 prerender 지만 라우트 충돌 전용이 아니다. 설치본(astro@7.2.4)에서
   //   이 값을 읽는 런타임 분기는 셋이다:

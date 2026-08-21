@@ -3,7 +3,7 @@
  * tools/check-collisions.mjs — 이 맥에서는 절대 재현되지 않는 충돌을 커밋 전에 잡는다.
  *
  * 왜 필요한가:
- *   astro.config.mjs 의 prerenderConflictBehavior:'error' 가 라우트 충돌과 콘텐츠
+ *   astro.config.ts 의 prerenderConflictBehavior:'error' 가 라우트 충돌과 콘텐츠
  *   슬러그 중복은 잡아 준다. 하지만 아래 세 가지는 그 사정권 밖이고, 셋 다
  *   "개발자의 맥에서는 멀쩡한데 ubuntu CI 나 배포본에서만 터지는" 종류다.
  *   그래서 사람 눈이 아니라 스크립트가 지켜야 한다.
