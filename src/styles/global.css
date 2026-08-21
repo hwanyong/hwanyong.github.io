@@ -1368,15 +1368,19 @@ img.accounts__mark {
   }
 
   /* 손가락으로 누를 수 있는 크기를 확보한다. 데스크톱의 10.5px 짜리
-     인라인 칩 크기로는 터치 목표가 되지 못한다. */
+     인라인 칩 크기로는 터치 목표가 되지 못한다.
+     2.75rem = 44px 는 iOS Human Interface Guidelines 의 최소 터치 목표다.
+     칩이 둘로 늘어난 뒤로는 오조작 비용이 커져 권고치를 그대로 따른다. */
   .command-bar__state {
-    min-height: 2.5rem;
+    min-height: 2.75rem;
     padding-inline: 1rem;
   }
 
   body {
-    /* 얇아진 커맨드 바(약 3.3rem)에 본문 끝이 가리지 않게 확보한다 */
-    padding-block-end: 3.75rem;
+    /* 커맨드 바에 본문 끝이 가리지 않게 확보한다.
+       바 높이 = 위아래 패딩 0.8rem + 칩 2.75rem + 위 테두리 1px ≈ 3.6rem.
+       칩 크기를 바꾸면 이 값도 함께 올릴 것 — 실측은 58px(약 3.6rem)이다. */
+    padding-block-end: 4.25rem;
     font-size: 16px;
   }
 
