@@ -1,6 +1,7 @@
 ---
 import BaseHead from '../components/BaseHead.astro';
 import AdSenseHead from '../components/AdSenseHead.astro';
+import AnalyticsHead from '../components/AnalyticsHead.astro';
 import { SITE } from '../lib/site';
 import { GITHUB } from '../lib/profile';
 import { HINTS } from '../lib/shortcuts';
@@ -91,6 +92,11 @@ const {
     {/* AdSense 로더는 </head> 안. 페이지당 정확히 1회. */}
     {ads && <AdSenseHead />}
 
+    {/* 분석 비콘. 일부러 ads 게이트 밖에 둔다 — 광고를 끈 화면(처리방침 등)의
+        방문이 통계에서 빠지면 "아무도 안 본다"는 잘못된 결론이 나온다.
+        쿠키를 심지 않으므로 동의 배너 없이 모든 화면에서 켤 수 있다. */}
+    <AnalyticsHead />
+
     {/*
       ClientRouter(뷰 트랜지션)는 기본적으로 켜지 않는다.
       - AdSense: 전환마다 슬롯을 다시 push 하면 '사용자 요청 없는 새로고침'
@@ -129,6 +135,8 @@ const {
       <span>© {new Date().getUTCFullYear()} {SITE.author}</span>
       <a href={GITHUB.href}>{GITHUB.platform}</a>
       <a href="/rss.xml">RSS</a>
+      {/* 고지 문서는 어느 화면에서나 한 번에 닿아야 한다(AdSense 승인 요건이기도 하다) */}
+      <a href="/privacy/">Privacy</a>
     </footer>
 
     {/*

@@ -1,0 +1,33 @@
+---
+/**
+ * Cloudflare Web Analytics 비콘. <head> 안에, 페이지당 정확히 한 번만 렌더링한다.
+ *
+ * AdSenseHead 와 달리 BaseLayout 의 ads prop 에 묶지 않는 이유:
+ *   분석은 광고 게재 여부와 무관하게 모든 화면에서 켜져야 한다. ads={false} 인
+ *   화면(처리방침·구버전 개정 페이지 등)의 방문이 통계에서 통째로 빠지면
+ *   "그 페이지는 아무도 안 본다" 는 잘못된 결론을 낳는다.
+ *
+ * is:inline 이 필수인 이유는 AdSenseHead 와 같다:
+ *   Astro 의 미처리 규칙은 "src 이외의 속성이 하나라도 있으면" 이다. 여기에는
+ *   type 과 data-cf-beacon 이 있으므로, 붙이지 않으면 Astro 가 번들링을 시도해
+ *   Cloudflare 스니펫의 형태가 깨진다.
+ *
+ * 설정을 별도 <script> 블록이 아니라 data-cf-beacon 속성으로 넘기는 것은
+ * Cloudflare 가 정한 방식이다. 마침 Comments.astro 의 data-giscus 와 같은 형태라
+ * 인라인 스크립트 금지 규약에 그대로 부합한다 — 해체할 것이 없다.
+ *
+ * type="module" 은 Cloudflare 스니펫 원형 그대로다. 모듈 스크립트는 defer 로
+ * 동작하므로 첫 페인트를 막지 않는다.
+ *
+ * dev 서버에서 빼는 이유: 로컬 새로고침이 실제 방문 수로 집계되어 통계가 오염된다.
+ */
+import { ANALYTICS } from '../lib/site';
+
+const show = import.meta.env.PROD && ANALYTICS.enabled;
+
+// Cloudflare 는 이 속성을 JSON 문자열로 읽는다. 손으로 따옴표를 맞추다
+// 어긋나면 비콘이 조용히 죽으므로 직렬화를 언어에 맡긴다.
+const beacon = JSON.stringify({ token: ANALYTICS.cfToken });
+---
+
+{show && <script is:inline type="module" src={ANALYTICS.beaconSrc} data-cf-beacon={beacon} />}

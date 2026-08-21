@@ -66,3 +66,28 @@ export const AD_SLOTS = {
   /** 글 본문이 끝난 뒤 */
   articleEnd: '1234567890',
 } as const;
+
+/**
+ * Cloudflare Web Analytics.
+ *
+ * GA 대신 이것을 기본 분석 도구로 두는 이유:
+ *   쿠키를 하나도 심지 않고 개인을 식별하는 값도 만들지 않는다. 그래서 EU 방문자에게
+ *   사전 동의 배너(consent banner)를 띄울 의무가 생기지 않는다 — 배너는 액센트 0
+ *   미니멀 규약과 정면으로 충돌하므로, 안 만들어도 되는 쪽을 기본선으로 삼는다.
+ *
+ * ★ 반드시 "수동 설치(JS 스니펫)" 여야 한다.
+ *   Cloudflare 의 자동 주입은 프록시를 거치는 트래픽에만 비콘을 끼워 넣는다.
+ *   blog.hwanyong.com 은 GitHub Pages 인증서 때문에 DNS only(회색 구름)라
+ *   프록시를 거치지 않으므로, 자동 설치를 믿으면 데이터가 한 건도 들어오지 않는다.
+ *   대시보드에서도 "does not belong to Cloudflare websites" 로 잡힌다.
+ *
+ * token 은 비밀이 아니다 — 모든 방문자의 HTML 에 그대로 실려 나가는 공개 식별자다.
+ * 저장소에 두어도 무방하며, 오히려 여기 없으면 빌드마다 손으로 넣어야 한다.
+ */
+export const ANALYTICS = {
+  /** Cloudflare 대시보드 → Web Analytics → blog.hwanyong.com 에서 발급 (2026-08-21) */
+  cfToken: 'd10ef3756f0a47f48b7896721f153bfa',
+  /** Cloudflare 가 준 스니펫의 src 원형 */
+  beaconSrc: 'https://static.cloudflareinsights.com/beacon.min.js',
+  enabled: true,
+} as const;
