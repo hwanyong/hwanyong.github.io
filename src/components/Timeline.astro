@@ -1,0 +1,88 @@
+---
+/**
+ * 연도별로 묶인 목록. 홈·글 목록·작업물 목록이 공유한다.
+ *
+ * 왜 컴포넌트인가: 세 화면이 같은 마크업을 쓴다. 각 페이지에서 inline 으로
+ * 재구현하면 개정 눈금이나 광고 위치를 고칠 때 세 곳을 따라다녀야 한다.
+ *
+ * 광고 삽입 위치를 템플릿이 아니라 스크립트에서 미리 계산하는 이유:
+ * 광고는 "N번째 항목 뒤"에 들어가는데 그 지점이 연도 그룹 경계를 가로지를 수
+ * 있다. 렌더 중에 누적 개수를 세려 하면 조건이 중첩돼 읽기 어려워진다.
+ */
+import AdUnit from './AdUnit.astro';
+import { formatDate, isoDate } from '../lib/date';
+import type { TimelineItem, YearGroup } from '../lib/content';
+
+interface Props {
+  groups: YearGroup[];
+  /** 이만큼 항목이 지나간 뒤 광고를 한 번 넣는다. null 이면 광고 없음. */
+  adAfter?: number | null;
+  adSlot?: string;
+}
+
+const { groups, adAfter = null, adSlot } = Astro.props;
+
+type Row =
+  | { type: 'year'; year: number }
+  | { type: 'item'; item: TimelineItem }
+  | { type: 'ad' };
+
+const rows: Row[] = [];
+let seen = 0;
+let adPlaced = false;
+
+for (const group of groups) {
+  rows.push({ type: 'year', year: group.year });
+  for (const item of group.items) {
+    rows.push({ type: 'item', item });
+    seen += 1;
+    // 마지막 항목 바로 뒤에는 넣지 않는다 — 그 자리는 푸터 위 슬롯의 몫이다.
+    if (!adPlaced && adAfter !== null && adSlot && seen === adAfter) {
+      rows.push({ type: 'ad' });
+      adPlaced = true;
+    }
+  }
+}
+
+/** 개정 눈금. 첫 칸이 현재 버전(채움), 나머지가 과거 버전(빔). */
+const marks = (count: number): boolean[] =>
+  Array.from({ length: count }, (_, index) => index === 0);
+---
+
+<div class="column">
+  {
+    rows.map((row) =>
+      row.type === 'year' ? (
+        <h2 class="section-bar"><b>{row.year}</b></h2>
+      ) : row.type === 'ad' ? (
+        <AdUnit adSlot={adSlot!} collapseOnUnfilled={true} />
+      ) : (
+        <article class="entry">
+          <div class="entry__marks">
+            {row.item.revisionCount && row.item.revisionCount > 1
+              ? marks(row.item.revisionCount).map((on) => (
+                  <span class={on ? 'mark mark--on' : 'mark'} />
+                ))
+              : null}
+          </div>
+          <div class="entry__body">
+            <div class="entry__meta">
+              <time datetime={isoDate(row.item.date)}>{formatDate(row.item.date)}</time>
+              {row.item.version && (
+                <span class="rev-count">
+                  v{row.item.version} · 개정 {row.item.revisionCount}
+                </span>
+              )}
+            </div>
+            <h3 class="entry__title">
+              <a href={row.item.href}>{row.item.title}</a>
+            </h3>
+            {row.item.tags.length > 0 && (
+              <p class="entry__tags">{row.item.tags.join(' · ')}</p>
+            )}
+          </div>
+        </article>
+      ),
+    )
+  }
+</div>

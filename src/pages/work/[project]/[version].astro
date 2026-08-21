@@ -12,7 +12,7 @@ import { getProjectHistories, versionSlug } from '../../../lib/content';
 import type { WorkEntry } from '../../../lib/content';
 import { formatDate, isoDate } from '../../../lib/date';
 
-export async function getStaticPaths() {
+export const getStaticPaths = async () => {
   const histories = await getProjectHistories();
 
   return histories.flatMap(({ project, revisions }) =>
@@ -25,10 +25,12 @@ export async function getStaticPaths() {
         older: revisions[index + 1] ?? null,
         isLatest: index === 0,
         latestSlug: versionSlug(revisions[0]!),
+        total: revisions.length,
+        position: revisions.length - index,
       },
     })),
   );
-}
+};
 
 type Props = {
   entry: WorkEntry;
@@ -36,9 +38,11 @@ type Props = {
   older: WorkEntry | null;
   isLatest: boolean;
   latestSlug: string;
+  total: number;
+  position: number;
 };
 
-const { entry, newer, older, isLatest, latestSlug } = Astro.props;
+const { entry, newer, older, isLatest, latestSlug, total, position } = Astro.props;
 const { Content } = await render(entry);
 const project = entry.data.project;
 ---
@@ -48,42 +52,86 @@ const project = entry.data.project;
   description={entry.data.description}
   type="article"
   publishedTime={entry.data.date}
+  section="work"
+  status={`REV ${position} / ${total}`}
+  ads={isLatest}
 >
-  {/* 구버전 개정본은 최신본을 canonical 로 가리켜 중복 콘텐츠 판정을 피한다.
-      (BaseHead 의 canonical 뒤에 오므로 이 값이 실제로 적용되게 하려면
-       BaseHead 에 canonical override prop 을 추가하는 편이 더 깔끔하다.) */}
-  <article>
-    <h1>
-      {entry.data.title} <small>v{entry.data.version}</small>
-    </h1>
-    {!isLatest && (
-      <p>
-        이 문서는 최신 개정본이 아닙니다.{' '}
-        <a href={`/work/${project}/${latestSlug}/`}>최신 개정본 보기</a>
-      </p>
-    )}
-    <time datetime={isoDate(entry.data.date)}>{formatDate(entry.data.date)}</time>
+  <div class="column">
+    <a class="back-link" href={`/work/${project}/`}>← {entry.data.title}</a>
 
-    <Content />
-  </article>
+    <article>
+      <header class="post-header">
+        <div class="post-header__meta">
+          <time datetime={isoDate(entry.data.date)}>{formatDate(entry.data.date)}</time>
+          <span>·</span>
+          <span>v{entry.data.version}</span>
+          {isLatest && <Fragment><span>·</span><span>현재</span></Fragment>}
+        </div>
+        <h1 class="post-header__title">{entry.data.title}</h1>
+        <p class="post-header__lead">{entry.data.description}</p>
+      </header>
 
-  <nav aria-label="개정 이동">
-    {older && (
-      <a href={`/work/${project}/${versionSlug(older)}/`}>
-        이전 개정 v{older.data.version}
-      </a>
-    )}
-    {newer && (
-      <a href={`/work/${project}/${versionSlug(newer)}/`}>
-        다음 개정 v{newer.data.version}
-      </a>
-    )}
-    <a href={`/work/${project}/`}>개정 이력 전체</a>
-  </nav>
+      {!isLatest && (
+        <p class="stale-notice">
+          이 문서는 최신 개정본이 아닙니다.{' '}
+          <a href={`/work/${project}/${latestSlug}/`}>최신 개정본 보기 →</a>
+        </p>
+      )}
 
-  {/* 개정축은 같은 project 의 모든 버전이 하나의 Discussion 을 공유한다. */}
-  <Comments mapping="specific" term={`work:${project}`} />
+      <div class="prose">
+        <Content />
+      </div>
+    </article>
 
-  {/* 구버전 개정본에는 광고를 넣지 않는다(replicated content 리스크). */}
-  {isLatest && <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />}
+    <nav class="rev-nav" aria-label="개정 이동">
+      {older ? (
+        <a href={`/work/${project}/${versionSlug(older)}/`}>← v{older.data.version}</a>
+      ) : (
+        <span></span>
+      )}
+      <a href={`/work/${project}/`}>개정 이력</a>
+      {newer ? (
+        <a href={`/work/${project}/${versionSlug(newer)}/`}>v{newer.data.version} →</a>
+      ) : (
+        <span></span>
+      )}
+    </nav>
+
+    {/* 개정축은 같은 project 의 모든 버전이 하나의 Discussion 을 공유한다. */}
+    <Comments mapping="specific" term={`work:${project}`} />
+
+    {/* 구버전 개정본에는 광고를 넣지 않는다(replicated content 리스크).
+        BaseLayout 의 ads={isLatest} 로 로더 자체도 함께 빠진다. */}
+    {isLatest && <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />}
+  </div>
 </BaseLayout>
+
+<style>
+  .stale-notice {
+    font-family: var(--font-mono), monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--ink-2);
+    background: var(--bg-2);
+    border-inline-start: 2px solid var(--accent);
+    padding: 0.7rem 0.9rem;
+    margin-block: 0 1.75rem;
+  }
+
+  .rev-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-block-start: 2.5rem;
+    padding-block-start: 1.15rem;
+    border-block-start: 1px solid var(--rule);
+    font-family: var(--font-mono), monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+  }
+
+  .rev-nav a:hover {
+    color: var(--ink);
+  }
+</style>

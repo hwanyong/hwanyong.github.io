@@ -1,23 +1,18 @@
 ---
-// src/pages/work/index.astro — 작업물 목록. 프로젝트당 한 줄(최신 개정본 기준).
+// 작업물 목록 (개정축). 프로젝트 단위로 한 줄이며, 개정이 여럿이면 눈금이 나타난다.
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { getProjectHistories } from '../../lib/content';
-import { formatDate, isoDate } from '../../lib/date';
+import Timeline from '../../components/Timeline.astro';
+import { getWorkTimeline, groupByYear } from '../../lib/content';
 
-const histories = await getProjectHistories();
+const items = await getWorkTimeline();
+const groups = groupByYear(items);
 ---
 
-<BaseLayout title="작업물" description="작업물 목록(개정축)">
-  <h1>작업물</h1>
-  <ul class="entry-list">
-    {histories.map(({ project, latest, revisions }) => (
-      <li>
-        <a href={`/work/${project}/`}>{latest.data.title}</a>
-        <time datetime={isoDate(latest.data.date)}>
-          v{latest.data.version} · 개정 {revisions.length}건 · {formatDate(latest.data.date)}
-        </time>
-        <p>{latest.data.description}</p>
-      </li>
-    ))}
-  </ul>
+<BaseLayout
+  title="Work"
+  description="만든 것과 고친 기록"
+  section="work"
+  status={`${items.length} PROJECTS`}
+>
+  <Timeline groups={groups} adAfter={3} adSlot="1234567890" />
 </BaseLayout>

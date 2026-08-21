@@ -7,13 +7,13 @@ import { getProjectHistories, versionSlug } from '../../lib/content';
 import type { ProjectHistory } from '../../lib/content';
 import { formatDate, isoDate } from '../../lib/date';
 
-export async function getStaticPaths() {
+export const getStaticPaths = async () => {
   const histories = await getProjectHistories();
   return histories.map((history) => ({
     params: { project: history.project },
     props: { history },
   }));
-}
+};
 
 type Props = { history: ProjectHistory };
 
@@ -21,18 +21,43 @@ const { history } = Astro.props;
 const { latest, revisions } = history;
 ---
 
-<BaseLayout title={latest.data.title} description={latest.data.description}>
-  <h1>{latest.data.title}</h1>
-  <p>{latest.data.description}</p>
+<BaseLayout
+  title={latest.data.title}
+  description={latest.data.description}
+  section="work"
+  status={`REV ${revisions.length}`}
+>
+  <div class="column">
+    <a class="back-link" href="/work/">← Work</a>
 
-  <h2>개정 이력</h2>
-  <ol class="entry-list">
-    {revisions.map((rev) => (
-      <li>
-        <a href={`/work/${history.project}/${versionSlug(rev)}/`}>v{rev.data.version}</a>
-        <time datetime={isoDate(rev.data.date)}>{formatDate(rev.data.date)}</time>
-        <p>{rev.data.description}</p>
-      </li>
-    ))}
-  </ol>
+    <header class="post-header">
+      <div class="post-header__meta">
+        <time datetime={isoDate(latest.data.date)}>{formatDate(latest.data.date)}</time>
+        <span>·</span>
+        <span>v{latest.data.version}</span>
+      </div>
+      <h1 class="post-header__title">{latest.data.title}</h1>
+      <p class="post-header__lead">{latest.data.description}</p>
+    </header>
+
+    <nav class="revisions brk" aria-label="개정 이력">
+      <div class="revisions__head">
+        개정 이력
+        <span class="revisions__count">{revisions.length} REV</span>
+      </div>
+      <ol>
+        {revisions.map((revision, index) => (
+          <li class={index === 0 ? 'is-current' : undefined}>
+            <span class={index === 0 ? 'mark mark--on' : 'mark'} aria-hidden="true"></span>
+            <b>v{revision.data.version}</b>
+            <time datetime={isoDate(revision.data.date)}>
+              {formatDate(revision.data.date)}
+            </time>
+            {index === 0 && <em class="revisions__badge">현재</em>}
+            <a href={`/work/${history.project}/${versionSlug(revision)}/`}>보기</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  </div>
 </BaseLayout>

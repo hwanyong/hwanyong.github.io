@@ -6,12 +6,9 @@
  * - 작업물(work):  <Comments mapping="specific" term={`work:${project}`} />
  *                  → v1-0 / v1-1 페이지가 URL 이 달라도 같은 Discussion 을 공유한다.
  *
- * 왜 순수 <script> 임베드인가:
- *   giscus 는 React/Vue/Svelte/Solid 래퍼와 Web Component(`npm i giscus` →
- *   <giscus-widget>)를 공식 제공한다. Web Component 는 Astro 에서도 그대로 쓸 수
- *   있는 정식 경로다. 여기서 굳이 순수 script 를 쓰는 이유는 (a) 런타임 의존성 0,
- *   (b) 최초 렌더 시점의 REFLECT/EMIT 상태를 data-theme 에 직접 주입해
- *   테마 깜빡임을 없애기 위해서다. Web Component 로 바꿔도 무방하다.
+ * 설정을 data 속성으로 넘기고 동작은 src/scripts/giscus.ts 가 맡는다.
+ * 인라인 <script define:vars> 로 값을 주입하면 그 코드가 번들·타입체크 밖으로
+ * 빠져 유지보수가 안 된다.
  */
 import { GISCUS } from '../lib/site';
 
@@ -26,118 +23,54 @@ const { mapping = 'pathname', term } = Astro.props;
 // dev 서버(http://localhost:4321)는 CORS 헤더를 주지 않으므로
 // giscus iframe 이 crossorigin="anonymous" 로 커스텀 테마 CSS 를 못 읽는다.
 // dev 에서는 빌트인 테마를 쓰고, 프로덕션에서만 자체 호스팅 CSS 를 쓴다.
-const isDev = import.meta.env.DEV;
+const theme = import.meta.env.DEV
+  ? GISCUS.devTheme
+  : {
+      reflect: `${GISCUS.themeBase}/reflect.css`,
+      emit: `${GISCUS.themeBase}/emit.css`,
+    };
+
+const config = {
+  origin: GISCUS.origin,
+  repo: GISCUS.repo,
+  repoId: GISCUS.repoId,
+  category: GISCUS.category,
+  categoryId: GISCUS.categoryId,
+  mapping,
+  ...(term ? { term } : {}),
+  theme,
+};
 ---
 
 <section class="comments" aria-label="댓글">
   <h2 class="comments__title">댓글</h2>
   {/* giscus client.js 가 이 요소를 찾아 내부를 비우고 iframe 을 삽입한다. */}
-  <div class="giscus"></div>
+  <div class="giscus" data-giscus={JSON.stringify(config)}></div>
 </section>
 
-{/* define:vars 는 is:inline 을 함축한다. 명시하지 않으면 astro check 가 힌트를 낸다. */}
-<script is:inline define:vars={{ GISCUS, mapping, term, isDev }}>
-  (function () {
-    var root = document.documentElement;
-
-    function modeOf() {
-      return root.dataset.mode === 'emit' ? 'emit' : 'reflect';
-    }
-
-    function themeFor(mode) {
-      if (isDev) return GISCUS.devTheme[mode];
-      return GISCUS.themeBase + '/' + mode + '.css';
-    }
-
-    var container = document.querySelector('.giscus');
-    if (!container) return;
-
-    var injected = false;
-    function inject() {
-      if (injected) return;
-      injected = true;
-
-      var s = document.createElement('script');
-      s.src = GISCUS.origin + '/client.js';
-      s.async = true;
-      s.crossOrigin = 'anonymous';
-
-      // dataset 의 camelCase 는 data-kebab-case 로 정확히 변환된다.
-      s.dataset.repo = GISCUS.repo;                 // data-repo
-      s.dataset.repoId = GISCUS.repoId;             // data-repo-id
-      s.dataset.category = GISCUS.category;         // data-category (카테고리 한정 검색)
-      s.dataset.categoryId = GISCUS.categoryId;     // data-category-id
-      s.dataset.mapping = mapping;                  // data-mapping
-      s.dataset.strict = '1';                       // data-strict (퍼지 검색 오매칭 방지)
-      s.dataset.reactionsEnabled = '1';
-      s.dataset.emitMetadata = '0';
-      s.dataset.inputPosition = 'bottom';
-      s.dataset.theme = themeFor(modeOf());         // data-theme 는 기본값이 없다. 필수.
-      s.dataset.lang = 'ko';                        // → https://giscus.app/ko/widget
-      s.dataset.loading = 'lazy';                   // → iframe loading="lazy"
-      if (term) s.dataset.term = term;              // data-term (specific / number 전용)
-
-      // ★ container.appendChild(s) 로 넣으면 안 된다.
-      //   client.js 는 .giscus 컨테이너를 찾은 뒤 firstChild 를 전부 제거하므로
-      //   방금 넣은 <script> 자신이 DOM 에서 사라진다. 형제로 붙인다.
-      container.insertAdjacentElement('afterend', s);
-    }
-
-    var io = null;
-    if ('IntersectionObserver' in window) {
-      io = new IntersectionObserver(
-        function (entries) {
-          for (var i = 0; i < entries.length; i++) {
-            if (entries[i].isIntersecting) {
-              io.disconnect();
-              inject();
-              return;
-            }
-          }
-        },
-        { rootMargin: '400px 0px' },
-      );
-      io.observe(container);
-    } else {
-      inject();
-    }
-
-    // REFLECT <-> EMIT 토글 동기화. iframe 리로드 없이 테마만 교체된다.
-    function pushTheme(mode) {
-      var iframe = document.querySelector('iframe.giscus-frame');
-      if (!iframe || !iframe.contentWindow) return;
-      iframe.contentWindow.postMessage(
-        { giscus: { setConfig: { theme: themeFor(mode) } } },
-        GISCUS.origin,
-      );
-    }
-
-    var mo = new MutationObserver(function () {
-      pushTheme(modeOf());
-    });
-    mo.observe(root, { attributes: true, attributeFilter: ['data-mode'] });
-
-    // ClientRouter 를 켤 경우 옵저버가 페이지마다 누적되는 것을 막는다.
-    // ClientRouter 가 없으면 이 이벤트는 발화하지 않으므로 무해하다.
-    document.addEventListener(
-      'astro:before-swap',
-      function () {
-        mo.disconnect();
-        if (io) io.disconnect();
-      },
-      { once: true },
-    );
-  })();
-</script>
+{/*
+  초기화 스크립트를 여기 두지 않는다.
+  Astro 5+ 는 컴포넌트의 <script> 를 head 로 hoist 하지 않고 선언된 자리에
+  그대로 남긴다. 이 컴포넌트는 <body> 안에 놓이므로 여기에 <script> 를 쓰면
+  body 안 스크립트가 되어버린다.
+  → 진입점은 BaseLayout 의 <head> 하나로 통합했다(initGiscus 는 .giscus
+    컨테이너가 없는 페이지에서는 즉시 반환하므로 무해하다).
+*/}
 
 <style>
   .comments {
     margin-block-start: 4rem;
   }
+
   .comments__title {
-    font-size: 1rem;
-    letter-spacing: 0.08em;
+    font-family: var(--font-mono), monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    margin-block-end: 1.25rem;
+    background: var(--ink-2);
+    color: var(--bg);
+    padding: 0.42rem 0.9rem;
+    margin-block: 0 1.25rem;
+    display: inline-block;
   }
 </style>

@@ -1,36 +1,20 @@
 ---
+// 홈 — 글과 작업물을 하나의 시간축에 섞어 보여준다.
+// 두 축을 나눠 놓으면 "언제 무엇을 했는지"가 두 목록으로 쪼개져 읽히지 않는다.
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getLogEntries, getProjectHistories } from '../lib/content';
-import { formatDate, isoDate } from '../lib/date';
+import Timeline from '../components/Timeline.astro';
+import { getTimeline, groupByYear } from '../lib/content';
 import { SITE } from '../lib/site';
 
-const posts = (await getLogEntries()).slice(0, 5);
-const histories = (await getProjectHistories()).slice(0, 5);
+const items = await getTimeline();
+const groups = groupByYear(items);
 ---
 
-<BaseLayout title={SITE.title} description={SITE.description}>
-  <h1>{SITE.title}</h1>
-  <p>{SITE.description}</p>
-
-  <h2>최근 글</h2>
-  <ul class="entry-list">
-    {posts.map((post) => (
-      <li>
-        <a href={`/log/${post.id}/`}>{post.data.title}</a>
-        <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
-      </li>
-    ))}
-  </ul>
-
-  <h2>작업물</h2>
-  <ul class="entry-list">
-    {histories.map(({ project, latest }) => (
-      <li>
-        <a href={`/work/${project}/`}>{latest.data.title}</a>
-        <time datetime={isoDate(latest.data.date)}>
-          v{latest.data.version} · {formatDate(latest.data.date)}
-        </time>
-      </li>
-    ))}
-  </ul>
+<BaseLayout
+  title={SITE.title}
+  description={SITE.description}
+  tagline={true}
+  status={`${items.length} ENTRIES`}
+>
+  <Timeline groups={groups} adAfter={3} adSlot="1234567890" />
 </BaseLayout>

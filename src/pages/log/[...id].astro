@@ -13,18 +13,18 @@ import { getLogEntries } from '../../lib/content';
 import type { LogEntry } from '../../lib/content';
 import { formatDate, isoDate } from '../../lib/date';
 
-export async function getStaticPaths() {
+export const getStaticPaths = async () => {
   const posts = await getLogEntries();
   return posts.map((post) => ({
     params: { id: post.id },
     props: { post },
   }));
-}
+};
 
 type Props = { post: LogEntry };
 
 const { post } = Astro.props;
-const { Content, headings } = await render(post);
+const { Content } = await render(post);
 ---
 
 <BaseLayout
@@ -32,33 +32,32 @@ const { Content, headings } = await render(post);
   description={post.data.description}
   type="article"
   publishedTime={post.data.date}
+  section="log"
 >
-  <article>
-    <h1>{post.data.title}</h1>
-    <p>{post.data.description}</p>
-    <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
-    {post.data.tags.length > 0 && (
-      <ul class="tag-list">
-        {post.data.tags.map((tag) => <li>#{tag}</li>)}
-      </ul>
-    )}
+  <div class="column">
+    <a class="back-link" href="/log/">← Log</a>
 
-    {headings.length > 0 && (
-      <nav aria-label="목차">
-        <ul>
-          {headings.map((h) => (
-            <li><a href={`#${h.slug}`}>{h.text}</a></li>
+    <article>
+      <header class="post-header">
+        <div class="post-header__meta">
+          <time datetime={isoDate(post.data.date)}>{formatDate(post.data.date)}</time>
+          {post.data.tags.map((tag) => (
+            <Fragment><span>·</span><span>{tag}</span></Fragment>
           ))}
-        </ul>
-      </nav>
-    )}
+        </div>
+        <h1 class="post-header__title">{post.data.title}</h1>
+        <p class="post-header__lead">{post.data.description}</p>
+      </header>
 
-    <Content />
-  </article>
+      <div class="prose">
+        <Content />
+      </div>
+    </article>
 
-  {/* 광고는 본문이 끝난 뒤. 네비게이션 버튼 근처는 오클릭 유발로 정책상 위험하다.
-      prop 이름은 slot 이 아니라 adSlot 이어야 한다(slot 은 Astro 예약 속성). */}
-  <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />
+    {/* 광고는 본문이 끝난 뒤. 네비게이션 근처는 오클릭 유발로 정책상 위험하다.
+        prop 이름은 slot 이 아니라 adSlot 이어야 한다(slot 은 Astro 예약 속성). */}
+    <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />
 
-  <Comments />
+    <Comments />
+  </div>
 </BaseLayout>
