@@ -26,7 +26,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readGroups, sourceOf, missingLocales, type Leaf, type Locale } from './i18n-content.ts';
+import { readGroups, sourceOf, missingLocales, type Leaf } from './i18n-content.ts';
 
 const force = process.argv.includes('--force');
 const dry = process.argv.includes('--dry');
