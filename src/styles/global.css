@@ -133,6 +133,56 @@ body::before {
   background: repeating-linear-gradient(to right, var(--scan) 0 1px, transparent 1px 3px);
 }
 
+/* 무늬 상태.
+   라벨(--scan-label) · 버튼 아이콘(--scan-icon) · 실제 격자(body::before)가 전부
+   이 한 블록에서 나온다. 셋이 떨어져 있으면 버튼이 거짓말을 하게 된다.
+   차례를 바꾸려면 src/scripts/scan.ts 의 ORDER 를 고칠 것 — 여기는 모양만 정한다.
+
+   기본값(세로)을 :root 에 두는 이유: theme-init.js 가 죽어 data-scan 이 안 붙어도
+   화면이 맨 배경으로 뜨지 않게 하기 위해서다.
+
+   --scan-icon 의 currentColor 는 커스텀 속성이 치환된 뒤 사용처에서 해석되므로
+   커맨드 바의 글자색(--cmd-fg)을 그대로 따라간다. */
+:root {
+  --scan-label: '세로줄';
+  --scan-icon: repeating-linear-gradient(to right, currentColor 0 1px, transparent 1px 3px);
+}
+
+html[data-scan='horizontal'] {
+  --scan-label: '가로줄';
+  --scan-icon: repeating-linear-gradient(to bottom, currentColor 0 1px, transparent 1px 3px);
+}
+
+html[data-scan='grid'] {
+  --scan-label: '격자';
+  --scan-icon:
+    repeating-linear-gradient(to right, currentColor 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(to bottom, currentColor 0 1px, transparent 1px 3px);
+}
+
+html[data-scan='none'] {
+  --scan-label: '없음';
+  --scan-icon: none;
+}
+
+/* ★ 가로 성분이 들어가면 스크롤 중 맥놀이가 돌아온다(위 body::before 주석 참조).
+   그래도 고를 수 있게 두는 것은 취향의 문제이기 때문이고, 기본값은 세로다.
+   격자는 두 성분이 겹치는 교차점에서 --scan 이 두 번 얹혀 점이 조금 진해진다 —
+   섀도 마스크처럼 읽히므로 의도한 대로 둔다. */
+html[data-scan='horizontal'] body::before {
+  background: repeating-linear-gradient(to bottom, var(--scan) 0 1px, transparent 1px 3px);
+}
+
+html[data-scan='grid'] body::before {
+  background:
+    repeating-linear-gradient(to right, var(--scan) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(to bottom, var(--scan) 0 1px, transparent 1px 3px);
+}
+
+html[data-scan='none'] body::before {
+  background: none;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -987,8 +1037,22 @@ img.thumb {
   text-transform: inherit;
 }
 
-.command-bar__state::after {
+/* 라벨을 수식어에 붙인다. 예전처럼 .command-bar__state::after 하나로 두면
+   버튼이 둘이 된 지금은 같은 특정성끼리 소스 순서로 싸우게 된다. */
+.command-bar__state--mode::after {
   content: var(--state-label);
+}
+
+.command-bar__state--scan::after {
+  content: var(--scan-label);
+}
+
+/* 버튼 묶음. 바 자체의 gap 은 좁은 화면에서 0 이 되므로(아래 768px 블록)
+   버튼 사이 간격은 여기서 따로 지킨다. */
+.command-bar__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .command-bar__dot {
@@ -996,6 +1060,16 @@ img.thumb {
   height: 6px;
   background: var(--accent);
   flex: none;
+}
+
+/* 무늬 미리보기. 아이콘이 지금 고른 무늬를 그대로 그리므로
+   글자를 못 읽는 상황에서도 무엇이 켜져 있는지 보인다. */
+.command-bar__grid {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid currentColor;
+  background: var(--scan-icon);
 }
 
 /* ─── 개정본 상태 안내 ─────────────────────────────────────── */

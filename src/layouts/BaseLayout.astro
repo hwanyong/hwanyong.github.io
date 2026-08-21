@@ -79,11 +79,13 @@ const {
     */}
     <script>
       import { initTheme } from '../scripts/theme';
+      import { initScan } from '../scripts/scan';
       import { initKeyboard } from '../scripts/keyboard';
       import { initGiscus } from '../scripts/giscus';
       import { initVideo } from '../scripts/video';
 
       initTheme();
+      initScan();
       initKeyboard();
       initGiscus();
       initVideo();
@@ -153,9 +155,23 @@ const {
         </span>
       ))}
       <span class="command-bar__spacer"></span>
-      <button class="command-bar__state" type="button" id="mode-toggle" aria-label="백라이트 전환">
-        <i class="command-bar__dot" aria-hidden="true"></i>
-      </button>
+      {/*
+        오른쪽 끝은 상태 칩 자리다. 좁은 화면에서는 힌트가 접히고 이 둘만 남으므로
+        터치 기기에서 무늬·조명을 바꿀 수 있는 유일한 경로가 된다.
+        조명 칩을 맨 끝에 두는 것은 위치가 바뀌면 손이 헤매기 때문이다.
+
+        라벨은 여기 쓰지 않는다 — global.css 의 [data-scan] · [data-mode] 블록이
+        --scan-label / --state-label 로 넣는다. 실제 무늬와 같은 자리에서 나와야
+        버튼과 화면이 어긋날 수 없다.
+      */}
+      <div class="command-bar__controls">
+        <button class="command-bar__state command-bar__state--scan" type="button" id="scan-toggle" aria-label="화면 무늬 전환">
+          <i class="command-bar__grid" aria-hidden="true"></i>
+        </button>
+        <button class="command-bar__state command-bar__state--mode" type="button" id="mode-toggle" aria-label="백라이트 전환">
+          <i class="command-bar__dot" aria-hidden="true"></i>
+        </button>
+      </div>
     </div>
   </body>
 </html>

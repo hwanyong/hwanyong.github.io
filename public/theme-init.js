@@ -20,6 +20,10 @@
  * 이 값을 읽는 쪽:
  *   src/scripts/theme.ts, src/scripts/giscus.ts, src/styles/global.css
  *   상태 키('mode')와 값('reflect' | 'emit')을 바꾸면 저 세 곳도 함께 고칠 것.
+ *
+ * 화면 무늬(data-scan)도 같은 이유로 여기서 확정한다.
+ * "무늬 없음"을 골라둔 사람에게 주사선이 한 번 그려졌다 사라지면 그것 자체가
+ * 눈에 띄는 깜빡임이다. 기본값은 src/scripts/scan.ts 의 DEFAULT_SCAN 과 같아야 한다.
  */
 const prefersEmit = () => {
   try {
@@ -40,3 +44,15 @@ const saved = (() => {
 
 document.documentElement.dataset.mode =
   saved === 'emit' || saved === 'reflect' ? saved : prefersEmit() ? 'emit' : 'reflect';
+
+const SCANS = ['vertical', 'horizontal', 'grid', 'none'];
+
+const savedScan = (() => {
+  try {
+    return localStorage.getItem('scan');
+  } catch {
+    return null;
+  }
+})();
+
+document.documentElement.dataset.scan = SCANS.includes(savedScan) ? savedScan : 'vertical';
