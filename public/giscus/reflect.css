@@ -1,0 +1,133 @@
+/* giscus custom theme — REFLECT (beige)
+ * 배포 URL: https://hwanyong.github.io/giscus/reflect.css
+ * base: #cdc7b0 canvas / #1a1613 ink
+ *
+ * 변수 집합은 giscus 의 styles/themes/light.css 와 동일하게 채운다.
+ * 하나라도 빠지면 그 부분만 색이 무너진다(fallback 체인이 얕다).
+ * emit.css 와 변수 집합이 완전히 같아야 토글 시 색이 어긋나지 않는다.
+ */
+main {
+  /* --- syntax highlighting --- */
+  --color-prettylights-syntax-comment: #6d6555;
+  --color-prettylights-syntax-constant: #7a4a12;
+  --color-prettylights-syntax-entity: #5b3a86;
+  --color-prettylights-syntax-storage-modifier-import: #1a1613;
+  --color-prettylights-syntax-entity-tag: #3f6212;
+  --color-prettylights-syntax-keyword: #8f2a1c;
+  --color-prettylights-syntax-string: #2b4a1f;
+  --color-prettylights-syntax-variable: #8a5a08;
+  --color-prettylights-syntax-brackethighlighter-unmatched: #8f2a1c;
+  --color-prettylights-syntax-invalid-illegal-text: #cdc7b0;
+  --color-prettylights-syntax-invalid-illegal-bg: #8f2a1c;
+  --color-prettylights-syntax-carriage-return-text: #cdc7b0;
+  --color-prettylights-syntax-carriage-return-bg: #8f2a1c;
+  --color-prettylights-syntax-string-regexp: #3f6212;
+  --color-prettylights-syntax-markup-list: #4c3a00;
+  --color-prettylights-syntax-markup-heading: #4a5c1c;
+  --color-prettylights-syntax-markup-italic: #1a1613;
+  --color-prettylights-syntax-markup-bold: #1a1613;
+  --color-prettylights-syntax-markup-deleted-text: #8f2a1c;
+  --color-prettylights-syntax-markup-deleted-bg: #e0c3ba;
+  --color-prettylights-syntax-markup-inserted-text: #3f6212;
+  --color-prettylights-syntax-markup-inserted-bg: #ccd8ae;
+  --color-prettylights-syntax-markup-changed-text: #7a4a12;
+  --color-prettylights-syntax-markup-changed-bg: #e2d1ab;
+  --color-prettylights-syntax-markup-ignored-text: #cdc7b0;
+  --color-prettylights-syntax-markup-ignored-bg: #4a5c1c;
+  --color-prettylights-syntax-meta-diff-range: #5b3a86;
+  --color-prettylights-syntax-brackethighlighter-angle: #4c463b;
+  --color-prettylights-syntax-sublimelinter-gutter-mark: #8e856a;
+  --color-prettylights-syntax-constant-other-reference-link: #2b4a1f;
+
+  /* --- buttons --- */
+  --color-btn-text: #1a1613;
+  --color-btn-bg: #c4bda3;
+  --color-btn-border: rgb(26 22 19 / 18%);
+  --color-btn-shadow: 0 1px 0 rgb(26 22 19 / 6%);
+  --color-btn-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 18%);
+  --color-btn-hover-bg: #bcb497;
+  --color-btn-hover-border: rgb(26 22 19 / 28%);
+  --color-btn-active-bg: #b3ab8b;
+  --color-btn-active-border: rgb(26 22 19 / 32%);
+  --color-btn-selected-bg: #b8b092;
+  --color-btn-primary-text: #dcefa8;
+  --color-btn-primary-bg: #4a5c1c;
+  --color-btn-primary-border: rgb(26 22 19 / 20%);
+  --color-btn-primary-shadow: 0 1px 0 rgb(26 22 19 / 10%);
+  --color-btn-primary-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+  --color-btn-primary-hover-bg: #5c7223;
+  --color-btn-primary-hover-border: rgb(26 22 19 / 20%);
+  --color-btn-primary-selected-bg: #3d4c17;
+  --color-btn-primary-selected-shadow: inset 0 1px 0 rgb(0 0 0 / 20%);
+  --color-btn-primary-disabled-text: rgb(220 239 168 / 70%);
+  --color-btn-primary-disabled-bg: rgb(74 92 28 / 55%);
+  --color-btn-primary-disabled-border: rgb(26 22 19 / 15%);
+
+  /* --- surfaces / text / borders --- */
+  --color-action-list-item-default-hover-bg: rgb(26 22 19 / 8%);
+  --color-segmented-control-bg: #c0b99f;
+  --color-segmented-control-button-bg: #d9d4c1;
+  --color-segmented-control-button-selected-border: #8e856a;
+  --color-fg-default: #1a1613;
+  --color-fg-muted: #4c463b;
+  --color-fg-subtle: #6d6555;
+  --color-canvas-default: #cdc7b0;
+  --color-canvas-overlay: #d9d4c1;
+  --color-canvas-inset: #c2bba1;
+  --color-canvas-subtle: #c5bfa6;
+  --color-border-default: #a8a086;
+  --color-border-muted: #bab390;
+  --color-neutral-muted: rgb(26 22 19 / 12%);
+  --color-accent-fg: #4a5c1c;
+  --color-accent-emphasis: #5c7223;
+  --color-accent-muted: rgb(92 114 35 / 40%);
+  --color-accent-subtle: #d3d3b2;
+  --color-success-fg: #3f6212;
+  --color-attention-fg: #7d5f0d;
+  --color-attention-muted: rgb(125 95 13 / 40%);
+  --color-attention-subtle: #ddd3a6;
+  --color-danger-fg: #8f2a1c;
+  --color-danger-muted: rgb(143 42 28 / 40%);
+  --color-danger-subtle: #e0c3ba;
+  --color-primer-shadow-inset: inset 0 1px 0 rgb(26 22 19 / 8%);
+  --color-scale-gray-1: #c0b99f;
+  --color-scale-blue-1: #cdd3a8;
+
+  /*! Extensions from @primer/css/alerts/flash.scss */
+  --color-social-reaction-bg-hover: var(--color-scale-gray-1);
+  --color-social-reaction-bg-reacted-hover: var(--color-scale-blue-1);
+
+  background-color: var(--color-canvas-default);
+}
+
+/* giscus 는 body 에 배경을 주지 않는다. iframe 의 color-scheme: light dark 때문에
+   브라우저 기본 캔버스가 비치므로 여기서 직접 칠해야 팔레트가 실제로 적용된다. */
+html,
+body {
+  background-color: #cdc7b0;
+}
+
+:root {
+  color-scheme: light; /* 폼 컨트롤 / 스크롤바 */
+}
+
+/* 블로그 본문과 폰트 통일 (giscus base.css 의 `:host, html` 정의를 덮어쓴다) */
+:host,
+html {
+  --font-family-sans:
+    Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Malgun Gothic', system-ui, sans-serif;
+  --font-family-monospace: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+main .pagination-loader-container {
+  background-image: url('https://github.com/images/modules/pulls/progressive-disclosure-line.svg');
+}
+
+main .gsc-loading-image {
+  background-image: url('https://github.githubassets.com/images/mona-loading-default.gif');
+}
+
+.gsc-homepage-bg {
+  background-color: var(--color-canvas-default);
+}

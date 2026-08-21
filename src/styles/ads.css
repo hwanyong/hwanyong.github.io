@@ -1,0 +1,90 @@
+/* ═══════════════════════════════════════════════════════════════
+   광고 존
+
+   설계 원칙 — 광고를 숨기지 않고 "지정된 구역"으로 만든다.
+     사이트 자체는 액센트 컬러가 0이라, 통제 불가능한 광고 소재가 들어와도
+     페이지에서 컬러가 허용된 유일한 구역으로 읽힌다. 정책이 요구하는
+     "광고와 콘텐츠의 명확한 구분"을 디자인이 자동으로 만족한다.
+
+   정책상 지킨 것:
+     - 라벨은 "Advertisements" 또는 "Sponsored Links" 만 허용된다(AdUnit.astro).
+     - display:none 은 [data-ad-status="unfilled"] 조건에서만.
+     - LCD 격자(global.css 의 body::before)가 광고 위를 덮지 않게 z-index 로 올린다.
+       광고에 시각 효과를 덧씌우면 "광고를 위장하는 구현"에 해당할 수 있다.
+
+   스타일이 컴포넌트가 아니라 전역 CSS 에 있는 이유:
+     scoped style 을 쓰면 Astro 가 <ins> 에까지 data-astro-cid-* 를 주입한다.
+     Google 스니펫을 원형 그대로 유지해야 한다.
+   ═══════════════════════════════════════════════════════════════ */
+
+.ad-slot {
+  display: block;
+  margin-block: 2.25rem;
+  padding-block: 0.8rem 0.9rem;
+  border-block: 1px solid var(--rule);
+}
+
+.ad-slot__label {
+  display: block;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-block-end: 0.65rem;
+}
+
+/* 지면(액자). 광고가 슬롯을 풀블리드로 채우지 않게 여백을 두면
+   지면이 액자 역할을 해서 컬러 소재의 충격이 줄어든다.
+   min-height 는 CLS 예약이다 — 광고가 늦게 도착해도 본문이 밀리지 않는다. */
+.ad-slot__frame {
+  min-height: 280px;
+  padding: 14px;
+  background: var(--bg-2);
+  box-shadow: inset 0 1px 3px var(--inset);
+  /* body::before 의 LCD 격자(z-index 100)보다 위 */
+  position: relative;
+  z-index: 200;
+}
+
+/* Google 예시 스니펫의 style="display:block" 을 CSS 규칙으로 옮긴 것.
+   인라인 style 속성을 쓰지 않기 위함이며, 필수 식별자
+   (class="adsbygoogle", data-ad-client, data-ad-slot)는 원형 그대로다. */
+ins.adsbygoogle {
+  display: block;
+}
+
+/* 광고가 실제로 실린 슬롯만 밝은 지면으로 전환한다.
+   미노출이면 패널 색으로 남아 빈 칸이 튀지 않는다.
+   (발광 상태에서 특히 중요 — 밝은 빈 칸은 어둠 위에서 매우 거슬린다) */
+.ad-slot__frame:has(ins.adsbygoogle[data-ad-status='filled']) {
+  background: var(--ad-bg);
+  box-shadow: none;
+}
+
+/* Google 공식 문서에 실린 그대로: 채워지지 않은 광고 단위 숨기기.
+   [data-ad-status="unfilled"] 조건 없이 숨기면 정책 위반이다
+   ("Hiding ad units at anytime (e.g., display:none)" 는 금지 항목).
+   또한 처음부터 숨겨두고 filled 일 때 보여주는 패턴도 금지다 —
+   광고 요청 자체가 나가지 않을 수 있다. */
+ins.adsbygoogle[data-ad-status='unfilled'] {
+  display: none !important;
+}
+
+/* 미노출이면 라벨과 예약 높이까지 통째로 접는다(뷰포트 밖 슬롯용). */
+.ad-slot[data-collapse='true']:has(ins.adsbygoogle[data-ad-status='unfilled']) {
+  display: none;
+}
+
+/* 접지 않는 슬롯: 라벨만 감추고 빈 공간은 유지 —
+   Google 이 뷰포트 안 unfilled 슬롯에 대해 하는 기본 동작과 같다. */
+.ad-slot[data-collapse='false']:has(ins.adsbygoogle[data-ad-status='unfilled'])
+  .ad-slot__label {
+  visibility: hidden;
+}
+
+/* 목록 격자(.column) 안에서는 눈금 여백과 본문 열을 가로지른다.
+   사이드 열(3번 트랙)까지 침범하면 목차·개정 이력 아래로 광고가 밀려든다. */
+.column > .ad-slot {
+  grid-column: 1 / 3;
+}

@@ -1,0 +1,19 @@
+---
+// 작업물 목록 (개정축). 프로젝트 단위로 한 줄이며, 개정이 여럿이면 눈금이 나타난다.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Timeline from '../../components/Timeline.astro';
+import { getWorkTimeline, groupByYear } from '../../lib/content';
+import { AD_SLOTS } from '../../lib/site';
+
+const items = await getWorkTimeline();
+const groups = groupByYear(items);
+---
+
+<BaseLayout
+  title="Work"
+  description="만든 것과 고친 기록"
+  section="work"
+  status={`${items.length} PROJECTS`}
+>
+  <Timeline groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
+</BaseLayout>

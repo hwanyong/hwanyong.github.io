@@ -1,0 +1,1088 @@
+/* ═══════════════════════════════════════════════════════════════
+   UHD — LCD Panel
+
+   컨셉: 이 사이트는 낡은 액정 패널이다.
+     REFLECT  백라이트 꺼짐 · 반사광으로 읽는 면 (NieR Menu 베이지 계열)
+     EMIT     백라이트 켜짐 · 발광하는 면 (Old LCD Panel 황록 계열)
+
+   다크모드가 색 반전이 아니라 "조명 상태"다. OS 설정이 아니라 사용자가
+   직접 고르는 상태이므로 prefers-color-scheme 이 아닌 data-mode 로 제어한다.
+
+   색 원칙: 액센트 컬러 0.
+     페이지에서 컬러가 허용된 유일한 구역은 광고다(ads.css).
+     사이트 자체는 단일 색조의 명도 단계만 쓴다. 그래야 통제 불가능한
+     광고 소재가 들어와도 "지정된 구역"으로 읽히고 디자인이 무너지지 않는다.
+
+   대비 (배경 대비 실측):
+     REFLECT  ink 10.5:1 · ink-2 6.9:1 · ink-3 5.0:1
+     EMIT     ink 14.5:1 · ink-2 8.9:1 · ink-3 5.4:1
+     → 본문 AAA(7:1), 메타·라벨까지 전 계층 AA(4.5:1) 이상.
+
+   출처: NieR Menu Colors #b0ab98 #c3bda8 #594e4a #b8b29d #4b413d
+        Old LCD Panel  #a8c64e Guacamole · #3c412c Virgo
+        (색상은 유지하고 명도만 양끝으로 벌려 대비를 확보했다)
+   ═══════════════════════════════════════════════════════════════ */
+
+:root[data-mode='reflect'] {
+  --bg: #cdc7b0;
+  --bg-2: #bfb8a0;
+  --bg-3: #b0ab98;
+  --ink: #1a1613;
+  --ink-2: #3d3630;
+  --ink-3: #554b42;
+  --rule: #948c76;
+  --accent: #1a1613;
+  /* 광고 지면. 광고가 실제로 실렸을 때만 이 색으로 전환한다(ads.css).
+     소재 대부분이 흰 배경이라, 지면이 액자처럼 감싸면 단차가 줄어든다. */
+  --ad-bg: #e2ddcc;
+  --scan: rgba(26, 22, 19, 0.06);
+  --inset: rgba(26, 22, 19, 0.16);
+  /* 커맨드 바는 반사 상태에서 진한 바, 발광 상태에서 어두운 바다.
+     발광 쪽에서 --ink 를 배경으로 쓰면 화면 하단이 밝은 띠가 되어 시선을 뺏는다. */
+  --cmd-bg: #1a1613;
+  --cmd-fg: #cdc7b0;
+  --state-label: 'REFLECT';
+  color-scheme: light;
+}
+
+:root[data-mode='emit'] {
+  --bg: #12150d;
+  --bg-2: #1c2016;
+  --bg-3: #2a2f20;
+  --ink: #dcefa8;
+  --ink-2: #a9bd7c;
+  --ink-3: #83935e;
+  --rule: #39402a;
+  --accent: #b8dc4e;
+  /* 발광 상태에서도 광고 지면은 밝게 둔다 — 흰 소재가 어둠 위에 홀로 떠서
+     눈을 찌르는 것보다, 지면째로 이어져 "다른 재질"로 읽히는 편이 낫다.
+     단 미노출이면 어두운 채로 남아 빈 칸이 튀지 않는다. */
+  --ad-bg: #ecebe2;
+  --scan: rgba(184, 220, 78, 0.055);
+  --inset: rgba(0, 0, 0, 0.42);
+  --cmd-bg: #1c2016;
+  --cmd-fg: #dcefa8;
+  --state-label: 'EMIT';
+  color-scheme: dark;
+}
+
+:root {
+  /* 본문 한 줄 45~50자. 한글 가독성 기준. */
+  --col: 38rem;
+  /* 개정 눈금이 사는 왼쪽 여백 */
+  --gutter: 2.25rem;
+  /* 사이드 열(목차·개정 이력). 0 이면 열리지 않고 본문 흐름으로 들어간다. */
+  --aside: 0rem;
+  --aside-gap: 0rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  /* 커맨드 바가 fixed 이므로 본문 끝이 가리지 않게 확보한다 */
+  padding-block-end: 3.25rem;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-serif), 'Apple SD Gothic Neo', serif;
+  font-size: 17px;
+  line-height: 1.8;
+  word-break: keep-all; /* 한글은 단어 단위로 끊는다 */
+  overflow-wrap: anywhere;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* LCD 격자(주사선). 화면 전체를 덮되 광고 슬롯 위는 비켜간다 —
+   광고에 시각 효과를 덧씌우면 "광고를 위장하는 구현"에 해당할 수 있다.
+   비켜가게 하는 z-index 는 ads.css 의 .ad__slot 이 담당한다. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, var(--scan) 0 1px, transparent 1px 3px);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ─── 폭 · 격자 ────────────────────────────────────────────── */
+
+/* 헤더·본문·푸터가 모두 같은 폭이어야 세로 축이 하나로 읽힌다.
+   본문 열 + 눈금 여백 + (열려 있다면) 사이드 열의 합에 좌우 패딩을 더한 값. */
+.site-header,
+.site-main,
+.site-footer {
+  max-width: calc(
+    var(--gutter) + var(--col) + var(--aside-gap) + var(--aside) + 2.5rem
+  );
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+/* 본문 열 하나. 왼쪽 gutter 는 개정 눈금 전용이라 목록에서만 쓴다.
+ *
+ * 본문 트랙이 minmax(0, var(--col)) 이 아니라 minmax(0, 1fr) 인 이유:
+ * max 가 고정 길이면 화면이 그보다 좁아도 트랙이 그 크기를 고집해
+ * 가로 스크롤이 생긴다(390px 화면에서 개정 이력 패널이 잘려 나갔다).
+ * 1fr 은 남은 공간만 차지하므로 절대 넘치지 않고, 상한은 max-width 가 잡는다.
+ * overflow-x:hidden 으로 덮지 않는다 — 그건 잘린 콘텐츠를 감출 뿐이다. */
+.column {
+  display: grid;
+  grid-template-columns: var(--gutter) minmax(0, 1fr) var(--aside);
+  column-gap: var(--aside-gap);
+  max-width: calc(var(--gutter) + var(--col) + var(--aside-gap) + var(--aside));
+  margin-inline: auto;
+}
+
+.column > * {
+  grid-column: 2;
+  min-width: 0; /* grid 자식의 기본 min-width:auto 가 긴 콘텐츠에 밀리는 것을 막는다 */
+}
+
+/* 사이드 열. --aside 가 0 인 좁은 화면에서는 3번 트랙 폭이 0 이므로
+   아래 미디어쿼리가 열어주기 전까지는 자리를 차지하지 않는다. */
+.aside {
+  grid-column: 2;
+}
+
+/* 사이드가 없는 화면(목록 등)에서 3번 트랙이 빈 채로 남지 않도록,
+   가로선 성격의 요소는 전체 열을 가로지른다. */
+.column > .section-bar,
+.column > .foot {
+  grid-column: 1 / -1;
+}
+
+/* 글에서 "읽는 텍스트"는 사이드 유무와 무관하게 --col 폭을 넘지 않는다.
+   컨테이너가 넓어져도(사이드가 없는 페이지) 한 줄이 길어지지 않게 한다. */
+.prose,
+.post-header,
+.stale-notice {
+  max-width: var(--col);
+}
+
+/* ─── NieR 모서리 브래킷 ───────────────────────────────────── */
+/* 이 사이트에만 있는 두 축(개정 이력·실행 데모)에만 붙인다.
+   전부 붙이면 장식이 되고 아무것도 강조하지 못한다. */
+
+.brk {
+  position: relative;
+}
+
+.brk::before,
+.brk::after {
+  content: '';
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.brk::before {
+  top: -4px;
+  left: -4px;
+  border-inline-end: 0;
+  border-block-end: 0;
+}
+
+.brk::after {
+  bottom: -4px;
+  right: -4px;
+  border-inline-start: 0;
+  border-block-start: 0;
+}
+
+/* ─── 상단 ─────────────────────────────────────────────────── */
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding-block: 1.75rem 2.25rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.site-header__brand {
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  font-size: 12px;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 0.22rem 0.6rem;
+}
+
+.site-header__tagline {
+  font-family: var(--font-serif), serif;
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  /* 좁은 화면에서 이 문구가 네비게이션을 화면 밖으로 밀어내면 안 된다.
+     줄어들 수 있게 두고, 더 좁아지면 아래 미디어쿼리에서 숨긴다. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-nav {
+  display: flex;
+  gap: 1rem;
+  margin-inline-start: auto;
+  color: var(--ink-3);
+}
+
+.site-nav a {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.site-nav a[aria-current='page'],
+.site-nav a:hover {
+  color: var(--ink);
+}
+
+/* 우측 시스템 상태 표시 (4 ENTRIES · REV 2 / 2 …) */
+.site-status {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+/* ─── 섹션 바 (NieR 헤더 블록) ─────────────────────────────── */
+
+.section-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 0 0 1rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+}
+
+.section-bar b {
+  font-weight: 500;
+  background: var(--ink-2);
+  color: var(--bg);
+  padding: 0.2rem 0.65rem;
+  letter-spacing: 0.16em;
+}
+
+.section-bar::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.section-bar + .section-bar {
+  margin-block-start: 2.75rem;
+}
+
+/* ─── 목록 ─────────────────────────────────────────────────── */
+
+.entry {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  padding-block: 0.85rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.entry:first-of-type {
+  border-block-start: 0;
+}
+
+.entry__marks {
+  grid-column: 1;
+  position: relative;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding-block-start: 0.85rem;
+}
+
+/* 축선은 개정이 있는 항목에서만 나타난다. 눈금이 없으면 그릴 것도 없다. */
+.entry__marks:not(:empty)::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(0.85rem + 4px);
+  bottom: 4px;
+  width: 1px;
+  background: var(--ink-2);
+}
+
+.entry__body {
+  grid-column: 2;
+  padding: 0.4rem 0.7rem;
+}
+
+/* NieR 선택 상태 — 행 반전 + 좌측 커서.
+   hover 는 약하게(밑줄), 키보드 포커스와 명시적 선택만 완전 반전한다.
+   스크롤 중 마우스가 지나갈 때마다 판이 뒤집히면 번쩍여서 읽기를 방해한다.
+
+   선택 여부는 클래스가 아니라 [data-active] 로 표현한다.
+   클래스는 "무엇인가"(.entry), data-* 는 "지금 어떤 상태인가"를 나타낸다. */
+.entry:hover .entry__title {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.entry[data-active] .entry__body,
+.entry:focus-within .entry__body {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.entry[data-active] .entry__meta,
+.entry:focus-within .entry__meta,
+.entry[data-active] .entry__tags,
+.entry:focus-within .entry__tags {
+  color: var(--bg-3);
+}
+
+.entry[data-active] .rev-count,
+.entry:focus-within .rev-count {
+  color: var(--bg);
+  border-color: var(--bg-3);
+}
+
+.entry[data-active] .entry__marks::before {
+  content: '▶';
+  position: absolute;
+  left: 0;
+  top: 1.02rem;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.entry__meta {
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.entry__title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0.15rem 0 0.25rem;
+  letter-spacing: -0.005em;
+}
+
+.entry__tags {
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+/* ─── SIGNATURE: 개정 칩 ───────────────────────────────────── */
+/* 채움/빔의 대비만으로 "현재 버전 / 과거 버전"을 인코딩한다.
+   NieR 스킬칩 격자의 사각 형태를 따른다. */
+
+.mark {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: 1px solid var(--ink-2);
+  background: var(--bg);
+  position: relative;
+  z-index: 1;
+}
+
+/* 채워진 칸 = 현재 버전. 상태이므로 수식 클래스가 아니라 data-* 로 표현한다. */
+.mark[data-on] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.rev-count {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+  padding: 0.05rem 0.4rem;
+}
+
+/* ─── 글 머리 ──────────────────────────────────────────────── */
+
+.back-link {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: inline-block;
+  margin-block-end: 2.25rem;
+}
+
+.post-header {
+  padding-block-end: 1.75rem;
+  border-block-end: 1px solid var(--rule);
+  margin-block-end: 2.25rem;
+}
+
+.post-header__meta {
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.post-header__title {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  margin: 0.5rem 0 0;
+}
+
+.post-header__lead {
+  font-size: 17px;
+  color: var(--ink-2);
+  line-height: 1.75;
+  margin: 0.9rem 0 0;
+}
+
+/* ─── 본문 ─────────────────────────────────────────────────── */
+
+.prose > * {
+  margin-block: 0 1.4rem;
+}
+
+.prose > :last-child {
+  margin-block-end: 0;
+}
+
+.prose h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-block: 2.5rem 0.8rem;
+}
+
+.prose h3 {
+  font-size: 17.5px;
+  font-weight: 600;
+  margin-block: 2rem 0.6rem;
+}
+
+.prose > h2:first-child,
+.prose > h3:first-child {
+  margin-block-start: 0;
+}
+
+.prose strong {
+  font-weight: 600;
+}
+
+.prose blockquote {
+  margin-inline: 0;
+  padding-inline-start: 1rem;
+  border-inline-start: 2px solid var(--rule);
+  color: var(--ink-2);
+}
+
+.prose ul,
+.prose ol {
+  padding-inline-start: 1.4rem;
+}
+
+.prose li {
+  margin-block-end: 0.4rem;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.prose th,
+.prose td {
+  text-align: start;
+  padding: 0.5rem;
+  border-block-end: 1px solid var(--rule);
+}
+
+.prose hr {
+  border: 0;
+  border-block-start: 1px solid var(--rule);
+  margin-block: 2.5rem;
+}
+
+/* 인라인 코드 */
+.prose :not(pre) > code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.84em;
+  background: var(--bg-2);
+  padding: 0.1em 0.35em;
+}
+
+/* 코드 블록 스타일은 src/styles/code.css 에 있다(Prism 토큰 클래스 기반). */
+
+/* ─── 개정 이력 (signature 확장) ───────────────────────────── */
+
+.revisions {
+  margin: 0 0 2rem;
+  border: 1px solid var(--rule);
+}
+
+.revisions__head {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: var(--ink-2);
+  color: var(--bg);
+  padding: 0.42rem 0.9rem;
+  display: flex;
+  gap: 0.7rem;
+}
+
+.revisions__count {
+  margin-inline-start: auto;
+  opacity: 0.8;
+}
+
+.revisions ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.revisions li {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 0.9rem;
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+}
+
+.revisions li:first-child {
+  border-block-start: 0;
+}
+
+.revisions li[data-current] {
+  background: var(--bg-2);
+}
+
+.revisions li b {
+  color: var(--ink);
+  font-weight: 500;
+  min-width: 3.1rem;
+}
+
+.revisions li time {
+  color: var(--ink-3);
+}
+
+.revisions__badge {
+  margin-inline-start: auto;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: var(--bg);
+  padding: 0.15rem 0.45rem;
+}
+
+/* "보기" 링크. 현재 개정본 행에는 배지가 auto 마진을 이미 먹었으므로
+   그 행에서만 마진이 붙지 않게 :last-child 로 민다. */
+.revisions li a {
+  margin-inline-start: auto;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  padding: 0.1rem 0.45rem;
+}
+
+.revisions li:has(.revisions__badge) a {
+  margin-inline-start: 0.7rem;
+}
+
+.revisions li a:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+/* ─── 실행 데모 (LCD 안의 LCD) ─────────────────────────────── */
+
+.demo {
+  margin-block: 2rem;
+}
+
+.demo__frame {
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+  box-shadow: inset 0 2px 6px var(--inset);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-block: 1.5rem;
+}
+
+.demo__frame canvas {
+  image-rendering: pixelated;
+  max-width: 100%;
+}
+
+.demo figcaption {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  margin-block-start: 0.55rem;
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+/* ─── 푸터 ─────────────────────────────────────────────────── */
+
+.site-footer {
+  margin-block-start: 2.5rem;
+  padding-block: 1.15rem 1.5rem;
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ─── NieR 커맨드 힌트 바 ──────────────────────────────────── */
+/* 장식이 아니다. 여기 적힌 키가 실제로 동작한다(BaseLayout 의 스크립트).
+   안내와 동작이 어긋나면 UI 가 거짓말을 하는 셈이므로 둘을 함께 고칠 것. */
+
+.command-bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1.5rem;
+  background: var(--cmd-bg);
+  color: var(--cmd-fg);
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.command-bar__item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.command-bar kbd {
+  font: inherit;
+  background: var(--cmd-fg);
+  color: var(--cmd-bg);
+  padding: 0.1rem 0.35rem;
+  min-width: 1.15rem;
+  text-align: center;
+}
+
+.command-bar__spacer {
+  flex: 1;
+}
+
+.command-bar__state {
+  border: 1px solid var(--ink-3);
+  padding: 0.12rem 0.5rem;
+  color: var(--cmd-fg);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.command-bar__state::after {
+  content: var(--state-label);
+}
+
+.command-bar__dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  flex: none;
+}
+
+/* ─── 개정본 상태 안내 · 개정 이동 ─────────────────────────── */
+
+.stale-notice {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+  color: var(--ink-2);
+  background: var(--bg-2);
+  border-inline-start: 2px solid var(--accent);
+  padding: 0.7rem 0.9rem;
+  margin-block: 0 1.75rem;
+}
+
+.rev-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-block-start: 2.5rem;
+  padding-block-start: 1.15rem;
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.rev-nav a:hover {
+  color: var(--ink);
+}
+
+/* ─── 댓글 ─────────────────────────────────────────────────── */
+
+.comments {
+  margin-block-start: 4rem;
+}
+
+.comments__title {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: var(--ink-2);
+  color: var(--bg);
+  padding: 0.42rem 0.9rem;
+  margin-block: 0 1.25rem;
+  display: inline-block;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   반응형
+
+   본문 폭(--col)은 화면이 커져도 크게 늘리지 않는다. 한 줄이 길어지면
+   다음 줄 첫 글자를 찾는 눈의 이동 거리가 늘어 오히려 읽기 어려워진다.
+   초광폭에서 여백이 넓어 보이는 것은 낭비가 아니라 의도다.
+
+   대신 화면이 좁아질 때 무엇을 줄이고 무엇을 버릴지를 단계로 정한다.
+     1024px  개정 눈금 여백 축소 — 본문 폭을 먼저 지킨다
+      768px  커맨드 바 제거(물리 키보드 없음), 헤더 2줄, 광고 높이 축소
+      480px  눈금 여백 최소, 제목 축소, 개정 이력 세로 배치
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 태블릿 가로 — 눈금 여백부터 줄여 본문 폭을 지킨다 */
+@media (max-width: 1024px) {
+  :root {
+    --gutter: 1.9rem;
+  }
+}
+
+/* 태블릿 세로 이하 */
+@media (max-width: 768px) {
+  /* 물리 키보드가 없어 단축키 안내가 무의미하고, 좁은 화면 높이만 잡아먹는다.
+     display:none 이므로 안내와 동작이 함께 사라진다(키 핸들러는 남지만
+     터치 기기에서 발화하지 않는다). */
+  .command-bar {
+    display: none;
+  }
+
+  body {
+    padding-block-end: 1rem;
+    font-size: 16px;
+  }
+
+  /* 로고·태그라인 / 네비·상태로 2줄 배치 */
+  .site-header {
+    flex-wrap: wrap;
+    gap: 0.55rem 0.9rem;
+    padding-block: 1.5rem 1.75rem;
+  }
+
+  .site-nav {
+    margin-inline-start: 0;
+  }
+
+  .site-status {
+    margin-inline-start: auto;
+  }
+
+  .post-header__title {
+    font-size: 28px;
+  }
+
+  .entry__title {
+    font-size: 18.5px;
+  }
+
+  /* 세로 공간이 귀한 화면에서 280px 예약은 과하다.
+     AdSense 반응형 단위의 모바일 최소 높이에 맞춘다. */
+  .ad-slot__frame {
+    min-height: 250px;
+  }
+}
+
+/* 모바일 */
+@media (max-width: 480px) {
+  :root {
+    --gutter: 1.35rem;
+  }
+
+  .site-header,
+  .site-main,
+  .site-footer {
+    padding-inline: 1rem;
+  }
+
+  /* 로고 + 네비 + 상태만으로도 한 줄이 빠듯하다. 사이트 설명은 접는다. */
+  .site-header__tagline {
+    display: none;
+  }
+
+  .site-nav {
+    gap: 0.8rem;
+  }
+
+  .post-header__title {
+    font-size: 24px;
+  }
+
+  .post-header__lead,
+  body {
+    font-size: 15.5px;
+  }
+
+  /* 반전 배경이 화면 폭을 꽉 채우지 않게 좌우 여백을 줄인다 */
+  .entry__body {
+    padding-inline: 0.5rem;
+  }
+
+  /* 버전·날짜·배지·링크가 한 줄에 다 들어가지 않는다.
+     날짜와 배지를 아래로 접어 세로로 쌓는다. */
+  .revisions li {
+    flex-wrap: wrap;
+    gap: 0.5rem 0.7rem;
+  }
+
+  .revisions li time {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  /* 이전/이력/다음이 한 줄에 안 들어가면 가운데 링크를 아래로 */
+  .rev-nav {
+    flex-wrap: wrap;
+    gap: 0.6rem 1rem;
+  }
+
+  .demo canvas {
+    width: 100%;
+  }
+}
+
+/* ─── 넓은 화면: 사이드 열을 연다 ──────────────────────────────
+ *
+ * 본문 폭만 늘려 화면을 채우면 한 줄이 길어져 가독성이 무너진다.
+ * 대신 남는 가로 공간에 사이드 열(목차·개정 이력)을 열어, 본문은 읽기 좋은
+ * 폭을 유지한 채로 화면을 쓴다. NieR 메뉴의 좌측 목록 / 우측 패널 문법이다.
+ *
+ * 사이드에는 "이미 페이지 안에 있던 정보"만 올린다. 여백을 채우려고 없던 것을
+ * 만들어 넣으면 그건 장식이지 정보가 아니다.
+ * ───────────────────────────────────────────────────────────── */
+
+@media (min-width: 1280px) {
+  :root {
+    --col: 42rem;
+    --aside: 15rem;
+    --aside-gap: 3rem;
+  }
+
+  .aside {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-self: start;
+    position: sticky;
+    top: 2rem;
+  }
+
+  /* 사이드로 올라간 개정 이력은 본문 흐름의 아래 여백이 필요 없다 */
+  .revisions.aside {
+    margin-block-end: 0;
+    font-size: 11.5px;
+  }
+
+  .revisions.aside li {
+    padding-block: 0.5rem;
+  }
+
+  .revisions.aside li b {
+    min-width: 2.6rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --col: 47rem;
+    --aside: 18rem;
+    --aside-gap: 3.5rem;
+  }
+
+  body {
+    font-size: 17.5px;
+  }
+
+  .site-header {
+    font-size: 12.5px;
+  }
+
+  .post-header__title {
+    font-size: 36px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --col: 51rem;
+    --aside: 20rem;
+    --aside-gap: 4rem;
+  }
+}
+
+/* ─── 목차 ─────────────────────────────────────────────────── */
+
+.toc {
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  border-inline-start: 1px solid var(--rule);
+  padding-inline-start: 1rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+
+.toc__head {
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-block-end: 0.7rem;
+}
+
+.toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc li {
+  margin-block-end: 0.5rem;
+}
+
+.toc li[data-depth='3'] {
+  padding-inline-start: 0.85rem;
+}
+
+.toc a {
+  color: var(--ink-2);
+}
+
+.toc a:hover {
+  color: var(--ink);
+}
+
+/* 사이드 열이 열리지 않는 폭에서는 목차를 감춘다.
+   본문 흐름 한가운데 목차가 끼어들면 읽기를 방해할 뿐이고,
+   같은 제목이 본문에 그대로 있으므로 정보 소실이 아니다. */
+@media (max-width: 1279px) {
+  .toc {
+    display: none;
+  }
+}
+
+/* ─── giscus ───────────────────────────────────────────────── */
+/* giscus 가 우리 <head> 맨 앞에 default.css 를 prepend 하므로
+   (head 첫 자식 = 우선순위 최하위) 아래 규칙이 항상 이긴다. */
+
+.giscus,
+.giscus-frame {
+  width: 100%;
+}
+
+:root[data-mode='reflect'] .giscus-frame {
+  color-scheme: light;
+}
+
+:root[data-mode='emit'] .giscus-frame {
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

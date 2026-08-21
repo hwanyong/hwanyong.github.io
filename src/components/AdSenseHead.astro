@@ -1,0 +1,35 @@
+---
+/**
+ * AdSense 로더. 반드시 <head> 안에, 페이지당 정확히 한 번만 렌더링한다.
+ *
+ * 로더 <script> 에 is:inline 이 필수인 이유:
+ *   Astro 의 미처리 규칙은 "src 이외의 속성이 하나라도 있으면"이다.
+ *   외부 URL 이라는 사실만으로 자동 제외되지 않으며, 공식 문서는 src/ 바깥
+ *   스크립트에 is:inline 을 붙이라고 명시한다. 붙이지 않으면 Astro 가 번들링을
+ *   시도해 Google 스니펫의 형태가 깨진다.
+ *
+ * push 로직은 여기 인라인으로 두지 않고 src/scripts/adsense.ts 로 뺐다.
+ */
+import { ADSENSE } from '../lib/site';
+
+// 계정이 비활성이거나 slot ID 가 없으면 로더 자체를 내보내지 않는다.
+// 존재하지 않는 광고 단위로 요청을 보내지 않기 위함이다.
+const show = import.meta.env.PROD && ADSENSE.enabled;
+const loaderSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE.client}`;
+---
+
+{
+  show && (
+    <>
+      {/* Google 공식 스니펫 그대로: async + crossorigin="anonymous" 두 속성뿐.
+          integrity(SRI) 를 붙이면 안 된다 — Google 이 내용을 계속 바꾸므로 차단된다. */}
+      <script is:inline async src={loaderSrc} crossorigin="anonymous" />
+
+      <script>
+        import { initAdSense } from '../scripts/adsense';
+
+        initAdSense();
+      </script>
+    </>
+  )
+}

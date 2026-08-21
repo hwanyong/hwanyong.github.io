@@ -1,0 +1,63 @@
+---
+// src/pages/work/[project].astro — 한 프로젝트의 개정 이력(개정축). 예: /work/orca-cli/
+//
+// [project].astro 와 [project]/[version].astro 는 경로 깊이가 달라 충돌하지 않는다.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getProjectHistories, versionSlug } from '../../lib/content';
+import type { ProjectHistory } from '../../lib/content';
+import { formatDate, isoDate } from '../../lib/date';
+
+export const getStaticPaths = async () => {
+  const histories = await getProjectHistories();
+  return histories.map((history) => ({
+    params: { project: history.project },
+    props: { history },
+  }));
+};
+
+type Props = { history: ProjectHistory };
+
+const { history } = Astro.props;
+const { latest, revisions } = history;
+---
+
+<BaseLayout
+  title={latest.data.title}
+  description={latest.data.description}
+  section="work"
+  status={`REV ${revisions.length}`}
+>
+  <div class="column">
+    <a class="back-link" href="/work/">← Work</a>
+
+    <header class="post-header">
+      <div class="post-header__meta">
+        <time datetime={isoDate(latest.data.date)}>{formatDate(latest.data.date)}</time>
+        <span>·</span>
+        <span>v{latest.data.version}</span>
+      </div>
+      <h1 class="post-header__title">{latest.data.title}</h1>
+      <p class="post-header__lead">{latest.data.description}</p>
+    </header>
+
+    <nav class="revisions brk" aria-label="개정 이력">
+      <div class="revisions__head">
+        개정 이력
+        <span class="revisions__count">{revisions.length} REV</span>
+      </div>
+      <ol>
+        {revisions.map((revision, index) => (
+          <li data-current={index === 0 || undefined}>
+            <span class="mark" data-on={index === 0 || undefined} aria-hidden="true"></span>
+            <b>v{revision.data.version}</b>
+            <time datetime={isoDate(revision.data.date)}>
+              {formatDate(revision.data.date)}
+            </time>
+            {index === 0 && <em class="revisions__badge">현재</em>}
+            <a href={`/work/${history.project}/${versionSlug(revision)}/`}>보기</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  </div>
+</BaseLayout>

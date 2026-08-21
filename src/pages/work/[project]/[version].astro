@@ -1,0 +1,137 @@
+---
+// src/pages/work/[project]/[version].astro — 특정 개정본 상세. 예: /work/orca-cli/v1-1/
+//
+// URL 은 파일명에서 온 v1-1, 화면 표시는 frontmatter 의 version("1.1").
+// 파일명에 점을 쓰면 안 된다 — github-slugger 가 점을 삭제해 v1.0.md → id "v10" 이 되고,
+// v10.md 와 id 가 충돌한다.
+import { render } from 'astro:content';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Comments from '../../../components/Comments.astro';
+import AdUnit from '../../../components/AdUnit.astro';
+import { getProjectHistories, versionSlug } from '../../../lib/content';
+import type { WorkEntry } from '../../../lib/content';
+import { formatDate, isoDate } from '../../../lib/date';
+import { AD_SLOTS } from '../../../lib/site';
+
+export const getStaticPaths = async () => {
+  const histories = await getProjectHistories();
+
+  return histories.flatMap(({ project, revisions }) =>
+    revisions.map((entry, index) => ({
+      params: { project, version: versionSlug(entry) },
+      props: {
+        entry,
+        // 개정축 이웃 (revisions 는 최신순)
+        newer: revisions[index - 1] ?? null,
+        older: revisions[index + 1] ?? null,
+        isLatest: index === 0,
+        latestSlug: versionSlug(revisions[0]!),
+        total: revisions.length,
+        position: revisions.length - index,
+        // 사이드 열의 개정 이력 목록에 그대로 쓴다
+        revisions,
+      },
+    })),
+  );
+};
+
+type Props = {
+  entry: WorkEntry;
+  newer: WorkEntry | null;
+  older: WorkEntry | null;
+  isLatest: boolean;
+  latestSlug: string;
+  total: number;
+  position: number;
+  revisions: WorkEntry[];
+};
+
+const { entry, newer, older, isLatest, latestSlug, total, position, revisions } =
+  Astro.props;
+const { Content } = await render(entry);
+const project = entry.data.project;
+---
+
+<BaseLayout
+  title={`${entry.data.title} v${entry.data.version}`}
+  description={entry.data.description}
+  type="article"
+  publishedTime={entry.data.date}
+  section="work"
+  status={`REV ${position} / ${total}`}
+  ads={isLatest}
+>
+  <div class="column">
+    <a class="back-link" href={`/work/${project}/`}>← {entry.data.title}</a>
+
+    {/* 넓은 화면에서는 개정 이력이 사이드 열로 빠져 본문과 나란히 보인다.
+        좁은 화면에서는 본문 위 흐름으로 되돌아간다. */}
+    <nav class="aside revisions brk" aria-label="개정 이력">
+      <div class="revisions__head">
+        개정 이력
+        <span class="revisions__count">{total} REV</span>
+      </div>
+      <ol>
+        {revisions.map((rev, index) => (
+          <li data-current={versionSlug(rev) === versionSlug(entry) || undefined}>
+            <span class="mark" data-on={index === 0 || undefined} aria-hidden="true" />
+            <b>v{rev.data.version}</b>
+            {versionSlug(rev) === versionSlug(entry) ? (
+              <em class="revisions__badge">보는 중</em>
+            ) : (
+              <a href={`/work/${project}/${versionSlug(rev)}/`}>보기</a>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+
+    <article>
+      <header class="post-header">
+        <div class="post-header__meta">
+          <time datetime={isoDate(entry.data.date)}>{formatDate(entry.data.date)}</time>
+          <span>·</span>
+          <span>v{entry.data.version}</span>
+          {isLatest && <Fragment><span>·</span><span>현재</span></Fragment>}
+        </div>
+        <h1 class="post-header__title">{entry.data.title}</h1>
+        <p class="post-header__lead">{entry.data.description}</p>
+      </header>
+
+      {!isLatest && (
+        <p class="stale-notice">
+          이 문서는 최신 개정본이 아닙니다.{' '}
+          <a href={`/work/${project}/${latestSlug}/`}>최신 개정본 보기 →</a>
+        </p>
+      )}
+
+      <div class="prose">
+        <Content />
+      </div>
+    </article>
+
+    <nav class="rev-nav" aria-label="개정 이동">
+      {older ? (
+        <a href={`/work/${project}/${versionSlug(older)}/`}>← v{older.data.version}</a>
+      ) : (
+        <span></span>
+      )}
+      <a href={`/work/${project}/`}>개정 이력</a>
+      {newer ? (
+        <a href={`/work/${project}/${versionSlug(newer)}/`}>v{newer.data.version} →</a>
+      ) : (
+        <span></span>
+      )}
+    </nav>
+
+    {/* 개정축은 같은 project 의 모든 버전이 하나의 Discussion 을 공유한다. */}
+    <Comments mapping="specific" term={`work:${project}`} />
+
+    {/* 구버전 개정본에는 광고를 넣지 않는다(replicated content 리스크).
+        BaseLayout 의 ads={isLatest} 로 로더 자체도 함께 빠진다. */}
+    {isLatest && <AdUnit adSlot={AD_SLOTS.articleEnd} collapseOnUnfilled={false} />}
+  </div>
+</BaseLayout>
+
+{/* .stale-notice / .rev-nav 스타일은 src/styles/global.css 에 있다.
+    스타일이 페이지마다 흩어지면 토큰 SSOT 가 깨진다. */}
