@@ -5,8 +5,10 @@
      REFLECT  백라이트 꺼짐 · 반사광으로 읽는 면 (NieR Menu 베이지 계열)
      EMIT     백라이트 켜짐 · 발광하는 면 (Old LCD Panel 황록 계열)
 
-   다크모드가 색 반전이 아니라 "조명 상태"다. OS 설정이 아니라 사용자가
-   직접 고르는 상태이므로 prefers-color-scheme 이 아닌 data-mode 로 제어한다.
+   다크모드가 색 반전이 아니라 "조명 상태"다. 사용자가 직접 고르는 상태이므로
+   CSS 는 prefers-color-scheme 이 아니라 data-mode 로 제어한다.
+   단 초기값은 OS 취향을 참고한다 — 고른 적이 없는 첫 방문에만 적용되며
+   한 번 고르면 그 선택이 항상 이긴다(public/theme-init.js 의 결정 순서).
 
    색 원칙: 액센트 컬러 0.
      페이지에서 컬러가 허용된 유일한 구역은 광고다(ads.css).
@@ -102,14 +104,33 @@ body {
 
 /* LCD 격자(주사선). 화면 전체를 덮되 광고 슬롯 위는 비켜간다 —
    광고에 시각 효과를 덧씌우면 "광고를 위장하는 구현"에 해당할 수 있다.
-   비켜가게 하는 z-index 는 ads.css 의 .ad__slot 이 담당한다. */
+   비켜가게 하는 z-index 는 ads.css 의 .ad__slot 이 담당한다.
+
+   ★ 줄은 세로다. 가로로 두면 안 된다.
+     이 층은 fixed 라 정지해 있고 본문이 그 위를 지나간다. 줄이 가로면 글자가
+     3px 격자를 수직으로 "가로지르면서" 획의 가장자리가 어두운 1px 줄과 겹쳤다
+     벗어났다를 반복한다 — 스크롤 속도와 격자 간격의 차주파수가 맥놀이(beating)로
+     나타나 글자가 어른거린다. 작은 화면에서 특히 심하다: 관성 스크롤은 연속적이라
+     서브픽셀 오프셋이 끊임없이 변하고, 화면이 눈에 가까워 격자의 시야각이 크다.
+     실제로 멀미 증상을 유발했다.
+
+     줄이 세로면 본문의 운동 방향과 나란해서 글자가 줄을 한 번도 넘지 않는다.
+     각 글자 열이 같은 격자 위상에 계속 머무르므로 맥놀이가 원리적으로 생기지 않는다.
+     증상 완화가 아니라 기전 제거다.
+
+     컨셉도 이쪽이 맞다. 가로 주사선은 전자빔이 가로로 훑는 CRT 의 것이고,
+     LCD 는 한 픽셀이 RGB 세로 줄무늬 셋으로 되어 있어 가까이 보면 세로 striping 이다.
+
+     남는 자리: 가로 스크롤이 생기는 영역(코드 블록의 overflow-x)에서는 여전히
+     글자가 줄을 가로지른다. 다만 그건 사용자가 의도해서 미는 짧은 동작이라
+     수동적 읽기 중의 지속적 어른거림과는 성격이 다르다. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 100;
   pointer-events: none;
-  background: repeating-linear-gradient(to bottom, var(--scan) 0 1px, transparent 1px 3px);
+  background: repeating-linear-gradient(to right, var(--scan) 0 1px, transparent 1px 3px);
 }
 
 a {
@@ -1258,15 +1279,30 @@ img.accounts__mark {
 
 /* 태블릿 세로 이하 */
 @media (max-width: 768px) {
-  /* 물리 키보드가 없어 단축키 안내가 무의미하고, 좁은 화면 높이만 잡아먹는다.
-     display:none 이므로 안내와 동작이 함께 사라진다(키 핸들러는 남지만
-     터치 기기에서 발화하지 않는다). */
-  .command-bar {
+  /* 물리 키보드가 없으므로 단축키 '안내'는 무의미하다. 하지만 백라이트 전환
+     버튼은 터치 기기에서 유일한 전환 수단이다 — 바를 통째로 숨기면 접근 경로가
+     0이 된다(그래서 모바일에서 다크모드로 바꿀 방법이 없었다).
+     숨겨야 할 것은 안내이지 바가 아니었다. */
+  .command-bar__item {
     display: none;
   }
 
+  /* 버튼 하나만 남으므로 바를 얇게. spacer 가 버튼을 오른쪽으로 민다. */
+  .command-bar {
+    gap: 0;
+    padding: 0.4rem 1rem;
+  }
+
+  /* 손가락으로 누를 수 있는 크기를 확보한다. 데스크톱의 10.5px 짜리
+     인라인 칩 크기로는 터치 목표가 되지 못한다. */
+  .command-bar__state {
+    min-height: 2.5rem;
+    padding-inline: 1rem;
+  }
+
   body {
-    padding-block-end: 1rem;
+    /* 얇아진 커맨드 바(약 3.3rem)에 본문 끝이 가리지 않게 확보한다 */
+    padding-block-end: 3.75rem;
     font-size: 16px;
   }
 
