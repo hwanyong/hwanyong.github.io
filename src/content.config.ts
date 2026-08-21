@@ -11,6 +11,7 @@ import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 import { LOCALE_CODES } from './lib/i18n';
+import { URL_KEY } from './lib/routes';
 
 /**
  * 축이 셋이다.
@@ -47,12 +48,16 @@ const revisionFields = {
   ...baseFields,
   /**
    * 개정 계열의 키. 같은 series 값을 가진 항목들이 한 묶음의 개정본이 된다.
-   * URL 세그먼트로 그대로 쓰이므로 소문자·숫자·하이픈만 허용해 강제한다.
+   * URL 세그먼트로 그대로 쓰이므로 규칙을 스키마에서 강제한다 —
    * 잘못된 값이 런타임이 아니라 빌드 시점에 걸린다.
+   *
+   * 정규식은 routes.ts 의 URL_KEY 다. log 의 groupKey 와 같은 규칙을 써야 하므로
+   * 여기 다시 적지 않는다(숫자만인 키를 막는 이유는 그 파일에 적혀 있다).
    */
-  series: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, {
+  series: z.string().regex(URL_KEY, {
     // Zod 4 의 커스텀 메시지 키는 message 가 아니라 error 다.
-    error: 'series 는 소문자·숫자·하이픈만 사용할 수 있습니다. 예: analysis-video',
+    error:
+      'series 는 소문자·숫자·하이픈만 쓰되 숫자만으로 이루어질 수 없습니다. 예: analysis-video',
   }),
   /**
    * 화면 표시용 버전 문자열. 점을 포함해도 된다. 예: "1.0", "1.1"

@@ -10,7 +10,8 @@
 //   AdUnit 의 "Advertisements"  AdUnit.astro 참조 — 정책상 번역이 곧 위반이다
 //
 // 번역하지 않는 어휘군(계기판 표기): Log/Lecture/Project/About/Privacy ·
-//   N ENTRIES · REV n/m · v1.0 · REFLECT/EMIT · 키캡(J K ↵ T) · 날짜 YYYY.MM.DD.
+//   N ENTRIES / N SERIES · REV n/m · PAGE n / m · PREV/NEXT · v1.0 · REFLECT/EMIT ·
+//   언어 코드(EN KO) · 키캡(J K ↵ T) · 날짜 YYYY.MM.DD.
 //   목록에서 세로로 줄이 맞아야 하는 값들이라 언어에 따라 폭이 달라지면 안 된다.
 //
 // Record<Locale, UIStrings> 이므로 LOCALE_CODES 에 언어를 추가하는 순간
@@ -26,6 +27,14 @@ export interface UIStrings {
   toc: string;
   comments: string;
   postNav: string;
+  /**
+   * 목록 쪽 이동 줄(<nav>)의 접근성 이름.
+   *
+   * 그 줄의 나머지는 전부 계기판 표기라 여기 오지 않는다 —
+   * PREV · NEXT · PAGE 1 / 3 · 24 ENTRIES 는 REV 2 / 2 와 같은 부류다.
+   * 화살표(← →)는 aria-hidden 이라 이름에 섞이지 않는다.
+   */
+  pageNav: string;
   backlightToggle: string;
   scanToggle: string;
   videoPlay: (title: string) => string;
@@ -59,8 +68,16 @@ export interface UIStrings {
 
   /** 언어 스위처의 접근성 이름. */
   languageNav: string;
-  /** 그 언어판이 이전 개정본의 번역일 때 스위처 링크에 붙는 설명. */
-  languageBehind: (languageName: string) => string;
+  /**
+   * 언어 회전 링크의 접근성 이름.
+   *
+   * 화면에 나가는 글자는 ★다음★ 언어의 코드 하나(KO)뿐이라, 이름에 그 코드를 그대로
+   * 담는다. 담지 않으면 보이는 글자와 접근 가능한 이름이 겹치지 않아
+   * 음성 입력 사용자가 본 대로 말할 수 없다(WCAG 2.5.3 Label in Name).
+   */
+  languageSwitch: (code: string, languageName: string) => string;
+  /** 같은 자리. 그 언어판이 이전 개정본의 번역일 때만 이쪽이 온다. */
+  languageBehind: (code: string, languageName: string) => string;
 
   /**
    * 아직 번역되지 않아 원문을 그대로 싣고 있는 글의 본문 위 안내.
@@ -88,6 +105,7 @@ const en: UIStrings = {
   toc: 'Contents',
   comments: 'Comments',
   postNav: 'Post navigation',
+  pageNav: 'Pages',
   backlightToggle: 'Toggle backlight',
   scanToggle: 'Change screen pattern',
   videoPlay: (title) => `Play ${title}`,
@@ -114,7 +132,9 @@ const en: UIStrings = {
 
   languageNames: { en: 'English', ko: 'Korean' },
   languageNav: 'Language',
-  languageBehind: (name) => `${name} — translation of an earlier revision`,
+  languageSwitch: (code, name) => `${code} — switch to ${name}`,
+  languageBehind: (code, name) =>
+    `${code} — switch to ${name} (a translation of an earlier revision)`,
 
   untranslatedNotice: (name) =>
     `Not translated yet. The text below is the ${name} original.`,
@@ -142,6 +162,7 @@ const ko: UIStrings = {
   toc: '목차',
   comments: '댓글',
   postNav: '글 이동',
+  pageNav: '쪽 이동',
   backlightToggle: '백라이트 전환',
   scanToggle: '화면 무늬 전환',
   videoPlay: (title) => `${title} 재생`,
@@ -168,7 +189,8 @@ const ko: UIStrings = {
 
   languageNames: { en: '영어', ko: '한국어' },
   languageNav: '언어',
-  languageBehind: (name) => `${name} — 이전 개정본의 번역입니다`,
+  languageSwitch: (code, name) => `${code} — ${name} 화면으로 전환`,
+  languageBehind: (code, name) => `${code} — ${name} 화면으로 전환 (이전 개정본의 번역입니다)`,
 
   untranslatedNotice: (name) => `아직 번역되지 않았습니다. 아래는 ${name} 원문입니다.`,
 

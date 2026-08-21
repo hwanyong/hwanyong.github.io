@@ -263,7 +263,7 @@ a {
 /* 사이드가 없는 화면(목록 등)에서 3번 트랙이 빈 채로 남지 않도록,
    가로선 성격의 요소는 전체 열을 가로지른다. */
 .column > .section-bar,
-.column > .foot {
+.column > .pager {
   grid-column: 1 / -1;
 }
 
@@ -370,7 +370,8 @@ a {
   color: var(--ink);
 }
 
-/* 우측 시스템 상태 표시 (4 ENTRIES · REV 2 / 2 …) */
+/* 우측 시스템 상태 표시 (REV 2 / 2 · 404 · 시행일 …).
+   ★ 목록의 총 개수는 여기 오지 않는다 — 목록 끝의 .pager 가 말한다. */
 .site-status {
   font-size: 10.5px;
   letter-spacing: 0.14em;
@@ -800,6 +801,57 @@ img.thumb {
   font-size: 12px;
   letter-spacing: 0.08em;
   color: var(--ink-3);
+}
+
+/* ─── 목록 쪽 이동 ─────────────────────────────────────────── */
+
+/*
+  세 칸 격자다. 앞·뒤 링크가 없는 쪽에서도 남은 것들이 제자리를 지켜야 하므로
+  flex 의 space-between 이 아니라 명시적인 열 번호를 쓴다 —
+  1쪽에서 NEXT 가 가운데로 끌려오지 않는다.
+*/
+.pager {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 1rem;
+  margin-block-start: 2rem;
+  padding-block-start: 1.15rem;
+  border-block-start: 1px solid var(--rule);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+
+.pager__step {
+  color: var(--ink-2);
+}
+
+.pager__step:hover {
+  color: var(--ink);
+}
+
+.pager__step--prev {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.pager__count {
+  grid-column: 2;
+  justify-self: center;
+}
+
+.pager__step--next {
+  grid-column: 3;
+  justify-self: end;
+}
+
+/* 쪽 위치가 총계보다 밝다 — 총계는 참고이고 위치는 지금 서 있는 자리다. */
+.pager__count b {
+  margin-inline-end: 0.55rem;
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 /* ─── 개정 이력 (signature 확장) ───────────────────────────── */
@@ -1670,25 +1722,33 @@ img.accounts__mark {
 }
 
 /*
-  언어 스위처. .site-status 뒤에 온다 — 그 앞에 끼우면 .site-nav 의
+  언어 칩. .site-status 뒤에 온다 — 그 앞에 끼우면 .site-nav 의
   margin-inline-start: auto 가 만드는 우측 정렬 사이에 들어가 헤더 배치가 흐트러진다.
+
+  링크는 하나다. 로케일을 나열하지 않고 ★다음★ 언어만 가리키며 누르면 회전한다
+  (무늬·조명 칩과 같은 방식). 그래서 로케일이 늘어도 헤더 폭이 늘지 않는다.
+
+  치수를 .site-status 와 맞춘 것은 의도다 — 같은 계기판 줄에 놓이는 칩이라
+  글자 크기·자간·테두리·안여백이 어긋나면 둘이 다른 물건으로 읽힌다.
 
   저하(*) 표시가 없는 이유: 완전쌍 불변식 덕분에 모든 화면에 정확한 짝이 있다.
   남는 것은 개정 시차(data-behind) 하나뿐이다.
 */
 .lang-switch {
-  display: flex;
-  gap: 0.5rem;
   margin-inline-start: 0.9rem;
 }
 
 .lang-switch a {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--rule);
   font-size: 10.5px;
   letter-spacing: 0.14em;
   color: var(--ink-3);
+  white-space: nowrap;
 }
 
-.lang-switch a[aria-current='page'] {
+.lang-switch a:hover {
   color: var(--ink);
 }
 
@@ -1699,6 +1759,7 @@ img.accounts__mark {
 
 .lang-switch a[data-behind]::after {
   content: '·';
+  margin-inline-start: 0.2rem;
 }
 
 /* 목록에서 "이 항목은 아직 번역되지 않아 원문을 싣고 있다" 를 알리는 배지.

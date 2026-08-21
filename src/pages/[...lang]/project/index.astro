@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import Timeline from '../../../components/Timeline.astro';
-import { getSeriesTimeline, groupByYear, hasSeries } from '../../../lib/content';
+import { getSeriesTimeline, groupByYear } from '../../../lib/content';
 import { AD_SLOTS } from '../../../lib/site';
 import { LOCALE_CODES } from '../../../lib/i18n';
 import { langParam, staticAlternates, sectionLabel } from '../../../lib/routes';
@@ -12,12 +12,12 @@ import type { Locale } from '../../../lib/i18n';
 
 // 모든 로케일에 항상 존재하는 화면이다. 로케일은 콘텐츠가 아니라 이 표에서 나온다 —
 // 방침·소개·목록은 번역이 없어도 URL 이 있어야 하는 유일한 부류다.
-export const getStaticPaths = async () => {
-  // 빈 축은 URL 을 만들지 않는다 — 헤더 네비에서 빠지는 것과 같은 규칙이고 같은 판정이다
-  // (content.ts 의 liveNavSections). 한쪽만 적용하면 네비에 없는 화면이 sitemap 에 남는다.
-  if (!(await hasSeries('project'))) return [];
-  return LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
-};
+// ★ 이 축은 쪽을 나누지 않는다. log·lecture 와 다른 점이 그것 하나다 —
+//   프로젝트는 계열 수가 글처럼 늘지 않고, 썸네일이 붙은 목록이라 한 화면에
+//   전부 보이는 편이 고르기 쉽다. 늘어나면 그때 Pagination 을 붙이면 된다
+//   (라우트를 [...page].astro 로 바꾸고 paginate 를 태우는 것이 전부다).
+export const getStaticPaths = () =>
+  LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
 
 const { locale } = Astro.props as { locale: Locale };
 const t = UI[locale];
@@ -34,7 +34,6 @@ const groups = groupByYear(items);
   description={t.lists.project.description}
   section="project"
   ads={items.length > 0}
-  status={`${items.length} PROJECTS`}
 >
   {/* 인피드 슬롯에는 게이트가 없다 — 항목이 adAfter 개보다 적으면 Timeline 의
       루프가 애초에 광고 행을 만들지 않는다. 게이트가 필요한 곳은 로더 쪽(ads)이다. */}

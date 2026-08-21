@@ -5,8 +5,14 @@ import AdSenseHead from '../components/AdSenseHead.astro';
 import AnalyticsHead from '../components/AnalyticsHead.astro';
 import { SITE } from '../lib/site';
 import { LOCALES, type Alternate, type Locale } from '../lib/i18n';
-import { type NavSection, feedHref, homeHref, sectionHref, sectionLabel } from '../lib/routes';
-import { liveNavSections } from '../lib/content';
+import {
+  NAV_SECTIONS,
+  type NavSection,
+  feedHref,
+  homeHref,
+  sectionHref,
+  sectionLabel,
+} from '../lib/routes';
 import { UI } from '../lib/ui';
 import { GITHUB } from '../lib/profile';
 import { HINTS } from '../lib/shortcuts';
@@ -42,7 +48,13 @@ interface Props {
    *  개정축의 구버전 페이지도 replicated content 라 빼는 편이 안전하다.)
    */
   ads?: boolean;
-  /** 헤더 우측 시스템 상태 표시. 예: "4 ENTRIES", "REV 2 / 2" */
+  /**
+   * 헤더 우측 시스템 상태 표시. 예: "REV 2 / 2", "404", 방침 시행일.
+   *
+   * ★ 목록의 총 개수는 여기 오지 않는다. 이 자리는 화면마다 뜻이 달라지는 자리이고,
+   *   "글이 몇 개인가" 는 목록을 다 읽은 사람이 묻는 물음이라 답도 목록 끝에 있어야
+   *   한다. 그 답은 Pagination 컴포넌트가 낸다.
+   */
   status?: string;
   /**
    * 현재 위치를 aria-current 로 표시할 네비 항목.
@@ -51,8 +63,10 @@ interface Props {
   section?: NavSection | null;
 }
 
-// 메뉴는 routes.ts 의 NAV_SECTIONS 에서 나오되, 항목이 0개인 개정축은 빠진다.
-// 경로·표기·키를 여기서 다시 적지 않는다. 판정은 content.ts 의 liveNavSections 가 한다.
+// 메뉴는 routes.ts 의 NAV_SECTIONS 가 그대로다 — 경로·표기·키를 여기서 다시 적지 않는다.
+// ★ 항목이 0개인 축도 빠지지 않는다. 축이 비어 있다는 사실은 그 축의 목록 화면이
+//   직접 말하고, 네비에서 사라지는 쪽은 "그런 축이 없다" 로 읽혀 더 나쁘다.
+//   그래서 이 레이아웃은 콘텐츠 계층(content.ts)을 아예 import 하지 않는다.
 
 const {
   locale,
@@ -66,8 +80,6 @@ const {
   status,
   section = null,
 } = Astro.props;
-
-const navSections = await liveNavSections();
 
 const t = UI[locale];
 ---
@@ -148,7 +160,7 @@ const t = UI[locale];
       {/* RSS 는 여기 두지 않는다 —
           피드 발견은 <head> 의 rel="alternate" 가, 사람이 누르는 링크는 푸터가 맡는다. */}
       <nav class="site-nav">
-        {navSections.map((key) => (
+        {NAV_SECTIONS.map((key) => (
           <a href={sectionHref(locale, key)} aria-current={section === key ? 'page' : undefined}>
             {sectionLabel(key)}
           </a>

@@ -21,13 +21,7 @@
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 import { LOCALE_CODES, isLocale, type Alternate, type Locale } from './i18n';
-import {
-  NAV_SECTIONS,
-  REVISION_COLLECTIONS,
-  revisionHref,
-  type NavSection,
-  type RevisionCollection,
-} from './routes';
+import { URL_KEY, revisionHref, type RevisionCollection } from './routes';
 
 export type { RevisionCollection };
 
@@ -38,9 +32,6 @@ export type ProjectEntry = CollectionEntry<'project'>;
 /** 개정축 항목. 두 컬렉션이 revisionFields 를 공유하므로 공통 필드는 항상 있다. */
 export type RevisionEntry<C extends RevisionCollection = RevisionCollection> =
   CollectionEntry<C>;
-
-/** URL 세그먼트로 쓰이는 키의 규칙. series 와 log 의 groupKey 가 같은 규칙을 쓴다. */
-const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** 세 축 공통: 항목 id 의 마지막 세그먼트가 로케일이다. */
 const localeOf = (id: string): Locale => {
@@ -55,8 +46,11 @@ const localeOf = (id: string): Locale => {
 /** log 의 그룹 키 = 로케일 파일이 담긴 디렉터리 이름. */
 const groupKeyOf = (id: string): string => {
   const key = id.split('/').slice(0, -1).join('/');
-  if (!SLUG.test(key))
-    throw new Error(`groupKey 는 소문자·숫자·하이픈만 사용할 수 있습니다. id=${id}, key=${key}`);
+  if (!URL_KEY.test(key))
+    throw new Error(
+      `groupKey 는 소문자·숫자·하이픈만 쓰되 숫자만으로 이루어질 수 없습니다` +
+        `(숫자만인 이름은 목록의 쪽 번호와 같은 URL 을 주장한다). id=${id}, key=${key}`,
+    );
   return key;
 };
 
@@ -161,7 +155,7 @@ export const getSeriesHistories = async <C extends RevisionCollection>(
   const entries = (await getCollection(collection, isVisible)).sort(byDateDesc);
 
   // 키는 `${locale} ${series}` — 두 축을 한 번에 가른다.
-  // series 는 SLUG 정규식이 공백을 금지하므로 이 구분자가 값과 충돌할 수 없다.
+  // series 는 URL_KEY 정규식이 공백을 금지하므로 이 구분자가 값과 충돌할 수 없다.
   const buckets = new Map<string, RevisionEntry<C>[]>();
   for (const entry of entries) {
     const key = `${localeOf(entry.id)} ${entry.data.series}`;
@@ -247,6 +241,15 @@ const toSeriesItem = ({
   thumbnail: 'thumbnail' in latest.data ? latest.data.thumbnail : undefined,
 });
 
+/**
+ * 목록 한 쪽에 싣는 항목 수. log 와 개정축이 함께 쓴다.
+ *
+ * 홈은 쪽을 나누지 않는다 — 세 축을 한 시간축에 섞어 "언제 무엇을 했는지" 를 한눈에
+ * 보이려는 화면이라, 그 그림을 쪽으로 자르면 화면의 목적 자체가 사라진다.
+ * 개수가 부담이 되는 날에는 쪽이 아니라 "최근 N개" 로 자르는 편이 맞다.
+ */
+export const PAGE_SIZE = 10;
+
 export const getLogTimeline = async (locale: Locale): Promise<TimelineItem[]> =>
   (await getLogEntries(locale)).map(toLogItem);
 
@@ -259,42 +262,18 @@ export const getSeriesTimeline = async (
     .filter((history) => history.locale === locale)
     .map(toSeriesItem);
 
-/**
- * 그 축에 계열이 하나라도 있는가.
+/*
+ * ★ 빈 축을 감추는 판정(hasSeries · liveNavSections)은 없다.
  *
- * 로케일을 묻지 않는다 — tools/i18n-verify.ts 가 "모든 항목이 모든 로케일 판본을 갖는다"를
- * 강제하므로 한 로케일에만 존재하는 축은 만들어질 수 없다.
+ *   예전에는 항목이 0개인 개정축을 네비와 sitemap 에서 통째로 뺐다. 그러면 축이
+ *   "아직 없는 것" 이 아니라 "존재하지 않는 것" 이 되어, 첫 항목을 넣기 전까지는
+ *   그 자리를 화면에서 확인할 방법이 없었다. 지금은 축이 항상 있고, 비어 있다는
+ *   사실은 목록이 UI[locale].emptyLecture 로 직접 말한다.
+ *
+ *   대신 지켜야 할 것이 하나 생긴다: 항목이 0개인 화면에는 광고를 싣지 않는다
+ *   (publisher content 가 없는 화면의 광고는 Google Publisher Policies 위반).
+ *   그 게이트는 목록 페이지의 ads={items.length > 0} 이다.
  */
-export const hasSeries = async (collection: RevisionCollection): Promise<boolean> =>
-  (await getSeriesHistories(collection)).length > 0;
-
-/**
- * 헤더 네비에 실제로 내보낼 축.
- *
- * 항목이 0개인 개정축을 네비에 남기면 누른 사람이 "아직 없습니다" 한 줄만 보고 돌아간다.
- * 목록 라우트의 getStaticPaths 도 같은 hasSeries 를 쓴다 — 안내에서는 뺐는데 sitemap 에는
- * 남는 불일치를 만들지 않기 위해서다. 축을 지우는 게 아니라 비어 있는 동안만 감추는 것이고,
- * 첫 항목이 들어오면 네비와 URL 이 함께 되살아난다.
- *
- * log·about 은 개정축이 아니므로 이 판정의 대상이 아니다.
- */
-let navCache: NavSection[] | null = null;
-
-export const liveNavSections = async (): Promise<NavSection[]> => {
-  if (navCache) return navCache;
-
-  const empty = new Set<string>();
-  for (const collection of REVISION_COLLECTIONS) {
-    if (!(await hasSeries(collection))) empty.add(collection);
-  }
-  const sections = NAV_SECTIONS.filter((section) => !empty.has(section));
-
-  // 빌드 1회분 메모. BaseLayout 은 모든 페이지에서 이걸 부르는데, 빈 컬렉션을 조회할 때마다
-  // Astro 가 [glob-loader] 경고를 한 줄씩 찍는다. 메모가 없으면 페이지 수만큼 경고가 쌓여
-  // 진짜 경고가 그 속에 묻힌다. dev 는 콘텐츠가 바뀌면 모듈을 다시 평가하므로 안전하다.
-  navCache = sections;
-  return sections;
-};
 
 /**
  * 홈과 피드가 쓰는 통합 목록. 세 축을 하나의 시간축에 섞는다.

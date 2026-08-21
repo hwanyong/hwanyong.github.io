@@ -15,6 +15,7 @@
  */
 import { readFileSync, globSync } from 'node:fs';
 import { DEFAULT_LOCALE, LOCALE_CODES, LOCALES } from '../src/lib/i18n.ts';
+import { NAV_SECTIONS } from '../src/lib/routes.ts';
 
 /**
  * Astro 가 만들지 않은 dist 안의 HTML. public/ 에서 그대로 복사된 것이라
@@ -45,12 +46,33 @@ const parts = [...index.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
 );
 const sitemap = parts.map((part) => readFileSync(part, 'utf8')).join('');
 
+/**
+ * <link …> · <xhtml:link …> 한 태그에서 hreflang 과 href 를 함께 뽑아 `코드 주소` 로 만든다.
+ *
+ * ★ 코드만 비교하면 안 된다. 쪽이 나뉜 목록에서 head 의 hreflang 은 routes.ts 의
+ *   pageHref 가 만들고 sitemap 의 xhtml:link 는 실제로 생성된 URL 에서 나온다 —
+ *   두 출처가 다르므로, 한쪽이 /log/2/ 를 가리키고 다른 쪽이 /log/ 를 가리켜도
+ *   코드 집합은 똑같이 [en, ko, x-default] 다. 값까지 비교해야 그것이 잡힌다.
+ *
+ * 속성 순서에 기대지 않는다 — 태그를 먼저 자르고 두 속성을 따로 읽는다.
+ */
+const hreflangPairs = (source: string, tag: RegExp): Set<string> => {
+  const pairs = new Set<string>();
+  for (const match of source.matchAll(tag)) {
+    const element = match[0];
+    const lang = element.match(/hreflang="([^"]+)"/)?.[1];
+    const href = element.match(/href="([^"]+)"/)?.[1];
+    if (lang && href) pairs.add(`${lang} ${href}`);
+  }
+  return pairs;
+};
+
 const locs: string[] = [];
-const links = new Map<string, Set<string>>(); // loc → Set(hreflang)
+const links = new Map<string, Set<string>>(); // loc → Set(`hreflang href`)
 for (const block of sitemap.split('<url>').slice(1)) {
   const loc = block.match(/<loc>([^<]+)<\/loc>/)![1]!;
   locs.push(loc);
-  links.set(loc, new Set([...block.matchAll(/hreflang="([^"]+)"/g)].map((m) => m[1]!)));
+  links.set(loc, hreflangPairs(block, /<xhtml:link\b[^>]*\/?>/g));
 }
 
 const all = globSync('dist/**/*.html').filter((file) => !NOT_A_PAGE.has(file));
@@ -72,12 +94,17 @@ for (const file of pages) {
     continue;
   }
 
-  const head = new Set(
-    [...src.matchAll(/rel="alternate" hreflang="([^"]+)"/g)].map((m) => m[1]!),
-  );
+  // 피드 링크도 rel="alternate" 지만 hreflang 이 없어 hreflangPairs 가 걸러낸다.
+  const head = hreflangPairs(src, /<link\b[^>]*rel="alternate"[^>]*\/?>/g);
   const map = links.get(canonical) ?? new Set<string>();
-  if ([...head].sort().join() !== [...map].sort().join())
-    fail.push(`hreflang 불일치 ${canonical}: head=[${[...head]}] sitemap=[${[...map]}]`);
+  const missing = [...head].filter((pair) => !map.has(pair));
+  const extra = [...map].filter((pair) => !head.has(pair));
+  if (missing.length > 0 || extra.length > 0)
+    fail.push(
+      `hreflang 불일치 ${canonical}\n` +
+        `      head 에만: ${missing.join(' | ') || '없음'}\n` +
+        `      sitemap 에만: ${extra.join(' | ') || '없음'}`,
+    );
 
   const lang = src.match(/<html lang="([^"]+)"/)?.[1];
   const og = src.match(/og:locale" content="([^"]+)"/)?.[1];
@@ -152,19 +179,22 @@ for (const code of LOCALE_CODES) {
 }
 
 // ⑧ 콘텐츠와 무관하게 모든 로케일에 반드시 있어야 하는 화면.
-//    개정축(lecture·project)은 여기 없다 — 항목이 0개면 화면을 만들지 않기 때문이다(⑨).
+//    ★ 개정축(lecture·project)도 포함된다 — 항목이 0개여도 화면을 만든다.
+//      목록이 "아직 없습니다" 를 말하는 것과 축이 사라지는 것은 전혀 다른 일이다.
+//    목록은 NAV_SECTIONS 에서 파생한다. 여기 이름을 다시 적으면 축을 늘렸을 때
+//    검사만 예전 목록에 머무른다.
 for (const code of LOCALE_CODES) {
   const base = code === DEFAULT_LOCALE ? 'dist' : `dist/${code}`;
-  for (const section of ['', 'log', 'about', 'privacy']) {
+  for (const section of ['', ...NAV_SECTIONS, 'privacy']) {
     const path = `${base}${section ? '/' + section : ''}/index.html`;
     if (!pages.includes(path)) fail.push(`필수 화면 없음: ${path}`);
   }
 }
 
-// ⑨ 개정축은 "네비에 링크가 있다" 와 "목록 화면이 있다" 가 반드시 함께 참이거나 함께 거짓이다.
-//    한쪽만 참이면 네비가 404 를 가리키거나(전자), 네비에서 닿을 수 없는 화면이 sitemap 에
-//    남는다(후자). 둘 다 src/lib/content.ts 의 hasSeries 하나에서 나오지만, 그 사실을
-//    믿지 않고 산출물에서만 읽어 확인한다 — 소스를 다시 읽으면 같은 버그를 두 번 믿게 된다.
+// ⑨ 네비는 NAV_SECTIONS 를 순서 그대로 낸다 — 빠지는 축도 더해지는 축도 없다.
+//    예전에는 항목이 0개인 개정축을 네비에서 빼고 화면도 만들지 않았다. 그 규칙이
+//    사라졌으므로 검사도 "둘이 함께 참/거짓" 이 아니라 "항상 전부" 가 된다.
+//    ⑧ 이 그 링크의 목적지가 실제로 있는지를 따로 본다.
 for (const code of LOCALE_CODES) {
   const base = code === DEFAULT_LOCALE ? 'dist' : `dist/${code}`;
   const prefix = code === DEFAULT_LOCALE ? '' : `/${code}`;
@@ -172,23 +202,16 @@ for (const code of LOCALE_CODES) {
     /<nav class="site-nav">(.*?)<\/nav>/s,
   )?.[1];
 
-  // 네비를 못 읽으면 아래 비교가 전부 "링크 없음" 으로 통과해 버린다. 그 침묵을 막는다.
+  // 네비를 못 읽으면 아래 비교가 "링크 없음" 으로 조용히 통과해 버린다. 그 침묵을 막는다.
   if (!nav) {
     fail.push(`${base}/index.html 에서 .site-nav 를 찾지 못했다 — 아래 축 검사가 무의미해진다`);
     continue;
   }
 
-  for (const axis of ['lecture', 'project']) {
-    const linked = nav.includes(`href="${prefix}/${axis}/"`);
-    const path = `${base}/${axis}/index.html`;
-    const built = pages.includes(path);
-    if (linked === built) continue;
-    fail.push(
-      linked
-        ? `네비에 ${axis} 링크가 있는데 목록 화면이 없다: ${path}`
-        : `네비에 ${axis} 링크가 없는데 목록 화면이 있다: ${path}`,
-    );
-  }
+  const found = [...nav.matchAll(/href="([^"]+)"/g)].map((match) => match[1]!);
+  const want = NAV_SECTIONS.map((section) => `${prefix}/${section}/`);
+  if (found.join(' ') !== want.join(' '))
+    fail.push(`네비 링크 불일치 ${base}: [${found.join(' ')}] ≠ [${want.join(' ')}]`);
 }
 
 // ⑩ 404 는 언어축 밖이다 — canonical 이 없고 noindex 여야 한다.
@@ -197,6 +220,35 @@ if (notFound.includes('rel="canonical"'))
   fail.push('404.html 에 canonical 이 있다 — 존재하지 않는 모든 경로에 서빙되므로 항상 거짓이다');
 if (!notFound.includes('name="robots" content="noindex"'))
   fail.push('404.html 에 noindex 가 없다');
+
+/*
+ ⑪ 내부 링크는 정본 주소여야 한다.
+
+ build.format 이 'directory' 이므로 페이지의 정본 주소는 끝 슬래시가 붙은 쪽이다.
+ 붙지 않은 주소를 써도 GitHub Pages 가 리다이렉트로 살려 주기 때문에 ★화면에서는
+ 아무 문제가 없어 보인다★ — 대신 링크마다 왕복이 한 번 늘고, 사이트 안에 두 가지
+ 주소 표기가 섞인다. 사람 눈으로는 남는 종류라 검사로 막는다.
+
+ 실제로 걸렸다: Astro 의 paginate() 가 만드는 page.url.next 는 /log/2 였다
+ (config.trailingSlash 기본값 'ignore' 에서는 슬래시를 붙이지 않는다).
+ 그래서 쪽 이동 주소는 routes.ts 의 pageHref 에서 받는다.
+*/
+/*
+  면제 대상은 ASSET 이 아니라 "파일 이름으로 끝나는 경로" 다.
+  ASSET 은 ★로케일 접두사가 붙으면 안 되는 경로★ 의 목록이라 /ko/rss.xml 을 담지 않는다.
+  여기서 묻는 것은 "페이지인가 엔드포인트인가" 이고, 그 판정은 마지막 세그먼트에
+  확장자가 있는지다.
+*/
+const ENDPOINT = /\/[^/]*\.[^/]*$/;
+
+for (const file of all) {
+  const src = readFileSync(file, 'utf8');
+  for (const match of src.matchAll(/(?:href|src)="(\/[^"#?]*)"/g)) {
+    const href = match[1]!;
+    if (href.endsWith('/') || ENDPOINT.test(href)) continue;
+    fail.push(`끝 슬래시 없는 내부 링크 ${file}: ${href}`);
+  }
+}
 
 if (fail.length > 0) {
   console.error('\n✗ verify-site\n');
