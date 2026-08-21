@@ -11,11 +11,15 @@
  * 회전이므로 로케일이 셋이 되어도 폭은 그대로다: en → ko → ja → en.
  * 차례는 LOCALE_CODES 순서이고, 그 순서로 만들어진 alternates 배열이 곧 차례다.
  *
- * ★ 화면에 나가는 글자는 ★다음★ 언어의 코드다(영어 화면에서 "KO").
- *   현재 언어를 적으면 링크의 글자와 목적지가 서로 다른 것을 가리켜,
- *   "KO 를 찾는 사람" 이 EN 이라고 적힌 칩을 눌러야 한다는 뜻이 된다.
- *   무늬 칩과 다른 점은 이것 하나다 — 저쪽은 버튼이고 이쪽은 링크이며,
- *   링크의 글자는 목적지를 말하는 것이 관례다.
+ * ★ 화면에 나가는 글자는 ★지금★ 언어의 코드다(영어 화면에서 "EN").
+ *   무늬·조명 칩과 같은 규칙이다 — 계기판의 칩은 현재 상태를 읽는 자리이고,
+ *   누르면 다음 값으로 넘어간다. 목적지를 적으면 칩 세 개가 서로 다른 것을
+ *   말하게 되어(둘은 상태, 하나는 목적지) 같은 줄에 놓을 수 없다.
+ *
+ *   대신 목적지는 접근 가능한 이름이 말한다: "EN — switch to Korean".
+ *   보이는 글자(EN)를 그 이름에 그대로 담아 음성 입력 사용자가 본 대로
+ *   말할 수 있게 한다(WCAG 2.5.3 Label in Name).
+ *   hreflang 은 링크의 ★목적지★ 를 말하는 속성이라 다음 언어 그대로다.
  *
  * ★ 언어 선택을 저장하지 않는다. localStorage·쿠키·Accept-Language 어느 것도 읽지 않는다.
  *   ① "저장된 선택으로 자동 전환" 은 이름만 다른 자동 감지다. 이 사이트는 자동 감지를
@@ -69,11 +73,11 @@ const next =
         hreflang={LOCALES[next.locale].hreflang}
         data-behind={next.behind > 0 ? '' : undefined}
         aria-label={(next.behind > 0 ? t.languageBehind : t.languageSwitch)(
-          LOCALES[next.locale].label,
+          LOCALES[locale].label,
           t.languageNames[next.locale],
         )}
       >
-        {LOCALES[next.locale].label}
+        {LOCALES[locale].label}
       </a>
     </nav>
   )

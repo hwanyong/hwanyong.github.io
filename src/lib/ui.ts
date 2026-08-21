@@ -71,13 +71,16 @@ export interface UIStrings {
   /**
    * 언어 회전 링크의 접근성 이름.
    *
-   * 화면에 나가는 글자는 ★다음★ 언어의 코드 하나(KO)뿐이라, 이름에 그 코드를 그대로
-   * 담는다. 담지 않으면 보이는 글자와 접근 가능한 이름이 겹치지 않아
-   * 음성 입력 사용자가 본 대로 말할 수 없다(WCAG 2.5.3 Label in Name).
+   * 인자 둘이 서로 다른 것을 가리킨다 — 이것이 이 문구의 전부다:
+   *   current  화면에 ★보이는★ 글자. 지금 언어의 코드다(영어 화면에서 "EN").
+   *   target   누르면 ★가는 곳★ 의 언어 이름(영어 화면에서 "Korean").
+   *
+   * 보이는 글자를 이름에 그대로 담지 않으면 음성 입력 사용자가 본 대로 말할 수
+   * 없다(WCAG 2.5.3 Label in Name). 그래서 "EN — switch to Korean" 이다.
    */
-  languageSwitch: (code: string, languageName: string) => string;
-  /** 같은 자리. 그 언어판이 이전 개정본의 번역일 때만 이쪽이 온다. */
-  languageBehind: (code: string, languageName: string) => string;
+  languageSwitch: (current: string, target: string) => string;
+  /** 같은 자리. 가는 곳이 이전 개정본의 번역일 때만 이쪽이 온다. */
+  languageBehind: (current: string, target: string) => string;
 
   /**
    * 아직 번역되지 않아 원문을 그대로 싣고 있는 글의 본문 위 안내.
@@ -132,9 +135,9 @@ const en: UIStrings = {
 
   languageNames: { en: 'English', ko: 'Korean' },
   languageNav: 'Language',
-  languageSwitch: (code, name) => `${code} — switch to ${name}`,
-  languageBehind: (code, name) =>
-    `${code} — switch to ${name} (a translation of an earlier revision)`,
+  languageSwitch: (current, target) => `${current} — switch to ${target}`,
+  languageBehind: (current, target) =>
+    `${current} — switch to ${target} (a translation of an earlier revision)`,
 
   untranslatedNotice: (name) =>
     `Not translated yet. The text below is the ${name} original.`,
@@ -189,8 +192,9 @@ const ko: UIStrings = {
 
   languageNames: { en: '영어', ko: '한국어' },
   languageNav: '언어',
-  languageSwitch: (code, name) => `${code} — ${name} 화면으로 전환`,
-  languageBehind: (code, name) => `${code} — ${name} 화면으로 전환 (이전 개정본의 번역입니다)`,
+  languageSwitch: (current, target) => `${current} — ${target} 화면으로 전환`,
+  languageBehind: (current, target) =>
+    `${current} — ${target} 화면으로 전환 (이전 개정본의 번역입니다)`,
 
   untranslatedNotice: (name) => `아직 번역되지 않았습니다. 아래는 ${name} 원문입니다.`,
 
