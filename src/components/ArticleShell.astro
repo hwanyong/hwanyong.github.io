@@ -49,8 +49,6 @@ interface Props {
   /** 날짜 뒤에 " · " 로 이어 붙는 항목들. 예: 태그, 버전, "현재" */
   meta?: string[];
   section?: NavSection | null;
-  /** 헤더 우측 상태 표시 */
-  status?: string;
   /** 되돌아갈 곳. 위·아래 이동 줄이 같은 곳을 가리킨다. */
   backHref: string;
   backLabel: string;
@@ -79,7 +77,6 @@ const {
   date,
   meta = [],
   section = null,
-  status,
   backHref,
   backLabel,
   jumpHref,
@@ -99,7 +96,6 @@ const t = UI[locale];
   type="article"
   publishedTime={date}
   section={section}
-  status={status}
   ads={ads}
 >
   <div class="column">

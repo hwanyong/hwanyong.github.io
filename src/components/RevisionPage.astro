@@ -30,15 +30,18 @@ interface Props {
 }
 
 // rootLabel prop 은 없다 — sectionLabel(collection) 이 만든다. 축 이름은 비번역이다.
+//
+// ★ 헤더 우측 상태 칩(REV n / m)은 두지 않는다. 개정 이력은 아래 #revisions 패널이
+//   통째로 보여준다 — 몇 개인지도, 지금 어느 것을 보는지도 거기서 읽힌다.
+//   헤더에 한 번 더 적으면 같은 사실이 한 화면에 두 벌이 되고, 개정본이 하나뿐인
+//   계열에서는 "REV 1 / 1" 이라 아무것도 알려주지 않는다.
 const { locale, alternates, collection, revisions, index }: Props = Astro.props;
 
 const t = UI[locale];
 
 const entry = revisions[index]!;
-const latest = revisions[0]!;
 const isLatest = index === 0;
 const total = revisions.length;
-const position = total - index;
 const series = entry.data.series;
 
 // 위·아래 이동 줄이 가리키는 곳. 최신 개정본이 곧 계열 페이지이므로
@@ -59,7 +62,6 @@ const backLabel = isLatest ? sectionLabel(collection) : entry.data.title;
   date={entry.data.date}
   meta={[`v${entry.data.version}`, ...(isLatest ? [t.revision.current] : [])]}
   section={collection}
-  status={`REV ${position} / ${total}`}
   backHref={backHref}
   backLabel={backLabel}
   jumpHref={total > 1 ? '#revisions' : undefined}
