@@ -16,8 +16,9 @@
     "preview": "astro preview",
     "check": "astro check",
     "sync": "astro sync",
-    "ci": "astro check && astro build",
-    "astro": "astro"
+    "ci": "node tools/check-collisions.mjs && astro check && astro build",
+    "astro": "astro",
+    "check:collisions": "node tools/check-collisions.mjs"
   },
   "dependencies": {
     "@astrojs/rss": "4.0.19",
