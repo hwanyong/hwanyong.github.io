@@ -13,6 +13,7 @@ import Toc from '../../components/Toc.astro';
 import { getLogEntries } from '../../lib/content';
 import type { LogEntry } from '../../lib/content';
 import { formatDate, isoDate } from '../../lib/date';
+import { AD_SLOTS } from '../../lib/site';
 
 export const getStaticPaths = async () => {
   const posts = await getLogEntries();
@@ -60,7 +61,7 @@ const { Content, headings } = await render(post);
 
     {/* 광고는 본문이 끝난 뒤. 네비게이션 근처는 오클릭 유발로 정책상 위험하다.
         prop 이름은 slot 이 아니라 adSlot 이어야 한다(slot 은 Astro 예약 속성). */}
-    <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />
+    <AdUnit adSlot={AD_SLOTS.articleEnd} collapseOnUnfilled={false} />
 
     <Comments />
   </div>

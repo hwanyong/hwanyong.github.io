@@ -29,11 +29,13 @@ interface Props {
 
 const { adSlot, collapseOnUnfilled = true } = Astro.props;
 
-const isProd = import.meta.env.PROD;
+// AdSenseHead 와 같은 조건이어야 한다. 한쪽만 켜지면
+// 로더 없는 빈 <ins> 가 남거나, 슬롯 없는 로더가 실린다.
+const show = import.meta.env.PROD && ADSENSE.enabled;
 ---
 
 {
-  isProd && (
+  show && (
     <aside class="ad-slot" data-collapse={collapseOnUnfilled ? 'true' : 'false'}>
       {/* 정책상 허용되는 라벨은 "Advertisements"(복수) 또는 "Sponsored Links" 뿐이다.
           "Advertisement"(단수), "광고", "추천 링크" 등은 문서상 근거가 없다. */}

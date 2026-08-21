@@ -3,6 +3,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Timeline from '../../components/Timeline.astro';
 import { getWorkTimeline, groupByYear } from '../../lib/content';
+import { AD_SLOTS } from '../../lib/site';
 
 const items = await getWorkTimeline();
 const groups = groupByYear(items);
@@ -14,5 +15,5 @@ const groups = groupByYear(items);
   section="work"
   status={`${items.length} PROJECTS`}
 >
-  <Timeline groups={groups} adAfter={3} adSlot="1234567890" />
+  <Timeline groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
 </BaseLayout>

@@ -11,6 +11,7 @@ import AdUnit from '../../../components/AdUnit.astro';
 import { getProjectHistories, versionSlug } from '../../../lib/content';
 import type { WorkEntry } from '../../../lib/content';
 import { formatDate, isoDate } from '../../../lib/date';
+import { AD_SLOTS } from '../../../lib/site';
 
 export const getStaticPaths = async () => {
   const histories = await getProjectHistories();
@@ -128,7 +129,7 @@ const project = entry.data.project;
 
     {/* 구버전 개정본에는 광고를 넣지 않는다(replicated content 리스크).
         BaseLayout 의 ads={isLatest} 로 로더 자체도 함께 빠진다. */}
-    {isLatest && <AdUnit adSlot="1234567890" collapseOnUnfilled={false} />}
+    {isLatest && <AdUnit adSlot={AD_SLOTS.articleEnd} collapseOnUnfilled={false} />}
   </div>
 </BaseLayout>
 

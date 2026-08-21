@@ -12,12 +12,14 @@
  */
 import { ADSENSE } from '../lib/site';
 
-const isProd = import.meta.env.PROD;
+// 계정이 비활성이거나 slot ID 가 없으면 로더 자체를 내보내지 않는다.
+// 존재하지 않는 광고 단위로 요청을 보내지 않기 위함이다.
+const show = import.meta.env.PROD && ADSENSE.enabled;
 const loaderSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE.client}`;
 ---
 
 {
-  isProd && (
+  show && (
     <>
       {/* Google 공식 스니펫 그대로: async + crossorigin="anonymous" 두 속성뿐.
           integrity(SRI) 를 붙이면 안 된다 — Google 이 내용을 계속 바꾸므로 차단된다. */}

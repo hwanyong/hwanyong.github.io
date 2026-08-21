@@ -4,7 +4,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Timeline from '../components/Timeline.astro';
 import { getTimeline, groupByYear } from '../lib/content';
-import { SITE } from '../lib/site';
+import { SITE, AD_SLOTS } from '../lib/site';
 
 const items = await getTimeline();
 const groups = groupByYear(items);
@@ -16,5 +16,5 @@ const groups = groupByYear(items);
   tagline={true}
   status={`${items.length} ENTRIES`}
 >
-  <Timeline groups={groups} adAfter={3} adSlot="1234567890" />
+  <Timeline groups={groups} adAfter={3} adSlot={AD_SLOTS.inFeed} />
 </BaseLayout>
