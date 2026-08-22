@@ -17,6 +17,7 @@ import { readFileSync, globSync } from 'node:fs';
 import { DEFAULT_LOCALE, LOCALE_CODES, LOCALES } from '../src/lib/i18n.ts';
 import { NAV_SECTIONS } from '../src/lib/routes.ts';
 import { SUBJECT_SLUGS } from '../src/lib/subjects.ts';
+import { publishedTimeOf } from './sitemap-lastmod.ts';
 
 /**
  * Astro 가 만들지 않은 dist 안의 HTML. public/ 에서 그대로 복사된 것이라
@@ -70,10 +71,12 @@ const hreflangPairs = (source: string, tag: RegExp): Set<string> => {
 
 const locs: string[] = [];
 const links = new Map<string, Set<string>>(); // loc → Set(`hreflang href`)
+const lastmods = new Map<string, string | undefined>(); // loc → lastmod (없는 화면은 undefined)
 for (const block of sitemap.split('<url>').slice(1)) {
   const loc = block.match(/<loc>([^<]+)<\/loc>/)![1]!;
   locs.push(loc);
   links.set(loc, hreflangPairs(block, /<xhtml:link\b[^>]*\/?>/g));
+  lastmods.set(loc, block.match(/<lastmod>([^<]+)<\/lastmod>/)?.[1]);
 }
 
 const all = globSync('dist/**/*.html').filter((file) => !NOT_A_PAGE.has(file));
@@ -284,6 +287,37 @@ for (const file of pages) {
     fail.push(
       `카드가 하나도 없는 과목 화면: ${file}\n` +
         `      코스가 0개인 과목은 URL 을 갖지 않아야 한다(getStaticPaths 의 courses.length 판정).`,
+    );
+}
+
+/*
+ ⑬ sitemap 의 lastmod ↔ 페이지의 발행일.
+
+ 둘은 같은 값을 같은 자리에서 읽으므로 어긋날 수 없다(tools/sitemap-lastmod.ts).
+ 그러니 여기서 보는 것은 값이 아니라 ★배선★ 이다 — serialize 가 빠지거나 통합이
+ lastmod 를 흘리면 sitemap 은 여전히 유효한 XML 이고, 날짜만 통째로 사라진 채
+ 조용히 배포된다. 그 침묵이 이 검사의 이유다.
+
+ 발행일이 없는 화면(목록·소개·방침)은 양쪽 모두 없어야 한다 — 한쪽에만 있어도 걸린다.
+*/
+/*
+  문자열이 아니라 ★시각★ 으로 비교한다. 우리가 넘기는 값과 sitemap 에 찍히는 값은 같은
+  출처지만 표기가 같다는 보장이 없다 — 중간의 sitemap 패키지가 ISO 로 정규화한다.
+  표기 차이로 CI 가 깨지면 진짜 어긋남과 구분이 안 되므로, 여기서는 같은 순간인지만 본다.
+*/
+const sameInstant = (a: string | undefined, b: string | undefined): boolean =>
+  a === undefined || b === undefined ? a === b : Date.parse(a) === Date.parse(b);
+
+for (const file of pages) {
+  const src = readFileSync(file, 'utf8');
+  const canonical = src.match(/rel="canonical" href="([^"]+)"/)?.[1];
+  if (!canonical) continue; // ② 가 이미 신고했다
+
+  const published = publishedTimeOf(src);
+  const lastmod = lastmods.get(canonical);
+  if (!sameInstant(published, lastmod))
+    fail.push(
+      `lastmod 불일치 ${canonical}: 페이지 ${published ?? '없음'} · sitemap ${lastmod ?? '없음'}`,
     );
 }
 

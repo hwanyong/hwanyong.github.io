@@ -3,6 +3,7 @@ import sitemap from '@astrojs/sitemap';
 import { satteri } from '@astrojs/markdown-satteri';
 import { DEFAULT_LOCALE, LOCALES, ORIGIN, SITEMAP_LOCALES } from './src/lib/i18n';
 import { katexMath } from './tools/katex-math';
+import { lastmodOf } from './tools/sitemap-lastmod';
 
 export default defineConfig({
   // GitHub Pages user site(hwanyong/hwanyong.github.io) 이므로
@@ -106,9 +107,16 @@ export default defineConfig({
     sitemap({
       i18n: { defaultLocale: DEFAULT_LOCALE, locales: SITEMAP_LOCALES },
 
-      // x-default 는 @astrojs/sitemap 이 자동으로 붙이지 않는다. 여기서 주입한다.
-      // ★ 캐시된 배열을 변형하지 않고 새 배열을 만든다.
       serialize(item) {
+        // lastmod = 그 화면의 발행일. 값은 산출물의 article:published_time 에서 되읽는다 —
+        // 이유는 tools/sitemap-lastmod.ts 머리에. 발행일이 없는 화면(목록·소개·방침)에는
+        // 아무것도 붙이지 않는다. 전 페이지에 빌드 시각을 균일하게 박는 쪽이 더 쉽지만,
+        // 그런 lastmod 는 Google 이 신뢰하지 않고 무시한다 — 없느니만 못하다.
+        const lastmod = lastmodOf(item.url);
+        if (lastmod) item.lastmod = lastmod;
+
+        // x-default 는 @astrojs/sitemap 이 자동으로 붙이지 않는다. 여기서 주입한다.
+        // ★ 캐시된 배열을 변형하지 않고 새 배열을 만든다.
         if (!item.links || item.links.length < 2) return item;
         const fallback = item.links.find((link) => link.lang === LOCALES[DEFAULT_LOCALE].hreflang);
         if (fallback) item.links = [...item.links, { url: fallback.url, lang: 'x-default' }];
