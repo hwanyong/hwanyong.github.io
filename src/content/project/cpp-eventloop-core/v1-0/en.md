@@ -3,7 +3,6 @@ title: Cpp-EventLoop-Core
 description: Custom C++ reactor pattern implementation.
 date: 2020-05-21
 tags: ["cpp", "systems", "networking"]
-series: cpp-eventloop-core
 version: "1.0"
 stack:
   - C++

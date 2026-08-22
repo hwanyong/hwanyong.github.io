@@ -1,0 +1,69 @@
+---
+// 과목 하나의 코스 갤러리. 쪽을 나눈다.
+//
+// ★ 코스가 0개인 과목은 여기서 경로를 만들지 않는다 — 이유는 /lecture/ 화면 주석에.
+// ★ getStaticPaths 는 격리 호이스팅된다 — import 와 함수 내부 선언만 쓴다.
+import type { Page, PaginateFunction } from 'astro';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import Gallery from '../../../../components/Gallery.astro';
+import Pagination from '../../../../components/Pagination.astro';
+import { PAGE_SIZE, courseCard, getCoursesBySubject } from '../../../../lib/content';
+import type { GalleryCard } from '../../../../lib/content';
+import { LOCALE_CODES } from '../../../../lib/i18n';
+import type { Locale } from '../../../../lib/i18n';
+import { langParam, subjectAlternates, subjectHref } from '../../../../lib/routes';
+import { SUBJECTS } from '../../../../lib/subjects';
+import type { Subject } from '../../../../lib/subjects';
+import { UI } from '../../../../lib/ui';
+
+export const getStaticPaths = async ({ paginate }: { paginate: PaginateFunction }) => {
+  const paths = [];
+  for (const locale of LOCALE_CODES) {
+    for (const { subject, courses } of await getCoursesBySubject(locale)) {
+      if (courses.length === 0) continue;
+      paths.push(
+        ...paginate(courses.map(courseCard), {
+          params: { lang: langParam(locale), subject },
+          props: { locale, subject },
+          pageSize: PAGE_SIZE,
+        }),
+      );
+    }
+  }
+  return paths;
+};
+
+const { locale, subject, page } = Astro.props as {
+  locale: Locale;
+  subject: Subject;
+  page: Page<GalleryCard>;
+};
+
+const t = UI[locale];
+const name = SUBJECTS[subject].name[locale];
+const alternates = subjectAlternates(subject, page.currentPage);
+---
+
+<BaseLayout
+  locale={locale}
+  alternates={alternates}
+  title={name}
+  description={t.subjectDescription(name)}
+  section="lecture"
+>
+  <div class="column">
+    <h2 class="section-bar">
+      <b>{SUBJECTS[subject].code}</b>
+      <span>{name}</span>
+    </h2>
+    {/* empty prop 을 넘기지 않는다 — 코스가 0개인 과목은 경로 자체를 만들지 않으므로
+        이 화면에서 카드가 비는 상태는 존재할 수 없다. */}
+    <Gallery locale={locale} cards={page.data} />
+    <Pagination
+      locale={locale}
+      base={subjectHref(locale, subject)}
+      page={page}
+      unit={['COURSE', 'COURSES']}
+    />
+  </div>
+</BaseLayout>

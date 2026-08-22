@@ -39,9 +39,13 @@ export async function GET(context: APIContext) {
           ? logHref(locale, item.slug)
           : revisionHref(locale, item.kind, item.slug, null),
       // ★ guid 는 URL 이 아니다. 기본 guid 는 link 라서 글이 이사하면 구독자의 리더가
-      //   같은 글을 새 글로 다시 띄운다. kind + slug + locale 은 공개 후 바뀌지 않는 값이다.
+      //   같은 글을 새 글로 다시 띄운다.
+      //
+      // ★ slug 가 아니라 identity 다. 강의의 slug 에는 과목이 들어 있고 과목은 분류라
+      //   나중에 바뀔 수 있다 — guid 가 그것을 담으면 재분류가 전 구독자에게
+      //   "새 글" 로 다시 뜬다. identity 는 과목을 담지 않는다.
       //   @astrojs/rss 는 customData 를 기본 guid 뒤에 병합하므로 이 한 줄이 기본값을 덮는다.
-      customData: `<guid isPermaLink="false">${FEED_URN_NS}:${item.kind}:${item.slug}:${locale}</guid>`,
+      customData: `<guid isPermaLink="false">${FEED_URN_NS}:${item.kind}:${item.identity}:${locale}</guid>`,
     })),
     customData:
       `<language>${LOCALES[locale].hreflang}</language>` +

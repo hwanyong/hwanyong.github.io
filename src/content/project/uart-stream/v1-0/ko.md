@@ -4,7 +4,6 @@ title: UART_Stream
 description: Lightweight buffered UART interface for embedded systems.
 date: 2019-09-25
 tags: ["cpp", "embedded", "library"]
-series: uart-stream
 version: "1.0"
 stack:
   - C++

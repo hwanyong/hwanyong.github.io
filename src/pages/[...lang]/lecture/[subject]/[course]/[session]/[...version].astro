@@ -1,0 +1,96 @@
+---
+// 차시의 개정본 상세.
+//
+// 화면과 URL 규칙은 RevisionPage 가 전부 갖는다(프로젝트 축과 같은 골격).
+// 이 축이 다른 점은 둘뿐이다 — 한 단계 위가 목록이 아니라 ★코스★ 이고,
+// giscus 검색어에 과목이 들어가지 않는다.
+//
+// ★ getStaticPaths 는 격리 호이스팅된다 — import 와 함수 내부 선언만 쓴다.
+import { render } from 'astro:content';
+import RevisionPage from '../../../../../../components/RevisionPage.astro';
+import {
+  getLectureCourses,
+  getSeriesHistories,
+  revisionAlternates,
+  versionSlug,
+} from '../../../../../../lib/content';
+import type { LectureEntry } from '../../../../../../lib/content';
+import { courseHref, langParam } from '../../../../../../lib/routes';
+import { DEFAULT_LOCALE, LOCALE_CODES } from '../../../../../../lib/i18n';
+import type { Alternate, Locale } from '../../../../../../lib/i18n';
+import type { Subject } from '../../../../../../lib/subjects';
+
+export const getStaticPaths = async () => {
+  const histories = await getSeriesHistories('lecture');
+  const paths = [];
+
+  for (const locale of LOCALE_CODES) {
+    for (const course of await getLectureCourses(locale)) {
+      for (const { session, history } of course.sessions) {
+        for (const [index, entry] of history.revisions.entries()) {
+          // 최신(index 0)은 version 을 비워 차시 루트로 낸다.
+          // rest 파라미터는 빈 세그먼트도 매칭하므로 라우트 하나가 둘 다 낸다.
+          paths.push({
+            params: {
+              lang: langParam(locale),
+              subject: course.subject,
+              course: course.course,
+              session,
+              version: index === 0 ? undefined : versionSlug(entry),
+            },
+            props: {
+              locale,
+              subject: course.subject,
+              course: course.course,
+              session,
+              courseTitle: course.cover.data.title,
+              path: history.path,
+              revisions: history.revisions,
+              index,
+              alternates: revisionAlternates(
+                histories,
+                history.path,
+                index === 0 ? null : versionSlug(entry),
+                DEFAULT_LOCALE,
+              ),
+            },
+          });
+        }
+      }
+    }
+  }
+
+  return paths;
+};
+
+type Props = {
+  locale: Locale;
+  subject: Subject;
+  course: string;
+  session: string;
+  courseTitle: string;
+  path: string;
+  revisions: LectureEntry[];
+  index: number;
+  alternates: Alternate[];
+};
+
+const { locale, subject, course, session, courseTitle, path, revisions, index, alternates }: Props =
+  Astro.props;
+
+const { Content } = await render(revisions[index]!);
+---
+
+<RevisionPage
+  locale={locale}
+  alternates={alternates}
+  collection="lecture"
+  path={path}
+  identity={`${course}:${session}`}
+  revisions={revisions}
+  index={index}
+  upHref={courseHref(locale, subject, course)}
+  upLabel={courseTitle}
+>
+  <Content />
+</RevisionPage>

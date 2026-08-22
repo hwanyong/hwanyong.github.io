@@ -11,16 +11,19 @@ import { defineCollection } from 'astro:content';
 import { glob } from 'astro/loaders';
 import { z } from 'astro/zod';
 import { LOCALE_CODES } from './lib/i18n';
-import { URL_KEY } from './lib/routes';
 
 /**
  * 축이 셋이다.
  *   log     — 시간축. 날짜순으로 쌓이기만 한다.
- *   lecture — 개정축. 강의 자료는 고쳐 나가므로 버전이 남는다.
- *   project — 개정축. 개인 프로젝트도 같은 이유로 버전이 남는다.
+ *   lecture — 과목 / 코스 / 차시 / 개정. 컬렉션이 둘이다(표지와 차시).
+ *   project — 계열 / 개정.
  *
- * 개정축 둘은 스키마·URL·화면 구조가 같다. 같은 것을 두 번 쓰지 않도록
- * 공통 필드를 revisionFields 로 묶고, 축마다 다른 것만 각자 얹는다.
+ * ★ 정체성은 전부 ★경로★ 에서 나온다. 프론트매터에 series 도 subject 도 course 도
+ *   적지 않는다 — 디렉터리 이름과 같은 사실을 두 벌 갖게 되고, 어긋나도 조용하다.
+ *   로케일도 같은 이유로 파일 이름이 유일한 출처다.
+ *
+ * 개정본을 갖는 둘(lecture 차시 · project)은 화면 골격이 같다. 같은 것을 두 번 쓰지
+ * 않도록 공통 필드를 revisionFields 로 묶고, 축마다 다른 것만 각자 얹는다.
  */
 
 // 세 컬렉션이 모두 공유하는 필드 (SSOT)
@@ -43,25 +46,16 @@ const baseFields = {
   untranslated: z.enum(LOCALE_CODES).optional(),
 };
 
-// 개정축 둘이 공유하는 필드
+// 개정본을 갖는 둘이 공유하는 필드
+//
+// ★ series 필드는 없다. 개정 묶음의 키는 ★버전 디렉터리 위의 경로 전부★ 이며
+//   content.ts 의 revisionKeyOf 가 그것을 뽑는다. 축마다 깊이가 다르지만
+//   (project=1단, lecture=3단) 규칙은 하나다.
 const revisionFields = {
   ...baseFields,
   /**
-   * 개정 계열의 키. 같은 series 값을 가진 항목들이 한 묶음의 개정본이 된다.
-   * URL 세그먼트로 그대로 쓰이므로 규칙을 스키마에서 강제한다 —
-   * 잘못된 값이 런타임이 아니라 빌드 시점에 걸린다.
-   *
-   * 정규식은 routes.ts 의 URL_KEY 다. log 의 groupKey 와 같은 규칙을 써야 하므로
-   * 여기 다시 적지 않는다(숫자만인 키를 막는 이유는 그 파일에 적혀 있다).
-   */
-  series: z.string().regex(URL_KEY, {
-    // Zod 4 의 커스텀 메시지 키는 message 가 아니라 error 다.
-    error:
-      'series 는 소문자·숫자·하이픈만 쓰되 숫자만으로 이루어질 수 없습니다. 예: analysis-video',
-  }),
-  /**
    * 화면 표시용 버전 문자열. 점을 포함해도 된다. 예: "1.0", "1.1"
-   * URL 세그먼트로는 쓰지 않는다(파일명이 URL 을 결정한다).
+   * URL 세그먼트로는 쓰지 않는다(디렉터리 이름이 URL 을 결정한다).
    */
   version: z.string(),
 };
@@ -83,21 +77,53 @@ const log = defineCollection({
 });
 
 /**
- * lecture — 강의 (개정축)
- * 파일 경로: src/content/lecture/<series>/<version-slug>/<locale>.md
- * URL:      /lecture/<series>/ (최신)  /lecture/<series>/<version-slug>/ (구버전)
- *           ko 는 앞에 /ko 가 붙는다.
+ * lectureCourse — 코스 표지 (강의 하나의 얼굴)
+ * 파일 경로: src/content/lecture/<subject>/<course>/<locale>.md
+ * URL:      /lecture/<subject>/<course>/
+ *
+ * 본문은 그 코스의 개요다 — 무엇을 배우는지 · 선수 과목 · 참고서.
+ * 차시 갤러리가 이 본문 아래에 붙는다.
+ *
+ * ★ 패턴에 ** 를 쓰지 않는다. 별 하나는 / 를 넘지 않으므로 별 셋짜리 패턴은 정확히
+ *   "과목 / 코스 / 로케일.md" 세 단계만 잡는다. 차시 파일은 다섯 단계라 걸리지 않는다.
+ *   두 컬렉션이 같은 base 를 보면서 ★깊이로★ 갈리는 것이 이 설계의 전부다.
+ */
+const lectureCourse = defineCollection({
+  loader: glob({ pattern: '*/*/*.md', base: './src/content/lecture' }),
+  schema: z.object({
+    ...baseFields,
+    /**
+     * 갤러리 카드의 그림. public/ 기준 절대 경로. ★필수★ 다.
+     * 강의 목록은 갤러리라 그림이 빠진 카드가 하나만 있어도 격자가 무너진다.
+     * (project 의 thumbnail 이 선택인 것과 다르다 — 그쪽은 줄 목록이라
+     *  Thumb 의 이름 플레이트로 자리를 지킬 수 있다.)
+     */
+    thumbnail: z.string().startsWith('/'),
+  }),
+});
+
+/**
+ * lecture — 차시의 개정본
+ * 파일 경로: src/content/lecture/<subject>/<course>/<session>/<version-slug>/<locale>.md
+ * URL:      /lecture/<subject>/<course>/<session>/            (최신 개정본)
+ *           /lecture/<subject>/<course>/<session>/<version-slug>/  (구 개정본)
+ *
+ * 차시 순서는 날짜가 아니라 ★디렉터리 이름 오름차순★ 이다(01-… 02-… 03-…).
+ * 강의는 나중에 쓴 차시가 먼저 오는 것이 아니기 때문이다.
  */
 const lecture = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/lecture' }),
+  loader: glob({ pattern: '*/*/*/*/*.md', base: './src/content/lecture' }),
   schema: z.object({
     ...revisionFields,
+    /** 갤러리 카드의 그림. 코스 표지와 같은 이유로 필수다. */
+    thumbnail: z.string().startsWith('/'),
   }),
 });
 
 /**
  * project — 개인 프로젝트 (개정축)
  * 파일 경로: src/content/project/<series>/<version-slug>/<locale>.md
+ *           (series 는 디렉터리 이름이다. 프론트매터에 적지 않는다.)
  * URL:      /project/<series>/ (최신)  /project/<series>/<version-slug>/ (구버전)
  *           ko 는 앞에 /ko 가 붙는다.
  *
@@ -142,4 +168,4 @@ const project = defineCollection({
   }),
 });
 
-export const collections = { log, lecture, project };
+export const collections = { log, lectureCourse, lecture, project };

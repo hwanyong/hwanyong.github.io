@@ -3,7 +3,6 @@ title: Germ Warfare (세균전)
 description: Serverless client-side PvE strategy web game.
 date: 2026-07-22
 tags: ["game", "web", "pwa"]
-series: germ-warfare
 version: "1.0"
 stack:
   - JavaScript

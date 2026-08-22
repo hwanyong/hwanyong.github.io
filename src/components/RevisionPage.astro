@@ -15,7 +15,7 @@ import ArticleShell from './ArticleShell.astro';
 import { versionSlug } from '../lib/content';
 import type { RevisionEntry } from '../lib/content';
 import type { Alternate, Locale } from '../lib/i18n';
-import { revisionHref, sectionHref, sectionLabel, type RevisionCollection } from '../lib/routes';
+import { revisionHref, type RevisionCollection } from '../lib/routes';
 import { UI } from '../lib/ui';
 
 interface Props {
@@ -23,33 +23,57 @@ interface Props {
   /** 이 개정본의 언어별 주소. ArticleShell 을 지나 head 와 언어 스위처로 간다. */
   alternates: Alternate[];
   collection: RevisionCollection;
+  /**
+   * 개정 묶음의 경로 키(content.ts 의 revisionKeyOf).
+   *   project   analysis-video
+   *   lecture   math/linear-algebra/01-vectors
+   */
+  path: string;
+  /**
+   * giscus 검색어의 뒷부분. ★path 와 다를 수 있다★ —
+   * lecture 의 path 에는 과목이 들어 있는데 과목은 분류라 나중에 바뀔 수 있고,
+   * 검색어가 그것을 담으면 재분류가 댓글을 끊는다.
+   */
+  identity: string;
   /** 한 계열의 전체 개정본. 최신순으로 정렬되어 있어야 한다. */
   revisions: RevisionEntry[];
   /** 지금 보여줄 개정본의 위치. 0 이 최신. */
   index: number;
+  /**
+   * 최신 개정본에서 "한 단계 위" 가 어디인가.
+   * 축마다 다르다 — project 는 /project/, lecture 는 그 코스 화면이다.
+   * 이 컴포넌트가 축을 구분하지 않도록 부르는 쪽이 정한다.
+   */
+  upHref: string;
+  upLabel: string;
 }
 
-// rootLabel prop 은 없다 — sectionLabel(collection) 이 만든다. 축 이름은 비번역이다.
-//
 // ★ 헤더 우측 상태 칩(REV n / m)은 두지 않는다. 개정 이력은 아래 #revisions 패널이
 //   통째로 보여준다 — 몇 개인지도, 지금 어느 것을 보는지도 거기서 읽힌다.
 //   헤더에 한 번 더 적으면 같은 사실이 한 화면에 두 벌이 되고, 개정본이 하나뿐인
 //   계열에서는 "REV 1 / 1" 이라 아무것도 알려주지 않는다.
-const { locale, alternates, collection, revisions, index }: Props = Astro.props;
+const {
+  locale,
+  alternates,
+  collection,
+  path,
+  identity,
+  revisions,
+  index,
+  upHref,
+  upLabel,
+}: Props = Astro.props;
 
 const t = UI[locale];
 
 const entry = revisions[index]!;
 const isLatest = index === 0;
 const total = revisions.length;
-const series = entry.data.series;
 
 // 위·아래 이동 줄이 가리키는 곳. 최신 개정본이 곧 계열 페이지이므로
-// 최신에서 한 단계 위는 목록이고, 구버전에서 한 단계 위는 그 계열이다.
-const backHref = isLatest
-  ? sectionHref(locale, collection)
-  : revisionHref(locale, collection, series, null);
-const backLabel = isLatest ? sectionLabel(collection) : entry.data.title;
+// 최신에서 한 단계 위는 부르는 쪽이 정해 준 곳이고, 구버전에서 한 단계 위는 그 계열이다.
+const backHref = isLatest ? upHref : revisionHref(locale, collection, path, null);
+const backLabel = isLatest ? upLabel : entry.data.title;
 ---
 
 <ArticleShell
@@ -66,14 +90,14 @@ const backLabel = isLatest ? sectionLabel(collection) : entry.data.title;
   backLabel={backLabel}
   jumpHref={total > 1 ? '#revisions' : undefined}
   jumpLabel={t.revision.jump}
-  commentTerm={`${collection}:${series}`}
+  commentTerm={`${collection}:${identity}`}
   ads={isLatest}
 >
   <Fragment slot="notice">
     {!isLatest && (
       <p class="stale-notice">
         {t.revision.stale}{' '}
-        <a href={revisionHref(locale, collection, series, null)}>{t.revision.seeLatest}</a>
+        <a href={revisionHref(locale, collection, path, null)}>{t.revision.seeLatest}</a>
       </p>
     )}
     {/* 축마다 다른 머리 정보. 강의는 비고, 프로젝트는 기술 스택·링크가 들어온다. */}
@@ -95,7 +119,7 @@ const backLabel = isLatest ? sectionLabel(collection) : entry.data.title;
           {i === index ? (
             <em class="revisions__badge">{t.revision.viewing}</em>
           ) : (
-            <a href={revisionHref(locale, collection, series, i === 0 ? null : versionSlug(rev))}>
+            <a href={revisionHref(locale, collection, path, i === 0 ? null : versionSlug(rev))}>
               {t.revision.view}
             </a>
           )}

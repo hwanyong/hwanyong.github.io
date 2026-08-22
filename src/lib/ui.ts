@@ -23,6 +23,10 @@ export interface UIStrings {
   lists: Record<'log' | 'lecture' | 'project', { description: string }>;
   emptyList: string;
   emptyLecture: string;
+  /** 코스는 있는데 아직 차시가 없을 때. */
+  emptySessions: string;
+  /** 과목 화면의 설명문. 이름은 subjects.ts 의 로케일 표에서 온다. */
+  subjectDescription: (subjectName: string) => string;
 
   toc: string;
   comments: string;
@@ -104,6 +108,8 @@ const en: UIStrings = {
   },
   emptyList: 'Nothing here yet.',
   emptyLecture: 'No lectures published yet.',
+  emptySessions: 'No sessions published yet.',
+  subjectDescription: (name) => `Lectures on ${name}.`,
 
   toc: 'Contents',
   comments: 'Comments',
@@ -161,6 +167,8 @@ const ko: UIStrings = {
   },
   emptyList: '아직 없습니다.',
   emptyLecture: '아직 공개한 강의가 없습니다.',
+  emptySessions: '아직 공개한 차시가 없습니다.',
+  subjectDescription: (name) => `${name} 강의.`,
 
   toc: '목차',
   comments: '댓글',

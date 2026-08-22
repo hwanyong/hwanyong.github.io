@@ -16,6 +16,7 @@
 import { readFileSync, globSync } from 'node:fs';
 import { DEFAULT_LOCALE, LOCALE_CODES, LOCALES } from '../src/lib/i18n.ts';
 import { NAV_SECTIONS } from '../src/lib/routes.ts';
+import { SUBJECT_SLUGS } from '../src/lib/subjects.ts';
 
 /**
  * Astro 가 만들지 않은 dist 안의 HTML. public/ 에서 그대로 복사된 것이라
@@ -154,8 +155,19 @@ const fingerprint = (file: string): string => {
   return `${lang}|${h1}|${time}`;
 };
 
+/*
+  대상은 ★개정본 상세 화면★ 뿐이다.
+
+  경로로 고르면 안 된다 — /lecture/ · /lecture/math/ 같은 목록 화면도 같은 경로 아래
+  있고, 그 화면들은 h1 이 없어 지문이 전부 `lang||` 로 같아진다(실측: 이 검사가
+  강의 목록 둘을 중복으로 신고했다). 개정 이력 패널은 RevisionPage 만 그리므로
+  그 존재가 "이 화면이 개정본이다" 의 정확한 표시다.
+*/
+const isRevisionPage = (file: string): boolean =>
+  readFileSync(file, 'utf8').includes('<nav id="revisions"');
+
 const seen = new Map<string, string>();
-for (const file of pages.filter((f) => /\/(lecture|project)\//.test(f))) {
+for (const file of pages.filter(isRevisionPage)) {
   const print = fingerprint(file);
   const previous = seen.get(print);
   if (previous) fail.push(`같은 본문이 두 URL 로: ${previous} / ${file}`);
@@ -248,6 +260,31 @@ for (const file of all) {
     if (href.endsWith('/') || ENDPOINT.test(href)) continue;
     fail.push(`끝 슬래시 없는 내부 링크 ${file}: ${href}`);
   }
+}
+
+/*
+ ⑫ 과목 화면은 비어 있을 수 없다.
+
+ 코스가 0개인 과목은 ★URL 을 만들지 않는다★(강의 전체 화면에는 섹션 줄로 남는다).
+ 만들면 sitemap 에 내용 없는 화면이 과목 수 × 로케일 수만큼 늘고, 검색엔진에는
+ 소프트 404 로 읽힌다. 그 판정은 페이지의 getStaticPaths 에 있고, 여기서는
+ ★산출물에서만★ 확인한다 — 소스를 다시 읽으면 같은 버그를 두 번 믿게 된다.
+
+ 코스 화면(차시 갤러리)은 이 검사의 대상이 아니다. 표지만 먼저 쓰고 차시를 나중에
+ 올리는 것은 정상이고, 그 화면에는 표지 본문이라는 실체가 있다.
+*/
+const PREFIXES = LOCALE_CODES.filter((code) => code !== DEFAULT_LOCALE);
+const SUBJECT_PAGE = new RegExp(
+  `^dist(?:/(?:${PREFIXES.join('|')}))?/lecture/(?:${SUBJECT_SLUGS.join('|')})/(?:\\d+/)?index\\.html$`,
+);
+
+for (const file of pages) {
+  if (!SUBJECT_PAGE.test(file)) continue;
+  if (!readFileSync(file, 'utf8').includes('class="card"'))
+    fail.push(
+      `카드가 하나도 없는 과목 화면: ${file}\n` +
+        `      코스가 0개인 과목은 URL 을 갖지 않아야 한다(getStaticPaths 의 courses.length 판정).`,
+    );
 }
 
 if (fail.length > 0) {

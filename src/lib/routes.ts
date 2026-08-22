@@ -12,6 +12,7 @@
 //   않는 것과 같은 이유의 제약이고, 이 파일은 그 다음 층까지가 도구에 열려 있다.
 //   (astro check 는 allowImportingTsExtensions 로 이 형태를 허용한다.)
 import { DEFAULT_LOCALE, LOCALE_CODES, type Alternate, type Locale } from './i18n.ts';
+import type { Subject } from './subjects.ts';
 
 /** 헤더 네비에 나오는 축. 배열 순서가 곧 화면 순서다. */
 export const NAV_SECTIONS = ['log', 'lecture', 'project', 'about'] as const;
@@ -71,7 +72,7 @@ export const sectionHref = (locale: Locale, section: Section): string =>
   `${prefix(locale)}/${section}/`;
 
 /**
- * 목록의 n쪽 주소.
+ * 목록 주소에 쪽 번호를 붙인다. base 는 반드시 '/' 로 끝나는 1쪽 주소다.
  *
  * ★ 1쪽은 쪽 세그먼트를 갖지 않는다 — 목록 자신의 주소가 1쪽이다.
  *   붙이면 /log/ 와 /log/1/ 이 같은 내용을 두 URL 로 내게 된다.
@@ -82,9 +83,25 @@ export const sectionHref = (locale: Locale, section: Section): string =>
  *   내부 링크마다 리다이렉트가 한 번씩 낀다. 그래서 쪽 주소의 출처는 이 함수 하나다 —
  *   head 의 hreflang 과 화면의 PREV/NEXT 가 같은 함수에서 나온다.
  *   그 함수가 옳은지는 tools/verify-site.ts 가 sitemap 과 값까지 대조해 확인한다.
+ *
+ * base 를 인자로 받는 이유: 쪽이 나뉘는 목록이 축의 루트(/log/)만이 아니라
+ * 과목(/lecture/math/)에도 있다. 규칙은 하나여야 한다.
  */
+export const pagedHref = (base: string, page: number): string =>
+  page === 1 ? base : `${base}${page}/`;
+
 export const pageHref = (locale: Locale, section: NavSection, page: number): string =>
-  page === 1 ? sectionHref(locale, section) : `${prefix(locale)}/${section}/${page}/`;
+  pagedHref(sectionHref(locale, section), page);
+
+/* 강의 축 — 과목 / 코스 / 차시 세 단계 */
+
+/** /lecture/<과목>/ */
+export const subjectHref = (locale: Locale, subject: Subject): string =>
+  `${prefix(locale)}/lecture/${subject}/`;
+
+/** /lecture/<과목>/<코스>/ — 코스 표지(개요 + 차시 갤러리) */
+export const courseHref = (locale: Locale, subject: Subject, course: string): string =>
+  `${subjectHref(locale, subject)}${course}/`;
 
 /** 확장자가 붙은 엔드포인트라 trailing slash 가 없다. */
 export const feedHref = (locale: Locale): string => `${prefix(locale)}/rss.xml`;
@@ -97,16 +114,24 @@ export const logHref = (locale: Locale, groupKey: string): string =>
  *
  * 최신 개정본은 version === null 이며 계열 루트가 곧 그 개정본의 주소다 —
  * 버전을 고르기만 하는 중간 페이지를 두지 않는다. 구버전만 버전 세그먼트를 갖는다.
+ *
+ * ★ key 는 한 세그먼트가 아니라 ★경로★ 다. 콘텐츠 트리에서 버전 디렉터리 위의
+ *   전부이며, 축마다 깊이가 다르다:
+ *
+ *     project   analysis-video
+ *     lecture   math/linear-algebra/01-vectors
+ *
+ *   그래서 두 축이 이 함수 하나를 그대로 공유한다. 깊이를 아는 코드가 없다.
  */
 export const revisionHref = (
   locale: Locale,
   collection: RevisionCollection,
-  series: string,
+  key: string,
   version: string | null,
 ): string =>
   version === null
-    ? `${prefix(locale)}/${collection}/${series}/`
-    : `${prefix(locale)}/${collection}/${series}/${version}/`;
+    ? `${prefix(locale)}/${collection}/${key}/`
+    : `${prefix(locale)}/${collection}/${key}/${version}/`;
 
 /**
  * [...lang] 라우트의 params.lang.
@@ -145,3 +170,11 @@ export const staticAlternates = (section: Section | null): Alternate[] =>
  */
 export const pagedAlternates = (section: NavSection, page: number): Alternate[] =>
   alternatesOf((locale) => pageHref(locale, section, page));
+
+/** 과목 목록의 alternates. 쪽이 나뉘므로 쪽 번호까지 짝을 맞춘다. */
+export const subjectAlternates = (subject: Subject, page: number): Alternate[] =>
+  alternatesOf((locale) => pagedHref(subjectHref(locale, subject), page));
+
+/** 코스 표지의 alternates. */
+export const courseAlternates = (subject: Subject, course: string): Alternate[] =>
+  alternatesOf((locale) => courseHref(locale, subject, course));

@@ -3,7 +3,6 @@ title: mcp-debug-tools
 description: AI-powered VSCode debugging bridge — connecting MCP agents to the Debug Adapter Protocol.
 date: 2025-08-07
 tags: ["ai-agent", "mcp", "vscode"]
-series: mcp-debug-tools
 version: "1.0"
 stack:
   - TypeScript

@@ -21,12 +21,14 @@
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 import { LOCALE_CODES, isLocale, type Alternate, type Locale } from './i18n';
-import { URL_KEY, revisionHref, type RevisionCollection } from './routes';
+import { URL_KEY, courseHref, revisionHref, type RevisionCollection } from './routes';
+import { SUBJECTS, isSubject, type Subject } from './subjects';
 
 export type { RevisionCollection };
 
 export type LogEntry = CollectionEntry<'log'>;
 export type LectureEntry = CollectionEntry<'lecture'>;
+export type LectureCourseEntry = CollectionEntry<'lectureCourse'>;
 export type ProjectEntry = CollectionEntry<'project'>;
 
 /** 개정축 항목. 두 컬렉션이 revisionFields 를 공유하므로 공통 필드는 항상 있다. */
@@ -62,6 +64,34 @@ export const versionSlug = (entry: RevisionEntry): string => {
   const slug = entry.id.split('/').at(-2);
   if (!slug) throw new Error(`개정축 항목의 id 에 개정 세그먼트가 없습니다: ${entry.id}`);
   return slug;
+};
+
+/**
+ * 개정 묶음의 키 = 버전 디렉터리 위의 ★경로 전부★.
+ *
+ *   project   analysis-video/v1-0/en          →  analysis-video
+ *   lecture   math/linear-algebra/01-v/v1-0/en →  math/linear-algebra/01-v
+ *
+ * 프론트매터의 series 를 쓰지 않는 이유: 디렉터리 이름과 같은 사실을 두 벌 갖게 되고,
+ * 어긋나면 URL 은 디렉터리를 따르고 묶음은 프론트매터를 따라 조용히 갈라진다.
+ * 경로 하나만 보면 그 상태가 표현 불가능하다.
+ *
+ * 축마다 깊이가 다르지만 규칙은 하나다 — "마지막 둘(버전 · 로케일)을 뗀 나머지".
+ * 그래서 이 함수도, revisionHref 도 축을 구분하지 않는다.
+ */
+const revisionKeyOf = (id: string): string => {
+  const parts = id.split('/');
+  if (parts.length < 3)
+    throw new Error(`개정본 경로가 <키…>/<버전>/<로케일>.md 여야 합니다: ${id}`);
+  const key = parts.slice(0, -2).join('/');
+  for (const segment of parts.slice(0, -1)) {
+    if (!URL_KEY.test(segment))
+      throw new Error(
+        `경로 세그먼트는 소문자·숫자·하이픈만 쓰되 숫자만으로 이루어질 수 없습니다.\n` +
+          `  id=${id}, 문제 세그먼트=${segment}`,
+      );
+  }
+  return key;
 };
 
 /** 프로덕션 빌드에서만 draft 를 제외한다(dev 서버에서는 초안도 보인다). */
@@ -142,7 +172,13 @@ export const getLogEntries = async (locale: Locale): Promise<LogEntry[]> =>
 export interface SeriesHistory<E extends RevisionEntry = RevisionEntry> {
   collection: RevisionCollection;
   locale: Locale;
-  series: string;
+  /**
+   * 개정 묶음의 키 = 버전 디렉터리 위의 경로(revisionKeyOf).
+   * 한 세그먼트가 아니다 — lecture 는 `<과목>/<코스>/<차시>` 세 단계다.
+   *
+   * 이름이 key 가 아니라 path 인 이유: TimelineItem.key 는 렌더 키라 뜻이 다르다.
+   */
+  path: string;
   /** 최신 개정본. 계열 제목·설명의 대표값으로 쓴다. */
   latest: E;
   /** 최신순 정렬된 전체 개정본 */
@@ -154,24 +190,24 @@ export const getSeriesHistories = async <C extends RevisionCollection>(
 ): Promise<SeriesHistory<RevisionEntry<C>>[]> => {
   const entries = (await getCollection(collection, isVisible)).sort(byDateDesc);
 
-  // 키는 `${locale} ${series}` — 두 축을 한 번에 가른다.
-  // series 는 URL_KEY 정규식이 공백을 금지하므로 이 구분자가 값과 충돌할 수 없다.
+  // 버킷 키는 `${locale} ${경로키}` — 두 축을 한 번에 가른다.
+  // 경로 세그먼트는 URL_KEY 가 공백을 금지하므로 이 구분자가 값과 충돌할 수 없다.
   const buckets = new Map<string, RevisionEntry<C>[]>();
   for (const entry of entries) {
-    const key = `${localeOf(entry.id)} ${entry.data.series}`;
-    const list = buckets.get(key) ?? [];
+    const bucket = `${localeOf(entry.id)} ${revisionKeyOf(entry.id)}`;
+    const list = buckets.get(bucket) ?? [];
     list.push(entry);
-    buckets.set(key, list);
+    buckets.set(bucket, list);
   }
 
   const histories: SeriesHistory<RevisionEntry<C>>[] = [];
-  for (const [key, list] of buckets) {
+  for (const [bucket, list] of buckets) {
     // 그룹 안의 정렬을 반드시 유지한다 — 이것이 계열 루트가 어느 개정본을 내는지를 정한다.
     const revisions = list.sort(byDateDesc);
     const latest = revisions[0];
     if (!latest) continue;
-    const [locale, series] = key.split(' ') as [Locale, string];
-    histories.push({ collection, locale, series, latest, revisions });
+    const [locale, path] = bucket.split(' ') as [Locale, string];
+    histories.push({ collection, locale, path, latest, revisions });
   }
 
   return histories.sort((a, b) => byDateDesc(a.latest, b.latest));
@@ -191,10 +227,28 @@ export interface TimelineItem {
   key: string;
   kind: 'log' | RevisionCollection;
   /**
-   * log 이면 groupKey, 개정축이면 series.
-   * ★ URL 이 아니다 — 뷰가 routes.ts 로 로케일에 맞는 주소를 만든다.
+   * 그 컬렉션 안에서의 ★주소 경로★.
+   *   log       groupKey                          (first-post)
+   *   project   계열 이름                          (analysis-video)
+   *   lecture   과목/코스/차시                      (math/linear-algebra/01-vectors)
+   * ★ 완성된 URL 이 아니다 — 뷰가 routes.ts 로 로케일 접두사를 붙인다.
    */
   slug: string;
+  /**
+   * 공개 후 절대 바뀌지 않아야 하는 ★정체성★. giscus 검색어와 RSS guid 가 이것을 쓴다.
+   *
+   * ★ slug 와 다를 수 있다. lecture 의 slug 에는 과목이 들어 있는데, 과목은 분류라
+   *   나중에 바뀔 수 있다. 정체성이 과목을 담으면 재분류가 댓글을 끊고 피드를
+   *   재발행한다. 그래서 lecture 의 정체성은 `<코스>:<차시>` 이고 과목이 없다.
+   *   그 대가로 코스 이름이 과목을 가로질러 유일해야 하며 빌드가 그것을 강제한다.
+   *   log·project 는 slug 가 곧 정체성이다.
+   */
+  identity: string;
+  /**
+   * 항목이 속한 더 큰 것의 이름. 지금은 강의 차시의 코스 이름뿐이다.
+   * 홈의 통합 목록에서 "벡터공간" 만 있으면 어느 강의의 몇 강인지 알 수 없다.
+   */
+  context?: string;
   title: string;
   description: string;
   date: Date;
@@ -205,6 +259,8 @@ export interface TimelineItem {
   revisionCount?: number;
   /** 개정축 전용 — 최신 개정본의 표시용 버전 문자열 */
   version?: string;
+  /** 강의 전용 — 과목. 카드와 줄의 칩이 이것을 읽는다. */
+  subject?: Subject;
   /** 목록 썸네일(public 기준 경로). 없으면 뷰가 이름으로 플레이트를 그린다. */
   thumbnail?: string;
 }
@@ -213,6 +269,7 @@ const toLogItem = (entry: LogEntry): TimelineItem => ({
   key: `log:${entry.id}`,
   kind: 'log',
   slug: groupKeyOf(entry.id),
+  identity: groupKeyOf(entry.id),
   title: entry.data.title,
   description: entry.data.description,
   date: entry.data.date,
@@ -223,13 +280,14 @@ const toLogItem = (entry: LogEntry): TimelineItem => ({
 const toSeriesItem = ({
   collection,
   locale,
-  series,
+  path,
   latest,
   revisions,
 }: SeriesHistory): TimelineItem => ({
-  key: `${collection}:${locale}:${series}`,
+  key: `${collection}:${locale}:${path}`,
   kind: collection,
-  slug: series,
+  slug: path,
+  identity: path,
   title: latest.data.title,
   description: latest.data.description,
   date: latest.data.date,
@@ -275,14 +333,230 @@ export const getSeriesTimeline = async (
  *   그 게이트는 목록 페이지의 ads={items.length > 0} 이다.
  */
 
+/* 강의 축 (과목 / 코스 / 차시 / 개정) */
+
+/**
+ * 갤러리 카드 한 장. 강의 목록 화면들이 공유하는 표시용 형태다.
+ *
+ * TimelineItem 과 나누어 둔 이유: 갤러리에는 ★코스★ 도 올라오는데 코스에는 개정본이
+ * 없다. 한 타입에 몰면 "코스에는 절대 없는 필드" 가 절반이 되고, 뷰가 그것을
+ * 매번 다시 물어야 한다.
+ */
+export interface GalleryCard {
+  /** 렌더 key */
+  key: string;
+  href: string;
+  /** public/ 기준 절대 경로. 강의 축은 스키마가 필수로 강제한다. */
+  thumbnail: string;
+  title: string;
+  description: string;
+  date: Date;
+  /** 카드 머리의 계기판 칩. 과목 코드(MATH) 또는 차시 번호. */
+  code?: string;
+  /** 개정본의 표시용 버전 문자열 */
+  version?: string;
+  /** 개정본 개수. 2 이상일 때만 눈금을 그린다. */
+  revisionCount?: number;
+  /** 원문 로케일. 아직 번역되지 않은 사본일 때만 값이 있다. */
+  untranslated?: Locale;
+}
+
+/** 한 코스의 한 차시. history 가 그 차시의 개정 이력이다. */
+export interface LectureSession {
+  session: string;
+  history: SeriesHistory<LectureEntry>;
+}
+
+/** 한 로케일에서의 코스 하나. */
+export interface LectureCourse {
+  locale: Locale;
+  subject: Subject;
+  course: string;
+  /** 코스 표지. 제목·개요 본문·대표 이미지가 여기서 나온다. */
+  cover: LectureCourseEntry;
+  /** 차시. ★디렉터리 이름 오름차순★ 이다(01-… 02-… 03-…). */
+  sessions: LectureSession[];
+}
+
+/**
+ * 강의 경로를 과목·코스·(차시)로 가른다.
+ *
+ * 과목이 SUBJECTS 에 없으면 여기서 빌드를 죽인다. 모르는 과목을 통과시키면
+ * /lecture/<모르는것>/ 이 만들어지고, 그 화면은 이름도 붙일 수 없다.
+ */
+const lecturePartsOf = (
+  path: string,
+  what: string,
+): { subject: Subject; course: string; rest: string[] } => {
+  const [subject, course, ...rest] = path.split('/');
+  if (!subject || !isSubject(subject))
+    throw new Error(
+      `강의의 첫 디렉터리는 과목이어야 합니다.\n` +
+        `  ${what}=${path}, 받은 값=${subject}\n` +
+        `  쓸 수 있는 과목: ${Object.keys(SUBJECTS).join(' · ')}\n` +
+        `  과목을 늘리려면 src/lib/subjects.ts 에 넣으세요(두 언어 이름이 함께 필요합니다).`,
+    );
+  if (!course) throw new Error(`강의 경로에 코스 디렉터리가 없습니다: ${what}=${path}`);
+  return { subject, course, rest };
+};
+
+/**
+ * 그 로케일의 코스 전부. 과목별로 나뉘어 있지 않은 평평한 목록이다.
+ *
+ * ★ 여기서 코스 이름의 유일성을 강제한다. giscus 검색어와 RSS guid 가
+ *   `<코스>:<차시>` 라 과목을 담지 않기 때문이다 — 그 덕에 강의를 다른 과목으로
+ *   옮겨도 댓글과 피드가 살아 있지만, 두 과목에 같은 이름의 코스가 있으면
+ *   서로 다른 강의가 같은 댓글 스레드를 쓰게 된다.
+ */
+export const getLectureCourses = async (locale: Locale): Promise<LectureCourse[]> => {
+  const covers = (await getCollection('lectureCourse', isVisible))
+    .filter((entry) => localeOf(entry.id) === locale)
+    .sort(byDateDesc);
+
+  const histories = (await getSeriesHistories('lecture')).filter(
+    (history) => history.locale === locale,
+  );
+
+  // 차시를 코스 경로(<과목>/<코스>)로 모은다.
+  const byCourse = new Map<string, LectureSession[]>();
+  for (const history of histories) {
+    const { subject, course, rest } = lecturePartsOf(history.path, '차시 경로');
+    const session = rest[0];
+    if (!session || rest.length !== 1)
+      throw new Error(
+        `차시 경로는 <과목>/<코스>/<차시>/<버전>/<로케일>.md 여야 합니다: ${history.path}`,
+      );
+    const key = `${subject}/${course}`;
+    byCourse.set(key, [...(byCourse.get(key) ?? []), { session, history }]);
+  }
+
+  const seenCourse = new Map<string, string>();
+  const courses: LectureCourse[] = [];
+
+  for (const cover of covers) {
+    const path = cover.id.split('/').slice(0, -1).join('/');
+    const { subject, course, rest } = lecturePartsOf(path, '코스 표지 경로');
+    if (rest.length > 0)
+      throw new Error(`코스 표지는 <과목>/<코스>/<로케일>.md 여야 합니다: ${cover.id}`);
+
+    const previous = seenCourse.get(course);
+    if (previous)
+      throw new Error(
+        `코스 이름이 과목을 가로질러 겹칩니다: "${course}"\n` +
+          `  ${previous}  ↔  ${subject}\n` +
+          `  댓글 검색어와 RSS guid 가 과목을 담지 않으므로(그래야 재분류가 안전하다)\n` +
+          `  코스 이름은 사이트 전체에서 유일해야 합니다. 한쪽 이름을 바꾸세요.`,
+      );
+    seenCourse.set(course, subject);
+
+    courses.push({
+      locale,
+      subject,
+      course,
+      cover,
+      // 차시는 날짜가 아니라 이름 오름차순이다 — 3강을 2강보다 먼저 쓸 수도 있다.
+      sessions: (byCourse.get(path) ?? []).sort((a, b) => byCodePoint(a.session, b.session)),
+    });
+  }
+
+  // 표지 없는 차시가 남았으면 그 코스는 화면도 주소도 만들 수 없다.
+  for (const key of byCourse.keys()) {
+    if (!courses.some((c) => `${c.subject}/${c.course}` === key))
+      throw new Error(
+        `차시는 있는데 코스 표지가 없습니다: src/content/lecture/${key}/\n` +
+          `  그 디렉터리에 ${LOCALE_CODES.map((c) => `${c}.md`).join(' · ')} 를 만드세요.\n` +
+          `  표지가 코스의 제목·개요·대표 이미지를 갖습니다.`,
+      );
+  }
+
+  return courses;
+};
+
+/** 과목별로 나눈 코스. SUBJECT_SLUGS 순서이며 빈 과목도 자리를 지킨다. */
+export const getCoursesBySubject = async (
+  locale: Locale,
+): Promise<{ subject: Subject; courses: LectureCourse[] }[]> => {
+  const all = await getLectureCourses(locale);
+  return (Object.keys(SUBJECTS) as Subject[]).map((subject) => ({
+    subject,
+    courses: all.filter((course) => course.subject === subject),
+  }));
+};
+
+/**
+ * 코스 카드. 갤러리에서 코스 하나를 나타낸다.
+ *
+ * code 를 넣지 않는다 — 코스 카드는 언제나 자기 과목의 섹션 안에 놓이고,
+ * 그 섹션 머리에 이미 같은 칩이 있다. 카드마다 한 번 더 적으면 같은 말이 두 벌이다.
+ * (차시 카드의 code 는 차시 번호라 그런 문제가 없다.)
+ */
+export const courseCard = (course: LectureCourse): GalleryCard => ({
+  key: `course:${course.locale}:${course.subject}/${course.course}`,
+  href: courseHref(course.locale, course.subject, course.course),
+  thumbnail: course.cover.data.thumbnail,
+  title: course.cover.data.title,
+  description: course.cover.data.description,
+  date: course.cover.data.date,
+  untranslated: course.cover.data.untranslated,
+});
+
+/** 차시 카드. 코스 화면의 갤러리가 이것을 그린다. */
+export const sessionCard = (session: LectureSession): GalleryCard => {
+  const { history } = session;
+  const latest = history.latest;
+  return {
+    key: `session:${history.locale}:${history.path}`,
+    href: revisionHref(history.locale, 'lecture', history.path, null),
+    thumbnail: latest.data.thumbnail,
+    title: latest.data.title,
+    description: latest.data.description,
+    date: latest.data.date,
+    // 차시 번호는 디렉터리 이름 앞의 숫자다. 없으면 칩을 붙이지 않는다.
+    code: /^\d+/.exec(session.session)?.[0],
+    version: latest.data.version,
+    revisionCount: history.revisions.length,
+    untranslated: latest.data.untranslated,
+  };
+};
+
+/** 홈·피드가 쓰는 강의 줄. 차시 단위다 — 발행되는 단위가 차시이기 때문이다. */
+const getLectureTimeline = async (locale: Locale): Promise<TimelineItem[]> => {
+  const courses = await getLectureCourses(locale);
+  return courses.flatMap((course) =>
+    course.sessions.map(({ session, history }): TimelineItem => {
+      const latest = history.latest;
+      return {
+        key: `lecture:${history.locale}:${history.path}`,
+        kind: 'lecture',
+        slug: history.path,
+        // ★ 과목이 빠진다. 이유는 TimelineItem.identity 주석에 있다.
+        identity: `${course.course}:${session}`,
+        context: course.cover.data.title,
+        subject: course.subject,
+        title: latest.data.title,
+        description: latest.data.description,
+        date: latest.data.date,
+        tags: latest.data.tags,
+        untranslated: latest.data.untranslated,
+        revisionCount: history.revisions.length,
+        version: latest.data.version,
+        thumbnail: latest.data.thumbnail,
+      };
+    }),
+  );
+};
+
 /**
  * 홈과 피드가 쓰는 통합 목록. 세 축을 하나의 시간축에 섞는다.
- * 개정축은 계열 단위로 한 줄이며, 대표 날짜는 최신 개정일이다.
+ *
+ * 강의는 ★차시★ 단위로 한 줄이다 — 발행되는 단위가 차시이므로, 코스 단위로 묶으면
+ * 새 차시가 나와도 구독자에게 아무 일도 일어나지 않는다.
+ * project 는 계열 단위로 한 줄이며 대표 날짜는 최신 개정일이다.
  */
 export const getTimeline = async (locale: Locale): Promise<TimelineItem[]> => {
   const parts = await Promise.all([
     getLogTimeline(locale),
-    getSeriesTimeline('lecture', locale),
+    getLectureTimeline(locale),
     getSeriesTimeline('project', locale),
   ]);
 
@@ -307,14 +581,14 @@ export const getTimeline = async (locale: Locale): Promise<TimelineItem[]> => {
  */
 export const revisionAlternates = (
   histories: SeriesHistory[],
-  series: string,
+  path: string,
   version: string | null,
   baseLocale: Locale,
 ): Alternate[] => {
-  const base = histories.find((h) => h.locale === baseLocale && h.series === series);
+  const base = histories.find((h) => h.locale === baseLocale && h.path === path);
 
   return LOCALE_CODES.flatMap((locale) => {
-    const history = histories.find((h) => h.locale === locale && h.series === series);
+    const history = histories.find((h) => h.locale === locale && h.path === path);
     if (!history) return [];
     const collection = history.collection;
 
@@ -324,14 +598,14 @@ export const revisionAlternates = (
       const behind = base
         ? Math.max(0, base.revisions.findIndex((rev) => versionSlug(rev) === latestSlug))
         : 0;
-      return [{ locale, href: revisionHref(locale, collection, series, null), behind }];
+      return [{ locale, href: revisionHref(locale, collection, path, null), behind }];
     }
 
     // 구버전: 같은 개정 세그먼트가 그 로케일에도 있고, 그 로케일에서 최신이 아닐 때만
     // 짝이 성립한다(그 로케일에서 최신이면 그 항목의 주소는 계열 루트이지 이 URL 이 아니다).
     const index = history.revisions.findIndex((rev) => versionSlug(rev) === version);
     return index > 0
-      ? [{ locale, href: revisionHref(locale, collection, series, version), behind: 0 }]
+      ? [{ locale, href: revisionHref(locale, collection, path, version), behind: 0 }]
       : [];
   });
 };

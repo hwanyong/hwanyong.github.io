@@ -1,0 +1,86 @@
+---
+/**
+ * 카드 격자. 강의 축의 목록 화면들이 공유한다.
+ *
+ * Timeline(줄 목록)과 나누어 둔 이유: 강의는 그림이 먼저 읽히는 목록이고,
+ * 그림을 줄 목록에 키워 넣으면 날짜·개정 눈금이 세로로 맞던 계기판이 무너진다.
+ * 두 형태를 한 컴포넌트에 담으면 분기가 마크업 전체에 퍼진다.
+ *
+ * ★ .column 을 소유하지 않는다. 강의 전체 화면은 과목 섹션마다 격자를 하나씩 놓으므로
+ *   격자가 열을 소유하면 한 화면에 열이 여섯 개 생긴다. 열은 페이지가 갖는다.
+ *
+ * ★ 카드 전체를 <a> 로 감싸지 않는다. 그러면 접근 가능한 이름이 카드의 모든 글자를
+ *   이어 붙인 한 덩어리가 된다. 링크는 제목에만 걸고, 넓은 클릭 영역은
+ *   global.css 의 .card__title a::after 가 만든다.
+ */
+import { formatDate, isoDate } from '../lib/date';
+import type { GalleryCard } from '../lib/content';
+import { LOCALES, type Locale } from '../lib/i18n';
+import { UI } from '../lib/ui';
+
+interface Props {
+  locale: Locale;
+  cards: GalleryCard[];
+  /** 카드가 하나도 없을 때 그 자리에 놓을 문구. */
+  empty?: string;
+}
+
+const { locale, cards, empty } = Astro.props;
+
+const t = UI[locale];
+const emptyText = empty ?? t.emptyList;
+---
+
+{cards.length === 0 && <p class="empty">{emptyText}</p>}
+
+{
+  cards.length > 0 && (
+    <ul class="gallery">
+      {cards.map((card) => (
+        <li class="card">
+          {/* alt 를 비운다 — 바로 아래에 같은 제목이 글자로 있어 두 번 읽히면 방해가 된다.
+              width/height 를 원본 비율로 박아 CLS 를 막고 실제 크기는 CSS 가 정한다. */}
+          <img
+            class="card__thumb"
+            src={card.thumbnail}
+            alt=""
+            width="480"
+            height="270"
+            loading="lazy"
+          />
+          <div class="card__body">
+            <p class="card__meta">
+              {card.code && <b class="card__code">{card.code}</b>}
+              <time datetime={isoDate(card.date)}>{formatDate(card.date)}</time>
+              {/* 개정이 하나뿐이면 "개정 1" 은 아무것도 알려주지 않는다.
+                  Timeline 의 눈금과 같은 기준(2 이상)으로 맞춘다. */}
+              {card.version && (
+                <span class="card__rev">
+                  v{card.version}
+                  {card.revisionCount && card.revisionCount > 1
+                    ? t.revision.count(card.revisionCount)
+                    : ''}
+                </span>
+              )}
+            </p>
+            <h3 class="card__title">
+              <a href={card.href}>{card.title}</a>
+              {card.untranslated && (
+                <span
+                  class="entry__lang"
+                  lang={LOCALES[locale].htmlLang}
+                  title={t.untranslatedNotice(t.languageNames[card.untranslated])}
+                >
+                  {LOCALES[card.untranslated].label}
+                </span>
+              )}
+            </h3>
+            <p class="card__desc">{card.description}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+{/* .gallery / .card 스타일은 src/styles/global.css 에 있다. */}

@@ -1,0 +1,95 @@
+---
+// 코스 표지 — 개요 본문 + 차시 갤러리.
+//
+// ★ ArticleShell 을 쓰지 않는다. 저 골격은 "본문 뒤에 이동 줄 · 댓글 · 광고" 순서를
+//   못박고 있어서, 차시 갤러리를 넣을 자리가 본문과 이동 줄 사이에 없다.
+//   대신 같은 클래스(.column · .post-header · .prose)와 같은 컴포넌트(PostNav)를
+//   그대로 쓰므로 화면은 다른 글과 같은 물건으로 읽힌다.
+//
+// ★ 댓글은 두지 않는다. 질문은 차시에 붙는 것이 맞다 — 어느 차시 이야기인지가
+//   드러나고, 코스와 차시 양쪽에 스레드가 생겨 갈라지지도 않는다.
+//
+// ★ getStaticPaths 는 격리 호이스팅된다 — import 와 함수 내부 선언만 쓴다.
+import { render } from 'astro:content';
+import BaseLayout from '../../../../../layouts/BaseLayout.astro';
+import Gallery from '../../../../../components/Gallery.astro';
+import PostNav from '../../../../../components/PostNav.astro';
+import { getLectureCourses, sessionCard } from '../../../../../lib/content';
+import type { LectureCourse } from '../../../../../lib/content';
+import { LOCALE_CODES, LOCALES } from '../../../../../lib/i18n';
+import type { Locale } from '../../../../../lib/i18n';
+import { formatDate, isoDate } from '../../../../../lib/date';
+import { courseAlternates, langParam, subjectHref } from '../../../../../lib/routes';
+import { SUBJECTS } from '../../../../../lib/subjects';
+import { UI } from '../../../../../lib/ui';
+
+export const getStaticPaths = async () => {
+  const paths = [];
+  for (const locale of LOCALE_CODES) {
+    for (const course of await getLectureCourses(locale)) {
+      paths.push({
+        params: { lang: langParam(locale), subject: course.subject, course: course.course },
+        props: { locale, course },
+      });
+    }
+  }
+  return paths;
+};
+
+const { locale, course } = Astro.props as { locale: Locale; course: LectureCourse };
+
+const t = UI[locale];
+const { data } = course.cover;
+const { Content } = await render(course.cover);
+
+const subjectName = SUBJECTS[course.subject].name[locale];
+const alternates = courseAlternates(course.subject, course.course);
+---
+
+<BaseLayout
+  locale={locale}
+  alternates={alternates}
+  title={data.title}
+  description={data.description}
+  type="article"
+  publishedTime={data.date}
+  section="lecture"
+>
+  <div class="column">
+    <PostNav locale={locale} href={subjectHref(locale, course.subject)} label={subjectName} />
+
+    {/* lang 은 ★실제 본문 언어★ 다. 번역이 없어 원문을 그대로 싣고 있으면
+        페이지 골격(<html lang>)과 다른 값이 되며, 그것이 정확한 서술이다. */}
+    <article lang={data.untranslated ? LOCALES[data.untranslated].htmlLang : undefined}>
+      <header class="post-header">
+        <div class="post-header__meta">
+          <time datetime={isoDate(data.date)}>{formatDate(data.date)}</time>
+          <span>·</span>
+          <span>{SUBJECTS[course.subject].code}</span>
+        </div>
+        <h1 class="post-header__title">{data.title}</h1>
+        <p class="post-header__lead">{data.description}</p>
+      </header>
+
+      {
+        data.untranslated && (
+          <p class="stale-notice" lang={LOCALES[locale].htmlLang}>
+            {t.untranslatedNotice(t.languageNames[data.untranslated])}
+          </p>
+        )
+      }
+
+      <div class="prose">
+        <Content />
+      </div>
+    </article>
+
+    {/* SESSIONS 는 계기판 어휘라 번역하지 않는다(REVISIONS · N REV 와 같은 부류). */}
+    <h2 class="section-bar"><b>SESSIONS</b></h2>
+    <Gallery
+      locale={locale}
+      cards={course.sessions.map(sessionCard)}
+      empty={t.emptySessions}
+    />
+  </div>
+</BaseLayout>

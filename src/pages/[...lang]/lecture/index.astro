@@ -1,0 +1,62 @@
+---
+// 강의 전체 — 과목마다 섹션 하나, 그 안에 코스 갤러리.
+//
+// ★ 이 화면은 쪽을 나누지 않는다. 과목이 이미 나눔의 축이라, 여기서 쪽까지 자르면
+//   과목 섹션이 쪽 경계를 넘어 "수학 절반이 2쪽에" 같은 상태가 된다.
+//   쪽 나눔은 한 축만 흐르는 /lecture/<과목>/ 에 있다.
+//
+// ★ 코스가 0개인 과목도 섹션은 낸다 — 분류가 여섯이라는 사실이 화면에 보여야 한다.
+//   대신 그 과목의 ★URL 은 만들지 않는다★. 빈 분류에 주소를 주면 sitemap 에
+//   내용 없는 화면이 열둘 늘고(과목 6 × 로케일 2) 검색엔진에는 소프트 404 로 읽힌다.
+//   축(lecture)을 감추지 않는 것과 다른 판단이다 — 축은 사이트의 뼈대이고
+//   과목은 그 안의 분류다.
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Gallery from '../../../components/Gallery.astro';
+import { courseCard, getCoursesBySubject } from '../../../lib/content';
+import { LOCALE_CODES } from '../../../lib/i18n';
+import type { Locale } from '../../../lib/i18n';
+import { langParam, staticAlternates, sectionLabel, subjectHref } from '../../../lib/routes';
+import { SUBJECTS } from '../../../lib/subjects';
+import { UI } from '../../../lib/ui';
+
+export const getStaticPaths = () =>
+  LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
+
+const { locale } = Astro.props as { locale: Locale };
+const t = UI[locale];
+const alternates = staticAlternates('lecture');
+
+const sections = await getCoursesBySubject(locale);
+const total = sections.reduce((sum, section) => sum + section.courses.length, 0);
+---
+
+<BaseLayout
+  locale={locale}
+  alternates={alternates}
+  title={sectionLabel('lecture')}
+  description={t.lists.lecture.description}
+  section="lecture"
+  ads={total > 0}
+>
+  <div class="column">
+    {
+      sections.map(({ subject, courses }) => (
+        <>
+          <h2 class="section-bar">
+            <b>{SUBJECTS[subject].code}</b>
+            {courses.length > 0 ? (
+              <a href={subjectHref(locale, subject)}>{SUBJECTS[subject].name[locale]}</a>
+            ) : (
+              <span>{SUBJECTS[subject].name[locale]}</span>
+            )}
+            {/* 빈 과목은 갤러리 블록을 만들지 않는다 — .empty 는 화면 전체가 비었을 때의
+                크기라, 과목마다 그것을 놓으면 여섯 과목이 빈 화면 여섯 장이 된다.
+                섹션 줄 안의 한 마디면 "아직 없다" 는 사실이 그대로 전달된다. */}
+            {courses.length === 0 && <em class="section-bar__note">{t.emptyLecture}</em>}
+          </h2>
+          {courses.length > 0 && <Gallery locale={locale} cards={courses.map(courseCard)} />}
+        </>
+      ))
+    }
+  </div>
+</BaseLayout>

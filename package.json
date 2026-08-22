@@ -16,7 +16,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "sync": "astro sync",
-    "ci": "node tools/check-collisions.mjs && node tools/i18n-verify.ts && node tools/fonts.mjs build --check && astro check && astro build && node tools/verify-site.ts",
+    "ci": "rm -rf node_modules/.astro/data-store.json && node tools/check-collisions.mjs && node tools/i18n-verify.ts && node tools/fonts.mjs build --check && astro check && astro build && node tools/verify-site.ts",
     "astro": "astro",
     "check:collisions": "node tools/check-collisions.mjs",
     "i18n:fill": "node tools/i18n-fill.ts",

@@ -3,7 +3,6 @@ title: analysis-video
 description: Open-source CLI that turns video into AI-readable context.
 date: 2026-08-14
 tags: ["cli", "ai-agent", "video"]
-series: analysis-video
 version: "1.0"
 stack:
   - Python 3.11–3.14

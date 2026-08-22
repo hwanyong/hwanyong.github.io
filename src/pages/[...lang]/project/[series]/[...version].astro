@@ -1,5 +1,5 @@
 ---
-// src/pages/[...lang]/project/[series]/[...version].astro — 강의 개정본 상세.
+// src/pages/[...lang]/project/[series]/[...version].astro — 프로젝트 개정본 상세.
 //
 // 화면과 URL 규칙은 RevisionPage 가 전부 갖는다(프로젝트 축과 같은 골격).
 // 이 파일이 하는 일은 "어느 컬렉션인가" 를 말하고 경로를 내는 것뿐이다.
@@ -10,7 +10,7 @@ import RevisionPage from '../../../../components/RevisionPage.astro';
 import VideoFacade from '../../../../components/VideoFacade.astro';
 import { getSeriesHistories, revisionAlternates, versionSlug } from '../../../../lib/content';
 import type { ProjectEntry } from '../../../../lib/content';
-import { langParam } from '../../../../lib/routes';
+import { langParam, sectionHref, sectionLabel } from '../../../../lib/routes';
 import { DEFAULT_LOCALE } from '../../../../lib/i18n';
 import type { Alternate, Locale } from '../../../../lib/i18n';
 
@@ -24,16 +24,17 @@ export const getStaticPaths = async () => {
       // rest 파라미터는 빈 세그먼트도 매칭하므로 라우트 하나가 둘 다 낸다.
       params: {
         lang: langParam(history.locale),
-        series: history.series,
+        series: history.path,
         version: index === 0 ? undefined : versionSlug(entry),
       },
       props: {
         locale: history.locale,
+        path: history.path,
         revisions: history.revisions,
         index,
         alternates: revisionAlternates(
           histories,
-          history.series,
+          history.path,
           index === 0 ? null : versionSlug(entry),
           DEFAULT_LOCALE,
         ),
@@ -44,12 +45,14 @@ export const getStaticPaths = async () => {
 
 type Props = {
   locale: Locale;
+  /** 계열 이름. 이 축에서는 정체성과 같은 값이다(과목 같은 분류 단계가 없다). */
+  path: string;
   revisions: ProjectEntry[];
   index: number;
   alternates: Alternate[];
 };
 
-const { locale, revisions, index, alternates }: Props = Astro.props;
+const { locale, path, revisions, index, alternates }: Props = Astro.props;
 
 const entry = revisions[index]!;
 const { Content } = await render(entry);
@@ -74,8 +77,12 @@ const linkRow = LINK_LABELS.flatMap(([key, label]) => {
   locale={locale}
   alternates={alternates}
   collection="project"
+  path={path}
+  identity={path}
   revisions={revisions}
   index={index}
+  upHref={sectionHref(locale, 'project')}
+  upLabel={sectionLabel('project')}
 >
   {(stack.length > 0 || linkRow.length > 0) && (
     <dl class="fact" slot="lead">

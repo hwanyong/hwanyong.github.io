@@ -3,7 +3,6 @@ title: djmax_controller
 description: ESP32-based rhythm game controller firmware.
 date: 2022-04-16
 tags: ["cpp", "embedded", "hardware"]
-series: djmax-controller
 version: "1.0"
 stack:
   - C++

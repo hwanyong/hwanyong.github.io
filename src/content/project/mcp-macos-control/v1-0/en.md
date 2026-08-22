@@ -3,7 +3,6 @@ title: mcp-macos-control
 description: AI desktop automation server — a native macOS control interface for LLMs.
 date: 2025-12-03
 tags: ["ai-agent", "mcp", "macos"]
-series: mcp-macos-control
 version: "1.0"
 stack:
   - TypeScript

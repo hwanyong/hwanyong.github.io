@@ -3,7 +3,6 @@ title: Vanilla State
 description: Lightweight, zero-dependency state management for vanilla JavaScript.
 date: 2025-02-16
 tags: ["javascript", "library", "npm"]
-series: vanilla-state
 version: "1.0"
 stack:
   - TypeScript

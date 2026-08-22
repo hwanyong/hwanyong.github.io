@@ -3,7 +3,6 @@ title: iohook-macos
 description: High-performance system event hooking for macOS.
 date: 2025-07-20
 tags: ["macos", "native", "electron"]
-series: iohook-macos
 version: "1.0"
 stack:
   - Objective-C++

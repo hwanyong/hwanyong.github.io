@@ -4,7 +4,6 @@ title: hls-recon
 description: HLS delivery integrity verifier.
 date: 2026-08-15
 tags: ["cli", "streaming", "testing"]
-series: hls-recon
 version: "1.0"
 stack:
   - Python 3.10+
