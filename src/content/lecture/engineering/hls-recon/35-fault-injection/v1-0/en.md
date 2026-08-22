@@ -1,393 +1,383 @@
 ---
-untranslated: ko
-title: "결함 주입 설계"
-description: "8종의 대응표, 그리고 주입의 정교함"
-date: 2026-08-19
+title: "Fault-Injection Design"
+description: "The 8-way mapping table, and the precision of injection"
+date: 2026-08-09
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-35-fault-injection.svg
 ---
-## 35.0 이 장에서 답할 것
+## 35.0 What this chapter answers
 
-1. 결함 주입이란 무엇이고, 그것이 증명하는 것은 정확히 무엇인가
-2. 8종의 결함은 각각 어떤 검사를 겨냥하는가 — 그 대응표가 왜 **커버리지 증명**인가
-3. 주입의 수치는 왜 그 값인가 — 왜 12개이고, 왜 `seg000` 이고, 왜 **양수** 60초인가
-4. 이 대응표는 실제로 1:1 인가. 아니라면 무엇이 증명되지 않은 채 남는가
+1. What is fault injection, and what exactly does it prove?
+2. Which check does each of the 8 defects target — why is that mapping table a **coverage proof?**
+3. Why is each injection's number that value — why 12, why `seg000`, why **positive** 60 seconds?
+4. Is this mapping table actually 1:1? If not, what remains unproven?
 
-넷째 질문이 이 장의 정점이다. 이 장은 대응표를 소개하는 데서 그치지 않고, **그
-대응표가 실측으로 성립하는지 직접 확인한 기록**이다. 결과는 절반만 성립한다.
+The fourth question is this chapter's summit. This chapter does not stop at introducing the mapping table but is
+**a record of directly confirming whether that mapping table holds by measurement.** The result holds only
+half.
 
 ---
 
-## 35.1 문제 — PASS 는 정보가 아니다
+## 35.1 The problem — PASS is not information
 
-제34장에서 확인한 문제를 한 줄로 다시 적는다. 이 저장소의 회귀 테스트 첫머리에
-그대로 있는 문장이다.
+Rewrite in one line the problem confirmed in Chapter 34. It is the sentence right at the head of this
+repository's regression test.
 
 ```bash
 # tests/run.sh:4-6
-# 로컬에 HLS 스트림 4종을 만들어 정상 케이스가 PASS 로 나오는지 확인하고,
-# 결함 3종을 주입해 실제로 FAIL 로 잡히는지 확인한다.
-# 검증 도구가 PASS 만 낸다면 아무것도 검증하지 못하는 것과 같으므로,
+# Makes 4 kinds of HLS stream locally, confirms the normal cases come out PASS,
+# and injects 3 kinds of defect to confirm they are actually caught as FAIL.
+# A verification tool that gives only PASS is the same as verifying nothing,
 ```
 
-> **용어** — **테스트 오라클(test oracle)**: 어떤 실행의 결과가 옳은지 그른지를
-> 판정해 주는 기준. 오라클이 없으면 테스트는 "돌아갔다"까지만 말할 수 있고
-> "옳았다"는 말할 수 없다.
+> **Term** — **test oracle**: the criterion judging whether some run's result is right or wrong. Without an
+> oracle a test can say only up to "it ran," not "it was right."
 
-`hls-recon` 은 그 자체가 판정 도구다. 즉 **오라클을 자처하는 프로그램**이다. 이런
-프로그램에는 고유한 함정이 있다. 판정 로직 전체를 `return PASS` 한 줄로 바꿔도
-정상 스트림에 대한 테스트는 **전부 통과한다.** 정상 입력만 넣는 테스트는 "항상
-통과를 내는 구현"과 "제대로 검사하는 구현"을 구별하지 못한다.
+`hls-recon` is itself a verdict tool. That is, **a program that professes to be an oracle.** Such a program has a
+peculiar trap. Change the whole verdict logic to the one line `return PASS` and the test on a normal stream
+**passes entirely.** A test putting in only normal input cannot distinguish an "implementation that always gives
+a pass" from an "implementation that checks properly."
 
-구별하려면 **틀린 답이 나와야 하는 입력**이 필요하다. 그 입력을 사람이 기다리는
-대신 일부러 만들어 넣는 것이 결함 주입이다.
+To distinguish, you need **an input for which a wrong answer must come out.** Making and feeding that input
+deliberately instead of waiting for a human is fault injection.
 
-> **용어** — **결함 주입(fault injection)**: 검증하려는 시스템에 **알려진 결함**을
-> 의도적으로 넣고, 시스템이 그 결함을 실제로 검출·처리하는지 관측하는 기법. 결함을
-> 넣은 쪽이 정답(어떤 결함을 넣었는지)을 알고 있으므로, 그 정답이 곧 오라클이 된다.
+> **Term** — **fault injection**: the technique of deliberately putting a **known defect** into the system to be
+> verified and observing whether the system actually detects·handles that defect. Since the injecting side knows
+> the answer (what defect was put in), that answer is itself the oracle.
 
-### 35.1.1 왜 단위 테스트로는 부족한가
+### 35.1.1 Why unit tests are not enough
 
-"검사 함수를 직접 부르면 되지 않는가"는 자연스러운 반론이다. 예를 들어
-`tsanalyze.analyze()` 에 손으로 만든 TS 바이트열을 넣고 `cc_discontinuities == 1`
-을 확인하는 식이다. 그것도 필요하지만, 그것만으로는 다음을 검증하지 못한다.
+"Just call the check function directly" is a natural rebuttal. For instance, put a hand-made TS byte string into
+`tsanalyze.analyze()` and confirm `cc_discontinuities == 1`. That is needed too, but by itself it does not verify
+the following.
 
-| 단위 테스트가 놓치는 것 | 이 저장소에서의 실제 예 |
+| What a unit test misses | The actual example in this repository |
 |---|---|
-| 검사가 **호출되기는 하는가** | [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464) 에서 `sniff()` 결과가 `bogus` 로 쌓이지 않으면 검사 자체가 실행되지 않는다 |
-| 검사 결과가 **판정으로 이어지는가** | [`report.py:199-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L211) 에서 `bogus` 가 FAIL 로 승격되지 않으면 리포트에 나타나지 않는다 |
-| 판정이 **종료 코드로 이어지는가** | FAIL 이 있어도 exit 0 이면 CI 는 아무것도 알지 못한다 |
-| 검사 사이의 **상태 전달**이 맞는가 | CC 검사는 세그먼트 경계를 넘어 `state` dict 를 이어 넘긴다([`tsanalyze.py:71-83`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L71-L83)) |
-| 실제 입력의 **모양**이 가정과 같은가 | 손으로 만든 TS 는 PAT/PMT 배치가 실제 ffmpeg 출력과 다르다 |
+| whether the check **is even called** | in [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464), if the `sniff()` result does not pile into `bogus` the check itself does not run |
+| whether the check result **leads to a verdict** | in [`report.py:199-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L211), if `bogus` is not promoted to FAIL it does not appear in the report |
+| whether the verdict **leads to the exit code** | even with a FAIL, if exit 0, CI knows nothing |
+| whether the **state passing** between checks is right | the CC check passes the `state` dict across segment boundaries ([`tsanalyze.py:71-83`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L71-L83)) |
+| whether the actual input's **shape** matches the assumption | a hand-made TS has a different PAT/PMT layout from actual ffmpeg output |
 
-결함 주입은 결함을 **파이프라인 맨 앞(디스크 위의 세그먼트 파일)** 에 넣고 관측을
-**맨 뒤(콘솔 문자열과 종료 코드)** 에서 한다. 그 사이의 모든 링크가 살아 있어야만
-통과한다. 이것이 이 저장소가 단위 테스트 대신 셸 스크립트 하나로 회귀를 고정한
-이유다.
+Fault injection puts the defect at the **very front of the pipeline (the segment file on disk)** and observes at
+the **very back (the console string and exit code).** It passes only if every link between is alive. This is why
+this repository fixes its regression with one shell script instead of unit tests.
 
 ---
 
-## 35.2 원리 — 대응표가 곧 커버리지 증명
+## 35.2 The principle — the mapping table is itself a coverage proof
 
-### 35.2.1 두 종류의 커버리지
+### 35.2.1 Two kinds of coverage
 
-"커버리지"라는 말은 두 가지를 가리킬 수 있고, 검증 도구에서는 둘이 크게 다르다.
+The word "coverage" can point at two things, and in a verification tool the two differ greatly.
 
-> **용어** — **코드 커버리지(code coverage)**: 테스트 실행이 지나간 코드 줄·분기의
-> 비율. **결함 커버리지(fault coverage)**: 상정한 결함 목록 중 테스트가 실제로
-> 검출해 낸 결함의 비율.
+> **Term** — **code coverage**: the ratio of code lines·branches the test run passed through. **fault coverage**:
+> the ratio of the assumed defect list the test actually detected.
 
-정상 스트림만 넣어도 코드 커버리지는 높게 나온다. 검사 함수가 전부 호출되기
-때문이다. 그러나 그때 **결함 커버리지는 0** 이다 — 잡아낸 결함이 하나도 없으므로.
-검증 도구에서 의미 있는 수치는 후자이고, 그 수치를 만들려면 **결함 목록**이 먼저
-있어야 한다.
+Put in only normal streams and the code coverage comes out high. Because all check functions are called. But then
+the **fault coverage is 0** — since not one defect was caught. The meaningful number in a verification tool is
+the latter, and to make that number a **defect list** must exist first.
 
-이 저장소는 그 목록을 README 에 표로 박아 두었다(`README.md:366-375`).
+This repository nailed that list into the README as a table (`README.md:366-375`).
 
-### 35.2.2 8종의 대응표
+### 35.2.2 The 8-way mapping table
 
-이 장의 중심 표다. 왼쪽 절반이 주입(무엇을 망가뜨리는가), 오른쪽 절반이
-관측(어디에서 무엇으로 나타나는가)이다.
+This chapter's central table. The left half is injection (what is broken), the right half is observation (where
+and as what it appears).
 
-| # | 주입 결함 | 주입 앵커 | 겨냥한 검사 | 확인하는 문자열 | 확인 앵커 | 판정 |
+| # | Injected defect | Injection anchor | Targeted check | Confirmed string | Confirm anchor | Verdict |
 |---|---|---|---|---|---|---|
-| 1 | TS 패킷 12개 제거 | `tests/run.sh:134-137` | TS 무결성 (continuity counter) | `CC 불연속` | `tests/run.sh:483` | WARN |
-| 2 | 세그먼트 중복 송출 | `tests/run.sh:138-139` | 세그먼트 고유성 (SHA-256) | `중복 해시` | `tests/run.sh:484` | WARN |
-| 3 | 세그먼트 404 | `tests/run.sh:140` | 세그먼트 수신 **＋** 타임라인 연속성 | `세그먼트 수신.*실패` · `타임라인 연속성.*결손` | `tests/run.sh:482,485` | FAIL |
-| 4 | 200 응답에 HTML 오류 페이지 | `tests/run.sh:141-145` | 페이로드 유효성 | `페이로드 유효성.*미디어가 아님` | `tests/run.sh:486-487` | FAIL |
-| 5 | 자막 `X-TIMESTAMP-MAP` +60초 | `tests/run.sh:89-92` | 자막 타임라인 (별도 파일) | `자막 타임라인.*영상 범위를 벗어난` | `tests/run.sh:496-497` | FAIL |
-| 5′ | 같은 결함, 내장 경로 | `tests/run.sh:125` | 자막 타임라인 (컨테이너 내장) | `자막 타임라인.*영상 범위를 벗어남` | `tests/run.sh:508-509` | FAIL |
-| 6 | 자막 URL 이 200 으로 HTML | `tests/run.sh:258-259` | 사이드카 수신 (선두 내용 판정) | 파일 부재 **＋** `후보 .*개 모두 실패` | `tests/run.sh:292-294` | — |
-| 7 | 60% 에서 잘린 MP4 · 0바이트 파일 | `tests/run.sh:356-362` | 재고 조사 (온전함 판정) | `EP 5 .* ok=False` · `EP 6 .* ok=False` | `tests/run.sh:407-410` | — |
-| 8 | 자막만 없는 회차 | `tests/run.sh:427-431` | 자막 메우기 | `FILLED 1 0` | `tests/run.sh:460-461` | — |
+| 1 | remove 12 TS packets | `tests/run.sh:134-137` | TS integrity (continuity counter) | `CC discontinuit` | `tests/run.sh:483` | WARN |
+| 2 | segment delivered duplicately | `tests/run.sh:138-139` | segment uniqueness (SHA-256) | `duplicate hash` | `tests/run.sh:484` | WARN |
+| 3 | segment 404 | `tests/run.sh:140` | segment receive **+** timeline continuity | `segment receive.*failed` · `timeline continuity.*gap` | `tests/run.sh:482,485` | FAIL |
+| 4 | HTML error page on a 200 response | `tests/run.sh:141-145` | payload validity | `payload validity.*not media` | `tests/run.sh:486-487` | FAIL |
+| 5 | subtitle `X-TIMESTAMP-MAP` +60 seconds | `tests/run.sh:89-92` | subtitle timeline (separate file) | `subtitle timeline.*out of the video range` | `tests/run.sh:496-497` | FAIL |
+| 5′ | the same defect, embed path | `tests/run.sh:125` | subtitle timeline (container embed) | `subtitle timeline.*out of video range` | `tests/run.sh:508-509` | FAIL |
+| 6 | a subtitle URL is HTML on a 200 | `tests/run.sh:258-259` | sidecar receive (leading-content determination) | file absence **+** `all .* candidates failed` | `tests/run.sh:292-294` | — |
+| 7 | an MP4 cut at 60% · a 0-byte file | `tests/run.sh:356-362` | inventory (intactness verdict) | `EP 5 .* ok=False` · `EP 6 .* ok=False` | `tests/run.sh:407-410` | — |
+| 8 | an episode missing only the subtitle | `tests/run.sh:427-431` | subtitle filling | `FILLED 1 0` | `tests/run.sh:460-461` | — |
 
-마지막 열의 "—"는 리포트 판정 항목이 아니라는 뜻이다. 결함 6·7·8 은 리포트가 아니라
-**리포트 이전의 판단**(무엇을 자막으로 인정할 것인가, 무엇을 이미 받은 회차로 볼
-것인가)을 겨냥한다.
+The last column's "—" means it is not a report-verdict item. Defects 6·7·8 target not the report but **a judgment
+before the report** (what to admit as a subtitle, what to see as an already-received episode).
 
-> **용어** — **단언(assertion)**: 테스트가 "이 조건이 참이어야 한다"고 명시하는
-> 문장. 이 저장소에서는 콘솔 출력에 대한 `grep -q` 한 줄이 단언 하나다.
+> **Term** — **assertion**: a statement a test makes that "this condition must be true." In this repository one
+> `grep -q` line on the console output is one assertion.
 
-### 35.2.3 층에 걸쳐 있다는 것
+### 35.2.3 That it spans layers
 
-이 8종의 진짜 성질은 개수가 아니라 **분포**다. 하나의 층을 여덟 방향으로 찌른 것이
-아니라, 서로 다른 여섯 층을 각각 찌른다.
+The 8's real property is not the count but the **distribution.** It is not one layer stabbed in eight directions
+but six different layers each stabbed.
 
-![8종의 결함 주입이 파이프라인의 서로 다른 여섯 층에 배치된 지도](/images/lecture/hls-recon/35-injection-map.svg)
+![A map of the 8 fault injections placed on six different layers of the pipeline](/images/lecture/hls-recon/35-injection-map.svg)
 
-*그림 35-1 — 결함은 파이프라인의 서로 다른 층에 주입된다*
+*Figure 35-1 — the defects are injected into different layers of the pipeline*
 
-왼쪽 괄호 안이 중요하다. **각 층의 결함은 발명한 것이 아니라 실제로 관측된 장애의
-모형**이다. 토큰이 만료되면 404 가 오거나(층 1) 200 에 오류 페이지가 실려 오고(층 2),
-CDN 오리진이 잘못 설정되면 같은 조각이 반복 송출되며(층 4), 자막 패키징에서 기준
-클럭을 잘못 잡으면 시각이 통째로 밀린다(층 5). 먹싱 도중 프로세스가 죽으면 잘린
-파일이 디스크에 남는다(층 6).
+What is in the left parenthesis matters. **Each layer's defect is not invented but a model of an actually
+observed failure.** On token expiry a 404 comes (layer 1) or an error page rides on a 200 (layer 2), on a CDN
+origin misconfiguration the same piece is repeatedly delivered (layer 4), on a wrong reference clock in subtitle
+packaging the time slips whole (layer 5). If the process dies mid-muxing a truncated file remains on disk (layer
+6).
 
-이 대응이 없으면 결함 주입은 **자기가 잡을 수 있는 것만 넣는 놀이**가 된다. 목록의
-정당성은 코드가 아니라 현장에서 온다.
+Without this correspondence, fault injection becomes **a game of putting in only what you can catch.** The
+list's legitimacy comes not from the code but from the field.
 
-### 35.2.4 겨냥되지 않은 검사
+### 35.2.4 The un-targeted checks
 
-정직하게 반대편도 적는다. README 가 표로 정리한 검사는 12 항목인데(`README.md:336-349`),
-위 대응표가 겨냥하는 것은 그중 6 항목이다. 나머지 여섯과, README 표에는 없지만
-리포트가 내는 두 항목은 이렇게 남아 있다.
+Write the opposite side honestly. The checks the README organized as a table are 12 items (`README.md:336-349`),
+and what the above mapping table targets is 6 of them. The remaining six, and the two items not in the README
+table but which the report gives, remain like this.
 
-| 검사 항목 | 결함 주입 여부 | 이유 |
+| Check item | Fault-injected | Reason |
 |---|---|---|
-| 플레이리스트 | 없음 | 정보 항목이라 판정이 없다 |
-| 응답 지연 | 없음 | 임계(p95 3초)를 재현하려면 지연을 넣는 서버가 필요하다 |
-| 길이 정합 | 없음 | 결함 3 의 부산물로 움직이기는 하나 겨냥한 주입이 없다 |
-| 스트림 구성 | 없음 | 영상 트랙 없는 스트림을 따로 만들지 않는다 |
-| 자막 추출 | 없음 | 추출 **실패**(FAIL)를 만드는 주입이 없다 — 성공 경로만 고정 |
-| 자막 일괄 수집 | 없음 | 전멸(WARN)을 만드는 주입이 없다 |
-| 전체 디코드 | 없음 | 결함 1·3 의 부산물로 FAIL 이 나지만 단언이 없다 |
-| 내장 캡션 | 없음 | 선언만 있고 판정이 없다 |
+| playlist | no | an info item so it has no verdict |
+| response latency | no | to reproduce the threshold (p95 3s) you need a server that adds delay |
+| length consistency | no | it moves as a byproduct of defect 3 but there is no targeted injection |
+| stream composition | no | a stream with no video track is not made separately |
+| subtitle extract | no | there is no injection making an extract **failure** (FAIL) — only the success path is fixed |
+| subtitle batch collect | no | there is no injection making a total wipeout (WARN) |
+| full decode | no | it goes FAIL as a byproduct of defects 1·3 but has no assertion |
+| embedded caption | no | only a declaration, no verdict |
 
-**결함 커버리지는 6/12 이다.** 12/12 가 아니다. 이 숫자를 적어 두는 것이 대응표를
-가진 이유이기도 하다 — 목록이 있어야 빠진 칸이 보인다.
+**The fault coverage is 6/12.** Not 12/12. Writing this number down is also the reason for having the mapping
+table — you need a list for the empty cells to be visible.
 
 ---
 
-## 35.3 코드 — 15줄이 만드는 스트림
+## 35.3 The code — 15 lines make the stream
 
-주입의 본체는 짧다. 정상 스트림 `plain` 을 통째로 복사한 뒤 네 곳을 손댄다.
+The injection body is short. Copy the normal stream `plain` whole, then touch four spots.
 
 ```bash
 # tests/run.sh:129-147
-# 결함 주입본
+# defect-injected copy
 cp -R plain damaged
 python3 - <<'PY'
 import pathlib
 d = pathlib.Path("damaged")
-p = d / "seg002.ts"                       # 결함 1: TS 패킷 12개 제거 → CC 점프
+p = d / "seg002.ts"                       # defect 1: remove 12 TS packets → CC jump
 raw = p.read_bytes()
 cut = (len(raw) // 188 // 2) * 188
 p.write_bytes(raw[:cut] + raw[cut + 188 * 12:])
-# 결함 2: 중복 송출. 아래 결함들이 건드리지 않는 seg000 을 원본으로 삼는다.
+# defect 2: duplicate delivery. use seg000, which the defects below do not touch, as the source.
 (d / "seg004.ts").write_bytes((d / "seg000.ts").read_bytes())
-(d / "seg001.ts").unlink()                                      # 결함 3: 세그먼트 404
-# 결함 4: 만료 토큰에 오류 페이지를 200 으로 돌려주는 CDN 재현
+(d / "seg001.ts").unlink()                                      # defect 3: segment 404
+# defect 4: reproduce a CDN returning an error page as 200 on an expired token
 (d / "seg003.ts").write_bytes(
     b"<!DOCTYPE html><html><body><h1>403 Forbidden</h1>"
     b"<p>Link expired</p></body></html>\n"
 )
 PY
-echo "  결함 주입: 패킷 유실 / 세그먼트 중복 / 세그먼트 404 / 200-오류페이지"
+echo "  defect injection: packet loss / segment duplicate / segment 404 / 200-error-page"
 ```
 
-원본 스트림은 30초 소스를 `-hls_time 6` 으로 자른 것이므로 세그먼트가 정확히 5개다
-(`tests/run.sh:43-44`). 주입 후의 모양은 이렇다.
+The original stream is a 30-second source cut with `-hls_time 6` so there are exactly 5 segments
+(`tests/run.sh:43-44`). The shape after injection is this.
 
-| 조각 | 디스크 상태 | 플레이리스트 | 결함 |
+| Piece | Disk state | Playlist | Defect |
 |---|---|---|---|
-| `seg000.ts` | 원본 그대로 | 참조됨 | 없음 |
-| `seg001.ts` | **삭제됨** | 참조됨 → HTTP 404 | 3 |
-| `seg002.ts` | 1,642,556 B → 1,640,300 B | 참조됨 | 1 |
-| `seg003.ts` | 83 B 의 HTML | 참조됨 → HTTP 200 | 4 |
-| `seg004.ts` | `seg000.ts` 와 바이트 동일 | 참조됨 | 2 |
+| `seg000.ts` | original as-is | referenced | none |
+| `seg001.ts` | **deleted** | referenced → HTTP 404 | 3 |
+| `seg002.ts` | 1,642,556 B → 1,640,300 B | referenced | 1 |
+| `seg003.ts` | 83 B of HTML | referenced → HTTP 200 | 4 |
+| `seg004.ts` | byte-identical to `seg000.ts` | referenced | 2 |
 
-**플레이리스트는 손대지 않는다.** `index.m3u8` 은 여전히 5개를 선언하고 각 6.000초를
-주장한다. 이것이 결함 주입의 형태를 결정한다 — 도구는 "5개를 받아야 한다"고 믿은
-채로 출발해서, 받아 온 것과 선언 사이의 어긋남을 스스로 찾아내야 한다.
+**The playlist is not touched.** `index.m3u8` still declares 5 and claims each is 6.000 seconds. This decides the
+form of fault injection — the tool starts believing "5 must be received" and must find for itself the off-ness
+between what was received and the declaration.
 
-여기서 이미 이 저장소의 검증 철학이 드러난다. **선언은 그대로 두고 실물만 망가뜨린다.**
-선언까지 함께 고치면 도구가 어긋남을 발견할 근거 자체가 사라진다.
+Here this repository's verification philosophy is already revealed. **Leave the declaration as-is and break only
+the real thing.** Fix the declaration together and the very basis for the tool to discover the off-ness vanishes.
 
 ---
 
-## 35.4 주입의 정교함 — 왜 하필 그 값인가
+## 35.4 The precision of injection — why that value exactly
 
-여기서부터가 이 장의 본론이다. 위 15줄에는 임의로 보이는 수가 여럿 있다 — `12`,
-`seg000`, `// 2`, `188`, `60 * 90000`, `6 // 10`. 하나씩 확인하면 **모두 다른 값이면
-결함이 재현되지 않거나, 재현되더라도 다른 것을 재는 값**이다.
+From here is this chapter's main argument. The above 15 lines have several arbitrary-looking numbers — `12`,
+`seg000`, `// 2`, `188`, `60 * 90000`, `6 // 10`. Confirm them one by one and **any other value either does not
+reproduce the defect, or reproduces it but measures something different.**
 
-이 절의 측정은 모두 저장소의 실제 코드(`hlsrecon/tsanalyze.py` 등)를 그대로 불러
-수행했다. 환경은 macOS · ffmpeg 8.1.1 이다.
+This section's measurements were all done by calling the repository's actual code (`hlsrecon/tsanalyze.py`, etc.)
+as-is. The environment is macOS · ffmpeg 8.1.1.
 
-### 35.4.1 결함 1 — 왜 12개인가
+### 35.4.1 Defect 1 — why 12
 
-`continuity counter` 는 4비트다.
+The continuity counter is 4 bits.
 
-> **용어** — **연속성 카운터(continuity counter)**: MPEG-TS 패킷 헤더 마지막
-> 바이트의 하위 4비트. 같은 PID 에서 **페이로드를 실은 패킷마다** 1씩 증가하며
-> 0–15 를 순환한다. 값이 건너뛰면 그 사이 패킷이 유실된 것이다.
+> **Term** — **continuity counter**: the low 4 bits of the last byte of the MPEG-TS packet header. On the same
+> PID it increments by 1 **for each packet carrying payload** and cycles 0–15. A skipped value means a packet was
+> lost in between.
 
-4비트 순환이라는 사실에서 곧바로 따라 나오는 결론이 있다. **16의 배수만큼
-유실되면 카운터는 제자리로 돌아와 아무 흔적도 남지 않는다.** 이 저장소의 검사도
-예외가 아니다([`tsanalyze.py:112-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L112-L119)).
+From the fact that it is a 4-bit cycle, a conclusion follows immediately. **If a loss is a multiple of 16 the
+counter returns to place and leaves no trace.** This repository's check is no exception ([`tsanalyze.py:112-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L112-L119)).
 
-그런데 실제로 측정해 보면 사각지대가 하나가 아니라 **둘**이다.
+And measure it and the blind spot is not one but **two.**
 
-`plain/seg002.ts` 한가운데에서 같은 PID 의 패킷을 n 개 들어낸 뒤 `analyze()` 를
-돌린 결과다.
+The result of taking out n packets of the same PID from the middle of `plain/seg002.ts` and running `analyze()`.
 
-| 제거 개수 n | `cc_discontinuities` | 카운터가 남긴 흔적 |
+| Removed count n | `cc_discontinuities` | The trace the counter left |
 |---|---|---|
-| 1 | 1 | 기대 11 → 실제 12 |
-| **12** | **1** | 기대 11 → 실제 7 |
-| **15** | **0** | 기대 11 → 실제 **10** (직전 값과 동일) |
-| **16** | **0** | 기대 11 → 실제 **11** (기대값 그대로) |
-| 17 | 1 | 기대 11 → 실제 12 |
-| 32 | 0 | 두 바퀴 |
+| 1 | 1 | expected 11 → actual 12 |
+| **12** | **1** | expected 11 → actual 7 |
+| **15** | **0** | expected 11 → actual **10** (same as the previous value) |
+| **16** | **0** | expected 11 → actual **11** (the expected value as-is) |
+| 17 | 1 | expected 11 → actual 12 |
+| 32 | 0 | two laps |
 
-n = 16 이 안 잡히는 것은 예상대로다. n = 15 가 안 잡히는 것은 **규격의 예외 조항**
-때문이다.
+That n = 16 is not caught is as expected. That n = 15 is not caught is because of **the spec's exception
+clause.**
 
 ```python
 # tsanalyze.py:112-116
         prev = last_cc.get(pid)
         if prev is not None:
             expected = (prev + 1) & 0x0F
-            if cc != expected and cc != prev:  # cc == prev 는 규격상 허용된 중복 패킷
+            if cc != expected and cc != prev:  # cc == prev is a spec-permitted duplicate packet
                 rep.cc_discontinuities += 1
 ```
 
-15개를 들어내면 다음 패킷의 카운터가 직전 값과 **같아진다**. MPEG-TS 규격은 같은
-패킷을 두 번 보내는 것(duplicate packet)을 허용하고, 그때 카운터는 증가하지 않는다.
-검사기는 그 예외를 지키느라 진짜 유실 하나를 놓친다. **오탐을 줄이는 조항이 미탐을
-만드는 교과서적 사례**이며, 제18장에서 이 균형을 정면으로 다룬다.
+Take out 15 and the next packet's counter becomes **the same** as the previous value. The MPEG-TS spec permits
+sending the same packet twice (a duplicate packet), and then the counter does not increment. The checker, keeping
+that exception, misses one real loss. It is a **textbook case of a clause reducing false positives making a false
+negative**, and Chapter 18 treats this balance head-on.
 
-![제거 개수에 따른 CC 검출 여부와 두 사각지대](/images/lecture/hls-recon/35-cc-blindspot.svg)
+![Whether CC detects by removed count, and the two blind spots](/images/lecture/hls-recon/35-cc-blindspot.svg)
 
-*그림 35-2 — 제거 개수가 정하는 검출 여부 — 4비트 카운터의 두 사각지대*
+*Figure 35-2 — the removed count sets whether it detects — the two blind spots of a 4-bit counter*
 
-그래서 12 다. 16의 배수도 아니고, 16으로 나눈 나머지가 15 도 아니며, 양쪽에서 넉넉히
-떨어져 있다. **1 이나 2 를 골랐다면 검출은 되지만 "겨우 한 패킷 차이도 잡는다"는
-과한 주장을 시험하게 되고, 16 을 골랐다면 결함이 아예 재현되지 않는다.**
+So it is 12. Not a multiple of 16, its remainder mod 16 not 15, and amply away from both. **Choose 1 or 2 and it
+is detected but you end up testing the excessive claim "even a mere one-packet difference is caught," and choose
+16 and the defect does not reproduce at all.**
 
-여기에 두 번째 제약이 겹친다. 12 패킷은 2,256 바이트, 6초 세그먼트 1.6 MB 의 약
-0.14 % 로 **재생 시간으로 환산하면 약 8 밀리초**다. 타임라인 갭 검사의 임계는 프레임
-간격 중앙값의 3배 또는 0.4초 중 큰 값이므로(`probe.py:191,227`), 이 정도 유실은
-타임라인 검사를 건드리지 않는다. **결함 1 이 결함 3 의 관측 영역을 침범하지 않도록
-크기를 억제한 것**이다.
+Here a second constraint overlaps. 12 packets is 2,256 bytes, about 0.14% of the 1.6 MB 6-second segment, which
+**converted to playtime is about 8 milliseconds.** The timeline-gap check's threshold is the larger of three
+times the median frame interval or 0.4 second (`probe.py:191,227`), so a loss this size does not touch the
+timeline check. **The size was suppressed so that defect 1 does not invade defect 3's observation region.**
 
-### 35.4.2 결함 1 — 왜 한가운데인가
+### 35.4.2 Defect 1 — why the middle
 
-`cut = (len(raw) // 188 // 2) * 188` 은 패킷 개수의 절반 지점이다. 선두나 말미가
-아닌 이유를 측정으로 확인했다. 같은 12개를 위치만 바꿔 들어낸 결과다.
+`cut = (len(raw) // 188 // 2) * 188` is the halfway point of the packet count. The reason it is not the front or
+tail was confirmed by measurement. The result of taking out the same 12 with only the position changed.
 
-| 제거 위치 | 그 세그먼트 안에서 | 5개 체인 전체에서 | 어디에서 잡히는가 |
+| Removal position | Within that segment | Across the whole 5-piece chain | Where it is caught |
 |---|---|---|---|
-| **한가운데** | CC 1건 | CC 1건 | **`seg002` — 결함이 있는 바로 그 조각** |
-| 선두 12개 | **0건** | 4건 | `seg002` 3건 + `seg003` 1건 (번짐) |
-| 말미 12개 | **0건** | 1건 | **`seg003`** — 결함이 없는 다음 조각 |
+| **the middle** | 1 CC | 1 CC | **`seg002` — the very piece with the defect** |
+| the front 12 | **0** | 4 | `seg002` 3 + `seg003` 1 (spread) |
+| the tail 12 | **0** | 1 | **`seg003`** — the next piece with no defect |
 
-선두와 말미는 **그 세그먼트 안에서는 아무 증거도 남기지 않는다.** 이유는 카운터
-검사의 상태 규칙에 있다.
+The front and tail **leave no evidence within that segment.** The reason is in the counter check's state rule.
 
-- **선두**를 자르면, 그 세그먼트에서 처음 만나는 PID 의 `prev` 가 아직 `None` 이라
-  비교 자체가 일어나지 않는다. 게다가 선두 12개에는 PID 17·0·4096(PAT/PMT 계열)과
-  영상 PID 256 이 섞여 있어 **네 개 PID 의 상태를 동시에 흔든다** — 결함 하나가
-  점프 여러 건으로 번진다.
-- **말미**를 자르면 어긋남은 **다음 세그먼트의 첫 패킷**에서야 드러난다. 말미 12개는
-  전부 오디오 PID 257 이라 영상 유실이 오디오 결손으로 보고된다.
+- Cut the **front** and the first PID met in that segment has `prev` still `None` so the comparison itself does
+  not happen. Moreover the front 12 have PID 17·0·4096 (the PAT/PMT family) and video PID 256 mixed in, so it
+  **shakes four PIDs' states at once** — one defect spreads to several jumps.
+- Cut the **tail** and the off-ness is revealed only at the **next segment's first packet.** The tail 12 are all
+  audio PID 257 so a video loss is reported as an audio loss.
 
-가운데 12개는 전부 PID 256(영상) 하나에 속한다. 그래서 **주입 지점과 검출 지점이
-일치하고, 점프가 정확히 한 건으로 나타난다.**
+The middle 12 all belong to one PID 256 (video). So **the injection spot and the detection spot coincide, and the
+jump appears as exactly one.**
 
-> 결함 주입에서 위치는 크기만큼 중요하다. **결함이 보고되는 자리와 결함이 있는
-> 자리가 다르면, 그 테스트는 통과하더라도 사람을 엉뚱한 곳으로 보낸다.**
+> In fault injection the position matters as much as the size. **If the spot where the defect is reported and the
+> spot with the defect differ, that test, even if it passes, sends a human to the wrong place.**
 
-### 35.4.3 결함 1 — 왜 188 의 배수인가
+### 35.4.3 Defect 1 — why a multiple of 188
 
-`cut` 도 제거량 `188 * 12` 도 모두 188 의 배수다. 배수가 아니면 무엇이 달라지는지
-측정했다.
+Both `cut` and the removal amount `188 * 12` are multiples of 188. I measured what differs if not.
 
-| 제거량 | `sync_errors` | `cc_discontinuities` | 리포트 판정 |
+| Removal amount | `sync_errors` | `cc_discontinuities` | Report verdict |
 |---|---|---|---|
-| `188 × 12` | 0 | **1** | TS 무결성 **WARN** (CC 불연속) |
-| `188 × 12 + 50` | **4,347** | **0** | TS 무결성 **FAIL** (동기 이탈) |
-| `2000` | **4,344** | **0** | TS 무결성 **FAIL** (동기 이탈) |
+| `188 × 12` | 0 | **1** | TS integrity **WARN** (CC discontinuity) |
+| `188 × 12 + 50` | **4,347** | **0** | TS integrity **FAIL** (sync loss) |
+| `2000` | **4,344** | **0** | TS integrity **FAIL** (sync loss) |
 
-188 의 배수가 아닌 만큼 잘라내면 그 뒤 전체가 패킷 격자에서 어긋나 **동기 바이트가
-자리를 잃는다.** 그러면 잡히는 것은 "패킷 유실"이 아니라 "스트림 정렬 붕괴"이고,
-CC 불연속은 **한 건도 보고되지 않는다**(격자가 깨져 카운터를 읽을 위치 자체가 틀리므로).
+Cut by a non-multiple of 188 and everything after goes off the packet grid so **the sync byte loses its place.**
+Then what is caught is not "packet loss" but "stream-alignment collapse," and a CC discontinuity is **not reported
+at all** (the grid is broken so the very position to read the counter is wrong).
 
-즉 제거량이 188 의 배수가 아니면 이 테스트는 **의도한 것과 다른 검사**를 시험하게
-된다. 단언 문자열 `CC 불연속` 은 매칭에 실패하고 테스트는 붉게 죽는다 — 다행히
-소리 없이 틀리지는 않는다. 그러나 그것은 이 저장소가 두 결함을 **다른 문자열로
-보고하도록 설계했기 때문**이지, 자동으로 보장되는 성질이 아니다.
+That is, if the removal amount is not a multiple of 188 this test ends up testing **a different check than
+intended.** The assertion string `CC discontinuit` fails to match and the test dies red — fortunately it is not
+quietly wrong. But that is **because this repository designed the two defects to be reported with different
+strings**, not a property automatically guaranteed.
 
-한 가지 덧붙인다. `cut` 자체는 패킷 경계일 필요가 없다는 것도 측정으로 확인했다 —
-제거량이 188 의 배수이기만 하면 격자는 유지되고 CC 점프도 그대로 1건이다. 그럼에도
-경계를 맞추는 것이 옳다. **경계를 어기면 헤더는 패킷 P 의 것이고 페이로드 뒷부분은
-패킷 P+12 의 것인 접합물이 만들어지는데, 그것은 "12개 유실"의 모형이 아니다.**
-관측치가 같더라도 모형이 다르면 결함 주입으로서 실격이다.
+One addition. That `cut` itself need not be a packet boundary was confirmed by measurement too — as long as the
+removal amount is a multiple of 188 the grid is maintained and the CC jump is still 1. Even so, aligning the
+boundary is right. **Break the boundary and a splice is made where the header is packet P's and the payload's
+rear is packet P+12's, which is not a model of "12 lost."** Even with the same observed value, if the model
+differs it is disqualified as fault injection.
 
-### 35.4.4 결함 2 — 왜 `seg000` 을 복제 원본으로 삼는가
+### 35.4.4 Defect 2 — why `seg000` is the duplicate source
 
-주석이 이유를 직접 적어 두었다.
+The comment wrote the reason directly.
 
 ```python
 # tests/run.sh:138
-# 결함 2: 중복 송출. 아래 결함들이 건드리지 않는 seg000 을 원본으로 삼는다.
+# defect 2: duplicate delivery. use seg000, which the defects below do not touch, as the source.
 ```
 
-세그먼트는 다섯이고 결함은 넷이다. `seg001` 은 삭제되고 `seg002` 는 패킷이 빠지고
-`seg003` 은 HTML 로 바뀌며 `seg004` 는 복제 대상이다. **남는 것은 `seg000` 하나뿐이다.**
-선택의 여지가 없는 것처럼 보이지만, 그 사실 자체가 설계의 결과다.
+There are five segments and four defects. `seg001` is deleted, `seg002` has packets removed, `seg003` becomes
+HTML, and `seg004` is the duplicate target. **The only one left is `seg000`.** It looks like there is no choice,
+but that fact itself is the result of the design.
 
-손상된 조각을 복제 원본으로 삼으면 무엇이 깨지는지 따져 보면 이유가 분명해진다.
+Weigh what breaks if you use a damaged piece as the duplicate source and the reason is clear.
 
-| 복제 원본 후보 | 무엇이 섞이는가 |
+| Duplicate-source candidate | What gets mixed |
 |---|---|
-| `seg002`(패킷 빠짐) | 결함 1 의 CC 점프가 **두 곳에서** 세어져, CC 집계에서 결함 1 의 몫과 결함 2 의 몫을 분리할 수 없다 |
-| `seg003`(HTML) | 페이로드 유효성이 1건이 아니라 2건을 보고한다. "몇 개가 가짜인가"를 검증하는 단언을 나중에 추가할 수 없게 된다 |
-| `seg001`(삭제됨) | 파일이 없으므로 복제 자체가 불가능하다 |
+| `seg002` (packets removed) | defect 1's CC jump is counted in **two places**, so in the CC aggregate defect 1's share and defect 2's share cannot be separated |
+| `seg003` (HTML) | payload validity reports not 1 but 2. an assertion verifying "how many are fake" cannot be added later |
+| `seg001` (deleted) | the file is absent so the duplication itself is impossible |
 
-이것이 실험 설계의 기본 원칙과 정확히 같은 문제다.
+This is exactly the same problem as a basic principle of experimental design.
 
-> **용어** — **교락(confounding, 交絡)**: 둘 이상의 요인이 함께 변해 관측된 효과를
-> 어느 요인에 돌려야 할지 분리할 수 없는 상태.
+> **Term** — **confounding**: a state where two or more factors vary together so the observed effect cannot be
+> attributed to one factor.
 
-**결함끼리 겹치지 않게 배치하는 것은 교락을 줄이는 작업이다.** 다만 §35.5 에서
-보겠지만, 이 배치로도 교락은 남는다.
+**Placing the defects so they do not overlap is the work of reducing confounding.** Only, as §35.5 will show,
+even this placement leaves confounding.
 
-복제본이 **마지막** 조각(`seg004`)에 놓인 것도 우연이 아니다. 복제된 조각은 원본의
-표시 시각(0–6초)을 그대로 가지므로, 재조립본의 시간축에서 뒤로 돌아간다. 이것을
-중간에 놓으면 타임라인 갭 검사가 뒤엉키고, 끝에 놓으면 **총 길이에 거의 기여하지
-않는다** — 실측 결과 산출물 길이는 24.04초로, 결손된 6초만큼만 줄었다. 중복 송출이
-길이에 나타나지 않는다는 사실 자체가 "**고유성 검사가 따로 있어야 하는 이유**"다.
+That the duplicate is placed on the **last** piece (`seg004`) is no coincidence either. The duplicated piece
+keeps the original's presentation time (0–6 seconds) so it goes backward on the reassembled copy's time axis.
+Place it in the middle and the timeline-gap check gets tangled, place it at the end and it **contributes almost
+nothing to the total length** — measured, the output length was 24.04 seconds, shortened by only the lost 6
+seconds. The very fact that a duplicate delivery does not appear in the length is "**the reason a uniqueness
+check must be separate.**"
 
-### 35.4.5 결함 3·4 — 404 와 200+HTML 을 한 쌍으로 놓는 이유
+### 35.4.5 Defects 3·4 — why 404 and 200+HTML are placed as a pair
 
-이 둘은 따로 보면 평범하지만 **쌍으로 놓았을 때 구현을 가려낸다.**
+These two are ordinary seen separately but **placed as a pair they distinguish implementations.**
 
-| 결함 | HTTP 상태 | 서버가 말하는 것 | 실제 |
+| Defect | HTTP status | What the server says | Reality |
 |---|---|---|---|
-| 3 | `404` | 실패 | 실패 — **정직한 실패** |
-| 4 | `200` | 성공 | 실패 — **거짓 성공** |
+| 3 | `404` | failure | failure — **an honest failure** |
+| 4 | `200` | success | failure — **a false success** |
 
-결함 3만 넣으면 "상태 코드를 보는 구현"이 통과한다. 결함 4를 함께 넣어야 **"선두
-바이트를 보는 구현"만 통과한다.** 두 결함은 서로를 보완하는 짝이며, 그 짝이 곧
-제5장·제14장에서 다룬 "200 은 성공이 아니다"라는 명제의 회귀 고정이다.
+Put in defect 3 alone and an "implementation that looks at the status code" passes. Put in defect 4 together and
+**only an "implementation that looks at the leading byte" passes.** The two defects are a complementary pair, and
+that pair is the regression fixing of the proposition "200 is not success" covered in Chapters 5·14.
 
-결함 4 의 정교함은 한 겹 더 있다. 테스트 서버는 파이썬 표준 `http.server` 이고,
-이 서버는 확장자로 `Content-Type` 을 정한다. 파일 이름이 `seg003.ts` 이므로 응답
-헤더는 **`Content-Type: video/mp2t`** 로 나간다 — 내용이 HTML 인데도.
+Defect 4's precision has one more layer. The test server is the Python standard `http.server`, and this server
+sets the `Content-Type` by extension. Since the filename is `seg003.ts` the response header goes out as
+**`Content-Type: video/mp2t`** — even though the content is HTML.
 
-실제로 돌려 본 결과다.
+The result of actually running it.
 
 ```
-✗ 페이로드 유효성    1개가 200 응답이나 미디어가 아님 (video/mp2t) — seg#3 선두 3c21444f43545950
+✗ payload validity   1 is a 200 response but not media (video/mp2t) — seg#3 head 3c21444f43545950
 ```
 
-`3c21444f` 는 `<!DO` 다. **상태 코드도 정상, Content-Type 도 미디어, 그런데 내용은
-HTML.** 헤더에 기대는 판별은 어떤 방식으로도 이 결함을 잡을 수 없다. README 가
-이 점을 명시해 두었다(`README.md:382-384`).
+`3c21444f` is `<!DO`. **The status code normal, the Content-Type media, and yet the content HTML.** A
+determination relying on the header cannot catch this defect by any method. The README stated this point
+(`README.md:382-384`).
 
-> `200 응답에 HTML` 항목은 헤더를 믿으면 놓친다. 테스트에서 서버는
-> `Content-Type: video/mp2t` 로 응답하지만 본문은 `<!DOCTYPE html>` 이다 — 그래서
-> 헤더가 아니라 선두 바이트로 판정한다.
+> The "HTML on a 200 response" item is missed if you believe the header. In the test the server responds with
+> `Content-Type: video/mp2t` but the body is `<!DOCTYPE html>` — so it judges by the leading byte, not the
+> header.
 
-주입이 **파일 이름을 `.html` 로 바꾸지 않고 `.ts` 그대로 둔 것**이 핵심이다. 이름을
-바꿨다면 서버가 `text/html` 을 붙였을 것이고, 그러면 "Content-Type 을 보는 구현"도
-통과해 버린다. **결함을 더 그럴듯하게 만든 것이 아니라, 더 잡기 어렵게 만든 것이다.**
+That the injection **left the filename `.ts` instead of changing it to `.html`** is the core. Had it changed the
+name, the server would have attached `text/html`, and then an "implementation that looks at the Content-Type"
+would pass too. **It made the defect not more plausible but harder to catch.**
 
-### 35.4.6 결함 5 — 왜 음수가 아니라 양수 60초인가
+### 35.4.6 Defect 5 — why positive 60 seconds and not negative
 
-이 장에서 가장 미묘한 값이다. 주석이 이유를 적어 두었다.
+The most subtle value in this chapter. The comment wrote the reason.
 
 ```python
 # tests/run.sh:84-92
@@ -396,115 +386,115 @@ CUES = {
     "suben":  [(i * 5, i * 5 + 4, f"English subtitle line {i+1}") for i in range(6)],
     "subbad": [(i * 5, i * 5 + 4, f"어긋난 자막 {i+1}번") for i in range(6)],
 }
-# subbad 는 X-TIMESTAMP-MAP 기준을 60초 어긋나게 잡아 자막이 영상 범위를 벗어나게 만든다.
-# 음수로 만들면 안 된다 — 33비트 부호 없는 PTS 에 음수는 무효라 timestamp_offset 이
-# None 을 돌려주고(subtitles.py:208-210), 보정을 아예 걸지 않아 결함이 주입되지 않는다.
+# subbad sets the X-TIMESTAMP-MAP reference 60 seconds off so the subtitle strays out of the video range.
+# must not make it negative — a negative is invalid for a 33-bit unsigned PTS so timestamp_offset returns
+# None (subtitles.py:208-210), no correction is applied at all, and the defect is not injected.
 OFFSET = {"subko": 0, "suben": 0, "subbad": 60 * 90000}
 ```
 
-부호가 왜 결정적인지 확인하려면 오프셋을 쓰는 쪽 코드를 봐야 한다.
+To confirm why the sign is decisive you must look at the code that uses the offset.
 
 ```python
 # subtitles.py:208-210
-    # 33비트 부호 없는 값이 규격이라 음수는 무효다 — 매핑 자체를 신뢰하지 않는다.
+    # a 33-bit unsigned value is the spec so a negative is invalid — do not trust the mapping itself.
     if mpegts < 0:
         return None
 ```
 
-`None` 이 돌아오면 호출부는 보정을 **건너뛴다**([`cli.py:283-286`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L283-L286)). 자막은 원래
-적힌 시각 그대로 남는다. 그런데 원래 적힌 시각은 0–29초 — **30초짜리 영상 범위
-안이다.** 검사는 통과한다. 결함이 재현되지 않는다.
+When `None` returns the caller **skips** the correction ([`cli.py:283-286`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L283-L286)). The subtitle stays at the originally
+written time. And the originally written time is 0–29 seconds — **inside the 30-second video range.** The check
+passes. The defect does not reproduce.
 
-같은 스트림을 부호만 바꿔 두 벌 만들고 실제로 돌려 확인했다.
+I made two copies of the same stream with only the sign changed and confirmed by running.
 
-| 오프셋 | 보정 적용 | 자막 시각 범위 | 영상 길이 | 자막 타임라인 | 종료 코드 |
+| Offset | Correction applied | Subtitle time range | Video length | Subtitle timeline | Exit code |
 |---|---|---|---|---|---|
-| **`+60 * 90000`** | 적용됨 (+60.00s) | **60.0 – 89.0s** | 30.0s | **FAIL** — 영상 범위를 벗어난 트랙 | **2** |
-| `-60 * 90000` | **건너뜀** | 0.0 – 29.0s | 30.0s | PASS — 전 트랙이 영상 범위 내 | **0** |
+| **`+60 * 90000`** | applied (+60.00s) | **60.0 – 89.0s** | 30.0s | **FAIL** — a track out of the video range | **2** |
+| `-60 * 90000` | **skipped** | 0.0 – 29.0s | 30.0s | PASS — all tracks within the video range | **0** |
 
-**음수로 만들면 테스트는 조용히 초록색이 된다.** 결함을 넣었는데 도구가 PASS 를
-내고, 그 PASS 를 보고 "자막 타임라인 검사가 동작한다"고 결론짓게 된다. 검증 도구를
-검증하려던 테스트가 정확히 반대의 거짓 확신을 만드는 것이다.
+**Make it negative and the test goes quietly green.** You injected a defect but the tool gives PASS, and seeing
+that PASS you conclude "the subtitle-timeline check works." A test meant to verify the verifier makes the exact
+opposite false confidence.
 
-여기에 더해 **부호를 반대로 잡으면 결함이 통과하는 이유가 두 겹**이라는 점도 짚어
-둔다. 첫째, 위 범위 검사가 매핑을 버린다. 둘째, 설령 버리지 않고 -60초를 그대로
-적용했더라도 `shift()` 는 음수 시각을 0 으로 클램프하므로([`subtitles.py:227`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L227))
-자막은 0초 근처에 뭉칠 뿐 **영상 범위를 벗어나지 않는다.** 어느 쪽으로도 결함은
-관측되지 않는다.
+In addition, note that **there are two plies of reason the defect passes if you get the sign wrong.** First, the
+above range check discards the mapping. Second, even had it not discarded and applied -60 seconds as-is, `shift()`
+clamps a negative time to 0 ([`subtitles.py:227`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L227)) so the subtitle just bunches near 0 seconds and **does not stray out of
+the video range.** Either way the defect is not observed.
 
-> **결함 주입은 검출기의 판정 규칙 안에서 이루어져야 한다.** 검출기가 "영상 범위
-> 바깥"을 찾는다면, 주입은 반드시 바깥으로 나가야 한다. 규칙을 모르고 넣은 결함은
-> 결함이 아니라 잡음이다.
+> **Fault injection must be done within the detector's verdict rule.** If the detector looks for "outside the
+> video range," the injection must necessarily go outside. A defect put in without knowing the rule is not a
+> defect but noise.
 
-크기 60초의 근거도 계산으로 확인된다. 검사는 `last_cue > video_len + 5.0` 일 때
-FAIL 을 낸다([`report.py:432`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L432)). 마지막 큐가 29초, 영상이 30초이므로 오프셋이 6초를
-넘어야 검출된다. 60초는 그 최소값의 10배로, **임계 근처의 아슬아슬한 통과에
-의존하지 않도록** 여유를 둔 값이다.
+The basis for the size 60 seconds is confirmed by calculation too. The check gives FAIL when `last_cue > video_len
++ 5.0` ([`report.py:432`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L432)). The last cue is 29 seconds and the video 30 seconds so the offset must exceed 6 seconds to
+be detected. 60 seconds is 10 times that minimum, a value with margin **so as not to depend on a knife-edge pass
+near the threshold.**
 
-### 35.4.7 결함 5′ — 왜 sidecar 와 내장을 따로 고정하는가
+### 35.4.7 Defect 5′ — why fix the sidecar and embed separately
 
-같은 결함을 두 번 넣는 유일한 항목이다. 이유는 **기준선이 경로마다 다르기 때문**이다.
+It is the only item where the same defect is put in twice. The reason is **the baseline differs per path.**
 
 ```bash
 # tests/run.sh:500-501
-# 내장 모드에서도 같은 결함을 잡아야 한다. 자막을 컨테이너에 넣으면 전체 duration 이
-# 자막 끝까지 늘어나므로, 기준선을 실측으로 잡으면 이 검사는 항상 통과해 버린다.
+# The same defect must be caught in embed mode too. Putting the subtitle in the container stretches the whole duration
+# to the subtitle's end, so taking the baseline by measurement makes this check always pass.
 ```
 
-자막을 `.mkv` 에 넣으면 산출물의 duration 이 자막 끝(89초)까지 늘어난다. 실측
-길이를 기준선으로 삼으면 "자막 89초 vs 영상 89초"가 되어 **밀린 자막이 스스로
-기준을 끌고 간다.** 그래서 [`report.py:342`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L342) 는 기준선을 플레이리스트 **선언 길이**로
-잡는다. 제38장의 주제이며, 여기서는 그 설계가 회귀로 고정되어 있다는 사실만 짚는다.
+Put the subtitle in `.mkv` and the output's duration stretches to the subtitle's end (89 seconds). Take the
+measured length as the baseline and it becomes "subtitle 89s vs video 89s" — **the slipped subtitle drags its own
+baseline.** So [`report.py:342`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L342) takes the baseline as the playlist's **declared length.** It is Chapter 38's subject, and
+here only the fact that that design is fixed by regression is noted.
 
-두 경로가 서로 다른 문장을 내는 것도 확인해 둘 만하다.
+That the two paths give different sentences is worth confirming too.
 
-| 경로 | 리포트 문장 | 단언 |
+| Path | Report sentence | Assertion |
 |---|---|---|
-| 별도 파일 | `영상 범위를 벗어난 트랙 …` ([`report.py:444`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L444)) | `자막 타임라인.*영상 범위를 벗어난` |
-| 컨테이너 내장 | `… 영상 범위를 벗어남, X-TIMESTAMP-MAP …` ([`report.py:365`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L365)) | `자막 타임라인.*영상 범위를 벗어남` |
+| separate file | `a track out of the video range …` ([`report.py:444`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L444)) | `subtitle timeline.*out of the video range` |
+| container embed | `… out of video range, X-TIMESTAMP-MAP …` ([`report.py:365`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L365)) | `subtitle timeline.*out of video range` |
 
-`벗어난` 과 `벗어남` — 한 글자 차이다. 두 단언이 서로의 문장에 매칭되지 않으므로
-**경로를 헷갈려 쓰면 테스트가 죽는다.** 이것은 안전장치이자 취약점이다(§35.8).
+`out of the video range` and `out of video range` — they differ by one word (`the`). Since the two assertions do
+not match each other's sentence, **mix up the paths and the test dies.** This is both a safety device and a
+vulnerability (§35.8).
 
-### 35.4.8 결함 6 — 200 으로 오는 자막 아닌 자막
+### 35.4.8 Defect 6 — a subtitle that comes as a 200 but is not a subtitle
 
-세그먼트에 넣은 결함 4 를 자막 경로에 그대로 옮긴 것이다.
+It is defect 4, put in a segment, moved as-is onto the subtitle path.
 
 ```python
 # tests/run.sh:258-259
-# 200 으로 오지만 자막이 아닌 응답. 이것을 자막으로 저장하면 안 된다.
+# a response that comes as 200 but is not a subtitle. this must not be stored as a subtitle.
 (work / "함정01.srt").write_text("<!DOCTYPE html><html><body>404</body></html>\n", encoding="utf-8")
 ```
 
-파일 이름이 `.srt` 인 것이 핵심이다. 사이드카 자막은 URL 을 **조립해서** 찾으므로
-([`subtitles.py:398-414`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L398-L414)), 서버는 존재하는 `.srt` 를 정직하게 200 으로 내려준다.
-확장자·상태 코드·경로 규칙이 전부 맞고 내용만 다르다. 판별 근거는 하나뿐이다.
+That the filename is `.srt` is the core. Since a sidecar subtitle is found by **assembling** the URL
+([`subtitles.py:398-414`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L398-L414)), the server honestly returns the existing `.srt` as a 200. The extension·status code·path rule
+all match and only the content differs. There is only one determination basis.
 
 ```python
 # subtitles.py:417-422
 def _sniff_format(body: bytes) -> str:
-    """자막 본문의 형식을 선두 내용으로 판별한다. 자막이 아니면 빈 문자열.
+    """Determine a subtitle body's format by its leading content. Empty string if not a subtitle.
 
-    Content-Type 을 믿지 않는다 — 자막을 `application/octet-stream` 으로 주는
-    서버가 있고, 반대로 200 으로 온 HTML 오류 페이지도 같은 헤더를 달고 온다.
-    큐 타임코드가 하나라도 있는지가 유일하게 확실한 근거다.
+    Do not trust Content-Type — some servers give subtitles as `application/octet-stream`,
+    and conversely an HTML error page arriving as 200 comes with the same header. Whether
+    there is even one cue timecode is the only sure basis.
 ```
 
-주입한 HTML 에는 `-->` 도 `00:00:01,000` 도 없다. 그래서 큐 타임코드 정규식이
-걸리지 않고 판별이 실패한다. 단언은 **두 가지를 함께** 본다.
+The injected HTML has neither `-->` nor `00:00:01,000`. So the cue-timecode regex does not catch and the
+determination fails. The assertion looks at **two things together.**
 
 ```bash
 # tests/run.sh:292-294
-[[ ! -e "$WORK/out/함정/함정01.srt" ]] && ok "자막 아닌 200 응답 거부" || bad "HTML 을 자막으로 저장함"
-grep -q '후보 .*개 모두 실패' "$WORK/out/sidecar3.log" \
-  && ok "실패를 후보 목록과 함께 보고" || bad "실패 보고 누락"
+[[ ! -e "$WORK/out/함정/함정01.srt" ]] && ok "rejects a non-subtitle 200 response" || bad "stored HTML as a subtitle"
+grep -q 'all .* candidates failed' "$WORK/out/sidecar3.log" \
+  && ok "reports the failure with the candidate list" || bad "failure report missing"
 ```
 
-**거부했는가**(파일이 없는가)와 **보고했는가**(왜 실패했는지 말하는가)를 나눠
-확인한다. 조용히 버리는 구현은 첫 단언은 통과하지만 둘째에서 걸린다. 실패를 삼키는
-도구와 실패를 말하는 도구를 구별하는 단언이다.
+It separately confirms **did it reject** (is the file absent) and **did it report** (does it say why it failed).
+An implementation that discards quietly passes the first assertion but catches on the second. It is an assertion
+distinguishing a tool that swallows the failure from a tool that speaks the failure.
 
-### 35.4.9 결함 7 — 60% 와 0바이트는 같은 검사의 다른 분기다
+### 35.4.9 Defect 7 — 60% and 0 bytes are different branches of the same check
 
 ```python
 # tests/run.sh:356-362
@@ -517,39 +507,36 @@ whole = (d / "그렌라간02.mp4").read_bytes()
 PY
 ```
 
-두 파일은 같은 판정 함수 `inventory.flaw()` 를 지나지만 **다른 분기에서 걸린다.**
-실측 결과다.
+The two files go through the same verdict function `inventory.flaw()` but **catch on different branches.** The
+measured result.
 
-| 파일 | 크기 | 걸리는 분기 | 사유 문자열 |
+| File | Size | Branch it catches | Reason string |
 |---|---|---|---|
-| 0바이트 | 0 B | [`inventory.py:135-136`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L135-L136) 크기 하한 | `0B 뿐이다 — 영상이라고 보기 어렵다` |
-| 60% 잘림 | 790,939 B | [`inventory.py:94-95`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L94-L95) 상자 경계 | `mdat 상자가 파일 끝을 넘어간다 — 잘린 파일` |
+| 0 bytes | 0 B | [`inventory.py:135-136`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L135-L136) size lower bound | `only 0B — hard to call it video` |
+| cut at 60% | 790,939 B | [`inventory.py:94-95`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L94-L95) box boundary | `the mdat box goes past the end of the file — a truncated file` |
 
-`MIN_BYTES` 는 64 KB 다([`inventory.py:35`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L35)). 0바이트는 그 하한에서 즉시 걸리므로
-**컨테이너 구조를 볼 필요도 없다.** 반대로 60% 잘림은 하한을 가뿐히 넘고, 선두
-`ftyp` 상자도 멀쩡하며, 확장자도 `.mp4` 다. **값싼 판별을 전부 통과한다.** 오직
-상자 크기의 합이 파일 크기와 맞지 않는다는 사실만이 남는다.
+`MIN_BYTES` is 64 KB ([`inventory.py:35`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L35)). 0 bytes catches at that lower bound immediately so **there is no need to even
+look at the container structure.** Conversely the 60% cut easily exceeds the lower bound, the leading `ftyp` box
+is fine, and the extension is `.mp4`. **It passes every cheap determination.** Only the fact that the sum of box
+sizes does not match the file size remains.
 
-비율이 60% 여야 하는 것은 아니다 — 10%·30%·90%·99% 모두 같은 사유로 걸린다는 것을
-확인했다. 중요한 것은 비율 자체가 아니라 **잘린 지점이 `mdat` 본문 한가운데라는
-것**이다. 원본 파일의 상자 배치는 `ftyp`(32 B) → `free`(8 B) → `mdat`(1,312,583 B)
-→ `moov`(5,610 B) 이고, 60% 지점은 `mdat` 안쪽이다. 만약 잘린 지점이 우연히 상자
-경계와 맞아떨어지면 사유가 `moov 상자가 없다` 로 바뀐다 — 여전히 검출은 되지만
-**다른 분기를 시험하게 된다.**
+The ratio need not be 60% — I confirmed 10%·30%·90%·99% all catch on the same reason. What matters is not the
+ratio itself but **that the cut spot is in the middle of the `mdat` body.** The original file's box layout is
+`ftyp` (32 B) → `free` (8 B) → `mdat` (1,312,583 B) → `moov` (5,610 B), and the 60% point is inside `mdat`. If the
+cut spot happens to align with a box boundary the reason changes to `no moov box` — still detected but **it tests
+a different branch.**
 
-여기에 대비 항목이 함께 놓여 있다는 점이 더 중요하다. 같은 폴더에 정상 회차가 넷
-들어 있고, 그중 둘은 `moov` 가 앞에 오는 파일과 뒤에 오는 파일이다
-(`tests/run.sh:349-351`). 결함 검출만 고정하면 **"항상 손상으로 판정하는 구현"이
-통과한다.** 이 양방향 고정이 제37장의 주제다.
+That a contrast item is placed together is more important. In the same folder are four normal episodes, and two
+of them are a file with `moov` in front and one with it after (`tests/run.sh:349-351`). Fix only defect detection
+and **an "implementation that always judges damaged" passes.** This bidirectional fixing is Chapter 37's subject.
 
-한 가지 더. `--verify-existing` 이 붙는 깊은 검사에서 `ffprobe` 는 이 파일을 열지
-못한다(`moov atom not found`). 그러나 **깊은 검사에 도달하기 전에 값싼 구조 검사가
-이미 잡는다.** 판정의 비대칭 비용 — 값싼 검사로 확정할 수 있으면 비싼 검사를 부르지
-않는다 — 이 코드에 그대로 나타난 자리다.
+One more. In the deep check attached by `--verify-existing`, `ffprobe` cannot open this file (`moov atom not
+found`). But **before reaching the deep check the cheap structure check already catches it.** The verdict's cost
+asymmetry — if the cheap check can settle it, do not call the expensive check — appears in this code as-is here.
 
-### 35.4.10 결함 8 — 검출기의 전제조건을 만족시켜야 한다
+### 35.4.10 Defect 8 — the detector's precondition must be satisfied
 
-가장 조용하지만 설계상 가장 까다로운 주입이다.
+The quietest but the most design-tricky injection.
 
 ```bash
 # tests/run.sh:425-431
@@ -558,11 +545,11 @@ rm -rf "$WORK/fill"; mkdir -p "$FILL"
 for n in 01 02 03; do
   ffmpeg -v error -y -i source.mp4 -t 5 -c copy "$FILL/메움${n}.mp4"
 done
-# 01·02 만 자막이 있다 → 03 이 '자막만 빠진' 회차다.
+# only 01·02 have subtitles → 03 is the 'subtitle-only-missing' episode.
 for n in 01 02; do printf 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n기존\n' >"$FILL/메움${n}.ko.vtt"; done
 ```
 
-회차 3개 중 2개에 자막이 있다. 이 비율이 결정적이다.
+2 of the 3 episodes have subtitles. This ratio is decisive.
 
 ```python
 # inventory.py:272-275
@@ -572,320 +559,312 @@ for n in 01 02; do printf 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n기존\n' >"
     return sorted(n for n, it in sound.items() if not it.subs)
 ```
 
-**절반 미만이 자막을 가지고 있으면 "원래 자막이 없는 작품"으로 보고 빈 목록을
-돌려준다.** 3개 중 1개만 자막이 있게 만들었다면 `1 × 2 < 3` 이 참이므로 결손이
-**하나도 보고되지 않는다.** 결함을 넣었는데 검출기는 "결손 없음"을 낸다.
+**If fewer than half have subtitles it sees it as "a work originally without subtitles" and returns an empty
+list.** Had you made only 1 of 3 have a subtitle, `1 × 2 < 3` is true so **not a single loss is reported.** You
+injected a defect but the detector gives "no loss."
 
-이것이 §35.4.6 의 부호 문제와 같은 형태의 함정이다. 검출기에는 **자기가 판단을
-시작하는 전제조건**이 있고, 결함 주입은 그 전제를 만족시킨 상태에서 이루어져야 한다.
-2/3 은 임의의 수가 아니라 **다수결 조건을 넘기는 최소 구성**이다.
+This is a trap of the same form as §35.4.6's sign problem. The detector has a **precondition where it starts
+judging**, and fault injection must be done in a state satisfying that precondition. 2/3 is not an arbitrary
+number but **the minimum configuration passing the majority condition.**
 
-주입의 정교함은 파일 배치에도 있다. `메움03.mp4` 는 다른 회차와 **같은 크기**로
-만들어졌고, 단언은 메우기가 끝난 뒤 그 크기가 그대로인지를 확인한다.
+The injection's precision is also in the file placement. `메움03.mp4` is made the **same size** as the other
+episodes, and the assertion confirms that size stays the same after the filling is done.
 
 ```bash
 # tests/run.sh:469-470
 [[ ! -f "$FILL/메움03.mp4.part" ]] && [[ $(wc -c <"$FILL/메움03.mp4") -eq $(wc -c <"$FILL/메움01.mp4") ]] \
-  && ok "영상은 다시 받지 않는다" || bad "영상을 건드림"
+  && ok "the video is not re-received" || bad "touched the video"
 ```
 
-**결함이 고쳐졌는가**(자막이 생겼는가)뿐 아니라 **고치는 과정에서 다른 것을
-망가뜨리지 않았는가**(영상을 다시 받지 않았는가)를 함께 확인한다. 결함 주입 테스트가
-검출뿐 아니라 **복구의 부작용**까지 고정하는 드문 예다.
+It confirms together not only **was the defect fixed** (did a subtitle appear) but **did fixing it not break
+something else** (was the video not re-received). It is a rare example of a fault-injection test fixing not only
+detection but **the side effect of the recovery.**
 
 ---
 
-## 35.5 대응표는 1:1 인가 — 실측
+## 35.5 Is the mapping table 1:1 — measured
 
-여기까지가 설계 의도다. 이제 그 의도가 실제로 성립하는지 확인한다. 방법은 단순하다.
-결함을 하나씩 빼거나 하나만 넣고 돌려 보면 된다.
+Up to here is the design intent. Now confirm whether that intent actually holds. The method is simple. Remove the
+defects one by one, or put in only one, and run.
 
-### 35.5.1 결함 넷을 함께 넣은 결과
+### 35.5.1 The result of putting the four together
 
-`damaged` 스트림을 그대로 돌린 실측이다(ffmpeg 8.1.1).
+The measurement of running the `damaged` stream as-is (ffmpeg 8.1.1).
 
-| 검사 항목 | 판정 | 메시지 | 어느 결함의 몫인가 |
+| Check item | Verdict | Message | Whose share it is |
 |---|---|---|---|
-| 플레이리스트 | PASS | 세그먼트 5개, 선언 길이 30.00s | — |
-| 세그먼트 수신 | **FAIL** | `1/5개 실패 (HTTP [404])` | 결함 3 |
-| 응답 지연 | PASS | TTFB p50 1ms / p95 1ms | — |
-| 페이로드 유효성 | **FAIL** | `1개가 200 응답이나 미디어가 아님 (video/mp2t)` | 결함 4 |
-| 세그먼트 고유성 | WARN | `중복 해시 존재` | 결함 2 |
-| TS 무결성 | WARN | `CC 불연속 11건(패킷 유실)` | 결함 1 **＋ 3 ＋ 2** |
-| 길이 정합 | WARN | `실측 24.04s vs 선언 30.00s (드리프트 -5.96s)` | 결함 3 |
-| 스트림 구성 | PASS | h264 + aac | — |
-| 타임라인 연속성 | **FAIL** | `결손 1건 / 합계 6.03s @ 5.99~12.02s` | 결함 3 |
-| 전체 디코드 | **FAIL** | `오류 6건 — mb_type 644 in P slice too large` | 결함 1 ＋ 3 |
+| playlist | PASS | 5 segments, declared length 30.00s | — |
+| segment receive | **FAIL** | `1/5 failed (HTTP [404])` | defect 3 |
+| response latency | PASS | TTFB p50 1ms / p95 1ms | — |
+| payload validity | **FAIL** | `1 is a 200 response but not media (video/mp2t)` | defect 4 |
+| segment uniqueness | WARN | `duplicate hash present` | defect 2 |
+| TS integrity | WARN | `11 CC discontinuities (packet loss)` | defect 1 **+ 3 + 2** |
+| length consistency | WARN | `measured 24.04s vs declared 30.00s (drift -5.96s)` | defect 3 |
+| stream composition | PASS | h264 + aac | — |
+| timeline continuity | **FAIL** | `1 gap / total 6.03s @ 5.99~12.02s` | defect 3 |
+| full decode | **FAIL** | `6 errors — mb_type 644 in P slice too large` | defect 1 + 3 |
 
-종료 코드는 2 다. 대응표가 약속한 다섯 문자열이 모두 나오므로 `tests/run.sh:481-487`
-의 여섯 단언은 통과한다. **겉으로는 완벽하다.** 그러나 오른쪽 열이 이미 문제를
-드러내고 있다.
+The exit code is 2. The five strings the mapping table promised all come out so the six assertions of
+`tests/run.sh:481-487` pass. **On the surface it is perfect.** But the right column is already revealing the
+problem.
 
-### 35.5.2 CC 불연속 11건의 분해
+### 35.5.2 Decomposing the 11 CC discontinuities
 
-결함 1 이 만든 CC 점프는 **1건**이다(§35.4.1 의 측정). 그런데 리포트는 11건을
-보고한다. 저장소의 분석 코드를 그대로 불러 조각별로 분해했다.
+The CC jump defect 1 made is **1** (§35.4.1's measurement). And yet the report reports 11. I called the
+repository's analysis code as-is and decomposed it per piece.
 
-![결함 넷을 함께 주입했을 때 CC 관측치가 섞이는 모습](/images/lecture/hls-recon/35-crosstalk.svg)
+![How the CC observations get mixed when the four defects are injected together](/images/lecture/hls-recon/35-crosstalk.svg)
 
-*그림 35-3 — 한 스트림에 넷을 함께 넣으면 관측치가 섞인다*
+*Figure 35-3 — put the four together in one stream and the observations get mixed*
 
-| 분석 순서 | 조각 | CC 기여 | 원인 |
+| Analysis order | Piece | CC contribution | Cause |
 |---|---|---|---|
-| 1 | `seg000` | 0 | 첫 조각, 비교 대상 없음 |
-| — | `seg001` | (없음) | 404 로 받지 못해 분석에서 빠짐 |
-| 2 | `seg002` | **6** | 5건 = `seg001` 결손이 만든 경계 점프(PID 5종) + **1건 = 결함 1** |
-| — | `seg003` | (제외) | 미디어가 아니라 분석 대상에서 제외 |
-| 3 | `seg004` | **5** | `seg000` 복제라 카운터가 뒤로 돌아감(PID 5종) |
+| 1 | `seg000` | 0 | first piece, no comparison target |
+| — | `seg001` | (none) | not received due to 404, dropped from analysis |
+| 2 | `seg002` | **6** | 5 = the boundary jump `seg001`'s loss made (5 PIDs) + **1 = defect 1** |
+| — | `seg003` | (excluded) | not media so excluded from analysis |
+| 3 | `seg004` | **5** | being a `seg000` duplicate the counter goes backward (5 PIDs) |
 
-합계 11. **결함 1 의 몫은 11분의 1이다.** 나머지 10건은 결함 3(세그먼트 결손)과
-결함 2(복제)가 CC 관측치에 남긴 흔적이다.
+Total 11. **Defect 1's share is 1 of 11.** The other 10 are the trace defect 3 (segment loss) and defect 2
+(duplicate) left in the CC observation.
 
-그렇다면 결정적인 질문은 이것이다 — **결함 1 을 빼면 단언이 실패하는가?**
+Then the decisive question is this — **if you remove defect 1, does the assertion fail?**
 
-빼고 돌렸다.
+I removed it and ran.
 
 ```
-== 결함 1 만 제거하고 나머지 셋 유지 ==
+== remove only defect 1, keep the other three ==
 exit=2
-  ! 세그먼트 고유성    중복 해시 존재 — 동일 세그먼트가 반복 송출됨
-  ! TS 무결성          CC 불연속 10건(패킷 유실)
+  ! segment uniqueness  duplicate hash present — the same segment is repeatedly delivered
+  ! TS integrity        10 CC discontinuities (packet loss)
 ```
 
-**`CC 불연속` 은 그대로 나온다.** 즉 `tests/run.sh:483` 의 단언은 **결함 1 이
-없어도 통과한다.** 패킷 제거 주입을 통째로 삭제해도 이 테스트는 초록색을 유지한다.
+**`CC discontinuit` still comes out.** That is, `tests/run.sh:483`'s assertion **passes even without defect 1.**
+Delete the packet-removal injection wholesale and this test stays green.
 
-대응표의 1번 행은 **설계 의도로는 참이지만, 관측으로는 확인되지 않는다.**
+The mapping table's row 1 is **true as design intent but not confirmed by observation.**
 
-### 35.5.3 결함 1·2 는 종료 코드에 기여하지 않는다
+### 35.5.3 Defects 1·2 do not contribute to the exit code
 
-두 번째 실측이다. 각 결함을 **혼자만** 넣은 스트림을 만들어 돌렸다.
+The second measurement. I made streams with each defect put in **alone** and ran.
 
-| 스트림 | 리포트 | 종료 코드 |
+| Stream | Report | Exit code |
 |---|---|---|
-| 결함 1 만 (패킷 12개 제거) | `! TS 무결성  CC 불연속 1건(패킷 유실)` | **0** |
-| 결함 2 만 (세그먼트 중복) | `! 세그먼트 고유성  중복 해시 존재` ＋ `! TS 무결성  CC 불연속 4건` | **0** |
+| defect 1 only (12 packets removed) | `! TS integrity  1 CC discontinuity (packet loss)` | **0** |
+| defect 2 only (segment duplicate) | `! segment uniqueness  duplicate hash present` + `! TS integrity  4 CC discontinuities` | **0** |
 
-둘 다 WARN 이라 종료 코드가 0 이다. `damaged` 스트림이 exit 2 를 내는 것은 **전적으로
-결함 3·4 와 그 파생(타임라인 결손, 디코드 오류) 덕분**이다. `tests/run.sh:481` 의
-`[[ $code -eq 2 ]]` 는 결함 1·2 에 대해 아무것도 말하지 않는다.
+Both are WARN so the exit code is 0. That the `damaged` stream gives exit 2 is **entirely thanks to defects 3·4
+and their derivatives (timeline loss, decode error).** `tests/run.sh:481`'s `[[ $code -eq 2 ]]` says nothing
+about defects 1·2.
 
-여기서 결함 2 에 관한 사실도 하나 더 드러난다. **중복 주입은 고유성 검사만 겨냥한
-것이 아니다** — 혼자 넣어도 CC 불연속 4건을 만든다. 복제된 조각의 카운터가 앞
-조각과 이어지지 않기 때문이다. 대응표 2번 행의 "겨냥한 검사: 세그먼트 고유성"은
-절반의 진실이다.
+Here one more fact about defect 2 is revealed. **The duplicate injection does not target only the uniqueness
+check** — put in alone it makes 4 CC discontinuities too. Because the duplicated piece's counter does not connect
+with the previous piece. Mapping table row 2's "targeted check: segment uniqueness" is a half-truth.
 
-### 35.5.4 그리고 아슬아슬한 통과 하나
+### 35.5.4 And one knife-edge pass
 
-`길이 정합` 항목을 다시 본다.
+Look again at the `length consistency` item.
 
 ```
-! 길이 정합          실측 24.04s vs 선언 30.00s (드리프트 -5.96s / 19.88%)
+! length consistency  measured 24.04s vs declared 30.00s (drift -5.96s / 19.88%)
 ```
 
-판정 규칙은 "드리프트의 절댓값이 TARGETDURATION 이상이면 FAIL"이다([`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267)).
-TARGETDURATION 은 6초이고 드리프트는 5.96초다. **0.04초 차이로 FAIL 을 면했다.**
+The verdict rule is "if the absolute drift is at least TARGETDURATION, FAIL" ([`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267)). TARGETDURATION is
+6 seconds and the drift is 5.96 seconds. **By a 0.04-second difference it escaped FAIL.**
 
-6초짜리 세그먼트가 통째로 사라졌는데 길이 검사는 WARN 이다. 이것은 버그가 아니라
-설계된 결과다 — 이 교재 §0.1 의 출발점, "총 길이 비교는 결손 검출의 도구가 될 수
-없다"가 여기에 수치로 나타난 것이다. 결손을 잡는 것은 길이 정합이 아니라 타임라인
-연속성이며, 그쪽은 실제로 `5.99~12.02s` 라는 **구멍의 위치**까지 짚었다.
+A whole 6-second segment vanished yet the length check is WARN. This is not a bug but a designed result — this
+course's §0.1 starting point, "a total-length comparison cannot be a tool for loss detection," appears here as a
+number. What catches the loss is not length consistency but timeline continuity, and that side actually pointed
+down to the `5.99~12.02s` **hole position.**
 
-다만 회귀 테스트의 관점에서는 불안한 자리다. 세그먼트 길이가 조금만 달랐다면 이
-항목의 판정이 뒤집힌다. **단언이 없는 항목은 뒤집혀도 아무도 모른다.**
+Only, from the regression test's view it is an anxious spot. Had the segment length differed even slightly this
+item's verdict flips. **An item with no assertion, even if it flips, no one knows.**
 
 ---
 
-## 35.6 일반화 — 카오스 엔지니어링, 뮤테이션 테스팅
+## 35.6 Generalization — chaos engineering, mutation testing
 
-결함 주입은 이 저장소만의 기법이 아니다. 같은 뼈대가 세 이름으로 불린다.
+Fault injection is not a technique unique to this repository. The same skeleton is called by three names.
 
-> **용어** — **카오스 엔지니어링(chaos engineering)**: 운영 중인 분산 시스템에
-> 의도적으로 장애(인스턴스 종료, 네트워크 지연, 패킷 손실)를 주입해 시스템이 그것을
-> 견디는지 관측하는 실천.
+> **Term** — **chaos engineering**: the practice of deliberately injecting failures (instance termination, network
+> delay, packet loss) into a running distributed system and observing whether the system withstands them.
 >
-> **용어** — **뮤테이션 테스팅(mutation testing)**: **테스트가 아니라 코드**를
-> 자동으로 조금씩 변형(mutant)한 뒤, 기존 테스트 묶음이 그 변형을 잡아내는지 세는
-> 기법. 잡히지 않은 변형은 테스트가 그 코드 경로를 실질적으로 검사하지 않는다는
-> 증거다.
+> **Term** — **mutation testing**: the technique of automatically slightly mutating **not the tests but the code**
+> (a mutant), then counting whether the existing test suite catches that mutation. An uncaught mutation is
+> evidence that the tests do not substantively check that code path.
 
-셋의 관계를 정리하면 이렇다.
+Organize the three's relation and it is this.
 
-| | 무엇을 망가뜨리는가 | 무엇을 측정하는가 | 오라클은 어디에 |
+| | What it breaks | What it measures | Where the oracle is |
 |---|---|---|---|
-| **결함 주입** (이 장) | **입력·데이터** — 세그먼트 바이트, 응답, 파일 | 대상 시스템이 결함을 **검출·처리**하는가 | 넣은 사람이 안다 |
-| **카오스 엔지니어링** | **환경** — 노드, 네트워크, 의존 서비스 | 시스템이 장애 아래에서 **정상성을 유지**하는가 | 정상 상태 지표(steady state) |
-| **뮤테이션 테스팅** | **코드** — 연산자, 상수, 조건 | **테스트 묶음**이 코드 변형을 잡는가 | 기존 테스트 묶음 |
+| **fault injection** (this chapter) | **input·data** — segment bytes, response, file | does the target system **detect·handle** the defect | the injector knows |
+| **chaos engineering** | **environment** — nodes, network, dependent services | does the system **maintain normality** under failure | a steady-state metric |
+| **mutation testing** | **code** — operators, constants, conditions | does the **test suite** catch the code mutation | the existing test suite |
 
-셋 다 형식이 같다.
+All three have the same form.
 
-> **알려진 결함을 넣는다 → 관측한다 → 기대와 대조한다.**
-> 그리고 셋 다 **"넣은 결함이 무엇인지 아는 쪽"이 오라클 역할을 한다.**
+> **Put in a known defect → observe → compare against expectation.**
+> And all three have **"the side that knows what defect was put in" play the oracle role.**
 
-### 35.6.1 이 장의 기법은 정확히 어느 쪽인가
+### 35.6.1 Which exactly is this chapter's technique
 
-`tests/run.sh` 가 하는 일은 결함 주입이지만, **측정하려는 대상은 뮤테이션 테스팅과
-같다.** 뮤테이션 테스팅이 "테스트 묶음이 코드 변형을 잡는가"를 묻는다면, 이 스크립트는
-"검증 도구가 데이터 결함을 잡는가"를 묻는다. 두 경우 모두 **검사하는 쪽이 검사
-대상**이다.
+What `tests/run.sh` does is fault injection, but **the target it means to measure is the same as mutation
+testing.** If mutation testing asks "does the test suite catch a code mutation," this script asks "does the
+verification tool catch a data defect." In both cases **the checking side is the check target.**
 
-이 시각으로 보면 §35.5 의 결과가 뮤테이션 테스팅의 용어로 정확히 번역된다.
+Seen this way, §35.5's result translates exactly into mutation-testing terms.
 
-> **용어** — **동등 변이체(equivalent mutant)**: 코드를 변형했는데도 관측 가능한
-> 동작이 전혀 달라지지 않아, 어떤 테스트로도 잡을 수 없는 변형. 뮤테이션 점수를
-> 계산할 때 분모에서 빼야 하는 항이며, 자동 판별이 일반적으로 불가능하다.
+> **Term** — **equivalent mutant**: a mutation where, despite mutating the code, the observable behavior does not
+> change at all so no test can catch it. It is a term to subtract from the denominator when computing the
+> mutation score, and automatic detection is generally impossible.
 
-§35.4.1 의 n = 16 과 n = 15 가 바로 그것이다. **16개를 들어낸 스트림은 CC 검사의
-관점에서 정상 스트림과 구별되지 않는다** — 이 검사에 대해 동등 변이체다. 다른 검사
-(타임라인 연속성)라면 잡을 수도 있지만, 그것은 **다른 검사가 잡는 것**이지 CC 검사가
-잡는 것이 아니다.
+§35.4.1's n = 16 and n = 15 are exactly that. **A stream with 16 taken out is indistinguishable from a normal
+stream from the CC check's view** — it is an equivalent mutant for this check. Another check (timeline continuity)
+might catch it, but that is **another check catching it**, not the CC check catching it.
 
-이것이 제18장에서 다룬 명제로 이어진다.
+This leads to the proposition covered in Chapter 18.
 
-> **검사기의 PASS 는 "무결"이 아니라 "이 검사로는 못 잡음"이다.**
-> 미탐률을 모르는 검사기의 PASS 는 정보량이 0 에 가깝다.
+> **A checker's PASS is not "intact" but "not caught by this check."**
+> A PASS from a checker whose miss rate is unknown carries information close to 0.
 
-### 35.6.2 다른 분야에서의 같은 구조
+### 35.6.2 The same structure in other fields
 
-| 분야 | 주입하는 결함 | 검증되는 것 |
+| Field | The defect injected | What is verified |
 |---|---|---|
-| 오류 정정 부호 | 비트를 일부러 뒤집는다 | 부호가 정정·검출 한계까지 동작하는가 |
-| 백업·복구 | 복원 훈련(restore drill) | 백업이 실제로 복원 가능한가 — 백업 성공 로그는 증거가 아니다 |
-| 침입 탐지 | 탐지 규칙 시험용 트래픽 | 규칙이 실제로 발화하는가 |
-| 화재 경보 | 시험용 연기 | 감지기가 살아 있는가 |
-| 정적 분석기 벤치마크 | 알려진 취약점이 심긴 코드베이스 | 도구의 정탐률·오탐률 |
-| 의료 검사 | 양성 대조 시료 | 검사 키트가 반응하는가 |
+| error-correcting code | flip bits deliberately | does the code work up to its correction·detection limit |
+| backup·recovery | a restore drill | is the backup actually restorable — a backup-success log is not evidence |
+| intrusion detection | test traffic for a detection rule | does the rule actually fire |
+| fire alarm | test smoke | is the detector alive |
+| static-analyzer benchmark | a codebase with known vulnerabilities planted | the tool's true-positive·false-positive rate |
+| medical test | a positive control sample | does the test kit react |
 
-마지막 두 행이 이 장과 가장 가깝다. 정적 분석기를 고를 때 "취약점 0건"이라는 결과는
-**도구가 좋다는 뜻일 수도, 도구가 아무것도 못 본다는 뜻일 수도 있다.** 구별하려면
-답을 아는 코드베이스를 먹여 봐야 한다. 의료 검사의 양성 대조(positive control)도
-같은 논리다 — 음성 결과가 "병이 없다"인지 "검사가 죽었다"인지는 양성 대조가 반응해야
-알 수 있다.
+The last two rows are the closest to this chapter. When choosing a static analyzer, the result "0
+vulnerabilities" **can mean the tool is good, or that the tool sees nothing.** To distinguish you must feed it a
+codebase whose answer you know. A medical test's positive control is the same logic — whether a negative result
+means "no disease" or "the test is dead" can be known only if the positive control reacts.
 
-**결함 주입은 검증 도구에 대한 양성 대조다.**
+**Fault injection is the positive control for a verification tool.**
 
 ---
 
-## 35.7 보안 — 결함 목록은 위협 모델이다
+## 35.7 Security — the defect list is the threat model
 
-### 35.7.1 결함과 공격은 같은 목록의 두 이름
+### 35.7.1 Defect and attack are two names for the same list
 
-이 장의 8종을 "장애"가 아니라 "공격"으로 읽으면 목록이 그대로 위협 모델이 된다.
+Read this chapter's 8 not as "failures" but as "attacks" and the list becomes the threat model as-is.
 
-| 결함 | 사고로 일어나면 | 의도적으로 일으키면 |
+| Defect | If it happens by accident | If caused deliberately |
 |---|---|---|
-| 세그먼트 404 | CDN 오리진 장애 | 특정 구간을 골라 내리는 **선택적 검열** |
-| 200 + HTML | 토큰 만료 응답 | 검증 없는 클라이언트에 **임의 페이로드 주입**, 수신 성공으로 집계됨 |
-| 세그먼트 중복 | 오리진 오설정 | 다른 구간을 같은 조각으로 덮어 **내용 대체** |
-| TS 패킷 유실 | 네트워크 손실 | 16의 배수로 맞춰 **검출을 피한 국소 변조** |
-| 자막 시각 어긋남 | 패키징 오류 | 자막을 다른 장면에 붙이는 **문맥 조작** |
-| 잘린 파일이 남음 | 프로세스 중단 | 재실행 시 **결손을 완성본으로 오인**시켜 회차를 영구히 빠뜨림 |
+| segment 404 | a CDN origin failure | **selective censorship** picking and dropping a particular stretch |
+| 200 + HTML | a token-expiry response | **arbitrary-payload injection** into an unverifying client, counted as receive success |
+| segment duplicate | an origin misconfiguration | **content replacement** covering another stretch with the same piece |
+| TS packet loss | a network loss | **localized tampering evading detection** by aligning to a multiple of 16 |
+| subtitle time off | a packaging error | **context manipulation** attaching a subtitle to a different scene |
+| a truncated file remains | a process interruption | **making a loss be mistaken for a finished copy** on re-run, permanently missing an episode |
 
-오른쪽 열이 성립하는 조건은 하나같이 같다. **검증하지 않는 수신자.** 상태 코드만
-보는 클라이언트는 2행을 막을 수 없고, 총 길이만 보는 클라이언트는 1·3행을 막을 수
-없으며, 파일 존재만 보는 재실행은 6행을 막을 수 없다.
+The condition for the right column to hold is uniformly the same — **an unverifying receiver.** A client looking
+only at the status code cannot block row 2, a client looking only at the total length cannot block rows 1·3, and
+a re-run looking only at file existence cannot block row 6.
 
-이 장의 결함 목록은 그래서 **"이 도구가 방어하겠다고 선언한 것의 목록"** 이기도 하다.
-목록에 없는 것은 방어 대상이 아니며, 그 사실을 명시하는 것이 위협 모델을 쓰는 일이다.
+This chapter's defect list is therefore also **"the list of what this tool declared it would defend."** What is
+not on the list is not a defense target, and stating that fact is the work of writing the threat model.
 
-### 35.7.2 경계 — 이 장이 다루지 않는 것
+### 35.7.2 The boundary — what this chapter does not cover
 
-이 장은 **검사기의 신뢰성**을 다루지, 특정 서비스의 보호 장치를 뚫는 절차를 다루지
-않는다. §35.4.1 의 "16의 배수는 검출되지 않는다"는 검사기의 미탐률을 정량화한
-것이며, 그 사실이 공개되어야 하는 이유는 Kerckhoffs 원리와 같다 — **검사기의 한계를
-숨기면 방어자만 모르고 공격자는 실험으로 알아낸다.**
+This chapter covers **the checker's reliability**, not the procedure of piercing a particular service's
+protection. §35.4.1's "a multiple of 16 is not detected" quantifies the checker's miss rate, and the reason that
+fact must be public is the same as Kerckhoffs's principle — **hide the checker's limit and only the defender does
+not know while the attacker learns it by experiment.**
 
-### 35.7.3 방어자 관점
+### 35.7.3 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **검증 도구 작성자** | 결함 목록을 문서에 명시하고, 각 결함이 어느 검사에 대응하는지 표로 남긴다. 겨냥되지 않은 검사도 함께 적는다 — **빠진 칸이 보이는 표가 좋은 표다** |
-| **도구 사용자** | "PASS" 를 받았을 때 **그 도구가 무엇을 넣어 봤는지** 확인한다. 결함 목록이 없는 도구의 PASS 는 근거가 아니다 |
-| **CI 운영자** | 결함 주입 테스트를 **정상 케이스와 같은 빈도로** 돌린다. 결함 테스트만 조건부로 건너뛰면 검증기가 죽어도 알 수 없다 |
-| **보안 스캐너 도입 담당** | 도입 평가에 **알려진 취약점이 심긴 벤치마크**를 반드시 넣는다. 정탐률 없는 스캐너 보고서는 "취약점 없음"과 "탐지 능력 없음"을 구별하지 못한다 |
-| **감사자** | 대응표를 볼 때 **1:1 이 실측인지 의도인지** 묻는다. §35.5 가 보여주듯 표는 맞는데 단언은 다른 결함이 대신 통과시킬 수 있다 |
+| **verification-tool author** | state the defect list in the document and leave a table of which check each defect corresponds to. write the un-targeted checks too — **a table where the empty cells are visible is a good table** |
+| **tool user** | when you get a "PASS," confirm **what that tool tried putting in.** a PASS from a tool with no defect list is not a basis |
+| **CI operator** | run the fault-injection tests **at the same frequency as the normal cases.** skip only the defect tests conditionally and you cannot know even if the verifier dies |
+| **security-scanner adoption owner** | necessarily include **a benchmark with known vulnerabilities planted** in the adoption evaluation. a scanner report with no true-positive rate cannot distinguish "no vulnerability" from "no detection ability" |
+| **auditor** | when you see a mapping table, ask **whether the 1:1 is measured or intended.** as §35.5 shows, the table is right but the assertion can be passed instead by a different defect |
 
-마지막 행이 이 장이 스스로에게 적용한 기준이다. 대응표를 만든 것으로 끝내지 않고
-**결함을 하나씩 빼 보는 것** — 그것이 대응표를 검증하는 유일한 방법이다.
-
----
-
-## 35.8 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **대응표의 1:1 은 절반만 실측된다.** §35.5.2 에서 확인했듯 결함 1 을 제거해도
-  `CC 불연속` 단언은 통과한다. 결함 2 도 CC 관측치에 기여하므로 완전히 독립적이지
-  않다. **결함마다 독립된 스트림을 만들어 하나씩 확인하지 않는 한, 대응표의 1:1 은
-  설계 의도의 진술이지 관측된 사실이 아니다.** 이것을 고치려면 결함 하나만 든
-  스트림 8개를 따로 돌려야 하고, 그만큼 테스트 시간이 늘어난다 — 이 저장소는 그
-  교환에서 속도를 택했다.
-- **결함 커버리지는 6/12 다.** §35.2.4 의 표에 남은 여덟 항목(플레이리스트, 응답 지연,
-  길이 정합, 스트림 구성, 자막 추출 실패, 자막 일괄 수집, 전체 디코드, 내장 캡션)에는
-  겨냥한 주입이 없다. 이 중 응답 지연은 지연을 넣는 서버가 있어야 하고, 자막 추출
-  실패는 ffmpeg 를 실패시켜야 하므로 주입 비용이 높다.
-- **부작용은 표 밖에 있다.** `전체 디코드 FAIL` 과 `길이 정합 WARN` 은 대응표에 없는
-  파생 결과다. 단언이 없으므로 어느 날 사라져도 아무도 모른다. 특히 길이 정합은
-  드리프트 5.96초 대 임계 6초로 **0.04초 차이로 판정이 갈리는** 자리다.
-- **단언이 리포트 문자열에 결합돼 있다.** `grep -q '자막 타임라인.*영상 범위를 벗어난'`
-  은 메시지를 한 글자만 고쳐도 깨진다. 반대로 **메시지는 그대로 두고 판정 로직만
-  망가뜨리면 통과할 수 있다** — 예컨대 FAIL 을 WARN 으로 바꿔도 문자열은 그대로이므로
-  `grep` 은 성공한다. 종료 코드 확인이 그 구멍을 일부 메우지만, §35.5.3 에서 보았듯
-  결함 1·2 에는 적용되지 않는다.
-- **음수 오프셋의 원인 귀속은 확인하지 못했다.** `tests/run.sh:90-91` 주석은 원인을
-  "ffmpeg 가 무효로 보고 매핑을 무시한다"로 적는다. 실측으로 확인한 것은 **결과**
-  (음수 오프셋이면 보정이 적용되지 않고 검사가 PASS 로 끝난다)이고, 이 저장소의
-  파이프라인에서 매핑을 버리는 주체는 [`subtitles.py:209-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L209-L210) — **저장소 자신의 범위
-  검사**다. 오프셋은 전 경로에서 이 함수가 계산하고 ffmpeg 에는 `-itsoffset` 으로
-  넘어가므로([`subtitles.py:361-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L361-L366)), ffmpeg 가 같은 값을 어떻게 다루는지는 이
-  경로에서 관측되지 않는다. 주석의 규격 근거(33비트 부호 없음)는 옳지만 **주체는
-  ffmpeg 이 아닐 수 있다.**
-- **`n = 15` 사각지대는 이 저장소의 구현 특성이다.** `cc == prev` 를 규격 허용
-  중복으로 보아 넘기는 판단([`tsanalyze.py:115`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L115))에서 나온다. 다른 구현은 다르게
-  처리할 수 있으므로, 이 사각지대의 존재는 **MPEG-TS 규격의 성질이 아니라 이 검사기의
-  성질**이다. n = 16 쪽만이 4비트라는 표현 한계에서 오는 보편적 사각지대다.
-- **측정 환경이 하나다.** 이 장의 모든 실측은 macOS · ffmpeg 8.1.1 · 파이썬 표준
-  `http.server` 환경에서 얻었다. 세그먼트 크기·PID 배치·PAT/PMT 주기가 다른 인코더로
-  만든 스트림에서는 §35.4.2 의 "선두 12개는 네 PID 에 걸친다" 같은 세부가 달라진다.
-  결론(주입 위치가 검출 위치를 결정한다)은 유지되지만 수치는 재측정이 필요하다.
+The last row is the criterion this chapter applied to itself. Not ending at making the mapping table but
+**removing the defects one by one** — that is the only way to verify the mapping table.
 
 ---
 
-## 35.9 요약
+## 35.8 Limits and open questions
 
-1. **정상 입력만 넣는 테스트는 "항상 PASS 를 내는 구현"을 통과시킨다.** 검증 도구를
-   검증하려면 틀린 답이 나와야 하는 입력이 필요하고, 그것을 만들어 넣는 것이 결함
-   주입이다. 넣은 쪽이 정답을 아는 것이 곧 오라클이다.
-2. 이 저장소는 **8종의 결함**을 주입하고 각각을 리포트 문자열에 대한 단언으로
-   고정한다. 그 대응표가 결함 커버리지의 선언이며, **빠진 칸까지 보이게 하는 것**이
-   표를 쓰는 이유다(현재 6/12).
-3. 8종은 한 층에 몰려 있지 않다 — 전송 결과·페이로드 정체·비트 수준·조각의 동일성·
-   시간축·로컬 파일 상태의 **여섯 층**에 하나 이상씩 놓인다. 각 결함은 발명이 아니라
-   **실제로 관측된 장애의 모형**이다.
-4. **수치는 임의가 아니다.** 12개는 4비트 카운터의 두 사각지대(16의 배수, 나머지 15)를
-   피하면서 타임라인 검사를 건드리지 않는 크기다. 한가운데여야 주입 지점과 검출
-   지점이 일치한다. 188의 배수여야 "유실"이지 "동기 붕괴"가 아니다.
-5. **자막 오프셋은 반드시 양수여야 한다.** 음수면 33비트 부호 없음 검사가 매핑을
-   버려 보정이 적용되지 않고, 자막은 원래 시각(영상 범위 안)에 남아 **검사가 PASS 로
-   끝난다** — 실측으로 확인했다(exit 2 vs exit 0). 결함 주입은 검출기의 판정 규칙
-   안에서 이루어져야 한다.
-6. 같은 원칙이 결함 8 에도 적용된다. 회차 3개 중 **2개**에 자막이 있어야 하며, 1개면
-   "원래 자막 없는 작품"으로 분류되어 결손이 보고되지 않는다. **검출기의 전제조건을
-   만족시키지 못한 주입은 결함이 아니라 잡음이다.**
-7. **그러나 대응표의 1:1 은 실측되지 않는다.** 넷을 한 스트림에 함께 넣으면 관측치가
-   교락된다 — CC 불연속 11건 중 결함 1 의 몫은 1건이고, **결함 1 을 빼도 10건이 남아
-   단언이 그대로 통과한다.** 결함 1·2 는 WARN 이라 종료 코드에도 기여하지 않는다.
-8. 결함 주입은 카오스 엔지니어링·뮤테이션 테스팅과 같은 뼈대를 공유한다. 이 저장소가
-   측정하는 것은 뮤테이션 테스팅과 같은 질문 — **검사하는 쪽을 검사하는 것**이다.
-   16개 제거처럼 어떤 검사로도 구별되지 않는 결함은 그 검사에 대한 **동등 변이체**이며,
-   그래서 **PASS 는 "무결"이 아니라 "이 검사로는 못 잡음"이다.**
-9. 결함 목록을 공격 목록으로 읽으면 그대로 **위협 모델**이 된다. 목록에 없는 것은
-   방어 대상이 아니며, 그것을 명시하는 것이 도구 작성자의 의무다.
+Written honestly.
+
+- **The mapping table's 1:1 is only half measured.** As confirmed in §35.5.2, removing defect 1 still passes the
+  `CC discontinuit` assertion. Defect 2 also contributes to the CC observation so it is not fully independent.
+  **Unless you make a separate stream per defect and confirm one by one, the mapping table's 1:1 is a statement
+  of design intent, not an observed fact.** To fix this you must run 8 separate single-defect streams, and the
+  test time grows that much — this repository chose speed in that trade.
+- **The fault coverage is 6/12.** The eight items left in §35.2.4's table (playlist, response latency, length
+  consistency, stream composition, subtitle-extract failure, subtitle batch collect, full decode, embedded
+  caption) have no targeted injection. Among these, response latency needs a server that adds delay, and
+  subtitle-extract failure needs to fail ffmpeg, so the injection cost is high.
+- **Side effects are outside the table.** `full decode FAIL` and `length consistency WARN` are derived results not
+  in the mapping table. With no assertion, if they vanish one day no one knows. In particular length consistency
+  is a spot where the verdict **splits by a 0.04-second difference** — drift 5.96 seconds against threshold 6
+  seconds.
+- **The assertions are coupled to the report strings.** `grep -q 'subtitle timeline.*out of the video range'`
+  breaks if the message is changed by even one character. Conversely, **leave the message as-is and break only the
+  verdict logic and it can pass** — for instance change FAIL to WARN and the string is the same so `grep`
+  succeeds. The exit-code check fills that hole partly, but as seen in §35.5.3 it does not apply to defects 1·2.
+- **The cause attribution of the negative offset could not be confirmed.** `tests/run.sh:90-91`'s comment writes
+  the cause as "ffmpeg sees it as invalid and ignores the mapping." What was confirmed by measurement is the
+  **result** (a negative offset means no correction is applied and the check ends PASS), and the actor discarding
+  the mapping in this repository's pipeline is [`subtitles.py:209-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L209-L210) — **the repository's own range check.** Since the
+  offset is computed by this function on every path and passed to ffmpeg via `-itsoffset` ([`subtitles.py:361-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L361-L366)),
+  how ffmpeg handles the same value is not observed on this path. The comment's spec basis (33-bit unsigned) is
+  right but **the actor may not be ffmpeg.**
+- **The `n = 15` blind spot is this repository's implementation property.** It comes from the judgment of passing
+  over `cc == prev` as a spec-permitted duplicate ([`tsanalyze.py:115`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L115)). Another implementation may handle it
+  differently, so the existence of this blind spot is **not a property of the MPEG-TS spec but a property of this
+  checker.** Only the n = 16 side is a universal blind spot coming from the 4-bit representation limit.
+- **There is one measurement environment.** All measurements in this chapter were obtained on macOS · ffmpeg
+  8.1.1 · Python standard `http.server`. On a stream made by an encoder with a different segment size·PID
+  layout·PAT/PMT period, details like §35.4.2's "the front 12 span four PIDs" change. The conclusion (the injection
+  position determines the detection position) stands but the numbers need re-measuring.
 
 ---
 
-**다음 장** — 이 장은 "우리 도구가 결함을 잡는가"를 고정했다. 그러나 그것만으로는
-도구가 **왜 필요한가**를 말하지 못한다. `tests/run.sh` 의 마지막 절은 같은 결함
-스트림을 ffmpeg 단독에 먹여 **종료 코드 0 이 나온다는 사실 자체를 테스트로
-못박는다.** 제36장은 대조군 설계를 다룬다 — 비교 대상의 실패를 회귀 테스트에
-고정하면 무엇을 얻고, 비교 대상이 개선되면 그 테스트는 어떻게 되는가.
+## 35.9 Summary
+
+1. **A test putting in only normal input passes an "implementation that always gives PASS."** To verify the
+   verifier you need an input for which a wrong answer must come out, and making and feeding it is fault
+   injection. The injector knowing the answer is itself the oracle.
+2. This repository injects **8 defects** and fixes each as an assertion on a report string. That mapping table is
+   the declaration of fault coverage, and **making even the empty cells visible** is the reason for the table
+   (currently 6/12).
+3. The 8 are not crowded on one layer — they are placed, one or more each, on **six layers**: transport result·
+   payload identity·bit level·piece identity·time axis·local-file state. Each defect is not an invention but **a
+   model of an actually observed failure.**
+4. **The numbers are not arbitrary.** 12 is a size avoiding the 4-bit counter's two blind spots (multiple of 16,
+   remainder 15) while not touching the timeline check. It must be the middle for the injection spot and detection
+   spot to coincide. It must be a multiple of 188 for it to be "loss" and not "sync collapse."
+5. **The subtitle offset must be positive.** Negative and the 33-bit-unsigned check discards the mapping so no
+   correction is applied and the subtitle stays at its original time (inside the video range) and **the check ends
+   PASS** — confirmed by measurement (exit 2 vs exit 0). Fault injection must be done within the detector's
+   verdict rule.
+6. The same principle applies to defect 8. **2** of the 3 episodes must have subtitles, and with 1 it is
+   classified as "a work originally without subtitles" and no loss is reported. **An injection not satisfying the
+   detector's precondition is not a defect but noise.**
+7. **But the mapping table's 1:1 is not measured.** Put the four together in one stream and the observations are
+   confounded — of the 11 CC discontinuities defect 1's share is 1, and **remove defect 1 and 10 remain so the
+   assertion still passes.** Defects 1·2 are WARN so they do not contribute to the exit code either.
+8. Fault injection shares the same skeleton as chaos engineering·mutation testing. What this repository measures
+   is the same question as mutation testing — **checking the checking side.** A defect indistinguishable by any
+   check, like removing 16, is an **equivalent mutant** for that check, and so **PASS is not "intact" but "not
+   caught by this check."**
+9. Read the defect list as an attack list and it becomes the **threat model** as-is. What is not on the list is
+   not a defense target, and stating that is the tool author's duty.
+
+---
+
+**Next chapter** — this chapter fixed "does our tool catch the defect." But that alone does not say **why** the
+tool is needed. `tests/run.sh`'s last section feeds the same defect stream to ffmpeg alone and **nails the very
+fact that exit code 0 comes out as a test.** Chapter 36 covers control-group design — what you gain by fixing the
+comparison target's failure in a regression test, and what happens to that test when the comparison target
+improves.

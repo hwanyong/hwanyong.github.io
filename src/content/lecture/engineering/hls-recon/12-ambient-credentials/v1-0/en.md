@@ -1,279 +1,274 @@
 ---
-untranslated: ko
-title: "자격증명의 앰비언트 권한"
-description: "쿠키, 프로세스 목록, 아티팩트"
-date: 2026-08-16
+title: "The Ambient Authority of Credentials"
+description: "Cookies, process lists, artifacts"
+date: 2026-06-15
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-12-ambient-credentials.svg
 ---
-## 12.0 이 장에서 답할 것
+## 12.0 What this chapter answers
 
-1. **앰비언트 권한(ambient authority)** 이란 무엇이고, 쿠키는 왜 그 전형인가
-2. 이 코드는 왜 쿠키 값을 **파싱하지 않는가** — 파싱하면 무엇이 깨지는가
-3. 헤더 값에서 개행을 지우는 한 줄은 무엇을 막는가
-4. 붙여넣은 쿠키 한 줄은 **어디에 사본을 남기는가** — 전수로
-5. `_redact_headers` 의 편집 대상 목록은 완전한가
+1. What is **ambient authority**, and why is a cookie its archetype?
+2. Why does this code **not parse** the cookie value — what breaks if it parses?
+3. What does the one line that strips newlines from a header value block?
+4. Where does a pasted cookie line **leave copies** — exhaustively?
+5. Is `_redact_headers`'s redaction-target list complete?
 
-다섯 번째 질문이 이 장의 정점이다. 이 저장소는 리포트 JSON 에서 자격증명을 가리는
-코드를 갖고 있고, 그 코드는 **정확히 열거된 것만 가린다.** 열거되지 않은 것이
-무엇인지 세어 보는 것이 이 장의 마지막 절이다.
+The fifth question is this chapter's peak. This repository has code that hides credentials in the report
+JSON, and that code **hides exactly what is enumerated.** Counting what is not enumerated is this chapter's
+last section.
 
 ---
 
-## 12.1 문제 — 한 줄을 붙여넣는 순간
+## 12.1 The problem — the moment you paste one line
 
-제9–11장에서 본 접근 통제는 전부 **요청자가 무엇을 아는가**에 기대고 있었다.
-Referer 를 아는가(제9장), 서버가 흘린 origin 을 읽었는가(제10장), 유효한 서명과
-만료 시각을 가졌는가(제11장). 그런데 그 어느 것으로도 열리지 않는 송출이 있다.
-세션이 필요한 경우다.
+The access control seen in Chapters 9–11 all rested on **what the requester knows.** Does it know the Referer
+(Chapter 9), did it read the origin the server leaked (Chapter 10), does it have a valid signature and expiry
+time (Chapter 11). But there is a delivery that opens by none of those. The case where a session is needed.
 
-이 저장소의 README 는 그 경우의 조작을 이렇게 적어 두었다(`README.md:213-222`).
+This repository's README wrote the manipulation for that case like this (`README.md:213-222`).
 
-> 토큰 URL만으로 열리지 않고 세션 쿠키를 요구하는 CDN 이 있다. 브라우저 개발자도구
-> Network 탭에서 `.m3u8` 요청을 찾아 **Request Headers 의 `Cookie` 값을 그대로 복사**해
-> `--cookie` 에 붙여넣는다.
+> There is a CDN that does not open by the token URL alone and demands a session cookie. In the browser
+> devtools Network tab find the `.m3u8` request and **copy the `Cookie` value from Request Headers as is**
+> and paste it into `--cookie`.
 
 ```bash
 hls-recon URL -o out.mp4 --cookie 'sid=abc; token=xyz'
-hls-recon URL -o out.mp4 --cookie 'Cookie: sid=abc; token=xyz'   # 접두어가 붙어 있어도 된다
+hls-recon URL -o out.mp4 --cookie 'Cookie: sid=abc; token=xyz'   # a prefix is allowed
 ```
 
-한 줄짜리 조작이다. 그리고 이 한 줄이 하는 일은 겉보기보다 크다.
+A one-line manipulation. And what this one line does is bigger than it looks.
 
-브라우저 안에서 그 쿠키는 **자동으로 붙는 것**이었다. 사용자가 의식하지 않고, 코드가
-지정하지 않아도, 해당 도메인으로 나가는 모든 요청에 브라우저가 알아서 실어 보냈다.
-그것을 복사해 명령행에 놓는 순간, 그 쿠키는 **명시적으로 전달되는 문자열**이 된다.
-성질이 바뀌는 것이다 — 그리고 성질이 바뀌면 남는 자리도 바뀐다.
+Inside the browser that cookie was **attached automatically.** The user did not consciously do it, the code
+did not specify it, and yet the browser carried it on every request going to that domain on its own. The
+moment you copy it and place it on the command line, that cookie becomes **an explicitly passed string.** Its
+nature changes — and when the nature changes, the places it remains change too.
 
-이 장의 나머지는 그 문장을 정확하게 만드는 작업이다.
-
----
-
-## 12.2 원리 — 앰비언트 권한
-
-### 12.2.1 정의
-
-> **용어** — **앰비언트 권한(ambient authority)**: 요청하는 주체가 명시적으로
-> 지정하지 않아도 **실행 환경이 자동으로 부여하는 권한.** 요청은 "무엇을 하겠다"만
-> 말하고, "어떤 자격으로 하겠다"는 환경이 알아서 채운다.
-
-앰비언트 권한은 예외적 개념이 아니라 컴퓨팅의 기본값에 가깝다. 몇 가지를 나열하면
-같은 구조가 반복된다.
-
-| 환경 | 명시하는 것 | 환경이 자동으로 붙이는 것 |
-|---|---|---|
-| 유닉스 파일 열기 | 경로 | 호출 프로세스의 uid·gid |
-| 브라우저 HTTP 요청 | URL·메서드 | 그 도메인의 쿠키, 클라이언트 인증서 |
-| AWS SDK 호출 | API 이름·파라미터 | 인스턴스 메타데이터에서 온 임시 자격증명 |
-| 사내망 서비스 호출 | 엔드포인트 | 출발지 IP(= 망 내부라는 사실 자체) |
-
-네 행 모두 같은 성질을 갖는다. **호출부에 자격증명이 보이지 않는다.** 코드를 읽어도
-"이 요청이 누구 권한으로 나가는가"가 적혀 있지 않고, 실행 시점의 환경만이 그것을 안다.
-
-반대편에 놓이는 개념이 능력이다.
-
-> **용어** — **능력(capability)**: 권한을 지시하는 값 자체가 요청에 명시적으로 실려
-> 있고, 그 값을 가진 자만이 그 권한을 행사하는 방식. 제11장의 서명 URL
-> (`?md5=<서명>&expires=<unix>`)이 그 예다 — 주소 문자열 안에 권한이 들어 있다.
-
-두 방식의 차이를 표로 세우면 이 장의 문제가 어디서 오는지가 드러난다.
-
-| 항목 | 앰비언트 권한 (쿠키) | 능력 (서명 URL) |
-|---|---|---|
-| 권한의 소재 | 실행 환경(브라우저의 쿠키 저장소) | 값 자체(URL 문자열) |
-| 요청에 실리는 방식 | 자동 | 명시 |
-| 범위 | 도메인 전체·계정 전체 | 서명된 자원 하나 |
-| 수명 | 세션 또는 만료일까지 (길다) | `expires` 까지 (짧다) |
-| 실수로 새어 나가는 경로 | 적다 — 아무도 손으로 옮기지 않으므로 | 많다 — 주소가 곧 권한이라 복사·로그·리퍼러로 새어 나간다 |
-| 오용되는 방식 | **CSRF** — 의도하지 않은 요청에도 자동으로 붙는다 | **재생(replay)** — 주소를 얻은 누구나 만료 전까지 쓴다 |
-
-마지막 두 행이 핵심이다. **두 방식은 서로의 약점을 맞바꾼 관계다.**
-
-### 12.2.2 CSRF 는 앰비언트 권한의 직접적 결과다
-
-> **용어** — **CSRF(Cross-Site Request Forgery, 교차 사이트 요청 위조)**: 사용자가
-> 로그인해 둔 사이트 A 에 대해, 다른 사이트 B 가 사용자의 브라우저를 통해 요청을
-> 보내게 만드는 공격. 브라우저가 A 의 쿠키를 자동으로 실어 보내므로 A 는 그 요청을
-> 정당한 사용자의 요청과 구별하지 못한다.
-
-CSRF 가 성립하는 이유는 버그가 아니라 정의다. 쿠키가 앰비언트 권한이라는 것은
-**"요청을 누가 유발했는지와 무관하게 붙는다"** 는 뜻이고, 공격자가 유발한 요청도
-그 "무관"의 범위에 들어간다. 취약점은 브라우저가 아니라 **자동성 그 자체**에 있다.
-
-그래서 CSRF 대응은 두 방향으로만 갈 수 있다.
-
-| 방향 | 수단 | 하는 일 |
-|---|---|---|
-| **능력을 하나 더 요구한다** | CSRF 토큰, 이중 제출 쿠키 | 앰비언트가 아닌 값을 추가로 요구 — 공격자는 그것을 모른다 |
-| **자동성 자체를 좁힌다** | `SameSite=Lax`/`Strict`, `Sec-Fetch-Site` 확인, Origin 헤더 검증 | 교차 출처 요청에는 쿠키를 붙이지 않거나, 붙어 와도 거부 |
-
-`SameSite` 속성이 왜 뒤늦게(2016년 이후) 브라우저 기본값 논의에까지 올라왔는지가
-여기서 설명된다 — 그것은 새 기능이 아니라 **1994년에 정해진 자동성을 20년 뒤에
-되돌리는 작업**이다. 이미 그 자동성 위에 세워진 웹이 있었기 때문에 되돌리는 데
-그만큼 걸렸다.
-
-### 12.2.3 이 도구가 실제로 하는 일
-
-이제 §12.1 의 문장을 정확히 쓸 수 있다.
-
-> `--cookie` 는 **브라우저 안에 있던 앰비언트 권한을 꺼내어 무기명 토큰(bearer
-> token)으로 바꾸는 조작**이다.
-
-> **용어** — **무기명 토큰(bearer token)**: 그 값을 제시하는 자가 곧 권한자로
-> 취급되는 자격증명. 소지 자체가 자격이며, 소지자의 신원을 따로 확인하지 않는다.
-
-브라우저 안에 있을 때 그 쿠키는 옮겨지지 않았다. 쿠키 저장소에 있었고, 자바스크립트가
-읽지 못하도록 `HttpOnly` 가 걸려 있었을 수도 있으며, 오직 브라우저의 요청 코드만이
-그것을 참조했다. 명령행에 붙여넣는 순간 그 모든 격리가 사라진다. 값은 이제
-**셸이 다루는 평범한 문자열**이고, 셸이 문자열에 하는 모든 일 — 기록, 전달, 노출 —
-이 그 값에 적용된다.
-
-§12.5 가 그 "모든 일"을 전수로 센다. 그 전에 값을 다루는 코드부터 본다.
+The rest of this chapter is the work of making that sentence precise.
 
 ---
 
-## 12.3 코드 ① — 쿠키를 파싱하지 않는다
+## 12.2 The principle — ambient authority
 
-### 12.3.1 함수 전체
+### 12.2.1 Definition
+
+> **Term** — **ambient authority**: **the authority the execution environment grants automatically** even
+> without the requesting subject specifying it explicitly. The request says only "what I will do," and "with
+> what qualification" the environment fills in on its own.
+
+Ambient authority is not an exceptional concept but close to computing's default. List a few and the same
+structure repeats.
+
+| Environment | What is specified | What the environment attaches automatically |
+|---|---|---|
+| Unix file open | the path | the calling process's uid·gid |
+| browser HTTP request | URL·method | that domain's cookie, client certificate |
+| AWS SDK call | API name·parameter | temporary credentials from instance metadata |
+| internal-network service call | the endpoint | the source IP (= the very fact of being inside the network) |
+
+All four rows have the same property. **The credential is not visible at the call site.** Read the code and
+"under whose authority does this request go out" is not written; only the environment at execution time knows
+it.
+
+The concept placed on the opposite side is a capability.
+
+> **Term** — **capability**: a way where the value indicating the authority is itself carried explicitly in
+> the request, and only the one holding that value exercises that authority. Chapter 11's signed URL
+> (`?md5=<signature>&expires=<unix>`) is that example — the authority is inside the address string.
+
+Set the two ways' difference in a table and it reveals where this chapter's problem comes from.
+
+| Item | Ambient authority (cookie) | Capability (signed URL) |
+|---|---|---|
+| Where the authority resides | the execution environment (the browser's cookie store) | the value itself (the URL string) |
+| How it is carried in the request | automatically | explicitly |
+| Scope | the whole domain·the whole account | one signed resource |
+| Lifetime | until the session or expiry date (long) | until `expires` (short) |
+| The path it leaks by accident | few — no one carries it by hand | many — the address is the authority so it leaks by copy·log·referer |
+| The way it is misused | **CSRF** — it attaches automatically even to an unintended request | **replay** — anyone who got the address uses it until expiry |
+
+The last two rows are the crux. **The two ways are a relationship of trading each other's weaknesses.**
+
+### 12.2.2 CSRF is a direct consequence of ambient authority
+
+> **Term** — **CSRF (Cross-Site Request Forgery)**: an attack that makes another site B send a request,
+> through the user's browser, to site A the user is logged into. Since the browser carries A's cookie
+> automatically, A cannot distinguish that request from a legitimate user's.
+
+The reason CSRF holds is not a bug but a definition. That a cookie is ambient authority means **"it attaches
+regardless of who induced the request,"** and a request an attacker induced enters the scope of that
+"regardless." The vulnerability is not in the browser but in **the automaticity itself.**
+
+So CSRF response can go only two directions.
+
+| Direction | Means | What it does |
+|---|---|---|
+| **demand one more capability** | CSRF token, double-submit cookie | demand an additional non-ambient value — the attacker does not know it |
+| **narrow the automaticity itself** | `SameSite=Lax`/`Strict`, `Sec-Fetch-Site` check, Origin-header verification | do not attach the cookie to a cross-origin request, or refuse it even if attached |
+
+Why the `SameSite` attribute came up belatedly (after 2016) even in browser-default discussions is explained
+here — it is not a new feature but **the work of reversing, 20 years later, an automaticity decided in 1994.**
+Because there was already a web built on that automaticity, reversing it took that long.
+
+### 12.2.3 What this tool actually does
+
+Now we can write §12.1's sentence precisely.
+
+> `--cookie` is **the manipulation of taking ambient authority that was inside the browser and turning it
+> into a bearer token.**
+
+> **Term** — **bearer token**: a credential where whoever presents the value is treated as the authorized
+> party. Possession itself is the qualification, and the holder's identity is not separately verified.
+
+While inside the browser that cookie was not moved. It was in the cookie store, may have had `HttpOnly` set so
+JavaScript could not read it, and only the browser's request code referenced it. The moment you paste it on
+the command line all that isolation disappears. The value is now **an ordinary string the shell handles**, and
+everything the shell does to a string — record, pass, expose — applies to that value.
+
+§12.5 counts that "everything" exhaustively. Before that we see the code that handles the value.
+
+---
+
+## 12.3 Code ① — it does not parse the cookie
+
+### 12.3.1 The whole function
 
 ```python
 # cli.py:39-54
 def _normalize_cookie(raw: str) -> str:
-    """붙여넣은 쿠키 문자열을 Cookie 헤더 값으로 정규화한다.
+    """Normalize a pasted cookie string into a Cookie header value.
 
-    개발자도구에서 복사하면 헤더 이름(`Cookie:`)이 딸려오거나 줄바꿈이 섞여 들어온다.
-    헤더 값에 개행이 남으면 요청 자체가 거부되므로 한 줄로 잇는다.
+    Copy from devtools and the header name (`Cookie:`) comes along or newlines get mixed in.
+    A newline left in a header value makes the request itself rejected, so join into one line.
 
-    쿠키 값 자체는 손대지 않는다 — 규격상 값에는 거의 모든 문자가 들어올 수 있어
-    이름/값으로 쪼갠 뒤 다시 조립하면 원본이 훼손되는 쿠키가 생긴다. 통째로 넘긴다.
+    The cookie value itself is not touched — by spec a value can contain almost any character,
+    so splitting into name/value and reassembling makes a cookie whose original is damaged. pass it whole.
     """
     s = raw.strip().strip("\"'").strip()
     if s[:7].lower() == "cookie:":
         s = s[7:].lstrip()
     s = "; ".join(part.strip().rstrip(";") for part in s.splitlines() if part.strip())
     if "=" not in s:
-        raise SystemExit(f"--cookie 형식이 잘못됐다 (name=value; name2=value2 필요): {raw[:60]}")
+        raise SystemExit(f"--cookie format is wrong (need name=value; name2=value2): {raw[:60]}")
     return s
 ```
 
-이 함수가 **하지 않는 일**부터 보는 것이 옳다. 이름·값 쌍으로 분해하지 않고,
-개별 쿠키를 검사하지 않으며, 재조립하지도 않는다. 손대는 것은 넷뿐이다.
+It is right to see what this function **does not do** first. It does not decompose into name·value pairs, does
+not inspect individual cookies, and does not reassemble. What it touches is only four things.
 
-| 연산 | 대상 | 왜 |
+| Operation | Target | Why |
 |---|---|---|
-| `strip()` → `strip("\"'")` → `strip()` | 문자열 양끝 | 셸에서 따옴표째 붙여넣는 경우 |
-| `s[:7].lower() == "cookie:"` | 접두어 | 개발자도구가 헤더 이름째 복사해 준다 |
-| `splitlines()` → `"; ".join(...)` | 줄바꿈 | **§12.4 의 주제** |
-| `"=" not in s` | 형식 최소 검사 | 엉뚱한 값을 넣었을 때 즉시 실패시킨다 |
+| `strip()` → `strip("\"'")` → `strip()` | both ends of the string | when pasting from the shell with the quotes included |
+| `s[:7].lower() == "cookie:"` | the prefix | devtools copies the header name along |
+| `splitlines()` → `"; ".join(...)` | newlines | **§12.4's subject** |
+| `"=" not in s` | a minimal format check | fail immediately when a wrong value is entered |
 
-네 연산 모두 **구분자와 껍데기**에만 작용한다. 값의 내부는 통과한다.
+All four operations act only on **the delimiters and the shell.** The interior of the value passes through.
 
-### 12.3.2 파싱하면 무엇이 깨지는가
+### 12.3.2 What breaks if you parse
 
-주석은 "규격상 값에는 거의 모든 문자가 들어올 수 있어"라고만 적혀 있다. 그 문장을
-구체적인 반례로 펼치면 다음과 같다.
+The comment says only "by spec a value can contain almost any character." Unfold that sentence into concrete
+counterexamples and it is as follows.
 
-RFC 6265 가 정의하는 쿠키 한 쌍의 문법은 `cookie-pair = cookie-name "=" cookie-value`
-이고, `cookie-value` 는 `;`·`,`·공백·백슬래시·큰따옴표·제어문자를 제외한 US-ASCII
-문자열이다. **`=` 는 제외 목록에 없다.** 즉 값 안에 `=` 가 몇 개든 들어올 수 있다.
+The grammar of one cookie pair RFC 6265 defines is `cookie-pair = cookie-name "=" cookie-value`, and
+`cookie-value` is a US-ASCII string excluding `;`·`,`·space·backslash·double-quote·control characters. **`=`
+is not on the exclusion list.** That is, however many `=` can be inside a value.
 
-이것은 이론적 여유가 아니라 일상적 형태다.
+This is not a theoretical margin but an everyday form.
 
-| 값의 형태 | `=` 가 들어가는 이유 |
+| The value's form | Why `=` goes in |
 |---|---|
-| Base64 인코딩된 세션 상태 | 패딩 문자가 `=` 또는 `==` 다 |
-| URL 인코딩된 구조체 | `a%3Db` 형태로 이스케이프하지 않은 구현이 흔하다 |
-| 서명이 붙은 값 | `payload=…&sig=…` 를 통째로 한 쿠키에 넣는 구현 |
+| Base64-encoded session state | the padding character is `=` or `==` |
+| a URL-encoded struct | it is common for an implementation not to escape it into `a%3Db` form |
+| a value with a signature attached | an implementation putting `payload=…&sig=…` whole into one cookie |
 
-그러므로 `name, value = pair.split("=")` 은 값에 `=` 가 있으면 즉시 `ValueError` 로
-죽고, `split("=", 1)` 로 고쳐도 그다음이 문제다. 이름과 값을 얻은 뒤 다시
-`f"{name}={value}"` 로 조립하는 코드는 **왕복(round-trip)이 항등이라는 가정**에
-서 있는데, 그 가정은 다음 순간에 깨진다.
+Therefore `name, value = pair.split("=")` dies immediately with a `ValueError` if the value has a `=`, and
+even fixing it to `split("=", 1)` the next step is the problem. Code that, after getting the name and value,
+reassembles with `f"{name}={value}"` stands on **the assumption that the round trip is the identity**, and
+that assumption breaks the next moment.
 
-- 값 앞뒤 공백을 `strip()` 하는 순간 — 서버가 의미 있게 넣은 공백이 사라진다
-- 값을 URL 디코딩했다가 다시 인코딩하는 순간 — 제7장에서 본 **인코딩의 멱등성 부재**
-  가 그대로 재현된다. `%2520` 문제의 쿠키판이다
-- 값을 `quote`/`unquote` 규칙이 다른 라이브러리로 왕복시키는 순간
+- The moment you `strip()` the whitespace around the value — whitespace the server put meaningfully disappears
+- The moment you URL-decode the value and re-encode it — the **non-idempotency of encoding** seen in Chapter 7
+  reproduces as is. It is the cookie version of the `%2520` problem
+- The moment you round-trip the value through a library whose `quote`/`unquote` rules differ
 
-이 저장소의 선택은 그 왕복을 **아예 하지 않는 것**이다. 실측으로 확인하면 값 안의
-`=` 가 그대로 통과한다.
+This repository's choice is to **not do that round trip at all.** Confirmed by measurement, a `=` inside the
+value passes through.
 
 ```
 >>> _normalize_cookie("sid=a=b=c; t=x;y;z")
 'sid=a=b=c; t=x;y;z'
 ```
 
-`sid` 의 값 `a=b=c` 도, `t` 의 값 `x;y;z` 도 손상 없이 남았다.
+Both `sid`'s value `a=b=c` and `t`'s value `x;y;z` remained undamaged.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — 로그인 세션 쿠키의 값이 Base64 라서 `==`
-> 로 끝나는 사이트에서, "쿠키를 파싱해 정리하는" 클라이언트는 값을 잘라 보낸다.
-> 서버는 세션을 찾지 못하고 401 또는 403 을 돌려준다. 사용자에게 보이는 증상은
-> **"쿠키를 제대로 붙여넣었는데도 로그인이 안 된다"** 이고, 원인은 자기 도구 안에 있다.
-> 이 실패는 특히 진단이 어렵다 — 서버 응답이 "인증 실패"이므로 사용자는 쿠키를
-> 다시 복사하는 쪽으로 계속 시도하게 된다.
+> **What breaks if you do not do this** — on a site where the login-session cookie's value is Base64 so it
+> ends in `==`, a client that "parses and tidies the cookie" sends a truncated value. The server does not find
+> the session and returns 401 or 403. The symptom the user sees is **"login does not work even though I pasted
+> the cookie correctly,"** and the cause is inside their own tool. This failure is especially hard to diagnose
+> — since the server response is "authentication failure," the user keeps trying by re-copying the cookie.
 
-### 12.3.3 "파싱하지 않는다"는 선택의 일반형
+### 12.3.3 The general form of the choice "do not parse"
 
-이 결정은 이 저장소 안에서 고립돼 있지 않다. 같은 형태가 반복된다.
+This decision is not isolated in this repository. The same form repeats.
 
-| 위치 | 통과시키는 것 | 손대는 것 |
+| Location | What passes through | What is touched |
 |---|---|---|
-| `_normalize_cookie` ([`cli.py:39-54`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L39-L54)) | 쿠키 값 전체 | 껍데기·줄바꿈 |
-| `normalize_url` ([`fetch.py:36-54`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L36-L54)) | 이미 인코딩된 `%` | 인코딩되지 않은 비ASCII |
-| `sniff` ([`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37)) | 세그먼트 바이트 | — (판별만 하고 변형하지 않는다) |
-| `concat_segments` ([`assemble.py:93-105`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L93-L105)) | 세그먼트 바이트 전체 | — (그대로 이어 붙인다) |
+| `_normalize_cookie` ([`cli.py:39-54`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L39-L54)) | the whole cookie value | the shell·newlines |
+| `normalize_url` ([`fetch.py:36-54`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L36-L54)) | an already-encoded `%` | non-ASCII not encoded |
+| `sniff` ([`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37)) | the segment bytes | — (only determines, does not transform) |
+| `concat_segments` ([`assemble.py:93-105`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L93-L105)) | the whole segment bytes | — (joins as is) |
 
-관통하는 원칙 하나로 요약된다.
+It is summarized by one principle running through them.
 
-> **의미를 알 필요가 없는 데이터는 해석하지 않고 옮긴다. 해석은 언제나 손실 가능성이다.**
+> **Data whose meaning you need not know is moved without interpreting. Interpretation is always a possibility
+> of loss.**
 
-이 원칙은 제13장에서 다시 나온다. `series.py` 가 packed JS 를 **파싱은 하되
-실행하지는 않는** 결정과 같은 계열이다 — 다루는 최소한만 해석한다.
+This principle appears again in Chapter 13. It is the same family as `series.py`'s decision to **parse but not
+execute** packed JS — interpret only the minimum you handle.
 
 ---
 
-## 12.4 코드 ② — 개행 하나를 지우는 이유
+## 12.4 Code ② — why strip one newline
 
-### 12.4.1 그 한 줄
+### 12.4.1 That one line
 
 ```python
 # cli.py:51
     s = "; ".join(part.strip().rstrip(";") for part in s.splitlines() if part.strip())
 ```
 
-주석은 이유를 한 문장으로만 적는다 — **"헤더 값에 개행이 남으면 요청 자체가
-거부되므로 한 줄로 잇는다."** 이 문장 뒤에 무엇이 있는지가 이 절의 주제다.
+The comment writes the reason in one sentence only — **"a newline left in a header value makes the request
+itself rejected, so join into one line."** What is behind this sentence is this section's subject.
 
-### 12.4.2 요청 분할과 헤더 주입
+### 12.4.2 Request splitting and header injection
 
-> **용어** — **HTTP 요청 분할(HTTP request splitting)**: 요청 헤더의 값에 CRLF
-> (`\r\n`)를 밀어 넣어, 하나의 요청을 수신 측이 **두 개의 요청으로 읽게** 만드는
-> 공격. 헤더 하나만 추가로 얹히면 **헤더 주입(header injection)** 이라 부르고,
-> 요청 줄(request line)까지 새로 만들어지면 요청 분할이 된다.
-> 응답 쪽에서 같은 일이 일어나면 **HTTP 응답 분할(response splitting)** 이다.
+> **Term** — **HTTP request splitting**: an attack that pushes a CRLF (`\r\n`) into a request header's value
+> to make the receiving side **read one request as two.** When only one extra header is added it is called
+> **header injection**, and when even a new request line is made it becomes request splitting. When the same
+> thing happens on the response side it is **HTTP response splitting.**
 
-성립 조건은 정확히 셋이며, 셋이 모두 참일 때만 성립한다.
+The conditions for it to hold are exactly three, and it holds only when all three are true.
 
-| 조건 | 내용 | 이 코드에서는 |
+| Condition | Content | In this code |
 |---|---|---|
-| ① 값의 제어 | 공격자가 헤더 값의 일부를 정할 수 있다 | 값을 넣는 주체는 사용자 자신이다 |
-| ② 검증 없는 직렬화 | 그 값이 검사 없이 헤더 블록에 그대로 쓰인다 | **경로마다 다르다 — §12.4.3** |
-| ③ 텍스트 프레이밍 | 수신 측이 CRLF 를 헤더 경계로 해석한다 | HTTP/1.1 이면 참 |
+| ① control of the value | the attacker can decide part of the header value | the party putting the value is the user themselves |
+| ② serialization without validation | that value is written into the header block as is without checking | **differs per path — §12.4.3** |
+| ③ text framing | the receiving side interprets CRLF as a header boundary | true if HTTP/1.1 |
 
-③이 중요한 조건이다. HTTP/1.1 은 텍스트 프로토콜이고 헤더의 경계가 **구분 문자**
-(CRLF)로 정해진다. 구분 문자가 데이터 안에 들어갈 수 있으면 언제나 같은 종류의
-공격이 생긴다 — SQL 인젝션에서 따옴표, 셸 인젝션에서 세미콜론, CSV 인젝션에서 쉼표와
-정확히 같은 구조다.
+③ is the important condition. HTTP/1.1 is a text protocol and the header boundary is set by a **delimiter
+character** (CRLF). When the delimiter character can go inside the data, the same kind of attack always
+arises — exactly the same structure as the quote in SQL injection, the semicolon in shell injection, the comma
+in CSV injection.
 
-HTTP/2 이후는 헤더가 길이 접두어를 가진 바이너리 프레임(HTTP/2 는 HPACK, HTTP/3 은
-QPACK)으로 실리므로 이 벡터가 그대로 성립하지 않는다. 다만 **HTTP/2 를 받아
-HTTP/1.1 로 되보내는 프록시**에서 되살아나는 사례가 알려져 있다(이른바 다운그레이드
-지점). 이것은 공개된 연구 결과의 요약이며 **이 저장소에서 확인한 것은 아니다.**
+Since HTTP/2, headers are carried in length-prefixed binary frames (HPACK in HTTP/2, QPACK in HTTP/3), so this
+vector does not hold as is. Only, a case where it revives in **a proxy that receives HTTP/2 and re-sends it as
+HTTP/1.1** is known (a so-called downgrade point). This is a summary of published research and **was not
+confirmed in this repository.**
 
-### 12.4.3 실측 — 두 요청 경로의 검사가 다르다
+### 12.4.3 Measurement — the two request paths check differently
 
-이 저장소는 같은 헤더 딕셔너리를 **두 개의 서로 다른 요청 구현**에 넘긴다.
+This repository hands the same header dictionary to **two different request implementations.**
 
 ```python
 # fetch.py:115
@@ -287,38 +282,36 @@ HTTP/1.1 로 되보내는 프록시**에서 되살아나는 사례가 알려져 
         args += ["-headers", "".join(f"{k}: {v}\r\n" for k, v in headers.items())]
 ```
 
-첫째는 `urllib` 을 통해 파이썬의 `http.client` 가 직렬화하고, 둘째는 **하나의 argv
-토큰 안에 CRLF 로 이어 붙인 문자열**을 ffmpeg 에 넘긴다. 두 경로의 개행 검사를
-직접 측정했다.
+The first is serialized by Python's `http.client` through `urllib`, and the second hands ffmpeg **a string
+joined with CRLF inside one argv token.** The two paths' newline checks were measured directly.
 
-**파이썬 쪽** — `http.client` 는 헤더 값을 정규식으로 검사한다. 표준 라이브러리
-소스를 `inspect.getsource` 로 열어 확인한 그 한 줄이다(Python 3.14.5).
+**The Python side** — `http.client` checks the header value with a regex. That one line, confirmed by opening
+the standard-library source with `inspect.getsource` (Python 3.14.5).
 
 ```python
-# http.client — 표준 라이브러리
+# http.client — standard library
 _is_illegal_header_value = re.compile(rb'\n(?![ \t])|\r(?![ \t\n])').search
 ```
 
-이 검사에 걸리면 요청은 네트워크에 나가기 전에 죽는다.
+Trip this check and the request dies before going out to the network.
 
 ```
 >>> c.putheader("Cookie", "a=b\r\nX: 1")
 ValueError: Invalid header value b'a=b\r\nX: 1'
 ```
 
-부정 전방탐색 `(?![ \t])` 이 붙어 있으므로 **CRLF 다음에 공백이나 탭이 오면 통과한다.**
-이것은 HTTP/1.1 이 폐기 예정으로 둔 줄 접기(obs-fold) 문법을 아직 허용하는 것이며,
-실측하면 `"a=b\r\n X-Folded: 1"` 은 예외 없이 통과한다. **검사는 있으나 전면 금지는
-아니다.**
+Since the negative lookahead `(?![ \t])` is there, **it passes if a space or tab comes after the CRLF.** This
+is still allowing the line-folding (obs-fold) grammar HTTP/1.1 put up for deprecation, and measured,
+`"a=b\r\n X-Folded: 1"` passes without exception. **There is a check but not an outright ban.**
 
-**ffmpeg 쪽** — 로컬 HTTP 서버를 세워 놓고 CRLF 가 든 `-headers` 를 넘겨 보았다.
+**The ffmpeg side** — set up a local HTTP server and passed a `-headers` with a CRLF.
 
 ```bash
 $ ffprobe -v error -headers $'X-Test: a\r\nX-Injected: yes\r\n' \
     -i http://127.0.0.1:8991/a.m3u8
 ```
 
-서버가 받은 요청 헤더(발췌):
+The request headers the server received (excerpt):
 
 ```
 User-Agent: Lavf/62.12.101
@@ -327,39 +320,38 @@ X-Test: a
 X-Injected: yes
 ```
 
-**헤더 두 개로 전송됐다.** 검사가 없다.
+**It was sent as two headers.** There is no check.
 
-정리하면 이렇다(ffmpeg/ffprobe 8.1.1, Python 3.14.5 에서 실측).
+Summarized (measured on ffmpeg/ffprobe 8.1.1, Python 3.14.5).
 
-| 요청 경로 | 직렬화 지점 | 값 안의 CRLF | 결과 |
+| Request path | Serialization point | CRLF inside the value | Result |
 |---|---|---|---|
-| `urllib` (세그먼트·플레이리스트 수신) | `http.client.putheader` | 검사함 | `ValueError` — 나가지 않는다 |
-| `-headers` (ffmpeg·ffprobe 5개 호출부) | [`probe.py:77`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L77) 의 문자열 결합 | 검사 없음 | **헤더가 추가되어 전송된다** |
+| `urllib` (segment·playlist receipt) | `http.client.putheader` | checked | `ValueError` — does not go out |
+| `-headers` (ffmpeg·ffprobe, 5 call sites) | the string join at [`probe.py:77`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L77) | no check | **a header is added and sent** |
 
-따라서 `_normalize_cookie` 의 한 줄 잇기는 **두 경로 중 검사가 없는 쪽까지 함께
-지키는 유일한 지점**이다. 파이썬 쪽만 보면 불필요해 보이지만, ffmpeg 쪽에는 그
-방어가 없다.
+Therefore `_normalize_cookie`'s joining into one line is **the only point that protects even the side of the
+two paths with no check.** Looking at the Python side alone it seems unnecessary, but the ffmpeg side has no
+such defense.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — 개발자도구에서 쿠키를 여러 줄로 복사한
-> 사용자가 `--cookie` 에 그대로 붙여넣었다고 하자. 정규화가 없으면 `urllib` 경로는
-> `ValueError: Invalid header value` 로 죽고(적어도 시끄럽게 실패한다), ffmpeg
-> 경로는 죽지 않고 **의도하지 않은 헤더가 붙은 요청**을 보낸다. 두 경로가 서로 다른
-> 조건으로 요청하게 되고, 그 순간 [`cli.py:526-528`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L526-L528) 이 명시한 "헤더의 단일 출처"
-> 원칙이 무너진다.
+> **What breaks if you do not do this** — suppose a user who copied the cookie in several lines from devtools
+> pasted it into `--cookie` as is. Without normalization the `urllib` path dies with `ValueError: Invalid
+> header value` (at least it fails loudly), and the ffmpeg path does not die and sends **a request with an
+> unintended header.** The two paths request under different conditions, and at that moment the "single source
+> of truth for headers" principle stated at [`cli.py:526-528`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L526-L528) collapses.
 
-### 12.4.4 정직하게 — 이 방어는 쿠키에만 걸려 있다
+### 12.4.4 Honestly — this defense is only on the cookie
 
-같은 파일에서 다른 헤더를 받는 경로를 보면 정규화가 없다.
+Look at the path receiving other headers in the same file and there is no normalization.
 
 ```python
 # cli.py:488-501
 def _given_headers(args: argparse.Namespace) -> dict[str, str]:
-    """사용자가 지정한 요청 헤더를 모은다. 자동 추론보다 언제나 우선한다."""
+    """Gather the request headers the user specified. always takes priority over auto-inference."""
     given: dict[str, str] = {}
     for h in args.header:
         k, sep, v = h.partition(":")
         if not sep:
-            raise SystemExit(f"--header 형식이 잘못됐다 (K:V 필요): {h}")
+            raise SystemExit(f"--header format is wrong (need K:V): {h}")
         given[k.strip()] = v.strip()
     if args.referer:
         given["Referer"] = args.referer
@@ -369,96 +361,95 @@ def _given_headers(args: argparse.Namespace) -> dict[str, str]:
     return given
 ```
 
-`v.strip()` 은 **양끝의 공백만** 제거한다. 값 가운데의 CRLF 는 남는다. 즉
-`--header` 와 `--referer` 로 들어온 값에는 §12.4.3 의 정규화가 적용되지 않는다.
+`v.strip()` removes **only the whitespace at both ends.** A CRLF in the middle of the value remains. That is,
+values coming in via `--header` and `--referer` do not get §12.4.3's normalization.
 
-이것이 취약점인가. **위협 모델을 세워야 답할 수 있다.** 조건 ①(값의 제어)의 주체가
-사용자 자신이라면 이것은 "자기 요청에 자기가 헤더를 하나 더 붙이는 것"이고, `--header`
-가 원래 하라고 있는 일이다. 문제가 되는 것은 그 값이 **원격 데이터에서 유래할 때**
-뿐이다. 그 경로를 전수로 확인했다.
+Is this a vulnerability? **You can answer only by setting the threat model.** If the party of condition ①
+(control of the value) is the user themselves, this is "attaching one more header to your own request," which
+is what `--header` is there to do in the first place. It becomes a problem only when that value **originates
+from remote data.** Those paths were confirmed exhaustively.
 
-| 헤더 값의 출처 | 원격 데이터인가 | CRLF 가 통과하는가 |
+| The header value's source | Is it remote data? | Does a CRLF pass? |
 |---|---|---|
-| `--header` · `--referer` · `--cookie` | 아니다 (사용자 입력) | `--cookie` 만 차단 |
-| `_adopt_origin` 의 `Referer`/`Origin` ([`cli.py:118-122`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L118-L122)) | **그렇다** (응답 헤더 ACAO) | 아니다 — `urlparse` 가 `\r`·`\n`·`\t` 를 제거한다 |
-| 시리즈 모드의 `play.referer` ([`cli.py:750-751`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L750-L751)) | **그렇다** (원격 HTML) | 아니다 — `_origin()` 이 `urlparse` 를 거친다 |
+| `--header` · `--referer` · `--cookie` | no (user input) | only `--cookie` blocks it |
+| `_adopt_origin`'s `Referer`/`Origin` ([`cli.py:118-122`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L118-L122)) | **yes** (the response header ACAO) | no — `urlparse` removes `\r`·`\n`·`\t` |
+| series mode's `play.referer` ([`cli.py:750-751`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L750-L751)) | **yes** (remote HTML) | no — `_origin()` goes through `urlparse` |
 
-원격에서 온 값 둘은 모두 `urlparse` 를 통과한다. 파이썬의 URL 파서는 입력에서
-ASCII 개행·탭을 **제거한 뒤** 구문 분석한다(WHATWG URL 규격에 맞춘 동작). 실측하면
-이렇다.
+Both values from remote pass `urlparse`. Python's URL parser **removes** ASCII newlines·tabs from the input
+before parsing (behavior aligned with the WHATWG URL spec). Measured, it is this.
 
 ```
 >>> urlparse("https://evil.example\r\nX-Injected: 1/").netloc
 'evil.exampleX-Injected: 1'
 ```
 
-개행이 사라지면서 남은 문자가 호스트명에 붙어 버렸다 — **주입은 되지 않고 대신
-잘못된 호스트가 된다.** 요청은 이름 해석 단계에서 실패한다.
+As the newline disappeared the remaining characters got stuck to the hostname — **injection does not happen;
+instead it becomes a wrong host.** The request fails at the name-resolution stage.
 
-결론은 이렇게 쓸 수 있다. **현재 코드에서 원격 데이터가 헤더 값에 CRLF 를 넣을
-경로는 없다.** 다만 그 안전은 `_normalize_cookie` 가 만든 것이 아니라 `urlparse` 의
-부수 효과로 얻어진 것이다. 제15장의 용어를 빌리면 **우연한 방어(incidental
-defense)** 이고, URL 을 거치지 않는 헤더 출처가 새로 생기면 그 방어는 없다.
+The conclusion can be written thus. **In the current code there is no path by which remote data puts a CRLF
+into a header value.** But that safety was made not by `_normalize_cookie` but obtained as a side effect of
+`urlparse`. In Chapter 15's phrasing it is an **incidental defense**, and if a new header source that does not
+go through a URL appears, that defense is gone.
 
 ---
 
-## 12.5 자격증명이 남는 곳 — 전수
+## 12.5 The places credentials remain — exhaustively
 
-여기서부터가 이 장의 본론이다. 값 자체를 올바르게 다루는 것과, 값이 **어디에
-남는가**는 완전히 다른 문제다.
+From here is this chapter's main point. Handling the value itself correctly and **where the value remains** are
+completely different problems.
 
-![붙여넣은 쿠키 한 줄이 지나가는 네 지점](/images/lecture/hls-recon/12-credential-trail.svg)
+![The four points a pasted cookie line passes through](/images/lecture/hls-recon/12-credential-trail.svg)
 
-*그림 12-1 — 붙여넣은 쿠키 한 줄이 지나가는 네 지점 — 지날 때마다 사본이 남는다*
+*Figure 12-1 — the four points a pasted cookie line passes through — a copy remains at each pass*
 
-### 12.5.1 지점별 대조표
+### 12.5.1 A per-point comparison table
 
-| # | 지점 | 남는 형태 | 읽을 수 있는 주체 | 수명 | 이 코드가 손댈 수 있는가 |
+| # | Point | The form it remains in | Who can read it | Lifetime | Can this code touch it? |
 |---|---|---|---|---|---|
-| ① | **셸 히스토리 파일** | 명령 한 줄 전체 | 같은 계정, 그 파일의 백업·동기화 사본을 가진 누구나 | 영구(지우기 전까지) | ✗ |
-| ② | **`hls-recon` 자신의 argv** | `--cookie '…'` | 같은 호스트의 다른 사용자 | 프로세스가 사는 동안 | ✗ |
-| ③ | **자식 프로세스의 argv** | `-headers 'Cookie: …\r\n'` | 같은 호스트의 다른 사용자 | 자식 실행마다 다시 | ✗ |
-| ④ | **리포트 JSON** | `stats.mux_command` | 아티팩트를 받는 누구나 | 파일이 지워질 때까지 | **✓ 부분적** |
-| ⑤ | **CI 로그·터미널 스크롤백** | 명령 에코, 진단 출력 | 로그 열람 권한자 전원 | 보존 정책에 따름 | ✗ |
+| ① | **shell history file** | the whole command line | the same account, anyone with a backup·sync copy of that file | permanent (until deleted) | ✗ |
+| ② | **`hls-recon`'s own argv** | `--cookie '…'` | another user on the same host | while the process lives | ✗ |
+| ③ | **child process's argv** | `-headers 'Cookie: …\r\n'` | another user on the same host | again on each child execution | ✗ |
+| ④ | **report JSON** | `stats.mux_command` | anyone who receives the artifact | until the file is deleted | **✓ partially** |
+| ⑤ | **CI log·terminal scrollback** | the command echo, diagnostic output | everyone with log-reading permission | per the retention policy | ✗ |
 
-**다섯 지점 중 코드가 개입할 수 있는 곳은 ④ 하나다.** 나머지 넷은 코드가 아니라
-운영 규칙과 인터페이스 설계로만 다룰 수 있다 — §12.8 이 그 부분을 다룬다.
+**Of the five points the code can intervene in only one, ④.** The other four can be handled not by code but
+only by operational rules and interface design — §12.8 covers that part.
 
-### 12.5.2 ① 셸 히스토리
+### 12.5.2 ① Shell history
 
-붙여넣은 순간 셸이 그 줄을 히스토리 파일에 기록한다. `zsh` 는 `~/.zsh_history`,
-`bash` 는 `~/.bash_history` 다. 이 파일의 성질이 문제를 키운다.
+The moment you paste it, the shell records that line in the history file. `zsh` is `~/.zsh_history`, `bash` is
+`~/.bash_history`. This file's nature grows the problem.
 
-- **평문이다.** 어떤 셸도 히스토리를 암호화하지 않는다.
-- **오래 산다.** 기본 보존 개수가 수천 줄이고, 명시적으로 지우지 않으면 남는다.
-- **복제된다.** dotfiles 를 git 저장소로 관리하는 관행, 홈 디렉터리 전체를 클라우드로
-  동기화하는 설정, 시스템 백업 — 셋 다 히스토리 파일을 함께 옮긴다.
+- **It is plaintext.** No shell encrypts the history.
+- **It lives long.** The default retention count is thousands of lines, and unless explicitly deleted it
+  remains.
+- **It is replicated.** The practice of managing dotfiles as a git repository, a setting to sync the whole
+  home directory to the cloud, a system backup — all three carry the history file along.
 
-README 가 권하는 대응은 셸의 기능 하나다(`README.md:238-240`).
+The response the README recommends is a shell feature (`README.md:238-240`).
 
-> 셸 히스토리와 `ps` 출력에는 쿠키가 그대로 남는다. 공용 장비에서는 명령 앞에 공백을
-> 넣어 히스토리 기록을 피할 것. `--report` JSON 에 남는 먹싱 명령에서는
-> `Cookie`·`Authorization` 계열 헤더가 `***` 로 가려진다.
+> The cookie remains as is in the shell history and `ps` output. On a shared machine, prefix the command with
+> a space to avoid the history record. In the muxing command left in the `--report` JSON, `Cookie`·
+> `Authorization`-family headers are hidden with `***`.
 
-"명령 앞에 공백"은 `bash` 의 `HISTCONTROL=ignorespace`(또는 `ignoreboth`)와 `zsh` 의
-`HIST_IGNORE_SPACE` 옵션에 의존한다. **두 설정 모두 기본값으로 켜져 있지 않다.**
-따라서 이 권고는 사용자가 자기 셸을 미리 설정해 두었을 때만 동작한다 — 권고 자체가
-전제 조건을 갖고 있고, README 는 그 전제를 적지 않았다. 정직하게 말하면 이것은
-**방어라기보다 관행 안내**다.
+"Prefix with a space" depends on `bash`'s `HISTCONTROL=ignorespace` (or `ignoreboth`) and `zsh`'s
+`HIST_IGNORE_SPACE` option. **Neither setting is on by default.** Therefore this recommendation works only when
+the user configured their shell in advance — the recommendation itself has a precondition, and the README does
+not write that precondition. Honestly speaking, this is **less a defense than a practice guide.**
 
-### 12.5.3 ② ③ 프로세스 목록 — 명령행 인자는 비밀이 아니다
+### 12.5.3 ② ③ The process list — command-line arguments are not secrets
 
-이것이 이 장에서 가장 널리 오해되는 지점이다.
+This is the most widely misunderstood point in this chapter.
 
-> **명령행 인자(argv)는 접근 통제 대상이 아니다.** 유닉스 계열에서 프로세스의 argv
-> 는 커널이 다른 프로세스에게 노출하는 **공개 메타데이터**에 가깝다.
+> **Command-line arguments (argv) are not an access-control target.** On Unix-like systems a process's argv is
+> close to **public metadata** the kernel exposes to other processes.
 
-리눅스에서는 `/proc/<pid>/cmdline` 이 기본 설정(`hidepid=0`)에서 world-readable 이다.
-`ps aux` 가 다른 사용자의 명령행을 보여주는 것이 그 결과다. 이것은 마운트 옵션
-(`hidepid=1`/`2`)으로 좁힐 수 있으나 배포판 기본값이 아니다.
+On Linux `/proc/<pid>/cmdline` is world-readable in the default setting (`hidepid=0`). That `ps aux` shows
+another user's command line is the result. This can be narrowed with a mount option (`hidepid=1`/`2`) but is
+not the distro default.
 
-macOS 에서 같은 성질이 성립하는지 직접 확인했다. 일반 사용자 계정에서 root 소유
-프로세스의 인자를 조회한 결과다.
+Whether the same property holds on macOS was confirmed directly. The result of looking up a root-owned
+process's arguments from an ordinary user account.
 
 ```
 $ id -un
@@ -469,61 +460,61 @@ root  /System/Library/PrivateFrameworks/CloudKitDaemon.framework/Support/cloudd 
 root  /usr/libexec/triald_system
 ```
 
-**보인다.** 다른 사용자(root) 프로세스의 인자가 옵션까지 그대로 읽힌다
-(측정 환경: macOS Darwin 25.5.0). 리눅스의 `/proc` 기본값에 대한 서술은 문서화된
-동작을 옮긴 것이고 이 환경에서 측정한 것은 아니지만, macOS 쪽은 실측이다.
+**They are visible.** Another user's (root's) process arguments are read as is, options and all (measurement
+environment: macOS Darwin 25.5.0). The statement about Linux's `/proc` default is a transfer of documented
+behavior and was not measured in this environment, but the macOS side is a measurement.
 
-여기에 이 도구 특유의 배수 효과가 붙는다. 헤더는 하나의 딕셔너리에서 나와
-**다섯 개의 자식 프로세스 호출부**로 흘러간다.
+To this is added this tool's peculiar multiplier effect. The headers come from one dictionary and flow to
+**five child-process call sites.**
 
-| 호출부 | 무엇을 실행하는가 |
+| Call site | What it executes |
 |---|---|
-| [`probe.py:127`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L127) `probe()` | ffprobe — 스트림 구조 실측 |
-| [`probe.py:239`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L239) `first_pts()` | ffprobe — 첫 PTS 측정 |
-| [`assemble.py:82`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L82) `remux_from_url()` | ffmpeg — `remux` 모드 재조립 |
-| [`subtitles.py:143`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L143) | ffmpeg — 자막 트랙 추출 |
-| [`subtitles.py:360`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L360) `embed_args()` | ffmpeg — 자막 내장 (트랙 수만큼 반복) |
+| [`probe.py:127`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L127) `probe()` | ffprobe — stream-structure measurement |
+| [`probe.py:239`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L239) `first_pts()` | ffprobe — first-PTS measurement |
+| [`assemble.py:82`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L82) `remux_from_url()` | ffmpeg — `remux`-mode reassembly |
+| [`subtitles.py:143`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L143) | ffmpeg — subtitle-track extraction |
+| [`subtitles.py:360`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L360) `embed_args()` | ffmpeg — subtitle embedding (repeated per track) |
 
-다섯 곳 모두 `probe.input_args()` 를 거치므로 전부 `-headers` 에 쿠키를 싣는다.
-자막이 3개인 회차를 시리즈 모드로 27화 받으면 **자식 프로세스가 수백 번 뜬다.**
-그때마다 쿠키가 argv 에 올라갔다 내려온다.
+All five go through `probe.input_args()`, so all carry the cookie in `-headers`. Receive a 27-episode series
+where an episode has 3 subtitles and **child processes spawn hundreds of times.** Each time the cookie goes up
+onto argv and comes down.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — 반대로 헤더를 자식에게 넘기지 **않으면**
-> 무엇이 깨지는지도 코드에 적혀 있다. [`probe.py:58-59`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L58-L59) 가 그것이다 —
-> "세 도구(재조립·실측·자막 추출)가 같은 조건으로 원본에 접근해야 한다. 한 곳만
-> 빠지면 '받아지는데 실측만 실패' 같은 갈라진 증상이 난다." **즉 이 노출은 실수가
-> 아니라 정확성 요구의 대가다.** argv 가 아닌 다른 전달 경로를 쓰지 않는 한 피할 수 없다.
+> **What breaks if you do not do this** — conversely, what breaks if you do **not** pass the headers to the
+> children is written in the code too. [`probe.py:58-59`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L58-L59) is that — "the three tools (reassembly·measurement·
+> subtitle extraction) must access the original under the same conditions. miss one and a split symptom like
+> 'it is received but only the measurement fails' occurs." **That is, this exposure is not a mistake but the
+> price of the correctness requirement.** Unavoidable unless you use a delivery path other than argv.
 
-ffmpeg 은 실제로 다른 경로를 제공하지 않는다. `-headers` 는 값을 인자로 받는
-옵션이고, 파일이나 표준 입력에서 헤더를 읽는 옵션은 없다. **위임의 대가**가 제14장
-(확장자 정책 상속)과 다른 얼굴로 다시 나타나는 지점이다 — 이번에 상속되는 것은
-정책이 아니라 **자격증명 노출 면적**이다.
+ffmpeg does not actually provide another path. `-headers` is an option that takes the value as an argument, and
+there is no option to read headers from a file or standard input. It is the point where the **price of
+delegation** appears again with a different face than Chapter 14's (extension-policy inheritance) — this time
+what is inherited is not a policy but **the credential-exposure surface.**
 
-### 12.5.4 ④ 리포트 JSON — 파일 하나가 곧 계정 접근권
+### 12.5.4 ④ The report JSON — one file is account access
 
-`--report` 가 주어지면 판정 결과가 JSON 으로 저장된다.
+If `--report` is given, the verdict result is saved as JSON.
 
 ```python
 # cli.py:643-646
     if report_path:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(rep.to_json(), encoding="utf-8")
-        _eprint(f"  리포트 저장: {report_path}\n")
+        _eprint(f"  report saved: {report_path}\n")
 ```
 
-이 파일의 성질이 ①–③과 결정적으로 다르다. **①–③은 그 호스트를 벗어나지 않지만,
-④는 벗어나도록 만들어진 것이다.** 리포트는 첨부하고, 업로드하고, 이슈에 붙이라고
-있는 산출물이다. CI 에서는 아티팩트로 저장되어 저장소 열람 권한자 전원이 내려받는다.
+This file's nature is decisively different from ①–③. **①–③ do not leave that host, but ④ is made to leave.** A
+report is an output meant to be attached, uploaded, pasted to an issue. In CI it is saved as an artifact and
+downloaded by everyone with repository-read permission.
 
-`_redact_headers` 의 독스트링이 이 사실을 정확히 지목한다.
+`_redact_headers`'s docstring points at this fact exactly.
 
 ```python
 # report.py:36-46
 def _redact_headers(cmd: list[str]) -> list[str]:
-    """ffmpeg 명령의 -headers 블록에서 자격증명을 가린 사본을 만든다.
+    """Make a copy of the ffmpeg command with credentials hidden in the -headers block.
 
-    리포트 JSON 은 CI 아티팩트로 남거나 그대로 첨부돼 오간다. 세션 쿠키가 평문으로
-    실리면 파일 하나가 곧 계정 접근권이 된다.
+    The report JSON remains as a CI artifact or is attached and passed around as is. If the session
+    cookie is carried in plaintext, one file becomes account access.
     """
     out = list(cmd)
     for i, tok in enumerate(out):
@@ -532,35 +523,34 @@ def _redact_headers(cmd: list[str]) -> list[str]:
     return out
 ```
 
-**"파일 하나가 곧 계정 접근권이 된다"** — §12.2.3 의 무기명 토큰 정의가 그대로
-적용된 문장이다. 쿠키는 소지가 곧 자격이므로, 쿠키를 담은 파일도 소지가 곧 자격이다.
-파일에 붙은 이름이 "검증 리포트"라는 사실은 아무것도 바꾸지 않는다.
+**"One file becomes account access"** — a sentence that applies §12.2.3's bearer-token definition as is. Since
+a cookie's possession is the qualification, a file holding a cookie is also, by possession, the qualification.
+That the name attached to the file is "verification report" changes nothing.
 
-여기에 파일 권한 문제가 하나 더 겹친다. `write_text` 는 프로세스의 umask 를 따르므로,
-흔한 기본값(`022`)에서 파일 모드는 `0644` — **같은 호스트의 모든 사용자가 읽을 수
-있다.** 이 저장소는 리포트 파일에 별도의 권한을 지정하지 않는다.
+To this is added one more file-permission problem. `write_text` follows the process's umask, so at the common
+default (`022`) the file mode is `0644` — **every user on the same host can read it.** This repository does not
+specify a separate permission on the report file.
 
-### 12.5.5 ⑤ CI 로그
+### 12.5.5 ⑤ CI logs
 
-CI 는 위 네 지점을 한 번에 악화시킨다.
+CI worsens the above four points at once.
 
-| CI 의 관행 | 자격증명에 미치는 영향 |
+| CI practice | Effect on credentials |
 |---|---|
-| `set -x` 또는 명령 에코 | ①과 같은 노출이 **영구 로그**에 남는다 |
-| 실패 시 명령 재출력 | 실패할수록 더 많이 남는다 |
-| 아티팩트 업로드 | ④가 조직 전체로 배포된다 |
-| 로그의 장기 보존 | 쿠키를 폐기해도 로그의 사본은 남는다 |
+| `set -x` or command echo | the same exposure as ① remains in a **permanent log** |
+| re-printing the command on failure | the more it fails the more remains |
+| artifact upload | ④ is distributed organization-wide |
+| long-term log retention | even after discarding the cookie, a copy of the log remains |
 
-CI 플랫폼이 제공하는 마스킹(GitHub Actions 의 `::add-mask::` 등)은 **등록된 문자열과
-정확히 일치할 때만** 치환한다. 값이 Base64 로 다시 인코딩되거나, URL 인코딩되거나,
-JSON 안에서 이스케이프되면 일치가 깨지고 마스킹은 통과한다. **마스킹은 마지막
-안전망이지 첫 방어가 아니다.**
+The masking a CI platform provides (GitHub Actions' `::add-mask::`, etc.) substitutes **only when it exactly
+matches a registered string.** If the value is re-encoded in Base64, URL-encoded, or escaped inside JSON, the
+match breaks and the masking is passed. **Masking is a last safety net, not a first defense.**
 
 ---
 
-## 12.6 코드 ③ — 편집의 사정거리
+## 12.6 Code ③ — the range of redaction
 
-### 12.6.1 편집 대상 목록
+### 12.6.1 The redaction-target list
 
 ```python
 # report.py:33
@@ -576,60 +566,58 @@ def _redact_line(line: str) -> str:
     return line
 ```
 
-그리고 호출 지점.
+And the call site.
 
 ```python
 # report.py:146-149
-    # 리포트만 보고 같은 산출물을 다시 만들 수 있도록 실제 실행된 먹싱 명령을 남긴다.
-    # 단 쿠키·인증 헤더는 가린다 — 재현성보다 자격증명 유출 방지가 앞선다.
+    # leave the muxing command that actually ran so the same output can be remade from the report alone.
+    # but hide cookie·auth headers — preventing credential leakage comes before reproducibility.
     if mux_cmd:
         rep.stats["mux_command"] = _redact_headers(mux_cmd)
 ```
 
-주석의 마지막 절이 이 설계의 우선순위를 명시한다 — **재현성 < 유출 방지.** 이것은
-제8부의 검증 방법론과 정면으로 부딪히는 결정이다. 리포트에 명령을 남기는 목적 자체가
-"같은 산출물을 다시 만들 수 있게"인데, 그 명령을 그대로 돌려도 자격증명이 없어
-재현되지 않기 때문이다. **의도적으로 재현 불가능하게 만든 것**이고, 주석이 그 선택을
-숨기지 않는다.
+The comment's last clause states this design's priority — **reproducibility < leak prevention.** This is a
+decision colliding head-on with Part 8's verification methodology. The very purpose of leaving the command in
+the report is "so the same output can be remade," and yet run that command as is and it does not reproduce
+because there is no credential. **It was made intentionally irreproducible**, and the comment does not hide
+that choice.
 
-### 12.6.2 잘 되어 있는 부분
+### 12.6.2 The part done well
 
-먼저 이 구현이 제대로 처리하는 것을 적는다. 세 가지다.
+First, write what this implementation handles properly. Three things.
 
-**하나 — 모든 `-headers` 를 처리한다.** 루프가 `enumerate(out)` 전체를 돌므로
-`-headers` 가 여러 번 나와도 전부 편집된다. 이것은 실제로 필요한 성질이다.
-`subtitles.embed_args()`([`subtitles.py:357-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L357-L366))는 자막 트랙마다 `input_args()` 를
-호출해 `-i` 앞에 자기 `-headers` 를 붙이므로, `--sub-embed` 로 자막 3개를 넣으면
-명령에 `-headers` 가 네 번(영상 1 + 자막 3) 나타난다. 첫 번째만 편집하는 구현이었다면
-나머지 셋이 평문으로 남았을 것이다.
+**One — it processes all `-headers`.** Since the loop runs over the whole `enumerate(out)`, even if `-headers`
+appears several times all are redacted. This is an actually needed property. `subtitles.embed_args()`
+([`subtitles.py:357-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L357-L366)) calls `input_args()` per subtitle track and attaches its own `-headers` before `-i`, so with
+`--sub-embed` putting 3 subtitles the command has `-headers` four times (1 video + 3 subtitles). Had it been
+an implementation redacting only the first, the other three would remain in plaintext.
 
-**둘 — 이름 비교를 소문자로 한다.** HTTP 헤더 이름은 대소문자를 구별하지 않으므로
-`name.strip().lower()` 로 비교하는 것이 옳다. `--header 'COOKIE: …'` 로 넣어도 걸린다.
+**Two — it compares the name in lowercase.** Since HTTP header names are case-insensitive, comparing with
+`name.strip().lower()` is correct. Enter it as `--header 'COOKIE: …'` and it is still caught.
 
-**셋 — 원본을 변형하지 않는다.** `out = list(cmd)` 로 사본을 만든다. 편집된 명령이
-실제 실행 경로로 되돌아가면 요청이 인증에 실패할 것이므로, 사본이어야 한다.
+**Three — it does not transform the original.** It makes a copy with `out = list(cmd)`. If the redacted command
+went back to the actual execution path, the request would fail authentication, so it must be a copy.
 
-### 12.6.3 사정거리 밖
+### 12.6.3 Outside the range
 
-![편집이 닿는 범위 — 리포트 JSON 한 장](/images/lecture/hls-recon/12-redaction-scope.svg)
+![The range redaction reaches — one report JSON](/images/lecture/hls-recon/12-redaction-scope.svg)
 
-*그림 12-2 — 편집이 닿는 범위 — 리포트 JSON 한 장*
+*Figure 12-2 — the range redaction reaches — one report JSON*
 
-`_redact_headers` 는 **`-headers` 바로 다음 토큰만** 열어 본다. 명령의 나머지는
-검사하지 않는다. 그래서 다음이 그대로 남는다.
+`_redact_headers` opens **only the token right after `-headers`.** It does not inspect the rest of the command.
+So the following remain as is.
 
-**(가) `-i` 인자의 URL.** `assemble.remux_from_url()`([`assemble.py:81-90`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L81-L90))이 만드는
-명령에는 `cmd += ["-i", url]` 이 들어 있다. 그 URL 이 제11장의 서명 URL 이면
-`?md5=<서명>&expires=<unix>` 가 평문으로 실린다. **서명 URL 은 그 자체가 능력**이므로,
-만료 전까지 그 문자열을 가진 누구나 같은 자원을 받을 수 있다.
+**(a) The `-i` argument's URL.** The command `assemble.remux_from_url()` ([`assemble.py:81-90`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L81-L90)) makes contains
+`cmd += ["-i", url]`. If that URL is Chapter 11's signed URL, `?md5=<signature>&expires=<unix>` is carried in
+plaintext. **A signed URL is itself a capability**, so anyone with that string can receive the same resource
+until expiry.
 
-**(나) `source` 필드.** `Report.to_json()`([`report.py:95-108`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L95-L108))이 직렬화하는 첫 키가
-`"source"` 이고, 그 값은 `_run_one` 에 넘어온 원본 주소다. 시리즈 모드에서는
-[`cli.py:916`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L916) 이 `play.playlist_url` — 즉 **방금 발급받은 서명 플레이리스트 주소** —
-를 그대로 넘긴다. 편집은 이 필드에 닿지 않는다.
+**(b) The `source` field.** The first key `Report.to_json()` ([`report.py:95-108`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L95-L108)) serializes is `"source"`, and its
+value is the original address passed to `_run_one`. In series mode [`cli.py:916`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L916) passes `play.playlist_url` — i.e.,
+**the just-issued signed playlist address** — as is. Redaction does not reach this field.
 
-**(다) 목록에 없는 헤더.** 이것이 이 절의 핵심이다. 실제 함수에 합성 명령을 통과시켜
-어느 헤더가 살아남는지 측정했다.
+**(c) A header not on the list.** This is this section's crux. A synthetic command was passed through the
+actual function to measure which headers survive.
 
 ```
 >>> cmd = ["ffmpeg", *input_args(headers, url), "-i", url, "out.mp4"]
@@ -642,247 +630,243 @@ Set-Cookie: a=b
 Authorization: ***
 ```
 
-`Cookie` 와 `Authorization` 은 `***` 가 됐고, **`X-Auth-Token: deadbeef` 와
-`Set-Cookie: a=b` 는 그대로 남았다.** 열거되지 않았기 때문이다.
+`Cookie` and `Authorization` became `***`, and **`X-Auth-Token: deadbeef` and `Set-Cookie: a=b` remained as
+is.** Because they are not enumerated.
 
-실무에서 흔한 자격증명 헤더를 목록과 대조하면 이렇다.
+Compare the credential headers common in practice against the list and it is this.
 
-| 헤더 | 무엇을 담는가 | `SENSITIVE_HEADERS` 에 있는가 |
+| Header | What it holds | In `SENSITIVE_HEADERS`? |
 |---|---|---|
-| `Cookie` | 세션 | ✓ |
-| `Authorization` | Bearer·Basic 자격증명 | ✓ |
-| `Proxy-Authorization` | 프록시 자격증명 | ✓ |
-| `X-API-Key` | API 키 | ✓ |
-| `X-Auth-Token` | 세션·API 토큰 | ✗ |
-| `X-Access-Token` | 액세스 토큰 | ✗ |
-| `X-Amz-Security-Token` | AWS 임시 세션 토큰 | ✗ |
-| `X-CSRF-Token` | CSRF 토큰 | ✗ |
-| `Api-Key` (`X-` 접두어가 없다) | API 키 | ✗ |
-| `X-Session-Id` | 세션 식별자 | ✗ |
-| `X-Goog-Api-Key` | Google API 키 | ✗ |
-| `Set-Cookie` | 쿠키(응답 헤더지만 `--header` 로 넣을 수 있다) | ✗ |
+| `Cookie` | the session | ✓ |
+| `Authorization` | Bearer·Basic credential | ✓ |
+| `Proxy-Authorization` | proxy credential | ✓ |
+| `X-API-Key` | API key | ✓ |
+| `X-Auth-Token` | session·API token | ✗ |
+| `X-Access-Token` | access token | ✗ |
+| `X-Amz-Security-Token` | AWS temporary session token | ✗ |
+| `X-CSRF-Token` | CSRF token | ✗ |
+| `Api-Key` (no `X-` prefix) | API key | ✗ |
+| `X-Session-Id` | session identifier | ✗ |
+| `X-Goog-Api-Key` | Google API key | ✗ |
+| `Set-Cookie` | cookie (a response header but settable via `--header`) | ✗ |
 
-**네 개가 있고 여덟 개 이상이 없다.** 그리고 이 표는 완전하지 않다 — 완전할 수
-없다는 것이 다음 절의 주제다.
+**Four are there and eight or more are not.** And this table is not complete — that it cannot be complete is
+the next section's subject.
 
-이것을 결함이라고만 부르면 절반만 맞다. 이 도구는 `--header` 로 **임의의 헤더**를
-받는다([`cli.py:1019`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1019)). 즉 사용자가 넣을 수 있는 헤더 이름의 집합은 무한하고,
-그 집합의 어느 부분이 자격증명인지는 **도구가 알 수 없다.** 목록 기반 편집이 놓치는
-것은 구현자의 부주의가 아니라 **방식 자체의 성질**이다.
+Call this only a fault and it is half right. This tool receives **arbitrary headers** via `--header`
+([`cli.py:1019`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1019)). That is, the set of header names the user can put in is infinite, and which part of that set is a
+credential the **tool cannot know.** What a list-based redaction misses is not the implementer's carelessness
+but **a property of the method itself.**
 
 ---
 
-## 12.7 일반화 — 목록 기반 통제의 실패 방향
+## 12.7 Generalization — the failure direction of list-based control
 
-### 12.7.1 두 방식, 반대 방향의 실패
+### 12.7.1 Two methods, opposite failure directions
 
-> **용어** — **거부 목록(denylist)**: 금지할 것을 열거하고 나머지를 통과시키는 통제.
-> **허용 목록(allowlist)**: 허용할 것을 열거하고 나머지를 막는 통제.
-> 후자를 **기본 거부(default-deny)** 라고도 부른다.
+> **Term** — **denylist**: a control enumerating what to forbid and passing the rest.
+> **allowlist**: a control enumerating what to allow and blocking the rest.
+> The latter is also called **default-deny.**
 
-`SENSITIVE_HEADERS` 는 거부 목록이다. "이 이름들은 가린다, 나머지는 그대로 싣는다."
+`SENSITIVE_HEADERS` is a denylist. "These names are hidden, the rest are carried as is."
 
-두 방식의 차이는 성능도 우아함도 아니다. **실패의 방향**이다.
+The two methods' difference is neither performance nor elegance. It is **the direction of failure.**
 
-| | 거부 목록 | 허용 목록 |
+| | Denylist | Allowlist |
 |---|---|---|
-| 열거되지 않은 것을 만나면 | **통과시킨다** | **막는다** |
-| 실패의 증상 | 조용하다 — 아무도 모른다 | 시끄럽다 — 즉시 안 된다고 나온다 |
-| 발견되는 시점 | 사고가 난 뒤 | 기능을 쓰려는 순간 |
-| 유지보수 부담 | 세상이 새 항목을 만들 때마다 | 내가 새 기능을 쓸 때마다 |
-| 누가 목록을 갱신하게 만드는가 | 아무도 — 압력이 없다 | 사용자 — 막히면 바로 요청한다 |
+| On meeting something not enumerated | **passes it** | **blocks it** |
+| Failure symptom | quiet — no one knows | loud — immediately says it does not work |
+| When discovered | after an incident | the moment you try to use the feature |
+| Maintenance burden | every time the world makes a new item | every time I use a new feature |
+| Who is made to update the list | no one — there is no pressure | the user — blocked, they request immediately |
 
-마지막 행이 결정적이다. **거부 목록은 자기가 낡았다는 신호를 내보내지 않는다.**
-새 헤더 이름이 세상에 등장해도 코드는 조용히 그것을 평문으로 싣는다. 반면 허용
-목록은 낡는 즉시 사용자가 알려 준다 — 안 되니까.
+The last row is decisive. **A denylist does not emit a signal that it is stale.** Even if a new header name
+appears in the world, the code quietly carries it in plaintext. An allowlist, by contrast, tells you the moment
+it goes stale — because it does not work.
 
-그래서 원칙은 이렇게 쓰인다.
+So the principle is written thus.
 
-> **되돌릴 수 없는 실패(유출·실행·삭제)를 막는 통제는 허용 목록이어야 한다.**
-> 거부 목록은 실패가 되돌릴 수 있을 때만 쓴다.
+> **A control that blocks an irreversible failure (leak·execution·deletion) must be an allowlist.** Use a
+> denylist only when the failure is reversible.
 
-자격증명 유출은 되돌릴 수 없다. 리포트를 지워도 이미 내려받은 사본은 남고, 쿠키를
-폐기하기 전까지 그 값은 유효하다.
+A credential leak is irreversible. Delete the report and the already-downloaded copy remains, and until the
+cookie is discarded that value is valid.
 
-### 12.7.2 같은 구조가 나타나는 곳
+### 12.7.2 Where the same structure appears
 
-| 영역 | 거부 목록 형태 | 놓치는 것 | 허용 목록 형태 |
+| Domain | The denylist form | What it misses | The allowlist form |
 |---|---|---|---|
-| **로그 편집** | 민감 키 이름 목록 (이 장) | 새 헤더·새 필드·중첩 구조 안의 값 | 내보낼 필드만 명시해 직렬화 |
-| **입력 검증** | 금지 문자·금지 패턴 | 인코딩 변형, 유니코드 동형 문자(제31장) | 허용 문자 집합 |
-| **파일 업로드** | 위험 확장자 차단 | 새 확장자, 대소문자·후행 점 변형 | 허용 확장자 + 매직 넘버 검사(제14장) |
-| **세그먼트 확장자** | — | — | `ALLOWED_SEGMENT_EXTS` (제15장) |
-| **CSP** | 개별 차단 규칙 | 새로운 리소스 유형 | `default-src 'none'` 에서 시작해 열기 |
-| **방화벽** | 차단 포트 목록 | 새 서비스·비표준 포트 | 허용 포트만 개방 |
-| **시크릿 스캐너** | 알려진 토큰 정규식 | 새 형식의 토큰, 사내 자체 형식 | (원리적으로 불가능 — 아래) |
+| **log redaction** | a list of sensitive key names (this chapter) | a new header·new field·a value in a nested structure | serialize by naming only the fields to export |
+| **input validation** | forbidden characters·forbidden patterns | encoding variants, Unicode homoglyphs (Chapter 31) | the allowed character set |
+| **file upload** | block dangerous extensions | a new extension, case·trailing-dot variants | allowed extensions + magic-number check (Chapter 14) |
+| **segment extension** | — | — | `ALLOWED_SEGMENT_EXTS` (Chapter 15) |
+| **CSP** | individual block rules | a new resource type | start at `default-src 'none'` and open up |
+| **firewall** | a list of blocked ports | a new service·non-standard port | open only allowed ports |
+| **secret scanner** | known-token regexes | a new token format, an in-house custom format | (impossible in principle — below) |
 
-마지막 행에 예외가 있다. **시크릿 스캐너는 허용 목록으로 만들 수 없다.** "이것들만
-평문이어도 된다"를 열거하는 것은 소스 코드 전체를 열거하는 것과 같기 때문이다.
-그래서 스캐너는 본질적으로 거부 목록이며, 그 사실이 스캐너가 **놓치는 것이 있음을
-전제로 운용되어야 하는** 이유다. 스캐너의 통과는 "시크릿이 없다"가 아니라 "이 스캐너가
-아는 형식의 시크릿은 없다"이다. 제34장의 테스트 오라클 문제와 같은 문장 구조다.
+The last row has an exception. **A secret scanner cannot be made an allowlist.** Because enumerating "only
+these are OK in plaintext" is the same as enumerating the whole source code. So a scanner is inherently a
+denylist, and that fact is why a scanner **must be operated on the premise that it misses things.** A scanner's
+pass is not "there are no secrets" but "there are no secrets of a format this scanner knows." The same sentence
+structure as Chapter 34's test-oracle problem.
 
-### 12.7.3 그러면 이 코드는 왜 거부 목록인가
+### 12.7.3 So why is this code a denylist
 
-정직하게 이유를 세워 본다. 허용 목록으로 바꾸면 `mux_command` 는 이렇게 된다.
+Set the reason honestly. Change to an allowlist and `mux_command` becomes this.
 
 ```
 ["ffmpeg", "-headers", "***", "-protocol_whitelist", "***", "-i", "***", "***"]
 ```
 
-명령의 **모든 값**은 잠재적으로 민감하다 — URL 에 서명이 들어 있고, 출력 경로에
-작품 제목이 들어 있으며, 헤더 값 전체가 세션이다. 허용 목록을 엄밀히 적용하면 남는
-것은 옵션 이름뿐이고, 그 시점에서 `mux_command` 를 기록하는 목적이 사라진다.
+**Every value** of the command is potentially sensitive — the URL has a signature, the output path has the
+title of the work, the whole header value is the session. Apply an allowlist strictly and what remains is only
+option names, and at that point the purpose of recording `mux_command` disappears.
 
-즉 이 코드의 거부 목록은 **"자격증명을 완전히 가리는 것"과 "명령을 알아볼 수 있게
-남기는 것" 사이의 절충**이다. 그리고 절충인 이상 어느 쪽도 완전하지 않다.
+That is, this code's denylist is **a compromise between "fully hiding credentials" and "leaving the command
+recognizable."** And being a compromise, neither side is complete.
 
-이 판단을 어떻게 다시 세울 수 있는지가 §12.8 의 마지막 항목이다.
+How this judgment can be re-set is §12.8's last item.
 
 ---
 
-## 12.8 보안 — 위협 모델과 방어자 관점
+## 12.8 Security — threat model and the defender's view
 
-### 12.8.1 누가 무엇을 얻는가
+### 12.8.1 Who gets what
 
-방어를 논하기 전에 위협 모델을 세운다. **누구로부터 무엇을 지키는가를 정하지 않은
-보호는 보호가 아니다**(제25장에서 같은 문장이 AES-128 에 적용된다).
+Before discussing defense, set the threat model. **A protection that has not decided from whom it protects what
+is not protection** (in Chapter 25 the same sentence applies to AES-128).
 
-| 공격자의 위치 | 얻는 것 | 필요한 것 | 이 코드의 현재 대응 |
+| The attacker's location | What they get | What they need | This code's current response |
 |---|---|---|---|
-| **같은 호스트의 다른 사용자** | ②③ argv 의 쿠키 | 로컬 셸 하나 | 없음 |
-| **홈 디렉터리 사본 보유자**(백업·동기화·유출된 dotfiles) | ① 히스토리의 명령 전체 | 파일 접근 | 없음 (README 권고만) |
-| **CI 아티팩트 열람자** | ④ 리포트 JSON | 저장소 읽기 권한 | 헤더 4종 편집 |
-| **CI 로그 열람자** | ⑤ 에코된 명령 | 저장소 읽기 권한 | 없음 |
-| **④를 받은 제3자** | 서명 URL(`source`·`-i`) | 파일 하나 | 없음 — 편집 범위 밖 |
-| **화면 공유·어깨너머** | 터미널 스크롤백 | 물리적·화상 접근 | 없음 |
+| **another user on the same host** | ②③ the cookie in argv | one local shell | none |
+| **a holder of a home-directory copy** (backup·sync·leaked dotfiles) | ① the whole command in history | file access | none (only the README recommendation) |
+| **a CI-artifact reader** | ④ the report JSON | repository-read permission | 4 header kinds redacted |
+| **a CI-log reader** | ⑤ the echoed command | repository-read permission | none |
+| **a third party who received ④** | the signed URL (`source`·`-i`) | one file | none — outside the redaction range |
+| **screen share·shoulder surfing** | terminal scrollback | physical·video access | none |
 
-행이 여섯인데 대응이 있는 행은 하나다. 이것이 이 장을 "코드의 결함"이 아니라
-**"인터페이스 설계의 문제"** 로 읽어야 하는 이유다. `--cookie <값>` 이라는 인터페이스를
-고르는 순간 ①②③⑤가 결정된다. 코드로 고칠 수 있는 것은 ④뿐이다.
+There are six rows and one has a response. This is why this chapter must be read not as "the code's fault" but
+as **"a problem of interface design."** The moment you choose the interface `--cookie <value>`, ①②③⑤ are
+decided. What the code can fix is only ④.
 
-### 12.8.2 방어자 관점
+### 12.8.2 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **도구 작성자** | 자격증명을 **argv 로 받지 않는다.** 파일 경로(`--cookie-file`), 표준 입력(`--cookie @-`), 환경변수 중에서 고른다. `curl` 의 `-K/--config`, `git` 의 credential helper, `ssh` 의 `IdentityFile` 이 모두 같은 이유로 존재한다 |
-| **도구 작성자** | 로그·아티팩트는 **기본 거부로 직렬화한다.** "무엇을 가릴까"가 아니라 "무엇을 실을까"를 정한다. 재현성이 필요하면 명령 전체가 아니라 **재현에 필요한 구조**(모드·컨테이너·옵션 이름)만 남기고 값은 자리표시자로 둔다 |
-| **도구 작성자** | 리포트 파일은 **`0600` 으로 만든다.** 자격증명이 섞일 수 있는 산출물에 umask 기본값을 맡기지 않는다 |
-| **사용자** | 쿠키를 꺼내 쓸 계정을 **분리한다.** 그 쿠키는 영상 접근권만이 아니라 그 사이트의 계정 전체를 여는 경우가 대부분이다 — 결제 수단·개인정보·이메일 변경 권한까지 포함될 수 있다 |
-| **사용자** | 작업이 끝나면 **해당 세션을 로그아웃**시킨다. 유출 창을 닫는 유일한 확실한 방법은 값을 무효화하는 것이다 |
-| **CI 운영자** | 아티팩트를 **시크릿과 같은 등급**으로 다룬다. 마스킹은 정확 일치일 때만 동작하므로 최후 방어로만 계산에 넣는다 |
-| **서비스 운영자** | 쿠키의 **범위와 수명을 좁힌다.** `HttpOnly`·`Secure`·`SameSite`·`__Host-` 접두어. 미디어 접근에는 세션 쿠키 대신 **범위와 만료가 박힌 서명 URL**(제11장)을 쓰면 유출 시 피해가 자원 하나·수 분으로 제한된다 |
-| **감사자** | 편집 목록을 보면 **"무엇이 목록에 없는가"** 를 묻는다. 그리고 "편집이 적용되는 범위가 어디까지인가"를 묻는다 — 이 저장소의 경우 답은 "`-headers` 다음 토큰 하나"다 |
+| **tool author** | **do not receive a credential via argv.** choose among a file path (`--cookie-file`), standard input (`--cookie @-`), an environment variable. `curl`'s `-K/--config`, `git`'s credential helper, `ssh`'s `IdentityFile` all exist for the same reason |
+| **tool author** | serialize logs·artifacts as **default-deny.** decide "what to carry," not "what to hide." if reproducibility is needed, leave not the whole command but **the structure needed to reproduce** (mode·container·option names) and put the values as placeholders |
+| **tool author** | make the report file **`0600`.** do not leave the umask default on an output that may mix credentials |
+| **user** | **separate the account** whose cookie you take out. that cookie usually opens not just video access but the whole account of that site — it can include the payment method·personal info·email-change permission |
+| **user** | **log out that session** when the job is done. the only sure way to close the leak window is to invalidate the value |
+| **CI operator** | treat artifacts **at the same grade as secrets.** since masking works only on an exact match, count it only as the last defense |
+| **service operator** | **narrow the cookie's scope and lifetime.** `HttpOnly`·`Secure`·`SameSite`·`__Host-` prefix. use a **scope- and expiry-bound signed URL** (Chapter 11) instead of a session cookie for media access and a leak's damage is limited to one resource·a few minutes |
+| **auditor** | look at the redaction list and ask **"what is not on the list."** and ask "how far the redaction applies" — in this repository's case the answer is "the one token after `-headers`" |
 
-### 12.8.3 앰비언트를 능력으로 바꾸는 것이 왜 방어인가
+### 12.8.3 Why turning ambient into a capability is a defense
 
-§12.2.1 의 대조표로 돌아가면 서비스 운영자 항목의 근거가 보인다.
+Return to §12.2.1's comparison table and the basis for the service-operator item shows.
 
-세션 쿠키가 유출되면 공격자가 얻는 것은 **계정 전체에 대한, 세션 만료까지의 권한**
-이다. 서명 URL 이 유출되면 얻는 것은 **자원 하나에 대한, `expires` 까지의 권한**이다.
-같은 사고에서 피해 면적이 두 축(범위·시간) 모두에서 줄어든다.
+If a session cookie leaks, what the attacker gets is **authority over the whole account, until session
+expiry.** If a signed URL leaks, what they get is **authority over one resource, until `expires`.** In the same
+incident the damage surface shrinks on both axes (scope·time).
 
-이것은 **최소 권한 원칙(principle of least privilege)** 의 시간축 확장이며, 제11장이
-설명한 서명 URL 의 구현 제약 — 만료가 짧으면 주소를 미리 모아 둘 수 없어 지연
-해석(late resolution)이 강제된다 — 이 그 대가다. **보안 이득과 구현 복잡도가
-같은 손잡이에 달려 있다.**
+This is the time-axis extension of the **principle of least privilege**, and the implementation constraint
+Chapter 11 explained for the signed URL — a short expiry means you cannot gather addresses in advance so late
+resolution is forced — is its price. **The security gain and the implementation complexity are on the same
+knob.**
 
-한편 이 도구의 관점에서는 반대 방향의 요구가 생긴다. 서명 URL 이 자격증명이 되면
-**편집해야 할 것이 헤더에서 URL 로 옮겨간다.** §12.6.3 (가)(나)에서 확인한 사정거리
-밖의 두 항목이 바로 그것이다. 서비스가 더 나은 방어를 채택할수록 이 도구의 편집은
-더 많이 놓치게 된다 — 편집이 헤더만 보고 있기 때문이다.
+Meanwhile from this tool's view a reverse-direction requirement arises. When a signed URL becomes the
+credential, **what must be redacted moves from the header to the URL.** The two out-of-range items confirmed in
+§12.6.3 (a)(b) are exactly that. The more a service adopts a better defense, the more this tool's redaction
+misses — because the redaction is looking only at the header.
 
-### 12.8.4 이 장이 다루지 않는 것
+### 12.8.4 What this chapter does not cover
 
-교재의 경계를 명시해 둔다. 이 장은 **자격증명이 어디에 남는가**의 문제를 다루며,
-특정 서비스의 세션을 획득하는 방법이나 접근 통제를 우회하는 절차는 다루지 않는다.
-`--cookie` 는 **사용자가 이미 정당하게 보유한 세션**을 자기 도구에 전달하는 수단이고,
-이 장의 관심사는 그 전달 과정에서 그 세션이 몇 부 복사되는가다.
+State the course's boundary. This chapter covers the problem of **where credentials remain**, and does not
+cover how to obtain a specific service's session or the procedure to bypass access control. `--cookie` is a
+means of passing **a session the user already legitimately holds** to their own tool, and this chapter's
+concern is how many copies of that session are made during that passing.
 
 ---
 
-## 12.9 한계와 미해결
+## 12.9 Limits and open questions
 
-정직하게 적어 둔다.
+Noted honestly.
 
-- **`SENSITIVE_HEADERS` 는 네 개짜리 거부 목록이다.** `X-Auth-Token`
-  `X-Amz-Security-Token` `X-Access-Token` `X-CSRF-Token` `Api-Key` 등은 편집되지
-  않는다(§12.6.3 에서 실측). 이것은 이 저장소의 **실제 한계**이며, `--header` 로
-  임의 헤더를 받는 이상 목록을 아무리 늘려도 완전해지지 않는다.
-- **URL 안의 자격증명은 편집 범위 밖이다.** `mux_command` 의 `-i` 인자와 `source`
-  필드에 서명 URL 이 평문으로 남는다([`assemble.py:83`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L83), [`report.py:98`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L98),
-  [`cli.py:916`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L916)). 리포트 JSON 을 받은 제3자는 만료 전까지 같은 자원에 접근할 수 있다.
-- **편집 코드에 회귀 테스트가 없다.** `tests/run.sh` 525줄 전체를 검색해도
-  `redact`·`cookie`·`mux_command`·`Authorization` 문자열이 **한 번도 나오지 않는다.**
-  즉 `SENSITIVE_HEADERS` 가 잘못 편집되거나 `-headers` 직렬화 형식이 바뀌어도
-  테스트는 통과한다. 제34장의 표현을 빌리면 **이 검사에는 오라클이 없다.**
-- **README 의 "알려진 한계"에 자격증명 취급이 없다.** `README.md:409-441` 은 암호화·
-  자막·재고 조사의 한계를 열거하지만 편집의 불완전성은 적지 않는다. §12.5.2 의
-  `HIST_IGNORE_SPACE` 전제 조건도 마찬가지다.
-- **argv 노출은 현재 인터페이스로는 피할 수 없다.** `--cookie` 외에 파일·표준 입력
-  경로가 없고([`cli.py:1021-1026`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1021-L1026)), 자식 프로세스 쪽은 ffmpeg 이 `-headers` 외의
-  전달 수단을 제공하지 않으므로 이 도구만의 결정으로 해결되지 않는다.
-- **`str.splitlines()` 는 HTTP 가 줄바꿈으로 보지 않는 문자에서도 쪼갠다.** 실측하면
-  U+2028(LINE SEPARATOR)이 든 값이 분리·재조립된다.
+- **`SENSITIVE_HEADERS` is a four-item denylist.** `X-Auth-Token` `X-Amz-Security-Token` `X-Access-Token`
+  `X-CSRF-Token` `Api-Key`, etc., are not redacted (measured in §12.6.3). This is this repository's **actual
+  limit**, and as long as it receives arbitrary headers via `--header`, however you grow the list it will not
+  become complete.
+- **Credentials inside a URL are outside the redaction range.** A signed URL remains in plaintext in
+  `mux_command`'s `-i` argument and the `source` field ([`assemble.py:83`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L83), [`report.py:98`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L98), [`cli.py:916`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L916)).
+  A third party who received the report JSON can access the same resource until expiry.
+- **There is no regression test for the redaction code.** Search the whole 525 lines of `tests/run.sh` and the
+  strings `redact`·`cookie`·`mux_command`·`Authorization` **appear not once.** That is, even if
+  `SENSITIVE_HEADERS` is wrongly redacted or the `-headers` serialization format changes, the test passes. In
+  Chapter 34's phrasing, **this check has no oracle.**
+- **The README's "known limits" has no credential handling.** `README.md:409-441` enumerates the limits of
+  encryption·subtitles·inventory but does not write the redaction's incompleteness. §12.5.2's
+  `HIST_IGNORE_SPACE` precondition is likewise.
+- **argv exposure cannot be avoided with the current interface.** There is no file·standard-input path besides
+  `--cookie` ([`cli.py:1021-1026`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1021-L1026)), and on the child-process side ffmpeg provides no delivery means other than
+  `-headers`, so it is not solvable by this tool's decision alone.
+- **`str.splitlines()` splits even on characters HTTP does not treat as a newline.** Measured, a value
+  containing U+2028 (LINE SEPARATOR) is split·reassembled.
   ```
-  >>> _normalize_cookie("sid=ab\u2028cd; t=1")   # U+2028 LINE SEPARATOR
+  >>> _normalize_cookie("sid=ab cd; t=1")   # U+2028 LINE SEPARATOR
   'sid=ab; cd; t=1'
   ```
-  "값은 손대지 않는다"는 독스트링의 불변식이 이 입력에서는 성립하지 않는다. 실무상
-  영향은 거의 없다 — 쿠키 값은 규격상 US-ASCII 이고, U+2028 이 든 값은 어차피
-  latin-1 인코딩에서 죽는다. 다만 **실패의 성질이 바뀐다.** 시끄러운 실패
-  (`UnicodeEncodeError`)가 조용한 손상(값이 둘로 갈라진 요청)으로 바뀐다.
-- **프로세스 목록 가시성은 OS 마다 다르다.** macOS(Darwin 25.5.0)에서 일반 사용자가
-  root 프로세스의 argv 를 읽을 수 있음은 §12.5.3 에서 **실측했다.** 리눅스
-  `/proc/<pid>/cmdline` 의 기본 권한에 대한 서술은 문서화된 동작을 옮긴 것이고
-  이 환경에서 측정하지 않았다. `hidepid` 마운트 옵션이 걸린 환경에서는 다르다.
-- **HTTP/2 다운그레이드 지점의 요청 분할은 인용이다.** §12.4.2 의 서술은 공개된 연구
-  결과의 요약이며 이 저장소에서 재현하지 않았다.
-- **원격 데이터가 헤더에 CRLF 를 넣을 경로가 없다는 결론은 현재 코드 기준이다.**
-  §12.4.4 에서 두 경로(`_adopt_origin`·시리즈 모드 Referer)를 전수로 확인했으나,
-  그 안전은 `urlparse` 의 부수 효과에서 나온다. URL 을 거치지 않는 새 헤더 출처가
-  생기면 방어는 없다.
+  The docstring's invariant "the value is not touched" does not hold on this input. The practical impact is
+  almost none — a cookie value is US-ASCII by spec, and a value with U+2028 dies in latin-1 encoding anyway.
+  But **the nature of the failure changes.** A loud failure (`UnicodeEncodeError`) becomes a quiet corruption
+  (a request with the value split in two).
+- **Process-list visibility differs by OS.** That an ordinary user can read a root process's argv on macOS
+  (Darwin 25.5.0) was **measured** in §12.5.3. The statement about the default permission of Linux's
+  `/proc/<pid>/cmdline` is a transfer of documented behavior and was not measured in this environment. It is
+  different in an environment with the `hidepid` mount option.
+- **The request splitting at an HTTP/2 downgrade point is a citation.** §12.4.2's statement is a summary of
+  published research and was not reproduced in this repository.
+- **The conclusion that remote data has no path to put a CRLF in a header is by the current code.** §12.4.4
+  confirmed the two paths (`_adopt_origin`·series-mode Referer) exhaustively, but that safety comes from a
+  `urlparse` side effect. If a new header source that does not go through a URL appears, there is no defense.
 
 ---
 
-## 12.10 요약
+## 12.10 Summary
 
-1. **앰비언트 권한(ambient authority)** 은 요청자가 명시하지 않아도 환경이 자동으로
-   붙이는 권한이다. 쿠키가 그 전형이고, **CSRF 는 그 자동성의 직접적 결과**다 —
-   버그가 아니라 정의에서 따라 나온다. `SameSite` 는 그 자동성을 뒤늦게 좁히는 작업이다.
-2. `--cookie` 는 브라우저 안의 앰비언트 권한을 꺼내어 **무기명 토큰**으로 바꾼다.
-   격리가 사라지고, 셸이 문자열에 하는 모든 일이 그 값에 적용된다.
-3. 이 코드는 쿠키 값을 **파싱하지 않는다.** RFC 6265 의 `cookie-value` 는 `=` 를
-   허용하므로(Base64 패딩이 대표적) 이름/값으로 쪼갠 뒤 재조립하면 값이 훼손된다.
-   실측으로 `sid=a=b=c` 가 그대로 통과함을 확인했다. **해석은 언제나 손실 가능성이다.**
-4. 개행 제거는 **요청 분할·헤더 주입** 방어의 흔적이다. 성립 조건 셋(값의 제어·검증
-   없는 직렬화·CRLF 프레이밍) 중 ②가 경로마다 다르다 — 실측 결과 `urllib` 은
-   `ValueError` 로 거부하지만 **ffmpeg 의 `-headers` 는 검사 없이 헤더를 추가한다.**
-   그래서 정규화는 검사가 없는 쪽까지 지키는 유일한 지점이다.
-5. 자격증명은 다섯 곳에 남는다 — **셸 히스토리 · 자신의 argv · 자식 프로세스의 argv ·
-   리포트 JSON · CI 로그.** 코드가 손댈 수 있는 곳은 리포트 JSON 하나뿐이고,
-   나머지는 인터페이스 설계와 운영 규칙의 문제다. **명령행 인자는 비밀이 아니다** —
-   macOS 에서 일반 사용자가 root 프로세스의 argv 를 읽을 수 있음을 실측했다.
-6. **리포트 JSON 이 아티팩트로 남으면 파일 하나가 곧 계정 접근권**이다. 그것이
-   `_redact_headers` 의 존재 이유이며, 주석은 우선순위를 명시한다 —
-   **재현성보다 유출 방지가 앞선다.**
-7. 그러나 편집의 사정거리는 좁다. **`-headers` 다음 토큰 하나**만 검사하므로
-   `-i` 의 서명 URL 과 `source` 필드는 그대로 남고, 목록에 없는 헤더
-   (`X-Auth-Token` 등)도 평문으로 실린다. 편집 코드에는 **회귀 테스트가 없다.**
-8. **거부 목록은 열거되지 않은 것을 놓치는 방향으로, 허용 목록은 막는 방향으로
-   실패한다.** 되돌릴 수 없는 실패(유출)를 막는 통제는 허용 목록이어야 한다.
-   거부 목록의 진짜 문제는 놓친다는 것이 아니라 **놓쳤다는 신호를 내보내지 않는
-   것**이다.
-9. 방어자의 순서는 **(가) 자격증명을 argv 가 아닌 파일·표준 입력으로 받고,
-   (나) 로그를 기본 거부로 직렬화하고, (다) 산출물 파일 권한을 좁히고,
-   (라) 서비스 측에서 쿠키를 범위·만료가 박힌 능력으로 교체하는 것**이다.
-   마스킹은 이 순서의 마지막이지 처음이 아니다.
+1. **Ambient authority** is authority the environment attaches automatically even without the requester
+   specifying it. A cookie is its archetype, and **CSRF is a direct consequence of that automaticity** — it
+   follows from the definition, not a bug. `SameSite` is the work of belatedly narrowing that automaticity.
+2. `--cookie` takes the ambient authority inside the browser and turns it into a **bearer token.** The
+   isolation disappears, and everything the shell does to a string applies to that value.
+3. This code **does not parse** the cookie value. RFC 6265's `cookie-value` allows `=` (Base64 padding is
+   representative), so splitting into name/value and reassembling damages the value. Measured, `sid=a=b=c`
+   passes as is. **Interpretation is always a possibility of loss.**
+4. Newline stripping is a trace of the **request splitting·header injection** defense. Of the three holding
+   conditions (control of the value·serialization without validation·CRLF framing), ② differs per path —
+   measured, `urllib` rejects with `ValueError` but **ffmpeg's `-headers` adds a header with no check.** So the
+   normalization is the only point protecting even the side with no check.
+5. Credentials remain in five places — **shell history · one's own argv · child-process argv · report JSON ·
+   CI logs.** The code can touch only the report JSON, and the rest are problems of interface design and
+   operational rules. **Command-line arguments are not secrets** — that an ordinary user can read a root
+   process's argv on macOS was measured.
+6. **When the report JSON remains as an artifact, one file is account access.** That is `_redact_headers`'s
+   reason for existing, and the comment states the priority — **leak prevention before reproducibility.**
+7. But the redaction's range is narrow. Since it inspects **only the one token after `-headers`**, the `-i`'s
+   signed URL and the `source` field remain as is, and headers not on the list (`X-Auth-Token`, etc.) are
+   carried in plaintext too. The redaction code has **no regression test.**
+8. **A denylist fails in the direction of missing what is not enumerated; an allowlist in the direction of
+   blocking.** A control that blocks an irreversible failure (a leak) must be an allowlist. A denylist's real
+   problem is not that it misses but **that it emits no signal that it missed.**
+9. The defender's order is **(a) receive credentials via a file·standard input rather than argv, (b) serialize
+   logs as default-deny, (c) narrow the output file's permission, (d) on the service side replace the cookie
+   with a scope- and expiry-bound capability.** Masking is the last of this order, not the first.
 
 ---
 
-**다음 장** — 이 장의 자격증명은 값 하나였고, 그 값을 지키는 문제였다. 그런데 접근
-통제의 앞단에는 값이 아니라 **코드**가 놓여 있는 경우가 있다. 재생 주소를 발급하는
-로직이 `eval(function(p,a,c,k,e,d){…})` 로 압축된 자바스크립트 안에 들어 있고, 그것을
-읽어야 다음 요청을 만들 수 있다. 제13장은 난독화가 왜 보안이 아닌지를 Kerckhoffs
-원리로 설명하고, 동시에 이 저장소가 그 코드를 **파싱은 하되 실행하지는 않는다**는
-결정으로 어떤 신뢰 경계를 그었는지를 다룬다.
+**Next chapter** — this chapter's credential was one value, and it was the problem of protecting that value.
+But at the front of access control there is a case where not a value but **code** is placed. The logic issuing
+the playback address is inside JavaScript compressed as `eval(function(p,a,c,k,e,d){…})`, and you must read it
+to make the next request. Chapter 13 explains why obfuscation is not security by Kerckhoffs's principle, and at
+the same time covers what trust boundary this repository drew with the decision to **parse but not execute**
+that code.

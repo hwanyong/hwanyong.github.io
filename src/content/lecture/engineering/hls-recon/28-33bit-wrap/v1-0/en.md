@@ -1,120 +1,117 @@
 ---
-untranslated: ko
-title: "33비트 래핑과 신뢰할 수 없는 입력"
-description: "범위 검사가 없으면 계산은 조용히 틀린다"
-date: 2026-08-18
+title: "33-Bit Wrapping and Untrusted Input"
+description: "Without a range check the computation is quietly wrong"
+date: 2026-07-23
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-28-33bit-wrap.svg
 ---
-## 28.0 이 장에서 답할 것
+## 28.0 What this chapter answers
 
-1. 33비트 부호 없는 클럭은 몇 시간을 담는가 — 그리고 그 끝에서 무슨 일이 일어나는가
-2. 음수 MPEGTS 를 만나면 왜 계산하지 않고 **포기**하는가
-3. 이 코드의 범위 검사는 어디까지 있고 어디부터 없는가
-4. 26.5시간을 넘는 스트림에서 이 계산은 무엇이 되는가
+1. How many hours does a 33-bit unsigned clock hold — and what happens at its end?
+2. When meeting a negative MPEGTS, why **give up** instead of computing?
+3. How far does this code's range check go, and from where is it absent?
+4. In a stream exceeding 26.5 hours, what does this computation become?
 
-한 줄로 줄이면 이렇다. **원격에서 온 정수 하나를 어디까지 믿을 것인가.**
+Reduced to one line it is this. **How far to trust one integer that came from a remote.**
 
 ---
 
-## 28.1 문제 — 산술에는 거부라는 개념이 없다
+## 28.1 The problem — arithmetic has no concept of rejection
 
-제27장에서 자막 시각과 영상 클럭을 잇는 식을 유도했다. 결과만 다시 적는다.
+Chapter 27 derived the formula joining the subtitle time and the video clock. Write only the result again.
 
 ```
 offset = mpegts / 90000 − video_pts0 − local_sec
 ```
 
-이 식에 들어가는 세 항의 **출처**를 갈라 보면 이 장의 문제가 바로 드러난다.
+Split the **sources** of the three terms in this formula and this chapter's problem is revealed at once.
 
-| 항 | 출처 | 신뢰 등급 |
+| Term | Source | Trust grade |
 |---|---|---|
-| `mpegts` | 자막 조각 헤더의 `X-TIMESTAMP-MAP=…,MPEGTS:<정수>` — **원격 서버가 보낸 텍스트** | 신뢰할 수 없음 |
-| `local_sec` | 같은 헤더의 `LOCAL:<시각>` — **원격 서버가 보낸 텍스트** | 신뢰할 수 없음 |
-| `video_pts0` | 영상 첫 세그먼트를 받아 `ffprobe` 로 읽은 값([`probe.py:236-255`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L236-L255)) | 로컬 실측 |
+| `mpegts` | the subtitle piece header's `X-TIMESTAMP-MAP=…,MPEGTS:<integer>` — **text a remote server sent** | untrusted |
+| `local_sec` | the same header's `LOCAL:<time>` — **text a remote server sent** | untrusted |
+| `video_pts0` | the value read with `ffprobe` from the received video first segment ([`probe.py:236-255`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L236-L255)) | local measurement |
 
-셋 중 둘이 서버가 주는 문자열이다. 그리고 이 식의 결과는 곧바로 파일을 고치는 데
-쓰인다 — `shift()` 가 자막 파일의 **모든 큐 시각을 그만큼 이동**시킨다
-([`subtitles.py:221-245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L221-L245)). 즉 **원격에서 온 숫자 하나가 자막 전체의 위치를 정한다.**
+Two of the three are strings the server gives. And this formula's result is immediately used to fix the file —
+`shift()` **shifts every cue time of the subtitle file by that much** ([`subtitles.py:221-245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L221-L245)). That is, **one number
+that came from a remote sets the position of the whole subtitle.**
 
-여기서 산술의 성질 하나를 분명히 해 둘 필요가 있다.
+Here one property of arithmetic must be made clear.
 
-> **나눗셈과 뺄셈은 입력을 거부하지 않는다.** 어떤 수를 넣어도 결과가 나온다.
-> 값이 규격 밖이어도, 의미가 없어도, 부호가 뒤집혀 있어도 실수 하나가 나온다.
+> **Division and subtraction do not reject input.** Whatever number you put in, a result comes out. Even if the
+> value is outside spec, even if it has no meaning, even if the sign is flipped, one real number comes out.
 
-파서는 "이건 숫자가 아니다"라고 말할 수 있다. 계산은 그렇게 말하지 못한다.
-그러므로 **파싱과 계산 사이에 검사를 넣지 않으면, 규격 밖의 값이 규격 안의 값과
-똑같이 매끄럽게 흘러 결과를 만든다.** 이 장은 그 사이에 놓인 코드 세 줄에 관한
-것이다.
+A parser can say "this is not a number." A computation cannot say so. So **if you do not put a check between
+parsing and computation, an out-of-spec value flows just as smoothly as an in-spec value and makes a result.**
+This chapter is about the three lines of code placed in that gap.
 
-> **용어** — **bounds check(범위 검사)**: 값이 그 값에 허용된 범위 안에 있는지 계산
-> 이전에 확인하는 것. 값의 *형식*이 맞는지 보는 파싱과 다르고, 값의 *타입*이 맞는지
-> 보는 타입 검사와도 다르다. `-1` 은 정수이고 `int` 이지만 33비트 부호 없는 값의
-> 범위 밖이다.
+> **Term** — **bounds check**: confirming, before the computation, that a value is within the range allowed for
+> that value. It differs from parsing, which sees whether the value's *form* is right, and from type checking,
+> which sees whether the value's *type* is right. `-1` is an integer and an `int`, but is outside the range of a
+> 33-bit unsigned value.
 
 ---
 
-## 28.2 원리 — 33비트가 담는 시간
+## 28.2 The principle — the time 33 bits holds
 
-### 28.2.1 규격이 정한 것
+### 28.2.1 What the spec set
 
-> **용어** — **PTS(Presentation Time Stamp, 표시 시각)**: 디코드된 프레임을 화면에
-> 내보낼 시각. MPEG-TS 에서는 90kHz 눈금의 **33비트 부호 없는 정수**다
-> (ISO/IEC 13818-1). 자막의 `X-TIMESTAMP-MAP` 이 가리키는 `MPEGTS:` 값도 같은 눈금·
-> 같은 폭의 값이다.
+> **Term** — **PTS (Presentation Time Stamp)**: the time to put a decoded frame out on screen. In MPEG-TS it is a
+> **33-bit unsigned integer** on the 90kHz mark (ISO/IEC 13818-1). The `MPEGTS:` value the subtitle's
+> `X-TIMESTAMP-MAP` points at is also a value of the same mark·same width.
 
-33비트가 어디서 왔는지는 제21장 §21.2.3 에서 다뤘다 — 90kHz 눈금으로 "방송 하루 +
-여유"를 담는 최소 폭이 33비트다. 여기서 필요한 것은 그 결정이 만든 **정확한 경계**다.
+Where the 33 bits came from was covered in Chapter 21 §21.2.3 — the minimum width holding "a broadcast day +
+margin" on the 90kHz mark is 33 bits. What is needed here is the **exact boundary** that decision made.
 
-| 항목 | 값 |
+| Item | Value |
 |---|---|
-| 표현 가능한 값의 개수 | 2³³ = 8,589,934,592 |
-| 최대값 | 2³³ − 1 = 8,589,934,591 tick |
-| 최대값을 초로 | 8,589,934,591 ÷ 90,000 = **95,443.717678초** |
-| 같은 값을 시분초로 | **26시간 30분 43.72초** |
-| 래핑 주기(0 에서 0 까지) | 2³³ ÷ 90,000 = 95,443.717689초 ≈ **26.5121시간** ≈ 1.1047일 |
-| 한 tick | 1 ÷ 90,000 = 약 11.11 마이크로초 |
+| number of representable values | 2³³ = 8,589,934,592 |
+| max value | 2³³ − 1 = 8,589,934,591 tick |
+| the max value in seconds | 8,589,934,591 ÷ 90,000 = **95,443.717678 seconds** |
+| the same value in h:m:s | **26 hours 30 minutes 43.72 seconds** |
+| wrapping period (0 to 0) | 2³³ ÷ 90,000 = 95,443.717689 seconds ≈ **26.5121 hours** ≈ 1.1047 days |
+| one tick | 1 ÷ 90,000 = about 11.11 microseconds |
 
-이 표에는 실측이 없다. 90,000 과 2³³ 은 둘 다 규격이 정한 고정 상수이므로 표의
-값은 **산술**이며, 표시한 자릿수 아래를 반올림한 것 말고는 어림이 없다. 코드에서
-분모에 해당하는 상수는 한 곳에 있다.
+This table has no measurement. 90,000 and 2³³ are both fixed constants the spec set, so the table's values are
+**arithmetic**, with no approximation other than rounding below the shown digits. The constant corresponding to
+the denominator is in one place in the code.
 
 ```python
 # subtitles.py:188
-MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
+MPEGTS_HZ = 90000  # MPEG-TS system clock
 ```
 
-### 28.2.2 여기서 따라 나오는 두 가지
+### 28.2.2 Two things that follow
 
-**(1) 음수는 존재할 수 없다.** 33비트 *부호 없는* 값이므로 규격상 `MPEGTS:` 의
-값역은 `0 … 8,589,934,591` 이다. 음수가 적혀 있다면 그것은 "조금 틀린 값"이 아니라
-**그 헤더를 만든 쪽의 계산이 이미 깨졌다는 신호**다. 그러므로 옳은 반응은 값을
-고쳐 쓰는 것이 아니라 **매핑 전체를 불신하는 것**이다.
+**(1) A negative cannot exist.** Being a 33-bit *unsigned* value, by spec `MPEGTS:`'s codomain is `0 …
+8,589,934,591`. If a negative is written, it is not "a slightly wrong value" but **a signal that the computation
+of the side that made that header is already broken.** So the right reaction is not to rewrite the value but to
+**distrust the whole mapping.**
 
-**(2) 값은 순환한다.** 26.5시간마다 0 으로 되돌아간다. 순환하는 값은 **단조 증가가
-아니고**, 단조 증가가 아니면 두 값의 뺄셈이 두 시각의 차이를 뜻하지 않는다. 이것이
-§28.5 의 주제다.
+**(2) The value cycles.** It returns to 0 every 26.5 hours. A cycling value is **not monotonically increasing**,
+and if not monotonically increasing, the subtraction of two values does not mean the difference of two times.
+This is §28.5's subject.
 
-> **용어** — **wrap-around(래핑, 되감김)**: 카운터가 표현 범위의 끝에서 0 으로 되돌아
-> 가는 것. 33비트 90kHz 클럭은 약 26.5시간마다 래핑한다. 제18장의 4비트 연속성
-> 카운터(0–15 순환)와 폭만 다른 같은 현상이다.
+> **Term** — **wrap-around**: a counter returning to 0 at the end of its representable range. A 33-bit 90kHz clock
+> wraps about every 26.5 hours. It is the same phenomenon as Chapter 18's 4-bit continuity counter (0–15 cycle),
+> differing only in width.
 
 ---
 
-## 28.3 코드 — 검사 한 줄과 그 이유
+## 28.3 The code — one check line and its reason
 
-### 28.3.1 함수 전문
+### 28.3.1 The full function
 
 ```python
 # subtitles.py:191-218
 def timestamp_offset(first_segment: bytes, video_pts0: float) -> float | None:
-    """자막 조각의 X-TIMESTAMP-MAP 과 영상 첫 PTS 로 정렬 오프셋(초)을 구한다.
+    """Compute the alignment offset (seconds) from the subtitle piece's X-TIMESTAMP-MAP and the video first PTS.
 
-    X-TIMESTAMP-MAP=LOCAL:<자막 시각>,MPEGTS:<90kHz 클럭> 은 '자막의 이 시각이
-    영상 타임라인의 이 클럭값에 해당한다'는 대응표다. ffmpeg 8.1.1 은 입력 구성과
-    무관하게 이 매핑을 적용하지 않으므로(실측: 마스터 입력으로 열어도 MPEGTS 를 바꾼
-    결과가 같다) 직접 계산해 보정한다. 0 이 아니면 자막이 그만큼 밀려 있다는 뜻이다.
+    X-TIMESTAMP-MAP=LOCAL:<subtitle time>,MPEGTS:<90kHz clock> is a correspondence table saying 'this
+    subtitle time corresponds to this clock value on the video timeline'. ffmpeg 8.1.1 does not apply
+    this mapping regardless of the input configuration (measured: opening via a master input, the result
+    with MPEGTS changed is the same), so compute and correct directly. Nonzero means the subtitle is slipped that much.
     """
     head = first_segment[:2048].decode("utf-8", errors="replace")
     m = _TSMAP_RE.search(head)
@@ -125,7 +122,7 @@ def timestamp_offset(first_segment: bytes, video_pts0: float) -> float | None:
         mpegts = int(raw)
     except ValueError:
         return None
-    # 33비트 부호 없는 값이 규격이라 음수는 무효다 — 매핑 자체를 신뢰하지 않는다.
+    # a 33-bit unsigned value is the spec so a negative is invalid — do not trust the mapping itself.
     if mpegts < 0:
         return None
 
@@ -138,8 +135,8 @@ def timestamp_offset(first_segment: bytes, video_pts0: float) -> float | None:
     return (mpegts / MPEGTS_HZ) - video_pts0 - local_sec
 ```
 
-이 함수에는 **실패를 표현하는 통로가 하나뿐**이다 — `None`. 그리고 그 통로가
-세 번 쓰인다(매핑 없음 · 정수 변환 실패 · 음수). 세 경우가 부르는 결과는 모두 같다.
+This function has **only one channel to express failure** — `None`. And that channel is used three times (no
+mapping · integer conversion failure · negative). The three cases call the same result.
 
 ```python
 # cli.py:283-286
@@ -149,26 +146,24 @@ def timestamp_offset(first_segment: bytes, video_pts0: float) -> float | None:
         offsets[track.uri] = off
 ```
 
-`continue` — 그 트랙은 오프셋 표에 **아예 오르지 않는다.** 오프셋이 없는 트랙은
-`extract()` 에서 `(offsets or {}).get(track.uri or "", 0.0)` 로 0.0 을 받고
-([`subtitles.py:159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L159)), `shift()` 는 `abs(seconds) < 0.001` 에서 즉시 반환한다
-([`subtitles.py:223-224`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L223-L224)). **한 글자도 옮기지 않는다.**
+`continue` — that track **does not even go onto the offset table.** A track with no offset receives 0.0 in
+`extract()` via `(offsets or {}).get(track.uri or "", 0.0)` ([`subtitles.py:159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L159)), and `shift()` returns
+immediately at `abs(seconds) < 0.001` ([`subtitles.py:223-224`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L223-L224)). **It does not move a single character.**
 
-### 28.3.2 왜 계산 대신 포기인가
+### 28.3.2 Why give up instead of computing
 
-음수를 그냥 계산했다면 무슨 일이 일어나는지를 실제로 넣어 보면 이 선택의 근거가
-보인다. 아래는 함수와 `shift()` 를 직접 호출해 얻은 값이다(영상 첫 PTS 는 제21장
-§21.3.1 에서 실측한 `plain/seg000.ts` 의 128,090 tick = 1.423222초).
+Put in what actually happens if you just compute the negative, and the basis for this choice shows. Below are
+values obtained by calling the function and `shift()` directly (the video first PTS is the 128,090 tick =
+1.423222 seconds of `plain/seg000.ts` measured in Chapter 21 §21.3.1).
 
-| `MPEGTS:` 값 | 뜻 | 현재 코드 | 검사가 없었다면 |
+| `MPEGTS:` value | Meaning | Current code | Had there been no check |
 |---|---|---|---|
-| `128090` | 영상 첫 PTS 와 같음 | `0.0` — 보정 없음 | 같음 |
-| `5528090` | +60초 어긋남 | `+60.0` — 60초 이동 | 같음 |
-| `-5271910` | −60초 상당(규격 밖) | **`None`** — 보정 포기 | `−60.0` → 모든 큐가 60초 앞으로 |
-| `-1` | 명백한 오류값 | **`None`** — 보정 포기 | `−1.4232` → 전체가 1.4초 앞으로 |
+| `128090` | same as the video first PTS | `0.0` — no correction | same |
+| `5528090` | +60 seconds off | `+60.0` — 60-second shift | same |
+| `-5271910` | −60 seconds worth (out of spec) | **`None`** — give up correction | `−60.0` → every cue 60 seconds forward |
+| `-1` | an obvious error value | **`None`** — give up correction | `−1.4232` → the whole thing 1.4 seconds forward |
 
-셋째 행의 "검사가 없었다면" 열이 이 절의 핵심이다. `shift()` 는 음수 시각을 0 으로
-잘라낸다.
+The third row's "had there been no check" column is this section's core. `shift()` cuts a negative time to 0.
 
 ```python
 # subtitles.py:226-227
@@ -176,8 +171,8 @@ def timestamp_offset(first_segment: bytes, video_pts0: float) -> float | None:
         total = max(0.0, total)
 ```
 
-그래서 −60초 보정을 실제로 적용하면 60초 안쪽의 큐가 **전부 `00:00:00.000` 에
-뭉친다.** 10–14초와 20–24초에 큐 두 개를 둔 파일로 직접 확인한 결과다.
+So apply a −60-second correction for real and every cue within 60 seconds **bunches at `00:00:00.000`.** The
+result confirmed directly with a file placing two cues at 10–14 and 20–24 seconds.
 
 ```
 $ python3 -c "
@@ -195,34 +190,32 @@ A
 B
 ```
 
-파일은 멀쩡해 보인다. 큐 개수도 그대로고, 형식도 유효하고, 재생기에 물리면 열린다.
-**틀린 것은 내용뿐이다.** 이것이 이 교재가 되풀이해 말하는 실패 등급 중 가장 나쁜
-쪽이다.
+The file looks fine. The cue count is the same, the format is valid, and put into a player it opens. **What is
+wrong is only the content.** This is the worst side of the failure grades this course repeatedly speaks of.
 
-> **잘못된 값으로 계산해 조용히 밀린 자막을 내는 것보다, 보정하지 않는 편이 낫다.**
+> **Better not to correct than to compute with a wrong value and put out a quietly slipped subtitle.**
 
-보정하지 않은 자막은 `X-TIMESTAMP-MAP` 이 실제로 필요했던 스트림에서는 여전히
-어긋나 있다. 다만 그 어긋남은 **하류 검사가 잡을 수 있는 종류**다 — 자막 시각이
-영상 범위를 벗어나면 [`report.py:431-451`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431-L451) 이 FAIL 을 낸다. 반면 위 표의 −60초
-보정은 큐를 0초로 몰아넣어 **영상 범위 안에** 두므로 그 검사를 통과한다.
+An uncorrected subtitle is still off on a stream that actually needed `X-TIMESTAMP-MAP`. But that off-ness is **a
+kind a downstream check can catch** — if the subtitle time strays out of the video range, [`report.py:431-451`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431-L451)
+gives a FAIL. Conversely the −60-second correction in the table above drives the cues to 0 seconds, keeping them
+**inside the video range**, so it passes that check.
 
-즉 두 선택의 차이는 "맞느냐 틀리느냐"가 아니라 **"틀렸을 때 그것이 관측되느냐"**다.
-계산을 포기하면 오류가 하류에 보이는 형태로 남고, 잘못 계산하면 오류가 하류에서
-보이지 않는 형태로 바뀐다.
+That is, the difference of the two choices is not "right or wrong" but **"whether it is observed when wrong."**
+Give up the computation and the error stays in a form visible downstream; compute wrong and the error changes to a
+form invisible downstream.
 
-이 태도는 제38장의 **판정 보류**와 같은 계열이다. 다만 층위가 다르다.
+This attitude is of the same lineage as Chapter 38's **verdict withheld.** Only the layer differs.
 
-| | 제38장 — 판정 보류 | 이 장 — 보정 포기 |
+| | Chapter 38 — verdict withheld | This chapter — correction given up |
 |---|---|---|
-| 유보하는 것 | **판정**(PASS/FAIL) | **행동**(파일 수정) |
-| 근거 | 기준선이 성립하지 않는다 | 입력이 규격 밖이다 |
-| 대안이 나쁜 이유 | 알 수 없음을 통과로 위장 | 틀린 결과를 정상으로 위장 |
-| 남는 것 | "판정 보류" 문장 | 원본 시각 그대로 |
+| What is deferred | the **verdict** (PASS/FAIL) | the **action** (file modification) |
+| Basis | the baseline does not hold | the input is out of spec |
+| Why the alternative is bad | disguising unknown as passing | disguising a wrong result as normal |
+| What remains | the "verdict withheld" sentence | the original times as-is |
 
-### 28.3.3 정규식이 마이너스를 품는 이유
+### 28.3.3 Why the regex admits a minus
 
-음수를 검사하려면 먼저 음수를 **읽을 수 있어야 한다.** 그래서 정규식이 부호를
-받는다.
+To check a negative you must first be able to **read** the negative. So the regex takes the sign.
 
 ```python
 # subtitles.py:184-188
@@ -230,92 +223,91 @@ _TSMAP_RE = re.compile(
     r"X-TIMESTAMP-MAP\s*=\s*(?=.*LOCAL:(?P<local>[\d:.]+))(?=.*MPEGTS:(?P<mpegts>-?\d+))",
     re.IGNORECASE,
 )
-MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
+MPEGTS_HZ = 90000  # MPEG-TS system clock
 ```
 
-`-?` 를 빼면 어떻게 될까. `MPEGTS:-14271910` 은 **매칭 자체가 실패**하고 함수는
-같은 `None` 을 돌려준다. 결과는 같다. 그런데도 부호를 받아 두는 것이 옳은 이유는,
-**같은 반환값이 같은 뜻은 아니기 때문**이다.
+What happens if you remove `-?`. `MPEGTS:-14271910` **fails to match at all** and the function returns the same
+`None`. The result is the same. And yet the reason keeping the sign is right is that **the same return value does
+not mean the same thing.**
 
-| 경우 | `-?` 없을 때 | `-?` 있을 때 |
+| Case | Without `-?` | With `-?` |
 |---|---|---|
-| 헤더에 매핑이 없다 | 매칭 실패 → `None` | 매칭 실패 → `None` |
-| 매핑이 있는데 음수다 | 매칭 실패 → `None` | 매칭 성공 → **명시적 거부** → `None` |
+| there is no mapping in the header | match fail → `None` | match fail → `None` |
+| there is a mapping and it is negative | match fail → `None` | match success → **explicit rejection** → `None` |
 
-왼쪽 열에서는 "매핑이 없는 스트림"과 "매핑이 깨진 스트림"이 코드 안에서 **구별되지
-않는다.** 오른쪽 열에서는 구별된다 — 지금은 둘 다 조용히 `continue` 로 끝나지만,
-경고를 남기거나 통계에 기록하려 할 때 손댈 자리가 이미 열려 있다. 검사를 명시적으로
-쓰는 값어치의 절반은 여기에 있다. **우연히 거부되는 것과 검사해서 거부하는 것은
-지금은 같고 나중에 다르다.**
+In the left column "a stream with no mapping" and "a stream with a broken mapping" are **indistinguishable** in
+the code. In the right column they are distinguishable — now both end quietly with `continue`, but when you want
+to leave a warning or record it in statistics, the spot to touch is already open. Half the worth of writing the
+check explicitly is here. **Being incidentally rejected and being checked-and-rejected are the same now and
+different later.**
 
-이 대비는 같은 함수 안에 실물로 있다. `LOCAL:` 쪽 문자 클래스는 `[\d:.]+` 이라
-부호를 받지 못한다.
+This contrast is physically present within the same function. The `LOCAL:` side's character class is `[\d:.]+`
+so it cannot take the sign.
 
 ```
-LOCAL:-00:00:01.000,MPEGTS:900000   →  None   (매칭 실패 — 우연한 거부)
+LOCAL:-00:00:01.000,MPEGTS:900000   →  None   (match fail — incidental rejection)
 ```
 
-`LOCAL` 의 음수 시각도 규격 밖이고 실제로 거부되지만, 그것을 거부하는 코드는
-어디에도 없다. **문자 클래스가 대신 막고 있을 뿐이다.** 제15장에서 부른 이름을
-그대로 쓰면 **우연한 방어(incidental defense)** 다 — 언젠가 시각 형식을 넓히려고
-문자 클래스에 `-` 를 넣는 순간 이 방어는 소리 없이 사라진다.
+`LOCAL`'s negative time is also out of spec and actually rejected, but the code rejecting it is nowhere. **The
+character class is blocking it instead.** Using the name given in Chapter 15 as-is, it is an **incidental
+defense** — the day someone puts `-` into the character class to widen the time format, this defense vanishes
+without a sound.
 
-### 28.3.4 값으로 인정되는 것의 경계
+### 28.3.4 The boundary of what is admitted as a value
 
-범위 검사 이전에 **무엇을 값으로 인정할 것인가**가 먼저 있다. 실제 파서에 넣어
-측정한 결과다(`local` 은 `00:00:00.000`, `video_pts0` 은 0).
+Before the range check there is first **what will be admitted as a value.** The result measured by putting into
+the actual parser (`local` is `00:00:00.000`, `video_pts0` is 0).
 
-| 헤더에 적힌 값 | 정규식이 잡는 부분 | 반환 | 평가 |
+| The value written in the header | The part the regex catches | Return | Evaluation |
 |---|---|---|---|
-| `900000` | `900000` | `10.0` | 정상 |
-| `-900000` | `-900000` | `None` | **명시적 거부** |
-| `+900000` | (매칭 실패) | `None` | 우연한 거부 — `-?` 는 `+` 를 받지 않는다 |
-| `MPEGTS:` 뒤에 공백 + `900000` | (매칭 실패) | `None` | 우연한 거부 — 콜론 뒤 공백을 허용하지 않는다 |
-| `900000.0` | `900000` | `10.0` | **부분 매칭** — 소수점 이하를 버린다 |
-| `9_000` | `9` | `0.0001` | **부분 매칭** — 값이 1,000분의 1 로 줄어든다 |
-| `0x1` | `0` | `0.0` | **부분 매칭** — 0 으로 읽는다 |
-| `１２３４５６`(전각) | `１２３４５６` | `1.3717` | `\d` 는 유니코드 십진 숫자를 받는다 |
+| `900000` | `900000` | `10.0` | normal |
+| `-900000` | `-900000` | `None` | **explicit rejection** |
+| `+900000` | (match fail) | `None` | incidental rejection — `-?` does not take `+` |
+| a space + `900000` after `MPEGTS:` | (match fail) | `None` | incidental rejection — does not allow a space after the colon |
+| `900000.0` | `900000` | `10.0` | **partial match** — discards below the decimal |
+| `9_000` | `9` | `0.0001` | **partial match** — the value shrinks to 1/1,000 |
+| `0x1` | `0` | `0.0` | **partial match** — read as 0 |
+| `１２３４５６` (fullwidth) | `１２３４５６` | `1.3717` | `\d` takes Unicode decimal digits |
 
-표의 아래 네 행이 요점이다.
+The table's lower four rows are the point.
 
-> **부분 매칭은 거부가 아니다.** 정규식이 값의 끝을 고정하지 않으면(`\d+` 뒤에
-> 경계 조건이 없으면) 이상한 값도 **그럴듯한 작은 값**으로 읽힌다.
+> **A partial match is not a rejection.** If the regex does not fix the value's end (no boundary condition after
+> `\d+`), even a strange value is read as **a plausible small value.**
 
-`9_000` 이 `0.0001초` 가 되는 것이 특히 나쁘다. 거부되지도, 크게 틀리지도 않고,
-**0 에 가까운 정상 범위의 오프셋**이 되어 "보정할 것이 없었다"와 구별되지 않는다.
-`-900000` 같은 명백한 오류값보다 처리가 어려운 쪽은 늘 이런 값이다.
+`9_000` becoming `0.0001 second` is especially bad. Neither rejected nor greatly wrong, it becomes an **offset in
+the near-0 normal range** and is indistinguishable from "there was nothing to correct." The value harder to handle
+than an obvious error value like `-900000` is always this kind.
 
-유니코드 숫자 매칭도 같은 계열이다. `\d` 는 ASCII `0-9` 가 아니라 유니코드 십진
-숫자 범주(Nd) 전체를 받고, 파이썬의 `int()` 도 같은 범주를 받아들이므로 전각
-숫자가 그대로 값이 된다. 이 스트림에서 실제 위험은 확인되지 않았지만, **ASCII 를
-의도했다면 `[0-9]` 로 적어야 한다**는 원칙은 그대로다. 문자 클래스는 그 자체로
-신뢰 경계의 일부다(제33장).
+Unicode digit matching is of the same lineage. `\d` takes not ASCII `0-9` but the whole Unicode decimal-digit
+category (Nd), and Python's `int()` also accepts the same category, so a fullwidth digit becomes a value as-is.
+The actual risk on this stream was not confirmed, but the principle **if ASCII is intended, write `[0-9]`** holds
+as-is. A character class is itself part of the trust boundary (Chapter 33).
 
 ---
 
-## 28.4 반쪽 범위 검사 — 상한은 없다
+## 28.4 A half range check — there is no upper bound
 
-주석은 "33비트 부호 없는 값이 규격"이라고 쓰여 있다. 그런데 코드가 검사하는 것은
-`mpegts < 0` 뿐이다. **위쪽 끝은 검사하지 않는다.**
+The comment reads "a 33-bit unsigned value is the spec." And yet what the code checks is only `mpegts < 0`. **It
+does not check the upper end.**
 
-![MPEGTS 값의 세 구간과 관문](/images/lecture/hls-recon/28-half-range-check.svg)
+![The three regions of the MPEGTS value and the gates](/images/lecture/hls-recon/28-half-range-check.svg)
 
-*그림 28-1 — 범위 검사가 한쪽에만 있다. 하한은 명시적으로 막고, 상한은 열려 있다*
+*Figure 28-1 — the range check is on only one side. The lower bound is explicitly blocked, the upper bound is open*
 
-측정으로 확인한 결과다.
+The result confirmed by measurement.
 
-| `MPEGTS:` 값 | 규격 안인가 | 반환 |
+| `MPEGTS:` value | Within spec | Return |
 |---|---|---|
-| `8589934591` (2³³ − 1, 최대 합법값) | 예 | `+95,442.294` |
-| `8589934592` (2³³, 규격 밖) | **아니오** | `+95,442.294` |
-| `99999999999999999999` (20자리) | **아니오** | `+1.11e+15` |
+| `8589934591` (2³³ − 1, the max legal value) | yes | `+95,442.294` |
+| `8589934592` (2³³, out of spec) | **no** | `+95,442.294` |
+| `99999999999999999999` (20 digits) | **no** | `+1.11e+15` |
 
-2³³ 을 넘어도 그대로 계산된다. 여기서 셋으로 갈라 보자.
+Even exceeding 2³³ it is computed as-is. Here let us split into three.
 
-### 28.4.1 결말 ① — 26.5시간짜리 오프셋
+### 28.4.1 Ending ① — a 26.5-hour offset
 
-2³³ 부근의 값은 26.5시간에 해당하는 오프셋을 만든다. 그 값으로 자막을 밀면 큐가
-영상 길이보다 훨씬 뒤로 나가고, 하류 검사가 반드시 반응한다.
+A value near 2³³ makes an offset corresponding to 26.5 hours. Shift the subtitle by that value and the cues go
+much further back than the video length, and a downstream check necessarily reacts.
 
 ```python
 # report.py:431-433
@@ -324,28 +316,29 @@ LOCAL:-00:00:01.000,MPEGTS:900000   →  None   (매칭 실패 — 우연한 거
                 if strayed:
 ```
 
-30초 영상에서 자막이 9만 초대로 나가면 `last_cue > video_len + 5.0` 이 참이 되어
-**FAIL** 이다. 즉 상한 검사가 없어도 **이 실패는 조용하지 않다.** 상류에서 걸리지
-않은 것을 하류가 잡는 형태이며, 층이 둘이라는 사실 자체는 좋은 성질이다(심층 방어).
+On a 30-second video, if the subtitle goes into the 90,000-second range, `last_cue > video_len + 5.0` becomes
+true and it is **FAIL.** That is, even without an upper-bound check, **this failure is not quiet.** It is a form
+where what was not caught upstream is caught downstream, and the fact itself that there are two layers is a good
+property (defense in depth).
 
-다만 **걸러진 것과 걸린 것은 다르다.** 상류에서 거부했다면 리포트는 "매핑을 믿을 수
-없어 보정하지 않았다"고 말할 수 있었을 것이다. 지금은 "자막이 영상 범위를 벗어났다"
-고 말한다. 후자는 사용자에게 **원인이 아니라 증상**을 알려준다.
+Only, **being filtered and being caught are different.** Had it been rejected upstream, the report could have said
+"could not trust the mapping so did not correct." Now it says "the subtitle strayed out of the video range." The
+latter tells the user **a symptom, not a cause.**
 
-### 28.4.2 결말 ② — 314자리에서 예외가 난다
+### 28.4.2 Ending ② — at 314 digits an exception arises
 
-값의 자릿수를 늘려 가며 측정하면 경계가 하나 더 나온다.
+Measure increasing the value's digit count and one more boundary appears.
 
-| `MPEGTS:` 자릿수 | 결과 |
+| `MPEGTS:` digit count | Result |
 |---|---|
-| 300자리 | `1.1111e+295` (계산됨) |
-| 313자리 | `1.1111e+308` (계산됨 — 배정밀도 최대값 바로 아래) |
-| **314자리** | **`OverflowError: integer division result too large for a float`** |
+| 300 digits | `1.1111e+295` (computed) |
+| 313 digits | `1.1111e+308` (computed — just below the double-precision max) |
+| **314 digits** | **`OverflowError: integer division result too large for a float`** |
 
-파이썬 정수는 임의 정밀도라 `int(raw)` 는 자릿수가 몇이든 성공한다. 그러나 마지막
-줄에서 `mpegts / MPEGTS_HZ` 가 결과를 `float`(배정밀도 부동소수점, 최대 약 1.8×10³⁰⁸)
-로 만들려는 순간 실패한다. 그리고 이 예외는 잡히지 않는다 — `try/except` 는
-`int()` 만 감싸고 있고, 잡는 예외형도 `ValueError` 다.
+Python integers are arbitrary precision so `int(raw)` succeeds however many digits. But on the last line, the
+moment `mpegts / MPEGTS_HZ` tries to make the result a `float` (double-precision floating point, max about
+1.8×10³⁰⁸), it fails. And this exception is not caught — the `try/except` wraps only `int()`, and the exception
+type caught is `ValueError`.
 
 ```python
     try:
@@ -354,150 +347,147 @@ LOCAL:-00:00:01.000,MPEGTS:900000   →  None   (매칭 실패 — 우연한 거
         return None
 ```
 
-호출부([`cli.py:283`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L283))에도, `main()`([`cli.py:1117-1128`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1117-L1128))에도 이 예외를 받는 자리가
-없다. **자막 조각 하나가 도구 전체를 트레이스백으로 끝낸다.**
+Neither the caller ([`cli.py:283`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L283)) nor `main()` ([`cli.py:1117-1128`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1117-L1128)) has a spot to receive this exception. **One
+subtitle piece ends the whole tool with a traceback.**
 
-이것은 함수에 값을 직접 넣어 재현한 것이고, 서버가 그런 헤더를 실제로 보내는
-상황을 종단으로 돌려 보지는 않았다. 그러나 재현 조건은 명확하다 — 첫 자막 조각의
-첫 2048바이트 안에 `MPEGTS:` 와 314자리 이상의 숫자가 들어 있으면 된다.
+This is reproduced by putting values directly into the function, and I did not run end-to-end the situation of a
+server actually sending such a header. But the reproduction condition is clear — if `MPEGTS:` and a number of 314
+or more digits are within the first 2048 bytes of the first subtitle piece, it happens.
 
-### 28.4.3 우연한 상한 하나 — 2048바이트 절단
+### 28.4.3 One incidental upper bound — the 2048-byte truncation
 
-값을 무한정 크게 만들 수는 없다. 헤더를 읽는 첫 줄이 입력을 자르기 때문이다.
+You cannot make the value infinitely large. Because the first line reading the header cuts the input.
 
 ```python
     head = first_segment[:2048].decode("utf-8", errors="replace")
 ```
 
-이 절단은 **길이의 상한**이지 값의 상한이 아니다. 그래서 두 가지 성질을 동시에
-갖는다.
+This truncation is an **upper bound on length**, not on value. So it has two properties at once.
 
-| 성질 | 내용 |
+| Property | Content |
 |---|---|
-| 막는 것 | 4,300자리를 넘으면 나는 파이썬의 정수 문자열 변환 제한(`int()` 의 `ValueError`)에는 **도달하지 않는다.** 2048바이트 안에 그만큼의 자릿수가 들어가지 못한다 |
-| 못 막는 것 | 314자리는 넉넉히 들어간다 → §28.4.2 의 `OverflowError` 는 그대로 열려 있다 |
-| 더 나쁜 것 | 숫자가 2048바이트 경계에서 잘리면 **거부되지 않고 앞자리만 값이 된다** — 보낸 값이 아닌 다른 값이 계산에 들어간다 |
+| What it blocks | it does **not reach** Python's integer-string-conversion limit (the `int()` `ValueError`) that arises past 4,300 digits. that many digits cannot fit in 2048 bytes |
+| What it does not block | 314 digits fit amply → §28.4.2's `OverflowError` remains wide open |
+| What is worse | if a number is cut at the 2048-byte boundary, **it is not rejected and only the leading digits become the value** — a value other than the one sent enters the computation |
 
-셋째 행이 §28.3.4 의 "부분 매칭은 거부가 아니다"와 정확히 같은 형태다. 길이 제한은
-안전하지만, **길이 제한이 값 검사를 대신하지는 못한다.**
+The third row is exactly the same form as §28.3.4's "a partial match is not a rejection." The length limit is
+safe, but **a length limit does not substitute for a value check.**
 
-### 28.4.4 상한을 넣는다면
+### 28.4.4 If you put in an upper bound
 
-한 줄이면 결말 ①②가 닫힌다.
+One line closes endings ①②.
 
 ```python
-    if not 0 <= mpegts < 2**33:      # 예시 — 이 저장소의 현재 코드가 아니다
+    if not 0 <= mpegts < 2**33:      # example — not the current code of this repository
         return None
 ```
 
-넣을 때와 넣지 않을 때를 견줘 적는다.
+Weigh putting it in against not, and write.
 
-| | 상한 없음(현재) | 상한 있음 |
+| | No upper bound (current) | With upper bound |
 |---|---|---|
-| 2³³ 이상의 값 | 계산 → 하류에서 FAIL(증상 보고) | 거부 → 보정 포기(원인 보고) |
-| 314자리 값 | **`OverflowError` — 도구가 죽는다** | 거부 |
-| 규격 밖 값의 기록 | 남지 않음 | 거부 지점이 하나로 모임 |
-| 잃는 것 | — | 래핑을 누적해 2³³ 이상의 **무래핑 값**을 보내는 송출이 있다면 그 스트림은 보정을 못 받는다 |
+| a value ≥ 2³³ | compute → FAIL downstream (symptom reported) | reject → correction given up (cause reported) |
+| a 314-digit value | **`OverflowError` — the tool dies** | reject |
+| record of an out-of-spec value | none left | the rejection point gathers into one |
+| what is lost | — | if there is a delivery accumulating wraps and sending a **wrap-free value ≥ 2³³**, that stream cannot receive correction |
 
-마지막 행은 추론이다. 그런 송출을 관측한 적이 없고, 그것은 규격 위반이므로
-거부하는 편이 일관되지만, **관측하지 않은 것을 관측한 것처럼 적을 수는 없다.**
-이 교재는 이 변경을 코드에 반영하지 않았다. 사실만 적는다 — **주석은 33비트 범위를
-말하고, 코드는 그 절반만 검사한다.**
+The last row is inference. I have never observed such a delivery, and it is a spec violation so rejecting is
+consistent, but **you cannot write the unobserved as if observed.** This course did not reflect this change in the
+code. It writes only the fact — **the comment speaks of the 33-bit range, and the code checks only half of it.**
 
 ---
 
-## 28.5 26.5시간을 넘으면 — 이 코드의 미처리 한계
+## 28.5 Beyond 26.5 hours — this code's unhandled limit
 
-### 28.5.1 뺄셈이 잃는 것
+### 28.5.1 What subtraction loses
 
-`offset = mpegts/90000 − video_pts0 − local_sec` 은 두 시각의 **뺄셈**이다. 뺄셈이
-두 시각의 차이를 뜻하려면 두 값이 같은 원점에서 잰 단조 증가 좌표여야 한다.
-33비트 클럭은 26.5시간마다 0 으로 돌아가므로 그 전제가 깨진다.
+`offset = mpegts/90000 − video_pts0 − local_sec` is the **subtraction** of two times. For subtraction to mean the
+difference of two times, the two values must be monotonically increasing coordinates measured from the same
+origin. A 33-bit clock returns to 0 every 26.5 hours so that premise breaks.
 
-![33비트 클럭 위에서 뺄셈이 되감김을 보지 못한다](/images/lecture/hls-recon/28-wrap-difference.svg)
+![On a 33-bit clock the subtraction does not see the wrap](/images/lecture/hls-recon/28-wrap-difference.svg)
 
-*그림 28-2 — 두 값이 서로 다른 주기에 있으면 뺄셈은 26.5시간 틀린 답을 낸다*
+*Figure 28-2 — if the two values are in different cycles, the subtraction gives an answer 26.5 hours wrong*
 
-함수에 직접 값을 넣어 두 시나리오를 재현했다. 영상이 26.5시간 가까이 흐른 상태를
-가정한 것이다.
+I reproduced two scenarios by putting values directly into the function. They assume a state where the video has
+run nearly 26.5 hours.
 
-| 시나리오 | `video_pts0` | `MPEGTS:` | 참값 | 함수의 답 | 오차 |
+| Scenario | `video_pts0` | `MPEGTS:` | True value | Function's answer | Error |
 |---|---|---|---|---|---|
-| **A** — 자막 조각만 래핑을 지났다 | 95,440.0초 | `45000`(= 0.5초) | +4.22초 | **−95,439.5초** | −95,443.72초 |
-| **B** — 영상만 래핑을 지났다 | 0.5초 | `8589600000`(= 95,440.0초) | −4.22초 | **+95,439.5초** | +95,443.72초 |
+| **A** — only the subtitle piece passed the wrap | 95,440.0 sec | `45000` (= 0.5 sec) | +4.22 sec | **−95,439.5 sec** | −95,443.72 sec |
+| **B** — only the video passed the wrap | 0.5 sec | `8589600000` (= 95,440.0 sec) | −4.22 sec | **+95,439.5 sec** | +95,443.72 sec |
 
-두 경우 모두 오차의 절대값이 정확히 래핑 주기(95,443.72초)다. **이것은 우연이
-아니라 정의다** — 한쪽 값에서만 2³³ 이 빠졌으므로 차이도 2³³/90,000 만큼 어긋난다.
+In both cases the error's absolute value is exactly the wrapping period (95,443.72 sec). **This is not a
+coincidence but a definition** — since 2³³ was subtracted from only one value, the difference is off by
+2³³/90,000.
 
-### 28.5.2 방향에 따라 결말이 갈린다
+### 28.5.2 The ending splits by direction
 
-오차의 크기가 26.5시간이므로 결과가 조용할 수는 없다. 다만 **부호에 따라 리포트의
-등급이 달라진다.** 앞에서 본 `shift()` 의 0 클램프 때문이다.
+Since the error's size is 26.5 hours the result cannot be quiet. Only, **the report's grade differs by sign.**
+Because of `shift()`'s 0 clamp seen earlier.
 
-| 시나리오 | 보정량 | 자막 파일에 남는 시각 | 자막 타임라인 판정 | 근거 |
+| Scenario | Correction amount | Times left in the subtitle file | Subtitle-timeline verdict | Basis |
 |---|---|---|---|---|
-| A (음수 방향) | −95,439.5초 | **모든 큐가 `00:00:00.000`** | **WARN** — "최소 커버리지 0%" | [`report.py:452-460`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L452-L460) |
-| B (양수 방향) | +95,439.5초 | 95,449.5 – 95,463.5초 | **FAIL** — "영상 범위를 벗어난 트랙" | [`report.py:431-451`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431-L451) |
+| A (negative direction) | −95,439.5 sec | **every cue `00:00:00.000`** | **WARN** — "min coverage 0%" | [`report.py:452-460`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L452-L460) |
+| B (positive direction) | +95,439.5 sec | 95,449.5 – 95,463.5 sec | **FAIL** — "track out of video range" | [`report.py:431-451`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431-L451) |
 
-표의 시각은 10–14초와 20–24초에 놓인 큐 두 개에 각 보정량을 적용해 실제로 얻은
-것이다. 판정 등급은 위 두 곳의 판정 코드에서 유도했다 — 종단 실행으로 확인하지는
-않았다(§28.9).
+The table's times were actually obtained by applying each correction amount to two cues placed at 10–14 and 20–24
+seconds. The verdict grades were derived from the two verdict-code spots above — not confirmed by end-to-end
+execution (§28.9).
 
-같은 크기의 같은 원인에서 온 오류인데 한쪽은 FAIL, 한쪽은 WARN 이다. A 가 WARN 에
-그치는 이유는 클램프가 값을 **검사가 보는 범위 안으로 끌어다 놓기 때문**이다.
-클램프는 파일이 문법적으로 유효하도록 지켜 주지만, 동시에 **오류를 검출기의
-사각지대로 옮긴다.**
+An error from the same cause of the same size, yet one is FAIL and one is WARN. The reason A stops at WARN is that
+the clamp **drags the value into the range the check sees.** The clamp keeps the file syntactically valid, but at
+the same time **moves the error into the detector's blind spot.**
 
-여기에 하나 더 붙는다. [`report.py:432`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L432) 의 `r.first_cue < -0.5` 조건은 별도 파일
-경로에서는 성립할 수 없다 — `shift()` 가 음수 시각을 쓰지 않고, 큐 시각 정규식
-([`subtitles.py:27-29`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L27-L29))도 부호를 읽지 않기 때문이다. 그 조건이 실제로 일하는 곳은
-컨테이너 내장 경로([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366))이며, 그쪽은 시각을 `ffprobe` 로 다시 읽으므로
-음수가 나올 수 있다. 내장 경로가 `-itsoffset` 에 큰 음수를 받았을 때의 동작은
-측정하지 않았다(§28.9).
+One more thing attaches here. [`report.py:432`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L432)'s `r.first_cue < -0.5` condition cannot hold on the separate-file
+path — because `shift()` does not use a negative time, and the cue-time regex ([`subtitles.py:27-29`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L27-L29)) does not
+read a sign either. Where that condition actually works is the container-embed path ([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366)), and
+there the time is re-read with `ffprobe` so a negative can arise. The embed path's behavior when it receives a
+large negative in `-itsoffset` was not measured (§28.9).
 
-### 28.5.3 고치려면 무엇이 필요한가
+### 28.5.3 What is needed to fix it
 
-한 줄로 적으면 이렇다. **직전 값과의 차이로 되감김을 검출하고, 뺄셈을 모듈러
-산술로 바꾼다.**
+Written in one line it is this. **Detect the wrap by the difference from the previous value, and change the
+subtraction to modular arithmetic.**
 
 ```
 d = ((a − b + 2³²) mod 2³³) − 2³²
 ```
 
-이 식은 두 값의 차이를 `[−2³², +2³²)` 구간, 즉 **±13.26시간** 안의 가장 작은
-크기로 되돌린다. 시나리오 A 에 적용하면 −95,439.5 + 95,443.72 = **+4.22초** — 참값이
-나온다(직접 계산해 확인했다).
+This formula returns the difference of two values to the smallest magnitude within the `[−2³², +2³²)` range, i.e.
+within **±13.26 hours.** Apply it to scenario A and −95,439.5 + 95,443.72 = **+4.22 seconds** — the true value
+comes out (confirmed by direct computation).
 
-성립 조건도 분명하다.
+The holding condition is clear too.
 
-| 조건 | 내용 |
+| Condition | Content |
 |---|---|
-| 유효 범위 | 참 오프셋의 절대값이 **13.26시간 미만**일 때만 옳다. 그보다 큰 실제 오프셋과 래핑을 구별할 방법은 이 정보만으로는 없다 |
-| 필요한 상태 | 조각을 이어 볼 때는 **직전 값**을 들고 있어야 한다. 값이 크게 뒤로 뛰면 래핑으로 보고 누적 카운터를 하나 올린다 |
-| 이 코드에 없는 이유 | `timestamp_offset` 은 **첫 조각 하나만** 보는 무상태 함수다. 직전 값이라는 개념 자체가 없다 |
+| valid range | correct only when the true offset's absolute value is **under 13.26 hours.** there is no way, from this info alone, to distinguish a real offset larger than that from a wrap |
+| required state | when viewing pieces in sequence, you must hold the **previous value.** if the value jumps far back, view it as a wrap and raise an accumulation counter by one |
+| why it is absent in this code | `timestamp_offset` is a stateless function seeing **only the first piece.** the very concept of a previous value does not exist |
 
-세 번째 행이 중요하다. 래핑 처리는 검사 한 줄로 되는 일이 아니라 **함수의 상태
-모형을 바꾸는 일**이다. 무상태 함수로 남기려면 "26.5시간을 넘는 스트림은 다루지
-않는다"는 전제를 명시해야 하고, 다루려면 조각을 순회하며 상태를 들고 가야 한다.
+The third row matters. Wrap handling is not a one-line check but **a change to the function's state model.** To
+keep it a stateless function you must state the premise "does not handle a stream exceeding 26.5 hours," and to
+handle it you must traverse the pieces carrying state.
 
-### 28.5.4 지금은 왜 문제가 아닌가
+### 28.5.4 Why it is not a problem now
 
-| 근거 | 내용 |
+| Basis | Content |
 |---|---|
-| 대상 길이 | 이 도구의 단위는 한 회차(수십 분)다. 한 스트림 안에서 래핑이 일어나려면 26.5시간 이상 연속된 타임라인이 필요하다 |
-| LIVE 취급 | 24시간 연속 송출은 `ENDLIST` 가 없는 LIVE 이고, 이 도구는 LIVE 를 **스냅샷 시점까지만** 처리한다(`README.md:414`) |
-| 값의 출처 | 다수의 VOD 송출은 인코딩 시점에 0 부근에서 클럭을 시작한다 — 관측이 아니라 통념이므로 §28.9 에 다시 적는다 |
+| target length | this tool's unit is one episode (tens of minutes). for a wrap to occur within one stream you need a timeline continuous for 26.5 hours or more |
+| LIVE handling | a 24-hour continuous delivery is a LIVE with no `ENDLIST`, and this tool handles LIVE **only up to the snapshot moment** (`README.md:414`) |
+| value's source | most VOD deliveries start the clock near 0 at encoding time — this is a common belief, not an observation, so it is written again in §28.9 |
 
-그럼에도 이것은 **미처리 한계이지 해결된 문제가 아니다.** README 의 "알려진 한계"
-목록(`README.md:409-441`)에 sidecar 자막 항목이 둘 있지만(sidecar 자막의 정렬, sidecar
-자막의 이름) 래핑은 없다. 이 장이 그 자리를 채운다.
+Even so, this is an **unhandled limit, not a solved problem.** The README's "known limits" list
+(`README.md:409-441`) has two sidecar-subtitle items (sidecar-subtitle alignment, sidecar-subtitle name) but no
+wrapping. This chapter fills that spot.
 
 ---
 
-## 28.6 테스트가 남긴 실측 — 검사가 결함 주입을 막는다
+## 28.6 What the test left as measurement — the check blocks the defect injection
 
-범위 검사에는 값을 지키는 것 말고 부수 효과가 하나 더 있다. 회귀 테스트가 그것을
-실측으로 기록해 두었다.
+The range check has one more side effect besides protecting the value. The regression test recorded it as
+measurement.
 
 ```python
 # tests/run.sh:84-92
@@ -506,206 +496,199 @@ CUES = {
     "suben":  [(i * 5, i * 5 + 4, f"English subtitle line {i+1}") for i in range(6)],
     "subbad": [(i * 5, i * 5 + 4, f"어긋난 자막 {i+1}번") for i in range(6)],
 }
-# subbad 는 X-TIMESTAMP-MAP 기준을 60초 어긋나게 잡아 자막이 영상 범위를 벗어나게 만든다.
-# 음수로 만들면 안 된다 — 33비트 부호 없는 PTS 에 음수는 무효라 timestamp_offset 이
-# None 을 돌려주고(subtitles.py:208-210), 보정을 아예 걸지 않아 결함이 주입되지 않는다.
+# subbad sets the X-TIMESTAMP-MAP reference 60 seconds off so the subtitle strays out of the video range.
+# must not make it negative — a negative is invalid for a 33-bit unsigned PTS so timestamp_offset returns
+# None (subtitles.py:208-210), no correction is applied at all, and the defect is not injected.
 OFFSET = {"subko": 0, "suben": 0, "subbad": 60 * 90000}
 ```
 
-주석이 말하는 것은 **결함을 넣었는데 결함이 재현되지 않았다**는 실패의 기록이다.
-같은 성질이 두 곳에 있다.
+What the comment says is a record of a failure — **the defect was injected but the defect did not reproduce.** The
+same property is in two places.
 
-| 거부하는 주체 | 근거 | 결과 |
+| Rejecting actor | Basis | Result |
 |---|---|---|
-| ffmpeg | 33비트 부호 없는 규격 (테스트 주석의 실측) | 매핑을 무시 → 자막이 원래 시각대로 나온다 |
-| 이 코드 ([`subtitles.py:209-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L209-L210)) | 같은 규격 | `None` → 보정을 건너뛴다 |
+| ffmpeg | the 33-bit unsigned spec (the test comment's measurement) | ignores the mapping → the subtitle comes out at its original time |
+| this code ([`subtitles.py:209-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L209-L210)) | the same spec | `None` → skips correction |
 
-어느 쪽이 먼저 거부하든 결말은 같다. 주입한 −60초는 **어디에도 도달하지 않고**,
-자막은 0–29초에 그대로 남아 30초 영상 범위 안이며, 검사는 PASS 를 낸다. 결함을
-넣은 테스트가 초록불을 켠다.
+Whichever rejects first, the ending is the same. The injected −60 seconds **reaches nowhere**, and the subtitle
+stays at 0–29 seconds, inside the 30-second video range, and the check gives a PASS. A test that injected a defect
+turns on a green light.
 
-여기서 일반 명제 하나가 나온다.
+Here comes one general proposition.
 
-> **입력 검증은 공격면을 줄이는 동시에 테스트 가능성도 줄인다.** 검사에 걸리는 값은
-> 검사 뒤편의 코드에 도달하지 못하므로, 그 코드를 겨냥한 결함 주입에 쓸 수 없다.
+> **Input validation reduces the attack surface and at the same time reduces the testability.** A value caught by
+> a check cannot reach the code behind the check, so it cannot be used for a defect injection targeting that code.
 
-그러므로 결함 주입은 **검출기의 판정 규칙 안쪽에서, 그리고 입력 검사를 통과하는
-값으로** 이루어져야 한다. 왜 하필 `+60 * 90000` 인가 — 크기의 근거와 대안 값들의
-측정은 제35장 §35.4.6 에 있다. 이 장의 몫은 그 앞 단계다. **부호가 결정적인 이유가
-이 장의 33비트 규격이다.**
+So defect injection must be done **inside the detector's verdict rule, and with a value that passes the input
+check.** Why exactly `+60 * 90000` — the basis for the size and the measurements of alternative values are in
+Chapter 35 §35.4.6. This chapter's share is the step before that. **The reason the sign is decisive is this
+chapter's 33-bit spec.**
 
 ---
 
-## 28.7 일반화 — 범위 검사가 없을 때의 세 결말
+## 28.7 Generalization — the three endings when there is no range check
 
-신뢰할 수 없는 값이 검사 없이 계산에 들어가면 결과는 셋 중 하나다.
+When an untrusted value enters a computation without a check, the result is one of three.
 
-| 결말 | 무슨 일이 일어나는가 | 이 장의 사례 |
+| Ending | What happens | This chapter's case |
 |---|---|---|
-| **거부** | 값이 형식 자체를 벗어나 파싱 단계에서 걸린다 | `+900000`, `LOCAL:-00:00:01` (둘 다 우연한 거부) |
-| **시끄럽게 틀림** | 계산은 되지만 결과가 터무니없어 하류 검사·예외가 반응한다 | 2³³ 이상 → 하류 FAIL / 314자리 → `OverflowError` |
-| **조용히 틀림** | 계산이 그럴듯한 값을 내고 아무도 반응하지 않는다 | `9_000` → 0.0001초 / 음수 보정 후 0초 클램프 → WARN |
+| **rejection** | the value falls outside the form itself and is caught at the parsing stage | `+900000`, `LOCAL:-00:00:01` (both incidental rejections) |
+| **loudly wrong** | it computes but the result is absurd so a downstream check·exception reacts | ≥ 2³³ → downstream FAIL / 314 digits → `OverflowError` |
+| **quietly wrong** | the computation gives a plausible value and no one reacts | `9_000` → 0.0001 sec / after a negative correction the 0-second clamp → WARN |
 
-셋째가 가장 나쁘다. 그리고 **범위 검사가 없을 때 기본값은 셋째**다 — 계산은 언제나
-답을 내놓고, 그 답에는 "이 값은 근거가 없다"는 표시가 붙지 않기 때문이다.
+The third is the worst. And **the default when there is no range check is the third** — because the computation
+always gives an answer, and that answer carries no mark saying "this value has no basis."
 
-같은 구조가 나타나는 곳을 나열하면 이렇다.
+List where the same structure appears and it is this.
 
-| 영역 | 검사 없이 계산에 들어가는 값 | 조용히 틀렸을 때의 결과 |
+| Domain | The value entering the computation without a check | Result when quietly wrong |
 |---|---|---|
-| 자막 정렬(이 장) | `X-TIMESTAMP-MAP` 의 90kHz 값 | 자막 전체가 밀리거나 0초에 뭉친다 |
-| 컨테이너 파싱 | ISO-BMFF 의 `box_size`(제20장) | 경계를 벗어난 읽기, 파서 정지 실패 |
-| 압축 해제 | 선언된 원본 크기 | 메모리 고갈(제6장의 압축 폭탄) |
-| 페이지네이션·범위 요청 | `offset`, `limit`, `Range` 헤더 | 다른 자원의 바이트가 응답에 섞인다 |
-| 재시도·타임아웃 | 서버가 준 `Retry-After` | 음수·거대값이 무한 대기나 폭주 재시도로 바뀐다(제8장) |
-| 시퀀스·카운터 | media sequence number, 연속성 카운터(제18장) | 순환을 무시한 비교로 정상 스트림을 오류로, 오류를 정상으로 |
+| subtitle alignment (this chapter) | the 90kHz value of `X-TIMESTAMP-MAP` | the whole subtitle slips or bunches at 0 seconds |
+| container parsing | ISO-BMFF's `box_size` (Chapter 20) | out-of-boundary reading, parser termination failure |
+| decompression | the declared original size | memory exhaustion (Chapter 6's compression bomb) |
+| pagination·range requests | `offset`, `limit`, `Range` header | another resource's bytes mix into the response |
+| retry·timeout | the `Retry-After` the server gave | a negative·huge value turns into infinite wait or a runaway retry (Chapter 8) |
+| sequence·counter | media sequence number, continuity counter (Chapter 18) | a comparison ignoring the cycle makes a normal stream an error, an error normal |
 
-세 원칙으로 접는다.
+Fold into three principles.
 
-1. **타입 검사는 범위 검사가 아니다.** `-1` 은 `int` 이고 `2³³` 도 `int` 다. 타입은
-   값이 *표현 가능한지* 말할 뿐 *의미가 있는지* 말하지 않는다. 도메인의 범위는
-   따로 적어야 한다.
-2. **검사는 신뢰 경계에서 한 번, 값이 들어오는 자리에서 한다.** 나중에 하면 이미
-   계산된 값이 여기저기 퍼진 뒤다. 제7장의 "변환은 경계에서 한 번만"과 같은 형식의
-   규칙이다.
-3. **검사에 걸린 값의 답은 `0` 이 아니라 "모름"이다.** 규격 밖 값을 만나 0 으로
-   대체하면 그 0 은 "보정할 것이 없었다"와 구별되지 않는다. 이 코드가 `0.0` 이 아니라
-   `None` 을 돌려주는 이유가 그것이다 — **타입이 "모름"을 표현할 수 있어야 한다.**
+1. **A type check is not a range check.** `-1` is an `int` and `2³³` is an `int` too. A type says only whether the
+   value is *representable*, not whether it is *meaningful*. The domain's range must be written separately.
+2. **Check once, at the trust boundary, at the spot where the value enters.** Check later and the already-computed
+   value has spread everywhere. It is a rule of the same form as Chapter 7's "convert once at the boundary."
+3. **The answer for a caught value is not `0` but "unknown."** Meet an out-of-spec value and replace it with 0 and
+   that 0 is indistinguishable from "there was nothing to correct." That is why this code returns `None`, not
+   `0.0` — **the type must be able to express "unknown."**
 
 ---
 
-## 28.8 보안 — 같은 누락이 길이·오프셋에 있을 때
+## 28.8 Security — when the same omission is in length·offset
 
-### 28.8.1 여기서는 자막이 밀릴 뿐이다
+### 28.8.1 Here the subtitle just slips
 
-이 장의 결과는 잘못 정렬된 자막 파일이다. 사람이 보면 알아채고, 도구가 보면
-대체로 FAIL 을 낸다. **피해가 데이터의 의미에 머문다.**
+This chapter's result is a wrongly aligned subtitle file. A human seeing it notices, and a tool seeing it mostly
+gives a FAIL. **The damage stays in the data's meaning.**
 
-같은 누락이 **길이와 오프셋** 계산에 있으면 피해가 메모리로 넘어간다. 제20장
-§20.6.1 에서 이미 본 형태다 — ISO-BMFF 의 `box_size` 를 검사 없이 더하면, 선언된
-길이가 남은 바이트 수보다 크거나 덧셈이 되감기면서 **파일 경계 밖을 가리키는
-오프셋**이 만들어진다.
+If the same omission is in a **length and offset** computation, the damage crosses into memory. It is a form
+already seen in Chapter 20 §20.6.1 — add ISO-BMFF's `box_size` without a check and, as the declared length is
+larger than the remaining bytes or the addition wraps, an **offset pointing outside the file boundary** is made.
 
-두 사례의 차이는 값의 용도뿐이다.
+The difference of the two cases is only the value's use.
 
-| | 이 장 (`MPEGTS`) | 제20장 (`box_size`) |
+| | This chapter (`MPEGTS`) | Chapter 20 (`box_size`) |
 |---|---|---|
-| 값의 용도 | 시각 오프셋 | **바이트 오프셋·길이** |
-| 검사 실패의 결과 | 잘못 정렬된 자막 | 경계 밖 읽기, 무한 루프, 과대 할당 |
-| 최악의 결말 | 오탐·미탐 | **메모리 안전성 위반** |
+| Value's use | time offset | **byte offset·length** |
+| Result of a check failure | a wrongly aligned subtitle | out-of-boundary read, infinite loop, over-allocation |
+| Worst ending | false positive·false negative | **memory-safety violation** |
 
-### 28.8.2 부호 혼동
+### 28.8.2 Signed/unsigned confusion
 
-33비트 부호 없는 값이 음수로 나타나는 경로 자체가 이미 하나의 취약점 유형이다.
+The very path by which a 33-bit unsigned value appears as a negative is itself one vulnerability type.
 
-> **용어** — **signed/unsigned confusion(부호 혼동)**: 부호 없는 값을 부호 있는
-> 정수형으로 읽거나 그 반대로 다루어, 큰 양수가 음수로(또는 음수가 거대한 양수로)
-> 해석되는 결함. 길이 검사 앞에서 이 혼동이 일어나면 `if (len > max)` 같은 검사가
-> 그대로 통과한다.
+> **Term** — **signed/unsigned confusion**: a defect where an unsigned value is read as a signed integer type or
+> vice versa, so a large positive is interpreted as a negative (or a negative as a huge positive). If this
+> confusion happens before a length check, a check like `if (len > max)` passes as-is.
 
-`MPEGTS:` 에 음수가 적히는 경우는 대개 이 혼동의 흔적이다 — 33비트 값을 32비트
-부호 있는 정수에 담았거나, 래핑을 지난 뒤 뺄셈 결과를 그대로 인쇄했거나. 그러므로
-음수를 만났을 때 "부호만 뒤집어 쓰면 되지 않나"라는 접근이 틀린 이유가 분명해진다.
-**부호가 틀린 것이 아니라, 그 값을 만든 계산이 이미 틀렸다.**
+A negative written in `MPEGTS:` is usually a trace of this confusion — a 33-bit value held in a 32-bit signed
+integer, or a subtraction result after passing a wrap printed as-is. So it becomes clear why the approach "just
+flip the sign and use it" is wrong when meeting a negative. **The sign is not wrong; the computation that made
+that value is already wrong.**
 
-### 28.8.3 언어가 결말을 바꾼다
+### 28.8.3 The language changes the ending
 
-같은 누락이 어디에 있느냐에 따라 결말이 달라진다.
+The ending differs by where the same omission is.
 
-| 환경 | 범위를 벗어난 정수 연산 | 이 장의 코드에 대응시키면 |
+| Environment | An out-of-range integer operation | Mapped to this chapter's code |
 |---|---|---|
-| 파이썬 | 정수는 임의 정밀도 — 오버플로가 없다. 대신 `float` 변환에서 `OverflowError` | §28.4.2 에서 실제로 난 예외 |
-| C/C++ | 부호 있는 오버플로는 **정의되지 않은 동작(UB)**, 부호 없는 값은 조용히 되감김 | 검사 없는 덧셈이 곧 경계 밖 접근 |
-| Rust | 디버그 빌드는 오버플로에서 패닉, 릴리스 빌드는 검사를 끄고 되감김(되감김을 의도했다면 `wrapping_*` 로 명시) | 테스트에서는 잡히고 배포본에서는 조용히 틀린다 |
+| Python | integers are arbitrary precision — no overflow. instead an `OverflowError` at `float` conversion | the exception that actually arose in §28.4.2 |
+| C/C++ | signed overflow is **undefined behavior (UB)**, an unsigned value wraps silently | an uncheck addition is an out-of-boundary access right away |
+| Rust | a debug build panics on overflow, a release build turns off the check and wraps (state it with `wrapping_*` if you intend wrapping) | caught in tests and quietly wrong in the release |
 
-파이썬이라서 이 코드가 안전한 것이 아니다. **파이썬이라서 실패의 형태가 죽는 쪽
-(예외)으로 치우쳤을 뿐**이고, 그 예외조차 잡히지 않으면 가용성 문제로 남는다.
+It is not that this code is safe because it is Python. **It is only that being Python, the failure form tilted to
+the dying side (an exception)**, and even that exception, if uncaught, remains an availability problem.
 
-### 28.8.4 방어자 관점
+### 28.8.4 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **클라이언트 구현자** | 원격에서 온 정수는 파싱 직후 **도메인 범위로** 검사한다. 상한과 하한을 함께 적는다 — 한쪽만 적힌 검사는 나머지 절반이 있다고 **오해하게 만든다**. 이 장의 코드가 정확히 그 상태다 |
-| **파서 작성자** | 값의 시작뿐 아니라 **끝을 고정**한다. 부분 매칭은 거부가 아니라 조용한 오독이다. 문자 클래스는 신뢰 경계의 일부이므로 ASCII 를 의도했으면 `[0-9]` 로 적는다 |
-| **송출 사업자** | `X-TIMESTAMP-MAP` 은 클라이언트가 **자막 위치를 통째로 옮기는 근거**다. 이 값이 틀리면 접근성 트랙 전체가 못 쓰게 된다. 인코더가 래핑을 지난 뒤 이 값을 어떻게 쓰는지 확인해야 하며, 26.5시간 이상 연속 송출에서는 반드시 검증 대상이다 |
-| **검증 도구 작성자** | 하류 검사가 상류 검사의 부재를 가려 준다면 그것은 **행운이지 설계가 아니다**(제15장의 우연한 방어). 어느 층이 무엇을 책임지는지 적어 두지 않으면, 층 하나를 손대는 순간 방어가 사라진다 |
-| **감사자** | "규격상 N비트 부호 없는 값"이라고 적힌 주석을 보면 **코드가 양쪽 끝을 다 보는지** 확인한다. 주석과 코드의 비대칭은 그 자체로 발견 항목이다 |
+| **client implementer** | check an integer from a remote **against the domain range** right after parsing. write the upper and lower bounds together — a check with only one side written **makes you mistake** the other half as present. this chapter's code is exactly that state |
+| **parser author** | fix not only the value's start but its **end.** a partial match is not a rejection but a quiet misread. a character class is part of the trust boundary so write `[0-9]` if ASCII is intended |
+| **delivery operator** | `X-TIMESTAMP-MAP` is the **basis on which a client moves the whole subtitle position.** if this value is wrong the whole accessibility track becomes unusable. you must confirm how the encoder uses this value after passing a wrap, and in a delivery continuous for 26.5 hours or more it is necessarily a verification target |
+| **verification-tool author** | if a downstream check covers the absence of an upstream check, that is **luck, not design** (Chapter 15's incidental defense). without writing which layer is responsible for what, the moment you touch one layer the defense vanishes |
+| **auditor** | when you see a comment reading "an N-bit unsigned value by spec," confirm **whether the code sees both ends.** the asymmetry of comment and code is itself a finding |
 
-마지막으로, 이 코드가 이미 하고 있는 방어 하나를 짚어 둔다. 보정량은 **반드시
-기록으로 남는다.**
+Finally, note one defense this code is already doing. The correction amount **is necessarily left as a record.**
 
 ```python
 # cli.py:287-288
         if abs(off) >= 0.5:
-            _eprint(f"    · {track.label()} X-TIMESTAMP-MAP 기준 {off:+.2f}s 보정")
+            _eprint(f"    · {track.label()} X-TIMESTAMP-MAP-based {off:+.2f}s correction")
 ```
 
-리포트의 JSON 에도 `timestamp_offset_sec` 로 남는다 — 별도 파일 경로는
-[`report.py:492`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L492), 컨테이너 내장 경로는 [`report.py:375`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L375) 이다. **도구가 파일을 고쳤다면
-얼마나 고쳤는지 말해야 한다.** 조용히 고치는 도구는 조용히 틀린다.
+It also remains in the report JSON as `timestamp_offset_sec` — the separate-file path is [`report.py:492`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L492), the
+container-embed path is [`report.py:375`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L375). **If the tool fixed the file it must say how much it fixed.** A tool
+that fixes quietly is wrong quietly.
 
 ---
 
-## 28.9 한계와 미해결
+## 28.9 Limits and open questions
 
-정직하게 적어 둔다.
+Written honestly.
 
-- **26.5시간 스트림을 실제로 만들어 검증하지 않았다.** §28.5 의 시나리오 A·B 는
-  `timestamp_offset` 에 값을 직접 넣어 얻은 **함수 수준 측정**이다. 종단 실행
-  (실제 26.5시간 타임라인의 HLS 를 만들어 도구에 물리는 것)은 하지 않았다.
-- **`ffprobe` 가 돌려주는 `pts_time` 이 이미 래핑 보정을 거친 값인지 확인하지
-  않았다.** FFmpeg 은 MPEG-TS 에 대해 33비트 래핑을 인지하는 처리를 갖고 있으므로,
-  `probe.first_pts` 가 26.5시간을 넘는 값이나 음수를 돌려줄 가능성이 있다. 그렇다면
-  §28.5 의 시나리오는 형태가 달라진다. **추론이며 미검증이다.**
-- **`OverflowError` 를 종단으로 재현하지 않았다.** §28.4.2 는 함수를 직접 호출해
-  얻었다. 서버가 314자리 `MPEGTS:` 를 보내는 상황을 실제 파이프라인으로 흘려 보지
-  않았으므로, 중간 어딘가에서 다른 이유로 먼저 실패할 가능성은 남아 있다.
-- **내장 모드(`-itsoffset`)의 음수·거대값 처리를 측정하지 않았다.** §28.5.2 의 표는
-  별도 파일 경로에 대한 것이다. 컨테이너 내장 경로에서 ffmpeg 이 범위 밖 오프셋을
-  어떻게 다루는지(큐를 버리는지, 음수 시각으로 두는지)는 확인하지 못했다.
-- **실제 CDN 이 2³³ 이상이나 음수 값을 보내는 빈도를 관측하지 못했다.** 테스트 주석이
-  기록한 것은 "음수를 만들면 ffmpeg 이 무시한다"는 인위적 주입의 결과이지, 야생의
-  송출에서 그런 값이 나온다는 관측이 아니다.
-- **"다수의 VOD 송출은 0 부근에서 클럭을 시작한다"는 §28.5.4 의 서술은 통념이다.**
-  이 저장소가 만든 테스트 스트림에서 첫 PTS 가 128,090 tick(1.42초)이라는 것만
-  실측이다. 실제 송출의 분포는 조사하지 않았다.
-- **유니코드 숫자 매칭의 실질 위험은 확인되지 않았다.** 전각 숫자가 값으로 읽힌다는
-  것은 측정했지만, 그것을 이용해 무엇이 되는 경로는 찾지 못했다.
-
----
-
-## 28.10 요약
-
-1. MPEG-TS 의 PTS 는 **33비트 부호 없는 값**이다(ISO/IEC 13818-1). 최대값
-   2³³−1 = 8,589,934,591 tick 을 90kHz 로 나누면 **95,443.717678초 = 26시간 30분
-   43.72초**이고, 그 뒤 0 으로 되감긴다(래핑 주기 약 26.5121시간).
-2. 여기서 둘이 따라 나온다. **음수는 규격상 무효**이므로 매핑 자체를 불신해야 하고,
-   값이 **순환**하므로 뺄셈이 두 시각의 차이를 뜻하지 않는 구간이 생긴다.
-3. [`subtitles.py:209-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L209-L210) 이 음수를 만나면 `None` 을 돌려 **보정을 포기**한다.
-   잘못된 값으로 계산해 조용히 밀린 자막을 내는 것보다 낫다 — 계산을 포기하면
-   오류가 하류에 **보이는 형태**로 남고, 잘못 계산하면 클램프에 걸려 검사의
-   사각지대로 옮겨 간다. 제38장의 판정 보류와 같은 태도다.
-4. 그러나 **범위 검사는 반쪽이다.** 상한이 없어 2³³ 이상의 값이 그대로 계산되고,
-   314자리 값에서는 잡히지 않는 `OverflowError` 가 난다. 2048바이트 절단은 길이의
-   상한일 뿐 값의 상한이 아니며, 경계에서 잘린 숫자는 거부되지 않고 **앞자리만 값이
-   된다.**
-5. **26.5시간을 넘는 스트림에서 오프셋 계산은 깨진다** — 이 코드의 미처리 한계다.
-   오차는 정확히 래핑 주기만큼이고, 음수 방향이면 WARN, 양수 방향이면 FAIL 로
-   등급이 갈린다. 고치려면 직전 값과의 차이로 되감김을 검출하고 뺄셈을 모듈러
-   산술(`((a−b+2³²) mod 2³³) − 2³²`)로 바꿔야 하며, 그것은 무상태 함수를 상태 있는
-   순회로 바꾸는 일이다.
-6. 테스트가 남긴 실측: **결함 주입을 음수로 하면 결함이 재현되지 않는다.** ffmpeg 과
-   이 코드가 둘 다 규격을 근거로 매핑을 버리기 때문이다. 입력 검증은 공격면과 함께
-   **테스트 가능성도 줄인다.**
-7. 일반화하면 **범위 검사가 없을 때의 기본 결말은 "조용히 틀림"**이다. 산술은 입력을
-   거부하지 않으므로, 규격 밖의 값도 규격 안의 값과 똑같이 매끄럽게 답을 만든다.
-   같은 누락이 시각이 아니라 **길이·오프셋** 계산에 있으면 정수 오버플로와 메모리
-   안전성 문제가 된다(제20장).
+- **A 26.5-hour stream was not actually made and verified.** §28.5's scenarios A·B are **function-level
+  measurements** obtained by putting values directly into `timestamp_offset`. The end-to-end run (making an HLS
+  with an actual 26.5-hour timeline and putting it into the tool) was not done.
+- **Whether the `pts_time` `ffprobe` returns is already a wrap-corrected value was not confirmed.** FFmpeg has
+  processing that recognizes 33-bit wrapping for MPEG-TS, so `probe.first_pts` might return a value exceeding 26.5
+  hours or a negative. If so, §28.5's scenarios change shape. **It is inference and unverified.**
+- **The `OverflowError` was not reproduced end-to-end.** §28.4.2 was obtained by calling the function directly.
+  The situation of a server sending a 314-digit `MPEGTS:` was not flowed through the actual pipeline, so the
+  possibility of failing first for a different reason somewhere in the middle remains.
+- **The embed mode's (`-itsoffset`) negative·huge-value handling was not measured.** §28.5.2's table is for the
+  separate-file path. How ffmpeg handles an out-of-range offset on the container-embed path (drops the cue, leaves
+  a negative time) was not confirmed.
+- **The frequency of actual CDNs sending values ≥ 2³³ or negatives was not observed.** What the test comment
+  recorded is the result of an artificial injection "make it negative and ffmpeg ignores it," not an observation
+  that such a value comes out of a wild delivery.
+- **§28.5.4's statement "most VOD deliveries start the clock near 0" is a common belief.** Only that the first PTS
+  is 128,090 tick (1.42 seconds) in this repository's test stream is measured. The distribution of actual
+  deliveries was not surveyed.
+- **The real risk of Unicode digit matching was not confirmed.** That a fullwidth digit is read as a value was
+  measured, but a path by which that becomes something was not found.
 
 ---
 
-**다음 장** — 이 장은 서버가 보낸 값 하나를 믿을 수 있는가를 물었다. 제29장은 서버가
-보낸 **같은 것을 두 번** 보낼 때를 다룬다. HLS 규격은 경계에 걸친 자막 큐를 인접
-세그먼트 양쪽에 넣는 것을 허용하고, 실제 송출도 그렇게 나간다 — 6큐가 9큐가 되는
-현상이다. 분산 시스템의 at-least-once 전달과 멱등성이 스트리밍에서 어떤 얼굴로
-나타나는지, 그리고 중복 제거 키를 무엇으로 잡아야 하는지가 주제다.
+## 28.10 Summary
+
+1. MPEG-TS's PTS is a **33-bit unsigned value** (ISO/IEC 13818-1). Divide the max value 2³³−1 = 8,589,934,591 tick
+   by 90kHz and it is **95,443.717678 seconds = 26 hours 30 minutes 43.72 seconds**, and after that it wraps to 0
+   (wrapping period about 26.5121 hours).
+2. Two things follow. **A negative is invalid by spec** so the mapping itself must be distrusted, and since the
+   value **cycles** a region arises where subtraction does not mean the difference of two times.
+3. [`subtitles.py:209-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L209-L210) returns `None` on meeting a negative and **gives up correction.** Better than
+   computing with a wrong value and putting out a quietly slipped subtitle — give up the computation and the error
+   stays in a **visible form** downstream, compute wrong and it catches on the clamp and moves into the check's
+   blind spot. It is the same attitude as Chapter 38's verdict withheld.
+4. But **the range check is half.** With no upper bound, a value ≥ 2³³ is computed as-is, and at a 314-digit value
+   an uncaught `OverflowError` arises. The 2048-byte truncation is an upper bound on length only, not on value,
+   and a number cut at the boundary is not rejected and **only its leading digits become the value.**
+5. **In a stream exceeding 26.5 hours the offset computation breaks** — this code's unhandled limit. The error is
+   exactly the wrapping period, and the grade splits as WARN in the negative direction and FAIL in the positive.
+   To fix it you must detect the wrap by the difference from the previous value and change the subtraction to
+   modular arithmetic (`((a−b+2³²) mod 2³³) − 2³²`), and that is changing a stateless function into a stateful
+   traversal.
+6. What the test left as measurement: **inject the defect as a negative and the defect does not reproduce.**
+   Because ffmpeg and this code both discard the mapping on the basis of the spec. Input validation reduces, along
+   with the attack surface, the **testability.**
+7. Generalized, **the default ending when there is no range check is "quietly wrong."** Arithmetic does not reject
+   input, so an out-of-spec value makes an answer just as smoothly as an in-spec value. If the same omission is in
+   a **length·offset** computation and not a time, it becomes integer overflow and a memory-safety problem
+   (Chapter 20).
+
+---
+
+**Next chapter** — this chapter asked whether one value the server sent can be trusted. Chapter 29 covers when the
+server sends **the same thing twice.** The HLS spec permits putting a boundary-straddling subtitle cue on both
+sides of adjacent segments, and actual deliveries go out that way too — the phenomenon of 6 cues becoming 9. The
+subject is what face distributed systems' at-least-once delivery and idempotency take on in streaming, and what
+the deduplication key should be set as.

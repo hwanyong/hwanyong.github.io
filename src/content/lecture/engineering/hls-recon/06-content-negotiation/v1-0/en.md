@@ -1,166 +1,168 @@
 ---
-untranslated: ko
-title: "콘텐츠 협상의 부작용"
-description: "압축, 범위, 그리고 충돌"
-date: 2026-08-15
+title: "The Side Effects of Content Negotiation"
+description: "Compression, ranges, and the collision"
+date: 2026-06-01
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-06-content-negotiation.svg
 ---
-## 6.0 이 장에서 답할 것
+## 6.0 What this chapter answers
 
-1. 요청하지도 않은 압축이 왜 오고, 풀지 않으면 무엇이 깨지는가
-2. Range 와 Content-Encoding 이 겹치면 **무엇이 정의되지 않는가**
-3. 처리량을 해제 후 크기로 재면 왜 틀리는가 — 무엇을 세는 숫자인가
-4. 압축을 푸는 코드가 왜 그 자체로 공격면인가 — **이 저장소의 실제 미방어 지점**
+1. Why does compression you did not even request arrive, and what breaks if you do not decompress it?
+2. When Range and Content-Encoding overlap, **what is left undefined?**
+3. Why is it wrong to measure throughput by the decompressed size — a number counting what?
+4. Why is the code that decompresses itself an attack surface — **this repository's actual unguarded point?**
 
-네 질문은 하나의 뿌리를 공유한다. HTTP 는 "같은 주소에 여러 표현이 있을 수 있다"는
-전제 위에 서 있고, 그 전제가 **"이 바이트열이 무엇의 바이트열인가"를 흔든다.**
+The four questions share one root. HTTP stands on the premise "one address may have several
+representations," and that premise **shakes "what is this byte sequence a byte sequence of."**
 
 ---
 
-## 6.1 문제 — 플레이리스트가 바이너리로 온다
+## 6.1 The problem — the playlist arrives as binary
 
-이 저장소의 회귀 테스트는 압축 응답만 돌려주는 전용 서버를 따로 띄운다. 그 이유가
-파일 첫머리에 적혀 있다.
+This repository's regression test spins up a dedicated server that returns only compressed responses. The
+reason is written at the head of the file.
 
 ```python
 # tests/gzip_server.py:1-6
-"""플레이리스트를 gzip 으로만 응답하는 테스트 서버.
+"""A test server that responds to playlists only in gzip.
 
-Python 기본 http.server 는 압축을 전혀 하지 않아 이 경로를 재현하지 못한다.
-실제 CDN 은 브라우저 User-Agent 를 보면 클라이언트가 무엇을 요청했든 압축해
-돌려주는 경우가 있고, 그때 압축을 풀지 않으면 플레이리스트가 바이너리로 보여
-'#EXTM3U 헤더가 없다'로 실패한다.
+Python's built-in http.server does no compression at all and cannot reproduce this path.
+A real CDN sometimes, seeing the browser User-Agent, compresses regardless of what the
+client requested, and if you do not decompress then the playlist looks like binary and
+fails as 'no #EXTM3U header'.
+"""
 ```
 
-증상은 파서에서 나타나지만 원인은 전송 계층에 있다. 플레이리스트 파서는 첫 줄이
-`#EXTM3U` 인지만 보는데, 받은 본문이 gzip 이면 첫 두 바이트가 `1f 8b` 다. 파서 입장에서
-이것은 "M3U8 이 아닌 무언가"이고, 그 이상은 말할 수 없다.
+The symptom appears in the parser but the cause is in the transport layer. The playlist parser looks only at
+whether the first line is `#EXTM3U`, but if the received body is gzip, its first two bytes are `1f 8b`. To
+the parser this is "something that is not M3U8," and it can say no more.
 
-그래서 이 저장소는 진단을 전송 계층까지 끌고 내려간다([`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102)). 그 함수를
-실제로 호출해 얻은 출력이다.
+So this repository drags the diagnosis down to the transport layer ([`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102)). Output obtained by
+actually calling that function.
 
 ```
-플레이리스트로 해석할 수 없는 응답이다: http://cdn/index.m3u8
+a response that cannot be interpreted as a playlist: http://cdn/index.m3u8
 
-  HTTP 상태      : 200
-  Content-Type   : application/vnd.apple.mpegurl
-  Content-Encoding: (없음)
-  본문 크기      : 770 B
-  선두 바이트    : 1f8b08000000000002ff7dd64d4a9c51
-  선두 문자      : ..........}.MJ.Q.....p..T....`'.I...n@....b..Q.;
+  HTTP status     : 200
+  Content-Type    : application/vnd.apple.mpegurl
+  Content-Encoding: (none)
+  body size       : 770 B
+  leading bytes   : 1f8b08000000000002ff7dd64d4a9c51
+  leading chars   : ..........}.MJ.Q.....p..T....`'.I...n@....b..Q.;
 
-  → gzip 인데 Content-Encoding 이 선언되지 않았다. 서버 설정 문제다.
+  → it is gzip but Content-Encoding was not declared. a server-config problem.
 ```
 
-이 진단이 나온 상황에는 세 값이 겹쳐 있다 — 상태 200, Content-Type 은 정상, 그런데
-본문 선두가 `1f 8b`. 이 중 선두 두 바이트를 보고 갈라내는 분기가 코드에 명시적으로 있다.
+The situation in which this diagnosis came out has three values overlapping — status 200, Content-Type
+normal, and yet the body's leading bytes are `1f 8b`. There is a branch, explicit in the code, that splits it
+off by looking at those leading two bytes.
 
 ```python
 # cli.py:80-81
 elif res.body[:2] == b"\x1f\x8b":
-    lines.append("  → gzip 인데 Content-Encoding 이 선언되지 않았다. 서버 설정 문제다.")
+    lines.append("  → it is gzip but Content-Encoding was not declared. a server-config problem.")
 ```
 
-여기서 실패의 모양이 둘로 갈린다. 둘은 책임 소재가 다르고, 고치는 쪽도 다르다.
+Here the shape of the failure splits in two. The two differ in who is responsible, and which side fixes it.
 
-| 경우 | 서버가 보낸 것 | 클라이언트가 해야 할 것 | 책임 |
+| Case | What the server sent | What the client should do | Responsibility |
 |---|---|---|---|
-| **(a) 선언된 압축** | `Content-Encoding: gzip` + gzip 본문 | 선언대로 해제한다 | 클라이언트 — 안 풀면 자기 잘못 |
-| **(b) 선언되지 않은 압축** | 헤더 없음 + gzip 본문 | 규격상 할 일이 없다. 진단만 낸다 | **서버** — 규격 위반 |
+| **(a) declared compression** | `Content-Encoding: gzip` + gzip body | decompress as declared | client — do not, and it is your fault |
+| **(b) undeclared compression** | no header + gzip body | there is nothing to do by spec. only diagnose | **server** — a spec violation |
 
-(b) 를 자동으로 풀어 주는 클라이언트를 만들 수도 있다. 그러나 그것은 제14장에서 본
-콘텐츠 스니핑을 **판별이 아니라 처리 결정**에 쓰는 일이 되고, 그 순간 "선두 두 바이트가
-우연히 `1f 8b` 인 정상 세그먼트"라는 오탐 경로가 열린다. 이 저장소는 (b) 를 고치지 않고
-**보고만 한다.**
+You could make a client that auto-decompresses (b). But that is using the content sniffing seen in Chapter 14
+for a **processing decision, not a determination**, and the moment you do, a false-positive path opens: "a
+normal segment whose leading two bytes happen to be `1f 8b`." This repository does not fix (b) but **only
+reports** it.
 
-그리고 이 장의 두 번째 문제가 있다. 플레이리스트가 이렇게 적혀 있을 때다.
+And there is this chapter's second problem. It is when the playlist is written like this.
 
 ```
 #EXT-X-BYTERANGE:500000@1500000
 segment.ts
 ```
 
-세그먼트가 파일 전체가 아니라 **한 파일 안의 바이트 구간**이다. 이때 압축이 겹치면
-무엇이 되는가 — 이것이 §6.3 의 주제다.
+The segment is not a whole file but **a byte span within one file.** When compression overlaps here, what
+does it become — that is §6.3's subject.
 
 ---
 
-## 6.2 원리 — 콘텐츠 협상이란 무엇인가
+## 6.2 The principle — what is content negotiation?
 
-> **용어** — **콘텐츠 협상(content negotiation)**: 같은 URI 가 여러 표현을 가질 때,
-> 그중 어떤 표현을 보낼지 클라이언트의 선호와 서버의 판단으로 정하는 절차.
+> **Term** — **content negotiation**: when one URI has several representations, the procedure of deciding
+> which to send by the client's preference and the server's judgment.
 
-> **용어** — **표현(representation)**: 어떤 자원의 특정 시점·특정 형식의 바이트열과 그
-> 메타데이터. 하나의 자원(resource)에 여러 표현이 있을 수 있다 — 한국어판과 영어판,
-> gzip 판과 무압축판이 모두 같은 자원의 서로 다른 표현이다.
+> **Term** — **representation**: a resource's byte sequence at a specific time·in a specific format plus its
+> metadata. One resource can have several representations — the Korean edition and the English edition, the
+> gzip edition and the uncompressed edition are all different representations of the same resource.
 
-> **용어** — **콘텐츠 코딩(content coding)**: 표현의 바이트열에 적용된 변환(주로 압축).
-> `Content-Encoding` 이 이것을 선언한다. **표현의 일부**이며 종단 간(end-to-end)이다.
+> **Term** — **content coding**: a transformation (mainly compression) applied to a representation's byte
+> sequence. `Content-Encoding` declares this. It is **part of the representation** and is end-to-end.
 
-이 정의에서 이미 이 장의 결론이 나온다. **압축은 전송 방식이 아니라 표현의 성질이다.**
-gzip 으로 압축된 플레이리스트는 "같은 것을 다르게 보낸 것"이 아니라 **다른 표현**이다.
+This chapter's conclusion already follows from these definitions. **Compression is not a transport method
+but a property of the representation.** A gzip-compressed playlist is not "the same thing sent differently"
+but **a different representation.**
 
-### 6.2.1 협상 축은 여럿이고, 축마다 성질이 다르다
+### 6.2.1 There are several negotiation axes, and each differs in nature
 
-| 요청 헤더 | 협상하는 것 | 실패했을 때 |
+| Request header | What it negotiates | On failure |
 |---|---|---|
-| `Accept` | 미디어 타입 | 406 또는 서버가 임의 선택 |
-| `Accept-Language` | 자연어 | 기본 언어 |
-| `Accept-Encoding` | **콘텐츠 코딩(압축)** | **클라이언트가 본문을 못 읽는다** |
-| `User-Agent` | 규격 밖 축 — 실무에서 압축·레이아웃 분기의 근거로 쓰인다 | 예측 불가 |
+| `Accept` | media type | 406, or the server picks arbitrarily |
+| `Accept-Language` | natural language | the default language |
+| `Accept-Encoding` | **content coding (compression)** | **the client cannot read the body** |
+| `User-Agent` | an off-spec axis — used in practice as the basis for compression·layout branching | unpredictable |
 
-`Accept-Encoding` 만 성질이 다르다. 다른 축은 "덜 좋은 것"을 받는 데서 끝나지만, 이 축이
-어긋나면 **본문이 아예 해독 불가능한 바이트열이 된다.** §6.1 의 증상이 그것이다.
+Only `Accept-Encoding` differs in nature. The other axes end at receiving "something less good," but go off
+on this axis and **the body becomes an undecodable byte sequence entirely.** §6.1's symptom is that.
 
-`User-Agent` 가 표에 들어가 있는 것이 이 코드의 관찰이다.
+That `User-Agent` is in the table is this code's observation.
 
 ```python
 # fetch.py:24-27
-# 브라우저 UA 로 요청하면 서버가 압축 응답을 돌려주는 경우가 흔하다. 요청해두고
-# 직접 해제한다 — 텍스트인 플레이리스트에서 전송량이 크게 준다.
-# brotli(br)는 표준 라이브러리로 풀 수 없으므로 요청하지 않는다.
+# requesting with a browser UA, servers commonly return a compressed response. request it up front and
+# decompress it ourselves — for a text playlist the transfer volume drops greatly.
+# brotli(br) cannot be decompressed with the standard library, so we do not request it.
 ACCEPT_ENCODING = "gzip, deflate"
 ```
 
-브라우저 UA 를 쓰면([`fetch.py:20-23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L20-L23)) 서버가 압축을 돌려줄 확률이 올라간다. 즉 **한 축의
-위장이 다른 축의 결과를 바꾼다.** 협상 축들은 독립이 아니다.
+Use a browser UA ([`fetch.py:20-23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L20-L23)) and the chance the server returns compression rises. That is, **a
+disguise on one axis changes the result on another axis.** The negotiation axes are not independent.
 
-### 6.2.2 협상은 명령이 아니라 선호다
+### 6.2.2 Negotiation is a preference, not a command
 
-`Accept-Encoding: identity` 는 "압축하지 마라"가 아니라 "압축하지 않은 표현이 내가 받을
-수 있는 것"이라는 **진술**이다. 규격은 서버에게 이를 존중하라고 SHOULD 수준으로 요구할
-뿐, 강제할 수단이 없다. 이 저장소의 테스트 서버가 바로 그 반례다.
+`Accept-Encoding: identity` is not "do not compress" but the **statement** "the uncompressed representation
+is what I can receive." The spec asks the server to respect this only at the SHOULD level, with no means to
+enforce it. This repository's test server is precisely that counterexample.
 
 ```python
 # tests/gzip_server.py:31-38
 self.send_response(200)
 self.send_header("Content-Type", _content_type(target.suffix))
 if compress:
-    # 클라이언트가 Accept-Encoding 으로 무엇을 보냈든 압축해 보낸다.
+    # compress and send regardless of what the client sent in Accept-Encoding.
     self.send_header("Content-Encoding", "gzip")
 self.send_header("Content-Length", str(len(body)))
 self.end_headers()
 self.wfile.write(body)
 ```
 
-그리고 회귀 테스트는 **그 무시가 실제로 일어나는지를 따로 검증한다.**
+And the regression test **separately verifies whether that ignoring actually happens.**
 
 ```bash
 # tests/run.sh:189-192
-# 압축을 요청조차 하지 않으면 이 경로는 애초에 검증되지 않는다.
+# if you do not even request compression, this path is not verified in the first place.
 curl -s -H 'Accept-Encoding: identity' -o /dev/null -D - \
   "http://127.0.0.1:$GZIP_PORT/plain/index.m3u8" | grep -qi 'content-encoding: gzip' \
-  && ok "테스트 서버가 실제로 압축 응답" || bad "테스트 서버가 압축하지 않음"
+  && ok "the test server actually compresses the response" || bad "the test server does not compress"
 ```
 
-이것은 제8부의 **테스트 오라클 문제**(제34장)가 전송 계층에 나타난 형태다. "압축 해제
-경로가 통과했다"는 사실은, **서버가 실제로 압축을 보냈을 때만** 정보가 된다. 서버가
-압축을 안 보내면 해제 코드는 한 줄도 실행되지 않은 채 테스트가 초록으로 뜬다.
-그래서 테스트는 도구가 아니라 **환경을 먼저 검사한다.**
+This is the **test oracle problem** of Part 8 (Chapter 34) appearing at the transport layer. The fact that
+"the decompression path passed" is information **only when the server actually sent compression.** If the
+server does not send compression, the decompression code runs not a single line while the test lights up
+green. So the test checks not the tool but **the environment first.**
 
-직접 확인한 응답이다.
+A response confirmed directly.
 
 ```
 $ curl -s -D - -o /dev/null -H 'Accept-Encoding: identity' http://127.0.0.1:8991/index.m3u8
@@ -170,34 +172,32 @@ Content-Encoding: gzip
 Content-Length: 770
 ```
 
-`identity` 를 달라고 했는데 `gzip` 이 왔다. **클라이언트가 요청 헤더로 얻은 보장은 0 이다.**
+Asked for `identity`, got `gzip`. **The guarantee the client got from the request header is 0.**
 
-### 6.2.3 콘텐츠 코딩과 전송 코딩은 다른 층이다
+### 6.2.3 Content coding and transfer coding are different layers
 
-> **용어** — **전송 코딩(transfer coding)**: 한 홉(hop) 구간에서만 적용되는 인코딩.
-> `Transfer-Encoding: chunked` 가 대표적이다. 다음 홉으로 넘어갈 때 벗겨질 수 있다.
+> **Term** — **transfer coding**: an encoding applied only over one hop's span. `Transfer-Encoding: chunked`
+> is representative. It can be stripped when moving to the next hop.
 
-이 구분이 이 장에 필요한 이유는 하나다. **범위 요청은 콘텐츠 코딩에는 걸리고 전송
-코딩에는 걸리지 않는다.** `chunked` 로 잘려 온 본문은 프록시가 이어붙이면 원래 표현이
-되지만, `gzip` 은 벗겨지지 않고 표현의 일부로 남는다. 그래서 "몇 번째 바이트"라는
-질문의 답이 콘텐츠 코딩에서만 갈린다.
+The reason this distinction is needed in this chapter is one. **A range request applies to content coding
+but not to transfer coding.** A body arriving cut by `chunked` becomes the original representation once a
+proxy rejoins it, but `gzip` is not stripped and remains part of the representation. So the answer to the
+question "which byte" splits only for content coding.
 
 ---
 
-## 6.3 규격은 무엇을 정하는가 — 그리고 무엇을 정하지 않는가
+## 6.3 What the spec determines — and what it does not
 
-### 6.3.1 두 규격이 서로 다른 원점을 쓴다
+### 6.3.1 Two specs use different origins
 
-HTTP(RFC 9110)에서 바이트 범위는 **선택된 표현(selected representation)** 위에서 센다.
-표현에는 콘텐츠 코딩이 이미 적용돼 있으므로, `Range: bytes=0-99` 는 **압축된 바이트의
-0–99** 를 뜻한다.
+In HTTP (RFC 9110) a byte range is counted over the **selected representation.** A content coding is already
+applied to the representation, so `Range: bytes=0-99` means **the 0–99 of the compressed bytes.**
 
-HLS(RFC 8216 §4.3.2.2)의 `EXT-X-BYTERANGE` 는 `n@o` 표기로 **"URI 가 가리키는 자원의
-부분 구간"** 을 뜻한다. 여기서 오프셋은 디스크에 놓인 파일, 즉 **압축되지 않은 바이트**
-기준이다. 세그먼트를 만든 도구(패키저)가 그 오프셋을 계산할 때 gzip 은 존재하지도
-않았다.
+HLS's (RFC 8216 §4.3.2.2) `EXT-X-BYTERANGE`, in `n@o` notation, means **"a sub-span of the resource the URI
+points to."** Here the offset is relative to the file on disk, i.e., the **uncompressed bytes.** When the
+tool that made the segment (the packager) computed that offset, gzip did not even exist.
 
-이 저장소의 파서는 그 표기를 그대로 옮긴다.
+This repository's parser moves that notation over as is.
 
 ```python
 # playlist.py:327-329
@@ -206,141 +206,141 @@ elif line.startswith("#EXT-X-BYTERANGE:"):
     cur_range = (int(n), int(o) if o else prev_range_end)
 ```
 
-그리고 페처가 그것을 HTTP 헤더로 번역한다.
+And the fetcher translates it into an HTTP header.
 
 ```python
 # fetch.py:155-161
 if byterange:
     length, offset = byterange
     headers["Range"] = f"bytes={offset}-{offset + length - 1}"
-    # 부분 요청에 압축이 걸리면 바이트 범위의 의미가 깨진다.
+    # if compression applies to a partial request, the meaning of the byte range breaks.
     headers.setdefault("Accept-Encoding", "identity")
 else:
     headers.setdefault("Accept-Encoding", ACCEPT_ENCODING)
 ```
 
-**번역이 성립하려면 두 규격의 원점이 같아야 한다.** 압축이 걸리면 같지 않다.
+**For the translation to hold, the two specs' origins must be the same.** With compression applied, they are
+not.
 
-![같은 범위 요청이 가리키는 두 좌표계](/images/lecture/hls-recon/06-range-vs-encoding.svg)
+![The two coordinate systems the same range request points to](/images/lecture/hls-recon/06-range-vs-encoding.svg)
 
-*그림 6-1 — 같은 `bytes=` 숫자가 자원 좌표계와 표현 좌표계에서 서로 다른 곳을 가리킨다. 압축된 표현에서는 그 위치가 아예 존재하지 않을 수도 있다.*
+*Figure 6-1 — the same `bytes=` number points to different places in the resource coordinate system and the representation coordinate system. In a compressed representation that position may not even exist.*
 
-### 6.3.2 서버가 취할 수 있는 선택지가 넷인데, 규격이 하나로 좁혀 주지 않는다
+### 6.3.2 The server has four options, and the spec does not narrow it to one
 
-같은 요청(`Range: bytes=1500000-1999999`)에 대해 구현이 갈릴 수 있는 지점을 정리하면
-이렇다.
+Organizing where implementations can diverge on the same request (`Range: bytes=1500000-1999999`) is this.
 
-| 서버 구현 | 돌려주는 것 | 클라이언트가 얻는 것 |
+| Server implementation | What it returns | What the client gets |
 |---|---|---|
-| **압축 → 절단** | 압축된 표현의 1.5M–2.0M 구간 | 압축 스트림의 중간 토막. **단독으로 풀 수 없다** |
-| **절단 → 압축** | 자원의 1.5M–2.0M 을 압축 | 풀면 원하는 구간. 그러나 이때 `Content-Range` 의 숫자는 자원 좌표계다 |
-| **Range 무시** | 200 + 전체 표현 | 요청한 500 KB 대신 자원 전부 |
-| **범위 불가 판정** | 416 | 실패. 그나마 정직하다 |
+| **compress → truncate** | the 1.5M–2.0M span of the compressed representation | a middle fragment of the compressed stream. **cannot be decompressed on its own** |
+| **truncate → compress** | compresses the resource's 1.5M–2.0M | decompress and it is the wanted span. but then `Content-Range`'s numbers are the resource coordinate system |
+| **ignore Range** | 200 + the whole representation | the whole resource instead of the requested 500 KB |
+| **judge range unsatisfiable** | 416 | failure. at least honest |
 
-첫 두 행이 문제의 핵심이다. **둘 다 규격 문장을 인용해 자기를 정당화할 수 있다.**
-클라이언트는 받은 바이트만 보고 어느 쪽인지 알아낼 방법이 없다 — 두 경우 모두
-`206` + `Content-Encoding: gzip` + `Content-Range: bytes 1500000-1999999/…` 로 올 수 있다.
+The first two rows are the crux. **Both can justify themselves by citing spec sentences.** The client has no
+way to tell which from the received bytes alone — both cases can come as
+`206` + `Content-Encoding: gzip` + `Content-Range: bytes 1500000-1999999/…`.
 
-### 6.3.3 애초에 압축 스트림은 임의 구간만 떼어 풀 수 없다
+### 6.3.3 An arbitrary span of a compressed stream cannot be extracted and decompressed in the first place
 
-구현 분기를 다 제쳐 두더라도, "압축 후 절단" 쪽은 원리적으로 막혀 있다.
+Set aside all implementation branches and the "compress then truncate" side is blocked in principle.
 
-| 이유 | 내용 |
+| Reason | Content |
 |---|---|
-| **역참조 윈도** | DEFLATE(RFC 1951)는 앞선 최대 32 KiB 의 출력을 참조해 길이·거리 쌍으로 인코딩한다. 중간부터 시작하면 참조 대상이 없다 |
-| **비트 정렬** | 심볼이 바이트 경계에 맞지 않는다. 임의 바이트 오프셋은 심볼 경계도 아니다 |
-| **허프만 표** | 동적 허프만 블록의 코드 표는 블록 머리에 있다. 중간 토막에는 표가 없다 |
-| **트레일러** | gzip 은 끝에 CRC32 와 ISIZE, zlib 은 Adler-32 가 붙는다. 토막에는 검증자가 없다 |
+| **back-reference window** | DEFLATE (RFC 1951) encodes with length·distance pairs referencing up to the previous 32 KiB of output. start from the middle and there is no reference target |
+| **bit alignment** | symbols do not align to byte boundaries. an arbitrary byte offset is not a symbol boundary either |
+| **Huffman tables** | a dynamic Huffman block's code table is at the head of the block. a middle fragment has no table |
+| **trailer** | gzip has a CRC32 and ISIZE at the end, zlib an Adler-32. a fragment has no verifier |
 
-즉 "압축된 표현의 부분"은 규격상 말이 되지만 **쓸모가 없다.** 그래서 [`fetch.py:159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L159) 는
-답을 고르는 대신 **질문을 없앤다** — 범위 요청에서는 협상을 포기하고 `identity` 를
-요구한다. 두 좌표계를 하나로 만드는 유일한 방법이다.
+That is, "a part of the compressed representation" makes sense by spec but is **useless.** So [`fetch.py:159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L159)
+does not pick an answer but **removes the question** — on a range request it gives up negotiation and demands
+`identity`. It is the only way to make the two coordinate systems one.
 
-> **이렇게 하지 않으면** — 범위 요청에 `gzip, deflate` 를 그대로 실어 보내면, 압축을
-> 해 주는 CDN 을 만났을 때 세그먼트마다 다른 실패가 난다. 어떤 것은 `zlib.error` 로
-> 죽고, 어떤 것은 조용히 엉뚱한 구간을 돌려주며, 어떤 것은 전체 파일을 돌려준다.
-> **원인이 요청 헤더 한 줄인데 증상은 세 가지로 나타난다.**
+> **If you do not do this** — send `gzip, deflate` as is on a range request and, when you meet a CDN that
+> compresses, a different failure occurs per segment. Some die with `zlib.error`, some quietly return the
+> wrong span, some return the whole file. **The cause is one line of a request header but the symptom appears
+> in three forms.**
 
 ---
 
-## 6.4 코드 — 다섯 개의 결정
+## 6.4 The code — five decisions
 
-### 6.4.1 무엇을 요청하는가
+### 6.4.1 What to request
 
-`ACCEPT_ENCODING = "gzip, deflate"` 에는 두 개의 부재가 있다.
+`ACCEPT_ENCODING = "gzip, deflate"` has two absences.
 
-| 코딩 | 형식 | 파이썬 표준 라이브러리 | 이 코드 |
+| Coding | Format | Python standard library | This code |
 |---|---|---|---|
-| `gzip` · `x-gzip` | RFC 1952 (deflate + 헤더/트레일러) | `gzip` | 요청·해제 |
-| `deflate` | RFC 1950(zlib 래퍼) **또는** RFC 1951(raw) | `zlib` | 요청·해제(양쪽 시도) |
-| `br` | RFC 7932 (Brotli) | **없음** | 요청하지 않음 |
-| `zstd` | RFC 8878 (Zstandard) | 3.14 부터 `compression.zstd` | 요청하지 않음 |
-| `identity` | 무변환 | — | 범위 요청에서 강제 |
+| `gzip` · `x-gzip` | RFC 1952 (deflate + header/trailer) | `gzip` | request·decompress |
+| `deflate` | RFC 1950 (zlib wrapper) **or** RFC 1951 (raw) | `zlib` | request·decompress (try both) |
+| `br` | RFC 7932 (Brotli) | **none** | not requested |
+| `zstd` | RFC 8878 (Zstandard) | `compression.zstd` from 3.14 | not requested |
+| `identity` | no transform | — | forced on range requests |
 
-brotli 를 요청하지 않는 이유는 성능 판단이 아니라 **의존성 판단**이다. 이 저장소가
-`pyproject.toml:10` 에서 선언한 것은 `requires-python = ">=3.10"` 이고, 서드파티 의존은
-복호화용 `cryptography` 하나뿐이라(`pyproject.toml:25`) 압축 경로는 표준 라이브러리만
-쓴다. `br` 을 요청해 놓고 풀 수 없으면 §6.1 의 (a) 를 자초하는 셈이 된다.
+The reason it does not request brotli is not a performance judgment but a **dependency judgment.** What this
+repository declared in `pyproject.toml:10` is `requires-python = ">=3.10"`, and the only third-party
+dependency is `cryptography` for decryption (`pyproject.toml:25`), so the compression path uses only the
+standard library. Request `br` and be unable to decompress it and you bring §6.1's (a) on yourself.
 
-**요청하지 않은 코딩은 오지 않는다** — 는 것도 §6.2.2 에서 봤듯 보장이 아니다. 그래서
-해제기는 모르는 코딩을 만나면 조용히 넘기지 않고 예외를 던진다([`fetch.py:70`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L70)).
+**"A coding you did not request does not come"** is, as seen in §6.2.2, not a guarantee either. So on meeting
+an unknown coding the decompressor does not pass it quietly but throws an exception ([`fetch.py:70`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L70)).
 
-zstd 는 Python 3.14 에서 표준 라이브러리에 들어왔다(PEP 784). 그러나 이 저장소가
-선언한 하한이 3.10 이므로 지금 채택하면 **하한을 3.14 로 끌어올리는 것**과 같다.
-압축률을 얻는 대가로 실행 가능한 환경을 잃는 교환이며, 이 코드는 그 교환을 하지 않았다.
+zstd entered the standard library in Python 3.14 (PEP 784). But the lower bound this repository declared is
+3.10, so adopting it now is the same as **raising the lower bound to 3.14.** It is a trade of an executable
+environment for a compression ratio, and this code did not make that trade.
 
-### 6.4.2 무엇을 해제하는가
+### 6.4.2 What to decompress
 
 ```python
 # fetch.py:57-70
 def _decompress(body: bytes, encoding: str) -> bytes:
-    """Content-Encoding 에 따라 본문을 해제한다."""
+    """Decompress the body according to Content-Encoding."""
     enc = encoding.lower().strip()
     if not body or enc in ("", "identity"):
         return body
     if enc in ("gzip", "x-gzip"):
         return gzip.decompress(body)
     if enc == "deflate":
-        # zlib 래퍼를 붙이는 서버와 raw deflate 를 보내는 서버가 섞여 있다.
+        # some servers attach a zlib wrapper and some send raw deflate, mixed.
         try:
             return zlib.decompress(body)
         except zlib.error:
             return zlib.decompress(body, -zlib.MAX_WBITS)
-    raise ValueError(f"해제할 수 없는 Content-Encoding: {encoding}")
+    raise ValueError(f"cannot decompress Content-Encoding: {encoding}")
 ```
 
-`deflate` 의 이중 시도가 이 함수의 전부라 해도 좋다. **`deflate` 라는 이름 하나가 두
-형식을 가리킨다.**
+You could say the double attempt of `deflate` is the whole of this function. **The single name `deflate`
+points to two formats.**
 
-- 규격이 뜻하는 것: RFC 1950 의 **zlib 래퍼**(2바이트 헤더 + DEFLATE + Adler-32)
-- 실제로 오는 것 중 일부: RFC 1951 의 **raw DEFLATE**(래퍼 없음)
+- what the spec means: RFC 1950's **zlib wrapper** (2-byte header + DEFLATE + Adler-32)
+- part of what actually comes: RFC 1951's **raw DEFLATE** (no wrapper)
 
-같은 입력을 두 방식으로 압축해 선두 2바이트를 비교하면 차이가 보인다.
-
-```
-zlib 래퍼:   78 9c …
-raw deflate: bd da …        ← 압축 데이터가 바로 시작한다
-```
-
-파이썬에서 둘을 가르는 것은 `wbits` 인자 하나다. `zlib.decompress(body)` 는 래퍼를
-기대하고, `zlib.decompress(body, -zlib.MAX_WBITS)` 는 음수 `wbits` 로 "래퍼 없음"을
-지시한다. 실제 실패 메시지는 이렇다.
+Compress the same input in the two ways and compare the leading two bytes and the difference shows.
 
 ```
-raw 를 zlib 로 풀면 → zlib.error: Error -3 while decompressing data: incorrect header check
+zlib wrapper:  78 9c …
+raw deflate:   bd da …        ← the compressed data begins right away
 ```
 
-순서도 의미가 있다. **규격 준수 형식을 먼저 시도하고, 실패하면 관행 형식으로 내려간다.**
-반대로 하면 규격을 따르는 서버가 관행 경로에서 우연히 통과할 여지를 먼저 열게 된다.
+In Python what splits the two is a single `wbits` argument. `zlib.decompress(body)` expects a wrapper, and
+`zlib.decompress(body, -zlib.MAX_WBITS)` instructs "no wrapper" with a negative `wbits`. The actual failure
+message is this.
 
-> **이렇게 하지 않으면** — `zlib.decompress` 한 번만 호출하는 구현은 raw deflate 를
-> 보내는 서버에서 100% 실패한다. 그런데 그 실패는 "플레이리스트에 `#EXTM3U` 가 없다"로
-> 표면화된다. 원인과 증상이 두 계층 떨어져 있어서, 로그만 보면 서버가 잘못된 파일을
-> 보낸 것처럼 보인다.
+```
+decompress raw with zlib → zlib.error: Error -3 while decompressing data: incorrect header check
+```
 
-### 6.4.3 해제 실패는 재시도하지 않는다
+The order has meaning too. **Try the spec-conformant format first, and drop to the practice format on
+failure.** Do it the other way and you first open room for a spec-following server to pass by chance on the
+practice path.
 
-호출부의 처리가 이 함수만큼 중요하다.
+> **If you do not do this** — an implementation calling `zlib.decompress` only once fails 100% on a server
+> that sends raw deflate. And that failure surfaces as "the playlist has no `#EXTM3U`." The cause and the
+> symptom are two layers apart, so looking at the log alone it seems the server sent the wrong file.
+
+### 6.4.3 A decompression failure is not retried
+
+The call site's handling is as important as this function.
 
 ```python
 # fetch.py:170-180
@@ -351,59 +351,58 @@ with urllib.request.urlopen(req, timeout=self.timeout) as resp:
     encoding = resp.headers.get("Content-Encoding", "") or ""
     try:
         body = _decompress(raw, encoding)
-    except Exception as e:  # noqa: BLE001 — 해제 실패는 응답 손상으로 다룬다
-        last_err = f"Content-Encoding={encoding} 해제 실패: {e}"
+    except Exception as e:  # noqa: BLE001 — treat a decompression failure as a response corruption
+        last_err = f"Content-Encoding={encoding} decompression failed: {e}"
         last_status = resp.status
         break
 ```
 
-`break` 다 — 재시도 루프를 **빠져나간다.** 이것은 [`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201) 의 "4xx 는
-재시도해도 결과가 같다"와 같은 논리다.
+It is `break` — it **exits** the retry loop. This is the same logic as [`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)'s "a 4xx gives
+the same result on retry."
 
-| 실패 종류 | 재시도 | 근거 |
+| Failure kind | Retry | Basis |
 |---|---|---|
-| 연결 오류·타임아웃 | **한다** | 다음 시도에서 달라질 수 있다 |
-| 4xx (408·429 제외) | 안 한다 | 같은 요청에 같은 답 |
-| **해제 실패** | **안 한다** | 본문 전체가 도착했는데도 풀리지 않았다면 재요청해도 같은 바이트다 |
+| connection error·timeout | **Yes** | the next attempt may differ |
+| 4xx (except 408·429) | No | same request, same answer |
+| **decompression failure** | **No** | if it would not decompress even though the whole body arrived, a re-request gives the same bytes |
 
-본문이 중간에 끊겼다면 `resp.read()` 자체가 예외를 내고 일반 예외 경로([`fetch.py:202`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L202))로
-가서 **재시도된다.** 즉 이 코드는 "전송 중 끊김"과 "도착했는데 해석 불가"를 다른
-사건으로 구별한다. 압축 해제기가 사실상 **응답 무결성 검사기** 역할을 하는 셈이다 —
-gzip 의 CRC32 가 실패하면 그것은 본문이 손상됐다는 뜻이다.
+If the body was cut off midway, `resp.read()` itself raises and goes to the general exception path
+([`fetch.py:202`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L202)) and **is retried.** That is, this code distinguishes "cut off during transfer" and
+"arrived but uninterpretable" as different events. The decompressor effectively acts as a **response-integrity
+checker** — if gzip's CRC32 fails, it means the body is corrupt.
 
-### 6.4.4 언제 협상을 포기하는가 — `setdefault` 의 의미
+### 6.4.4 When to give up negotiation — the meaning of `setdefault`
 
-[`fetch.py:159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L159) 의 `identity` 강제는 `headers["…"] = …` 가 아니라 `setdefault` 다. 사용자가
-직접 지정한 헤더가 이긴다는 뜻이다([`fetch.py:146-150`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L146-L150)의 원칙). **이 방어는 기본값이지
-불변식이 아니다.** 직접 확인한 결과다.
+The `identity` forcing at [`fetch.py:159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L159) is not `headers["…"] = …` but `setdefault`. It means a header the
+user specified directly wins (the principle at [`fetch.py:146-150`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L146-L150)). **This defense is a default, not an
+invariant.** A result confirmed directly.
 
-| 사용자 입력 | 실제로 나가는 값(범위 요청) | 이유 |
+| User input | Value actually sent (range request) | Reason |
 |---|---|---|
-| 없음 | `identity` | `setdefault` 가 채운다 |
-| `--header 'Accept-Encoding: gzip, deflate, br'` | `gzip, deflate, br` | 이미 키가 있어 `setdefault` 가 덮지 않는다 |
-| `--header 'accept-encoding: br'` | **`identity`** | urllib 이 헤더 이름을 `capitalize()` 로 정규화해 두 키가 `Accept-encoding` 하나로 합쳐지고, 나중에 추가된 쪽이 이긴다 |
+| none | `identity` | `setdefault` fills it |
+| `--header 'Accept-Encoding: gzip, deflate, br'` | `gzip, deflate, br` | the key already exists, so `setdefault` does not overwrite |
+| `--header 'accept-encoding: br'` | **`identity`** | urllib normalizes the header name with `capitalize()`, so the two keys merge into one `Accept-encoding`, and the later-added side wins |
 
-셋째 행은 실측이다. `urllib.request.Request` 는 `add_header` 에서 이름을 `capitalize()`
-하므로 `Accept-Encoding` 과 `accept-encoding` 이 **같은 키가 된다.** HTTP 헤더 이름은
-대소문자를 구별하지 않는데 파이썬 딕셔너리는 구별하므로, 병합 결과가 **입력의 대소문자에
-따라 달라진다.** 사용자가 개발자도구에서 헤더를 통째로 복사해 붙이는 흔한 사용 방식에서
-이 차이가 그대로 드러난다.
+The third row is a measurement. `urllib.request.Request` does `capitalize()` on the name in `add_header`, so
+`Accept-Encoding` and `accept-encoding` **become the same key.** HTTP header names are case-insensitive but a
+Python dict is case-sensitive, so the merge result **differs by the input's case.** In the common usage where
+a user copy-pastes a whole header block from devtools, this difference shows up directly.
 
-그나마 다행인 것은 `br` 이 실제로 왔을 때의 동작이다. `_decompress` 가 `ValueError` 를
-던지고 요청이 실패한다 — **조용히 틀리지 않고 시끄럽게 실패한다.** 이 저장소가 여러 곳에서
-반복하는 선택이다(제24장의 패딩 처리와 정반대 방향처럼 보이지만, 두 결정 모두 "손상을
-그 자리에서 드러낸다"는 같은 목표를 향한다).
+The one fortunate thing is the behavior when `br` actually comes. `_decompress` throws a `ValueError` and the
+request fails — **it does not go quietly wrong but fails loudly.** It is a choice this repository repeats in
+several places (it looks opposite in direction to Chapter 24's padding handling, but both decisions aim at
+the same goal: "reveal corruption at the spot").
 
-### 6.4.5 무엇을 계측하는가 — 두 개의 크기
+### 6.4.5 What to measure — two sizes
 
-`FetchResult` 는 크기를 **두 개** 들고 다닌다.
+`FetchResult` carries **two** sizes.
 
 ```python
 # fetch.py:80-83
-body: bytes = b""  # 압축을 푼 뒤의 본문
-size: int = 0  # 해제 후 크기
-wire_size: int = 0  # 실제로 회선을 지나간 바이트 (압축된 상태)
-encoding: str = ""  # Content-Encoding 원문
+body: bytes = b""  # the body after decompression
+size: int = 0  # size after decompression
+wire_size: int = 0  # bytes that actually crossed the wire (compressed state)
+encoding: str = ""  # the Content-Encoding as received
 ```
 
 ```python
@@ -414,62 +413,62 @@ def compressed(self) -> bool:
 
 @property
 def throughput_mbps(self) -> float:
-    """회선 성능이므로 해제 후 크기가 아니라 실제 전송 바이트로 계산한다."""
+    """It is line performance, so compute from actual transferred bytes, not the decompressed size."""
     wire = self.wire_size or self.size
     if self.total_ms <= 0 or not wire:
         return 0.0
     return (wire * 8) / (self.total_ms / 1000) / 1_000_000
 ```
 
-왜 이 구분이 필요한지는 실측이 답한다. 300 세그먼트짜리 VOD 플레이리스트를 gzip 으로
-압축한 결과다.
+Why this distinction is needed is answered by a measurement. The result of gzip-compressing a 300-segment VOD
+playlist.
 
-| 플레이리스트 | 원본 | gzip | 비율 |
+| Playlist | Original | gzip | Ratio |
 |---|---|---|---|
-| 상대 URI (`seg000.ts`) | 8,464 B | 770 B | **11.0배** |
-| 서명된 절대 URL (`https://cdn…?md5=…&expires=…`) | 30,988 B | 1,018 B | **30.4배** |
+| relative URIs (`seg000.ts`) | 8,464 B | 770 B | **11.0×** |
+| signed absolute URLs (`https://cdn…?md5=…&expires=…`) | 30,988 B | 1,018 B | **30.4×** |
 
-둘째 행이 실제 송출에 가깝다. 서명 URL(제11장)은 세그먼트마다 거의 같은 문자열이
-반복되므로 압축률이 극단적으로 좋다.
+The second row is closer to real delivery. A signed URL (Chapter 11) repeats an almost identical string per
+segment, so the compression ratio is extremely good.
 
-**해제 후 크기로 처리량을 계산하면 이 회선은 30배 빠른 것으로 보고된다.** 100 Mbps
-링크에서 3 Gbps 가 나오는 리포트가 만들어진다. 물리적으로 불가능한 숫자를 리포트가
-당당히 출력하는 순간, 그 리포트의 다른 숫자도 믿을 수 없게 된다.
+**Compute throughput by the decompressed size and this line is reported as 30× faster.** A report is made
+showing 3 Gbps on a 100 Mbps link. The moment a report proudly prints a physically impossible number, the
+report's other numbers become untrustworthy too.
 
-정리하면 **무엇을 재느냐에 따라 써야 할 크기가 다르다.**
+In sum, **the size to use differs by what you measure.**
 
-| 지표 | 써야 할 크기 | 이유 |
+| Metric | Size to use | Reason |
 |---|---|---|
-| 처리량(Mbps) | `wire_size` | 회선을 지나간 것은 압축된 바이트다 |
-| 대역 과금·전송량 | `wire_size` | 과금 대상은 전송량이다 |
-| 디스크·메모리 용량 | `size` | 저장되는 것은 해제된 바이트다 |
-| 무결성 해시 | `size` 쪽(해제 후 본문) | 아래 참조 |
+| throughput (Mbps) | `wire_size` | what crossed the wire is the compressed bytes |
+| bandwidth billing·transfer volume | `wire_size` | what is billed is the transfer volume |
+| disk·memory capacity | `size` | what is stored is the decompressed bytes |
+| integrity hash | the `size` side (decompressed body) | see below |
 
-해시가 해제 후 본문에 대해 계산된다는 점([`fetch.py:193`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L193))은 별도로 짚을 만하다.
+That the hash is computed over the decompressed body ([`fetch.py:193`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L193)) is worth noting separately.
 
 ```python
 sha256=hashlib.sha256(body).hexdigest(),
 ```
 
-`raw` 가 아니라 `body` 다. 그래야 **같은 세그먼트가 압축 여부에 따라 다른 해시를 갖지
-않는다.** 리포트의 세그먼트 중복 검사([`report.py:213`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213))는 해시 집합의 크기를 비교하는데,
-압축된 응답과 압축되지 않은 응답이 섞이면 같은 내용이 다른 해시로 보여 중복을 놓친다.
-**해시는 표현이 아니라 자원에 대해 계산해야 한다** — 이 장의 좌표계 문제가 해시에도
-그대로 나타난 것이다.
+It is `body`, not `raw`. That way **the same segment does not have a different hash depending on whether it
+was compressed.** The report's segment-duplication check ([`report.py:213`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213)) compares the size of the hash
+set, and if compressed and uncompressed responses are mixed, the same content shows as different hashes and
+duplicates are missed. **The hash must be computed over the resource, not the representation** — this
+chapter's coordinate-system problem appearing in the hash too.
 
-리포트는 두 크기를 함께 보여 준다.
+The report shows the two sizes together.
 
 ```python
 # report.py:183-196
 compressed = [f for f in fetches if f.ok and f.compressed]
 wire_bytes = sum(f.wire_size or f.size for f in fetches if f.ok)
 rep.add(
-    "응답 지연",
+    "response latency",
     WARN if _quantile(ttfb, 0.95) > 3000 else PASS,
     f"TTFB p50 {_quantile(ttfb, 0.5):.0f}ms / p95 {_quantile(ttfb, 0.95):.0f}ms, "
-    f"처리량 중앙값 {_quantile(tput, 0.5):.1f} Mbps"
+    f"throughput median {_quantile(tput, 0.5):.1f} Mbps"
     + (
-        f", {len(compressed)}개 압축 전송 "
+        f", {len(compressed)} compressed transfers "
         f"({wire_bytes / 1e6:.1f}→{total_bytes / 1e6:.1f}MB)"
         if compressed
         else ""
@@ -477,168 +476,167 @@ rep.add(
 )
 ```
 
-`(회선 → 해제 후)` 를 나란히 적는다. 사후 분석에서 "이 CDN 이 세그먼트까지 압축하고
-있었다"를 발견할 수 있는 유일한 기록이다. 참고로 **이미 압축된 미디어를 다시 압축하는
-것은 CPU 만 쓰고 크기는 거의 줄지 않는다** — 이 두 숫자가 비슷하면 서버 설정을 의심할
-근거가 된다.
+It writes `(wire → decompressed)` side by side. It is the only record by which, in after-the-fact analysis,
+you can discover "this CDN was compressing even the segments." For reference, **recompressing already-compressed
+media only uses CPU and barely shrinks the size** — if these two numbers are similar, it is a basis to suspect
+the server config.
 
 ---
 
-## 6.5 실습 — 무시된 범위 요청을 직접 재현하기
+## 6.5 Lab — reproducing an ignored range request yourself
 
-이 저장소의 테스트 서버는 `Range` 를 아예 구현하지 않는다(`tests/gzip_server.py:21-29`
-— 파일 전체를 읽어 그대로 보낸다). 그래서 §6.3.2 표의 셋째 행 "Range 무시"를
-그대로 재현할 수 있다.
+This repository's test server does not implement `Range` at all (`tests/gzip_server.py:21-29` — it reads the
+whole file and sends it as is). So you can reproduce the third row of §6.3.2's table, "ignore Range," as is.
 
 ```bash
-python3 tests/gzip_server.py 8992 <플레이리스트가_있는_디렉터리> &
+python3 tests/gzip_server.py 8992 <directory_with_the_playlist> &
 ```
 
-`Fetcher` 를 그대로 써서 100바이트 구간을 요청했다.
+Using `Fetcher` as is, requested a 100-byte span.
 
 ```python
 from hlsrecon.fetch import Fetcher
 f = Fetcher(retries=1)
-# 세그먼트가 자원의 100~199 바이트라고 선언된 상황: (length, offset) = (100, 100)
+# a situation where the segment is declared as bytes 100-199 of the resource: (length, offset) = (100, 100)
 r = f.get("http://127.0.0.1:8992/index.m3u8", byterange=(100, 100))
 ```
 
-결과다.
+The result.
 
 ```
-요청 Range: bytes=100-199,  Accept-Encoding: identity 강제
+requested Range: bytes=100-199,  Accept-Encoding: identity forced
 ok=True status=200 encoding='gzip'
-wire_size=770  size=8464   (요청한 길이=100)
-본문 선두 24바이트: b'#EXTM3U\n#EXT-X-VERSION:3'
+wire_size=770  size=8464   (requested length=100)
+body leading 24 bytes: b'#EXTM3U\n#EXT-X-VERSION:3'
 ```
 
-**네 가지가 한꺼번에 어긋났다.**
+**Four things went off at once.**
 
-| 요청 | 응답 | 코드의 반응 |
+| Requested | Response | The code's reaction |
 |---|---|---|
-| `Range: bytes=100-199` | `200` (206 아님) | 확인하지 않는다 |
-| 100 바이트 | 8,464 바이트 (84.6배) | 확인하지 않는다 |
-| `Accept-Encoding: identity` | `Content-Encoding: gzip` | **해제해서 받아들인다** |
-| 자원의 100–199 구간 | 자원 전체 | `ok=True` |
+| `Range: bytes=100-199` | `200` (not 206) | does not check |
+| 100 bytes | 8,464 bytes (84.6×) | does not check |
+| `Accept-Encoding: identity` | `Content-Encoding: gzip` | **decompresses and accepts** |
+| the resource's 100–199 span | the whole resource | `ok=True` |
 
-세그먼트로 쓰였다면 그 파일에는 "자원의 100바이트 구간" 대신 **자원 전체**가 들어간다.
-자원이 진짜 미디어 파일이었다면 `sniff()`(제14장)도 이것을 잡지 못한다 — 내용은 여전히
-정상적인 MPEG-TS 이기 때문이다. **틀린 것은 내용이 아니라 경계다.**
+Had it been used as a segment, that file contains **the whole resource** instead of "the resource's 100-byte
+span." Had the resource been genuine media, `sniff()` (Chapter 14) would not catch it either — the content is
+still normal MPEG-TS. **What is wrong is not the content but the boundary.**
 
-이것이 이 장의 정직한 결론 중 하나다. **`identity` 강제는 문제를 예방하지만, 예방이
-실패했는지는 검사하지 않는다.** 요청은 했고, 확인은 안 했다.
+This is one of the chapter's honest conclusions. **Forcing `identity` prevents the problem, but does not
+check whether the prevention failed.** The request was made; the confirmation was not.
 
 ---
 
-## 6.6 일반화 — 부분을 지목하려면 전체가 하나로 고정돼야 한다
+## 6.6 Generalization — to point at a part, the whole must be fixed to one
 
-이 장의 충돌은 스트리밍 고유의 문제가 아니다. 일반형은 이렇다.
+This chapter's collision is not streaming-specific. The general form is this.
 
-> **어떤 대상의 "부분"을 좌표로 지목하는 기능과, 그 대상 자체를 변형하는 기능이
-> 겹치면, 좌표의 원점이 정의되지 않는다.**
+> **When a feature that points at a "part" of some target by coordinates overlaps with a feature that
+> transforms that target itself, the origin of the coordinates is left undefined.**
 
-같은 구조가 나타나는 곳들이다.
+Places the same structure appears.
 
-| 겹침 | 흔들리는 좌표 | 나타나는 증상 |
+| Overlap | The wobbling coordinate | The symptom that appears |
 |---|---|---|
-| `Range` × `Content-Encoding` | 바이트 오프셋의 원점 | 이 장 |
-| `Range` × 여러 표현(`Vary`) | 어느 표현의 오프셋인가 | 이어받기가 서로 다른 표현을 이어붙인다 |
-| `Content-Length` × 압축 | 어느 크기인가 | 진행률 표시가 100% 를 넘거나 못 채운다 |
-| `ETag` × 압축 | 표현의 동일성 | 압축판과 무압축판이 같은 ETag 를 쓰면 캐시가 섞는다 |
-| 문자열 오프셋 × 인코딩 | 바이트인가 코드포인트인가 | 이모지 하나에 잘림·인덱스 어긋남 (제31장) |
-| URL 오프셋 × 퍼센트 인코딩 | 인코딩 전인가 후인가 | `%20` 과 `%2520` (제7장) |
-| DB `LIMIT/OFFSET` × 불안정 정렬 | 행의 순서 | 페이지 경계에서 행이 중복·누락 |
+| `Range` × `Content-Encoding` | the origin of the byte offset | this chapter |
+| `Range` × several representations (`Vary`) | whose representation's offset | a resume joins fragments of different representations |
+| `Content-Length` × compression | which size | a progress bar exceeds 100% or cannot fill it |
+| `ETag` × compression | representation identity | if the compressed and uncompressed editions use the same ETag, the cache mixes them |
+| string offset × encoding | byte or codepoint | truncation·index-off on a single emoji (Chapter 31) |
+| URL offset × percent-encoding | before or after encoding | `%20` and `%2520` (Chapter 7) |
+| DB `LIMIT/OFFSET` × unstable sort | row order | rows duplicate·drop at the page boundary |
 
-마지막 행까지 같은 형태다. 페이지 2 를 요청하는 순간 정렬 기준이 흔들려 있으면
-"21–40번째 행"이라는 지목 자체가 뜻을 잃는다.
+The last row is the same form. The moment you request page 2, if the sort key has wobbled, the very pointing
+"rows 21–40" loses its meaning.
 
-**해법의 형태도 언제나 같다.** 셋 중 하나다.
+**The form of the solution is always the same too.** One of three.
 
-1. **좌표계를 고정한다** — 변형을 끈다. `Accept-Encoding: identity` 가 이것이다
-2. **좌표를 내용에 붙인다** — 오프셋 대신 커서·키를 쓴다(키셋 페이지네이션)
-3. **동일성을 검증한다** — 강한 검증자(ETag)를 함께 보내 다른 표현이면 거부한다
+1. **Fix the coordinate system** — turn off the transform. `Accept-Encoding: identity` is this
+2. **Attach the coordinate to the content** — use a cursor·key instead of an offset (keyset pagination)
+3. **Verify identity** — send a strong validator (ETag) along and refuse if it is a different representation
 
-HTTP 는 3번 장치를 갖고 있지만(`If-Range`), 이 코드는 1번을 골랐다. **가장 단순하고,
-클라이언트 혼자 결정할 수 있는 유일한 방법**이기 때문이다. 2·3번은 서버의 협조가 필요하고,
-협조는 §6.2.2 에서 보았듯 요청할 수는 있어도 확보할 수는 없다.
+HTTP has device 3 (`If-Range`), but this code chose 1. Because it is **the simplest and the only method the
+client can decide alone.** 2·3 need the server's cooperation, and cooperation, as seen in §6.2.2, can be
+requested but not secured.
 
 ---
 
-## 6.7 보안
+## 6.7 Security
 
-### 6.7.1 압축 폭탄 — 이 저장소의 실제 미방어 지점
+### 6.7.1 The decompression bomb — this repository's actual unguarded point
 
-> **용어** — **압축 폭탄(decompression bomb / zip bomb)**: 압축된 상태에서는 작지만
-> 해제하면 방어자의 메모리·디스크를 고갈시키도록 만들어진 데이터. 자원 소진(DoS)
-> 공격의 한 형태다.
+> **Term** — **decompression bomb / zip bomb**: data made small in its compressed state but that, when
+> decompressed, exhausts the defender's memory·disk. A form of resource-exhaustion (DoS) attack.
 
-`_decompress` 는 `gzip.decompress(body)` 를 부른다. **이 API 에는 크기 상한 인자가 없다.**
-저장소의 `_decompress` 를 그대로 불러 실측했다.
+`_decompress` calls `gzip.decompress(body)`. **This API has no size-cap argument.** Measured by calling the
+repository's `_decompress` as is.
 
-| 항목 | 값 |
+| Item | Value |
 |---|---|
-| 회선을 지나간 바이트 | 1,019,197 B (995 KiB) |
-| 해제 결과 | 1,048,576,000 B (1,000 MiB) |
-| 팽창률 | **1,029배** |
-| 해제 시간 | 1.01 s |
-| 프로세스 피크 RSS | **2,110 MB** |
+| bytes crossing the wire | 1,019,197 B (995 KiB) |
+| decompression result | 1,048,576,000 B (1,000 MiB) |
+| expansion ratio | **1,029×** |
+| decompression time | 1.01 s |
+| process peak RSS | **2,110 MB** |
 
-피크 메모리가 결과의 두 배인 것은 `gzip.decompress` 가 조각을 모았다가 한 번에 잇기
-때문이다. **1 MB 를 보내면 2 GB 를 쓴다.** 1,029배는 단일 DEFLATE 스트림의 이론적 상한
-(약 1,032:1)에 거의 닿아 있다.
+Peak memory being double the result is because `gzip.decompress` gathers fragments and joins them at once.
+**Send 1 MB and it uses 2 GB.** 1,029× is almost at the theoretical upper bound of a single DEFLATE stream
+(about 1,032:1).
 
-![압축 해제 증폭 경로](/images/lecture/hls-recon/06-decompression-amplification.svg)
+![The decompression-amplification path](/images/lecture/hls-recon/06-decompression-amplification.svg)
 
-*그림 6-2 — 회선에서 메모리까지의 경로와, 상한을 걸 수 있는 유일한 지점.*
+*Figure 6-2 — the path from wire to memory, and the only point where a cap can be applied.*
 
-**중요한 것은 이것이 압축이 만든 취약점이 아니라는 점이다.** `raw = resp.read()`
-([`fetch.py:172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L172)) 에도 상한이 없다. 압축 없이도 서버는 무한히 큰 본문을 흘려보내 같은
-결과를 만들 수 있다. 압축이 바꾸는 것은 하나다.
+**What matters is that this is not a vulnerability compression created.** `raw = resp.read()`
+([`fetch.py:172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L172)) has no cap either. Even without compression the server can stream an infinitely large body
+to make the same result. What compression changes is one thing.
 
-> **공격자의 비용이 1/1,029 로 떨어진다.** 취약점의 존재가 아니라 **증폭률**이 압축의
-> 기여분이다.
+> **The attacker's cost drops to 1/1,029.** Compression's contribution is not the existence of the
+> vulnerability but the **amplification ratio.**
 
-그리고 해제 후 크기를 미리 알 방법이 없다.
+And there is no way to know the decompressed size in advance.
 
-| 후보 | 왜 못 쓰는가 |
+| Candidate | Why it cannot be used |
 |---|---|
-| `Content-Length` | 압축된 크기다. 팽창 후 크기와 무관하다 |
-| gzip 트레일러의 ISIZE | **공격자가 쓴 값**이고 2³² 로 나눈 나머지다. 4 GB 이상은 표현조차 못 한다 |
-| `deflate`(zlib) | 크기 필드가 아예 없다(Adler-32 만 있다) |
+| `Content-Length` | it is the compressed size. unrelated to the size after expansion |
+| gzip trailer's ISIZE | it is **a value the attacker wrote** and the remainder mod 2³². it cannot even represent 4 GB or more |
+| `deflate` (zlib) | it has no size field at all (only an Adler-32) |
 
-**해제 전에 알 수 있는 방법은 없다.** 그러므로 방어는 "얼마인지 확인하고 거부"가 아니라
-**"해제하면서 상한에서 끊기"** 여야 한다.
+**There is no way to know before decompressing.** Therefore the defense must be not "check how much and
+refuse" but **"cut at the cap while decompressing."**
 
-#### 위협 모델 — 누가 서버인가
+#### Threat model — who is the server?
 
-이 도구는 클라이언트다. 압축 폭탄을 보내려면 **서버가 적대적**이어야 한다. 그래서 위협의
-성립 조건을 정확히 적어 둘 필요가 있다.
+This tool is a client. To send a decompression bomb, **the server must be adversarial.** So the conditions
+for the threat to hold need to be written precisely.
 
-| 사용 방식 | 위협 성립 | 근거 |
+| Usage | Threat holds | Basis |
 |---|---|---|
-| 사람이 아는 사이트 주소 하나를 넣고 실행 | 낮다 | 이미 그 서버를 신뢰해 영상을 본다 |
-| CI·크롤러가 목록을 받아 자동 실행 | **높다** | 주소의 출처가 통제되지 않는다 |
-| 플레이리스트만 받아 처리 | **높다** | 아래 |
+| a person enters one known site address and runs it | low | they already trust that server to watch the video |
+| CI·crawler receives a list and runs it automatically | **high** | the address's provenance is not controlled |
+| processing only a playlist that was received | **high** | below |
 
-셋째 행이 핵심이다. **플레이리스트는 그 자체가 URL 목록이다.** 세그먼트 URI, 키 URI
-(`EXT-X-KEY`), 자막 트랙 URI 가 모두 플레이리스트 안에 적혀 있고, 이 코드는 그것들을
-같은 `Fetcher` 로 받는다. 즉 **신뢰가 전이된다** — 첫 서버를 믿는 순간, 그 서버가
-지목하는 임의의 호스트까지 같은 해제기에 물린다. 신뢰 경계(제13장)가 플레이리스트
-파싱 지점에서 한 번 더 그어져야 한다는 뜻이다.
+The third row is the crux. **A playlist is itself a list of URLs.** The segment URIs, key URIs
+(`EXT-X-KEY`), and subtitle-track URIs are all written in the playlist, and this code receives them with the
+same `Fetcher`. That is, **trust is transitive** — the moment you trust the first server, an arbitrary host
+it points at is fed to the same decompressor too. It means the trust boundary (Chapter 13) must be drawn once
+more at the playlist-parsing point.
 
-#### 우연히 막혀 있는 것
+#### What is accidentally blocked
 
-두 가지가 우연히 방어로 작동한다. **의도된 방어가 아니므로 방어로 세지 않는 것이 옳다.**
+Two things accidentally work as a defense. **They are not intended defenses, so it is correct not to count
+them as defenses.**
 
-| 우연한 방어 | 내용 | 왜 우연인가 |
+| Accidental defense | Content | Why it is accidental |
 |---|---|---|
-| 다층 인코딩 거부 | `Content-Encoding: gzip, gzip` 은 토큰 비교에 걸리지 않아 `ValueError` 로 거절된다. 2단이면 팽창률이 1,029² ≈ 100만 배가 됐을 것이다 | 목록형 값 파싱을 구현하지 않았기 때문이지, 폭탄을 막으려던 것이 아니다 |
-| 범위 요청의 `identity` | 압축 자체가 오지 않으면 폭탄도 없다 | §6.3 의 좌표계 문제 때문에 넣은 것이다. `setdefault` 라 사용자 헤더로 꺼진다 |
+| multi-layer encoding rejection | `Content-Encoding: gzip, gzip` does not match the token comparison and is refused with a `ValueError`. two layers would have made the expansion ratio 1,029² ≈ a million× | it is because list-form value parsing was not implemented, not to block a bomb |
+| the range request's `identity` | if compression itself does not come, neither does a bomb | it was put in for §6.3's coordinate-system problem. being `setdefault`, it is turned off by a user header |
 
-#### 방어 — 상한을 어디에 두는가
+#### Defense — where to put the cap
 
-상한은 **해제 호출 안**에 있어야 한다. 해제 후 `len()` 을 재는 것은 이미 늦다 —
-그 시점에 메모리는 이미 할당됐다. 파이썬 표준 라이브러리에 필요한 도구가 있다.
+The cap must be **inside the decompression call.** Measuring `len()` after decompressing is already too late
+— by that point the memory is already allocated. Python's standard library has the needed tool.
 
 ```python
 MAX_BODY = 64 << 20  # 64 MiB
@@ -648,166 +646,175 @@ def decompress_capped(body: bytes, encoding: str, limit: int = MAX_BODY) -> byte
     if not body or enc in ("", "identity"):
         return body
     if enc in ("gzip", "x-gzip"):
-        wbits = 16 + zlib.MAX_WBITS       # gzip 래퍼
+        wbits = 16 + zlib.MAX_WBITS       # gzip wrapper
     elif enc == "deflate":
-        wbits = zlib.MAX_WBITS            # zlib 래퍼 (실패 시 -MAX_WBITS 재시도)
+        wbits = zlib.MAX_WBITS            # zlib wrapper (on failure, retry with -MAX_WBITS)
     else:
-        raise ValueError(f"해제할 수 없는 Content-Encoding: {encoding}")
+        raise ValueError(f"cannot decompress Content-Encoding: {encoding}")
     d = zlib.decompressobj(wbits)
-    out = d.decompress(body, limit + 1)   # ← 상한을 인자로 넘긴다
+    out = d.decompress(body, limit + 1)   # ← pass the cap as an argument
     if len(out) > limit or d.unconsumed_tail:
-        raise ValueError(f"본문이 상한 {limit}B 를 넘었다 (압축 폭탄 의심)")
+        raise ValueError(f"body exceeded the cap {limit}B (suspected decompression bomb)")
     return out
 ```
 
-위 표와 **같은 폭탄**을 그대로 넣어 확인했다.
+Confirmed by feeding **the same bomb** from the table above as is.
 
 ```
 wire: 1019197 B
-→ 본문이 상한 67108864B 를 넘었다 (압축 폭탄 의심)  (0.03s)
+→ body exceeded the cap 67108864B (suspected decompression bomb)  (0.03s)
 peak RSS: 153 MB
 ```
 
-| | 현재 코드 (`gzip.decompress`) | 상한을 건 경우 |
+| | Current code (`gzip.decompress`) | With a cap |
 |---|---|---|
-| 결과 | 1,048,576,000 B 반환 | 상한 초과로 거절 |
-| 소요 시간 | 1.01 s | **0.03 s** |
-| 피크 RSS | 2,110 MB | **153 MB** |
+| result | returns 1,048,576,000 B | refused for exceeding the cap |
+| time taken | 1.01 s | **0.03 s** |
+| peak RSS | 2,110 MB | **153 MB** |
 
-`decompressobj().decompress(data, max_length)` 의 둘째 인자가 **한 번에 만들어 낼 출력의
-상한**이고, 남은 입력은 `unconsumed_tail` 에 남는다. 즉 "더 나올 것이 있는가"를 상한을
-넘기지 않고 알 수 있다. 시간이 1.01 s 에서 0.03 s 로 함께 떨어지는 것도 우연이 아니다 —
-**거절은 해제보다 싸다.** 상한을 거는 방어는 성능 비용이 아니라 성능 이득이다.
+The second argument of `decompressobj().decompress(data, max_length)` is **the cap on the output produced at
+once**, and the remaining input stays in `unconsumed_tail`. That is, you can know "is there more to come"
+without exceeding the cap. That the time also drops from 1.01 s to 0.03 s is no coincidence — **refusing is
+cheaper than decompressing.** A cap-applying defense is not a performance cost but a performance gain.
 
-던지는 예외가 `ValueError` 인 것도 의도적이다. [`fetch.py:177`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L177) 의 `except Exception` 이
-그대로 받아 **응답 손상**으로 처리하고, §6.4.3 의 규칙에 따라 재시도 없이 실패한다.
-새 실패 경로를 만들지 않고 기존 경로에 얹는 것이 변경의 위험을 가장 줄인다.
+That the thrown exception is a `ValueError` is deliberate too. [`fetch.py:177`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L177)'s `except Exception`
+catches it as is and handles it as a **response corruption**, failing without retry per §6.4.3's rule.
+Layering onto an existing path rather than making a new failure path most reduces the risk of change.
 
-**주의**: 이 대체 구현은 다중 멤버 gzip(여러 gzip 스트림을 이어붙인 것)을 한 번에 풀지
-못한다. `gzip.decompress` 는 푼다. 상한을 얻는 대가로 잃는 것이 있다는 뜻이며, 실제로
-채택하려면 멤버 반복 처리를 붙여야 한다.
+**Note**: this replacement implementation cannot decompress a multi-member gzip (several gzip streams joined)
+at once. `gzip.decompress` does. It means there is something lost in exchange for the cap, and to actually
+adopt it you must attach member-repeat handling.
 
-#### 역할별로 무엇을 해야 하는가
+#### What to do, by role
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **이 도구(클라이언트)** | 해제에 상한을 건다. 상한 초과는 손상으로 처리해 재시도하지 않는다. 상한값은 플레이리스트(수 MB)와 세그먼트(수십 MB)에 따라 달리 잡는다 |
-| **서버·CDN 운영자** | 이미 압축된 미디어(TS·mp4·이미지)를 다시 압축하지 않는다. `Vary: Accept-Encoding` 을 반드시 붙인다. **범위 응답에는 콘텐츠 코딩을 적용하지 않는다** |
-| **캐시·리버스 프록시** | `Accept-Encoding` 을 정규화해 캐시 키에 넣는다. 인코딩된 표현을 잘라 206 을 만들지 않는다 |
-| **라이브러리 설계자** | 한 방(one-shot) 해제 API 에 상한 인자를 둔다. **상한 없는 API 가 기본값인 것이 이 취약점 부류의 구조적 원인**이다 |
-| **감사자** | "해제 코드에 상한이 있는가"를 점검 항목으로 둔다. 찾는 법은 단순하다 — `decompress(` 호출을 전수 조사해 상한 인자 유무를 본다 |
-| **서버 개발자(방향 반전)** | 같은 문제가 **업로드 수신**에서 그대로 재현된다. 요청 본문의 `Content-Encoding: gzip` 을 무제한 해제하는 엔드포인트는 같은 취약점이다 |
+| **this tool (client)** | put a cap on decompression. handle a cap exceedance as corruption and do not retry. set the cap value differently for playlists (a few MB) and segments (tens of MB) |
+| **server·CDN operator** | do not recompress already-compressed media (TS·mp4·image). always attach `Vary: Accept-Encoding`. **do not apply a content coding to a range response** |
+| **cache·reverse proxy** | normalize `Accept-Encoding` and put it in the cache key. do not truncate an encoded representation to make a 206 |
+| **library designer** | give the one-shot decompression API a cap argument. **that a cap-less API is the default is the structural cause of this class of vulnerability** |
+| **auditor** | make "does the decompression code have a cap" a review item. the way to find it is simple — enumerate `decompress(` calls and see whether there is a cap argument |
+| **server developer (direction reversed)** | the same problem reproduces as is in **upload receipt.** an endpoint that decompresses a request body's `Content-Encoding: gzip` without limit is the same vulnerability |
 
-마지막 행이 중요하다. 이 장은 클라이언트 코드를 읽고 있지만, **압축 폭탄의 다수는
-서버 쪽에서 터진다.** 방향만 뒤집으면 같은 코드다.
+The last row matters. This chapter is reading client code, but **the majority of decompression bombs go off
+on the server side.** Reverse only the direction and it is the same code.
 
-### 6.7.2 범위 × 압축과 캐시 오염
+### 6.7.2 Range × compression and cache poisoning
 
-중간 캐시가 이 충돌에 얽히면 정확성 문제가 **다른 사용자에게 번진다.**
+When an intermediate cache gets tangled in this collision, the correctness problem **spreads to other
+users.**
 
-| 잘못된 구성 | 결과 |
+| Misconfiguration | Result |
 |---|---|
-| `Vary: Accept-Encoding` 누락 | gzip 을 이해하는 클라이언트가 채운 캐시 항목이, `identity` 만 받는 클라이언트에게 그대로 나간다 — §6.1 (b) 가 서버 설정이 아니라 **캐시** 때문에 발생한다 |
-| 압축판·무압축판이 같은 강한 ETag | `If-Range` 로 이어받기를 하면 서로 다른 표현의 조각이 이어붙는다 |
-| 캐시가 인코딩된 표현을 잘라 206 을 만든다 | 조각을 재조립한 본문이 어느 표현에도 속하지 않는다 |
+| missing `Vary: Accept-Encoding` | a cache entry filled by a gzip-understanding client goes out as is to a client that receives only `identity` — §6.1's (b) arises not from a server config but from the **cache** |
+| the compressed and uncompressed editions share a strong ETag | resume with `If-Range` and fragments of different representations get joined |
+| the cache truncates an encoded representation to make a 206 | the body reassembled from fragments belongs to no representation |
 
-셋 다 뿌리는 하나다 — **표현을 구별하지 않는 캐시.** 캐시의 임무는 "같은 것을 다시 주는
-것"인데, 콘텐츠 협상은 **"같은 URI 가 여러 개"** 를 도입한다. 그래서 캐시 키는 URI 가
-아니라 `(URI, 협상 축의 값들)` 이어야 하고, 그 사실을 서버가 캐시에 알리는 유일한
-수단이 `Vary` 다. `Vary` 를 빠뜨리는 것이 이 부류 사고의 가장 흔한 시작이다.
+All three have one root — **a cache that does not distinguish representations.** A cache's mission is "give
+the same thing again," but content negotiation introduces **"one URI is several."** So the cache key must be
+not the URI but `(URI, the values of the negotiation axes)`, and the server's only means to tell the cache
+that fact is `Vary`. Missing `Vary` is the most common start of this class of accident.
 
-> 이 절은 원리에서 유도한 것이며, **이 저장소에서 재현하지 않았다.** 이 도구는
-> 캐시를 두지 않고 매 요청을 직접 보낸다.
+> This section is derived from principle and **was not reproduced in this repository.** This tool keeps no
+> cache and sends every request directly.
 
-### 6.7.3 압축률은 평문에 대한 정보 채널이다
+### 6.7.3 A compression ratio is an information channel about the plaintext
 
-한 줄 정의만 남겨 둔다.
+Only a one-line definition is left here.
 
-> **용어** — **CRIME(2012) · BREACH(2013)**: 압축된 데이터의 **크기**를 관찰해 그 안에
-> 든 비밀(세션 토큰 등)을 한 글자씩 알아내는 공격. 압축은 반복되는 문자열을 짧게 만들기
-> 때문에, 공격자가 넣은 추측 문자열이 비밀과 일치할수록 결과가 짧아진다.
+> **Term** — **CRIME (2012) · BREACH (2013)**: attacks that observe the **size** of compressed data to learn,
+> one character at a time, a secret inside it (a session token, etc.). Because compression shortens repeated
+> strings, the closer the attacker's inserted guess string is to the secret, the shorter the result.
 
-이 도구는 이 공격의 무대가 아니다 — 요청 본문을 압축하지 않고, 공격자가 응답에 문자열을
-주입해 크기 변화를 반복 관측할 구조도 없다. 그러나 원리는 기억할 값이 있다.
+This tool is not the stage for this attack — it does not compress the request body, and there is no structure
+for an attacker to inject a string into the response and repeatedly observe the size change. But the principle
+is worth remembering.
 
-> **압축률은 내용에 의존한다. 따라서 압축된 크기는 내용에 대한 정보다.**
+> **A compression ratio depends on the content. Therefore the compressed size is information about the
+> content.**
 
-§6.4.5 에서 본 30.4배라는 압축률 자체가 "이 플레이리스트에는 거의 같은 URL 이 300개
-있다"는 정보였다는 점을 떠올리면 된다. 같은 성질이 비밀을 담은 응답에서는 누출이 된다.
+Recall that the 30.4× compression ratio seen in §6.4.5 was itself the information "this playlist has 300
+almost-identical URLs." The same property, in a response holding a secret, becomes a leak.
 
-### 6.7.4 검사되지 않는 것 — 206 을 확인하지 않는다
+### 6.7.4 What is not checked — it does not confirm the 206
 
-§6.5 의 실측이 보여 준 그대로다. 이 저장소 전체에서 `206` 이나 `Content-Range` 를
-참조하는 코드는 없다(전수 확인). 범위 요청이 무시되어 200 + 전체 본문이 와도
-`ok=True` 이며, 그 본문이 세그먼트로 저장된다.
+Exactly as §6.5's measurement showed. In all of this repository there is no code referencing `206` or
+`Content-Range` (confirmed exhaustively). Even if the range request is ignored and 200 + the whole body
+comes, `ok=True`, and that body is saved as a segment.
 
-이 실패가 **다른 검사에 우연히 걸릴 가능성**은 있다.
+There is a **possibility** this failure is caught incidentally by another check.
 
-| 검사 | 걸리는가 | 근거 |
+| Check | Caught? | Basis |
 |---|---|---|
-| `sniff()` 페이로드 판별 | 안 걸린다 | 내용이 진짜 미디어다 |
-| 세그먼트 고유성(SHA-256) | **걸릴 수 있다** — WARN | 모든 세그먼트가 같은 전체 파일이면 해시가 전부 같다([`report.py:213-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213-L218)) |
-| TS 연속성 카운터 | **걸릴 수 있다** — FAIL | 같은 구간이 반복되면 CC 가 뒤로 뛴다 |
+| `sniff()` payload determination | not caught | the content is genuine media |
+| segment uniqueness (SHA-256) | **may be caught** — WARN | if every segment is the same whole file, the hashes are all the same ([`report.py:213-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213-L218)) |
+| TS continuity counter | **may be caught** — FAIL | if the same span repeats, the CC jumps backward |
 
-> 이 표의 뒤 두 행은 **코드를 읽고 추론한 것이지 실행해 확인한 것이 아니다.**
-> `EXT-X-BYTERANGE` 를 쓰는 픽스처가 회귀 테스트에 없어서 확인할 대조군이 없다.
+> The bottom two rows of this table are **inferred from reading the code, not confirmed by running it.**
+> There is no fixture using `EXT-X-BYTERANGE` in the regression tests, so there is no control to confirm
+> against.
 
-정직한 결론은 이렇다. **범위 요청이 존중됐는지를 확인하는 검사는 이 코드에 없고, 다른
-검사가 우연히 잡아 줄 뿐이다.** 우연한 방어를 방어로 세지 않는다는 제15장의 원칙을
-여기에도 적용해야 한다. 필요한 것은 한 줄이다 — 범위를 요청했으면 `status == 206` 과
-`len(body) == length` 를 확인하고, 아니면 실패로 처리한다.
-
----
-
-## 6.8 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **압축 폭탄 방어가 없다.** 이 장이 제시한 `decompress_capped` 는 **제안이지 이
-  저장소의 코드가 아니다.** 채택하려면 상한값 결정(플레이리스트와 세그먼트가 다르다)과
-  다중 멤버 gzip 처리가 함께 필요하다.
-- **Range × 압축 충돌을 이 저장소에서 재현하지 못했다.** `identity` 강제는 규격 독해와
-  원리에서 나온 **선제적 방어**이며, 이 방어가 없을 때 실제로 어떤 CDN 에서 무엇이
-  깨지는지는 확인하지 않았다. §6.3.2 표의 "압축 → 절단 / 절단 → 압축" 분기는
-  **원리에서 유도한 것이지 특정 서버 제품의 동작을 측정한 것이 아니다.**
-- **`EXT-X-BYTERANGE` 경로 자체가 회귀 테스트에 없다.** `tests/run.sh` 는 이 태그를 쓰는
-  스트림을 만들지 않는다(전수 확인). 파싱([`playlist.py:327-329`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L327-L329))과 요청 조립
-  ([`fetch.py:155-161`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L155-L161))은 코드로만 존재하고 실행으로 고정돼 있지 않다.
-- **206 미검사는 이 장에서 발견했으나 고치지 않았다.** 수정은 코드 변경이므로 별도
-  결정 사항으로 남긴다.
-- **`deflate` 이중 시도의 오탐 가능성을 배제하지 못했다.** raw DEFLATE 가 "비최종
-  저장(stored) 블록"으로 시작하고 둘째 바이트가 zlib 체크섬 조건을 우연히 만족하면
-  래퍼로 오인될 수 있다. 확률은 매우 낮지만 0 이 아니며, 실제 사례는 확인하지 못했다.
-- **brotli·zstd 를 요청하지 않아 잃는 전송량을 측정하지 않았다.** 텍스트에서 brotli 가
-  gzip 보다 유리하다는 것은 알려져 있으나, 이 워크로드(반복이 극심한 URL 목록)에서
-  실제로 얼마나 차이 나는지는 재 보지 않았다.
-- **헤더 이름 대소문자 문제는 측정했으나 이 장의 범위 밖이다.** 근본 해법은 대소문자를
-  구별하지 않는 헤더 매핑을 쓰는 것이고, 그것은 `Fetcher` 전체에 걸친 변경이다.
+The honest conclusion is this. **There is no check in this code confirming whether the range request was
+respected; another check only catches it incidentally.** The principle of Chapter 15, not to count an
+accidental defense as a defense, should be applied here too. What is needed is one line — if you requested a
+range, confirm `status == 206` and `len(body) == length`, and otherwise handle it as a failure.
 
 ---
 
-## 6.9 요약
+## 6.8 Limits and open questions
 
-1. **압축은 전송 방식이 아니라 표현의 성질이다.** gzip 판과 무압축판은 같은 자원의 다른
-   표현이며, 이 사실이 "몇 번째 바이트"라는 질문의 답을 갈라 놓는다.
-2. **협상은 명령이 아니라 선호다.** `Accept-Encoding: identity` 를 보내도 gzip 이 온다 —
-   이 저장소의 테스트 서버가 그 반례이고, 회귀 테스트는 **서버가 실제로 압축을
-   보내는지부터 검사한다.**
-3. **Range 와 Content-Encoding 이 겹치면 좌표계가 둘이 된다.** HTTP 는 인코딩된 표현을,
-   HLS 는 자원 원본을 기준으로 센다. 게다가 압축 스트림의 임의 구간은 애초에 단독으로
-   풀 수 없다. 그래서 이 코드는 답을 고르는 대신 **질문을 없앤다**(`identity` 강제).
-4. **크기는 하나가 아니다.** 처리량은 `wire_size`, 저장은 `size`, 해시는 해제 후 본문.
-   해제 후 크기로 처리량을 재면 실측 30.4배 압축률만큼 회선이 빨라 보인다.
-5. **`gzip.decompress` 에는 크기 상한이 없다 — 이 저장소의 실제 미방어 지점이다.**
-   실측 995 KiB → 1,000 MiB(1,029배), 피크 RSS 2,110 MB. 압축이 새로 만든 것은 취약점이
-   아니라 **증폭률**이며, 상한을 걸 수 있는 유일한 지점은 해제 호출 그 자체다.
-6. **예방했다고 검사한 것은 아니다.** 범위 요청이 무시되고 전체 본문이 와도 이 코드는
-   `ok=True` 를 낸다(실측). `identity` 를 요청은 했지만 존중됐는지는 확인하지 않는다.
+Noted honestly.
+
+- **There is no decompression-bomb defense.** The `decompress_capped` this chapter presented is **a proposal,
+  not this repository's code.** To adopt it you also need cap-value decisions (playlist and segment differ)
+  and multi-member gzip handling.
+- **The Range × compression collision could not be reproduced in this repository.** The `identity` forcing is
+  a **preemptive defense** from spec reading and principle, and what actually breaks on which CDN when this
+  defense is absent was not confirmed. The "compress → truncate / truncate → compress" branches of §6.3.2's
+  table are **derived from principle, not a measurement of a specific server product's behavior.**
+- **The `EXT-X-BYTERANGE` path itself is not in the regression tests.** `tests/run.sh` does not make a stream
+  using this tag (confirmed exhaustively). The parsing ([`playlist.py:327-329`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L327-L329)) and request assembly
+  ([`fetch.py:155-161`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L155-L161)) exist only as code and are not fixed by execution.
+- **The unchecked 206 was found in this chapter but not fixed.** The fix is a code change, so it is left as a
+  separate decision item.
+- **The false-positive possibility of the `deflate` double attempt could not be ruled out.** If a raw DEFLATE
+  starts with a "non-final stored block" and its second byte happens to satisfy the zlib checksum condition,
+  it could be mistaken for a wrapper. The probability is very low but not 0, and an actual case was not
+  confirmed.
+- **The transfer volume lost by not requesting brotli·zstd was not measured.** It is known that brotli is more
+  favorable than gzip for text, but how much difference it actually makes on this workload (a URL list with
+  extreme repetition) was not measured.
+- **The header-name case problem was measured but is outside this chapter's scope.** The fundamental fix is to
+  use a case-insensitive header mapping, and that is a change spanning the whole of `Fetcher`.
 
 ---
 
-**다음 장** — 이 장에서 좌표계를 흔든 것은 압축이었다. 다음 장에서는 **주소 자체**가
-같은 문제를 일으킨다. `%20` 을 한 번 더 인코딩하면 `%2520` 이 되어 다른 자원을 가리키고,
-그 변환이 여러 계층에서 각자 일어나면 "이 주소가 무엇을 가리키는가"가 계층마다 달라진다.
-제7장은 정규화가 왜 경계에서 **정확히 한 번만** 일어나야 하는지, 그리고 그 규율이
-깨졌을 때 생기는 이중 인코딩 우회를 다룬다.
+## 6.9 Summary
+
+1. **Compression is not a transport method but a property of the representation.** The gzip edition and the
+   uncompressed edition are different representations of the same resource, and this fact splits the answer to
+   the question "which byte."
+2. **Negotiation is a preference, not a command.** Send `Accept-Encoding: identity` and gzip still comes —
+   this repository's test server is that counterexample, and the regression test **first checks whether the
+   server actually sends compression.**
+3. **When Range and Content-Encoding overlap the coordinate systems become two.** HTTP counts over the encoded
+   representation, HLS over the resource original. Moreover an arbitrary span of a compressed stream cannot be
+   decompressed on its own in the first place. So this code does not pick an answer but **removes the
+   question** (`identity` forcing).
+4. **Size is not one thing.** Throughput is `wire_size`, storage is `size`, the hash is the decompressed body.
+   Measure throughput by the decompressed size and the line looks faster by the measured 30.4× compression
+   ratio.
+5. **`gzip.decompress` has no size cap — this repository's actual unguarded point.** Measured 995 KiB → 1,000
+   MiB (1,029×), peak RSS 2,110 MB. What compression newly created is not the vulnerability but the
+   **amplification ratio**, and the only point where a cap can be applied is the decompression call itself.
+6. **Prevented is not the same as checked.** Even if the range request is ignored and the whole body comes,
+   this code returns `ok=True` (measured). It requested `identity` but does not confirm whether it was
+   respected.
+
+---
+
+**Next chapter** — what shook the coordinate system in this chapter was compression. In the next chapter the
+**address itself** causes the same problem. Encode `%20` once more and it becomes `%2520`, pointing at a
+different resource, and when that transformation happens separately at several layers, "what this address
+points to" differs per layer. Chapter 7 covers why normalization must happen **exactly once** at the boundary,
+and the double-encoding bypass that arises when that discipline is broken.

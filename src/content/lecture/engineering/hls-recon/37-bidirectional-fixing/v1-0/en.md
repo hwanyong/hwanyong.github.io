@@ -1,211 +1,208 @@
 ---
-untranslated: ko
-title: "양방향 고정"
-description: "오탐과 미탐을 함께 테스트한다"
-date: 2026-08-20
+title: "Bidirectional Fixing"
+description: "Test the false positive and the false negative together"
+date: 2026-08-13
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-37-bidirectional-fixing.svg
 ---
-## 37.0 이 장에서 답할 것
+## 37.0 What this chapter answers
 
-1. **정탐만 고정한 테스트가 통과시키는 잘못된 구현**은 무엇인가
-2. 한 판정기의 두 오류가 **정반대 증상**을 낼 때, 테스트는 어떤 모양이어야 하는가
-3. `tests/run.sh` 의 재고 조사 블록은 왜 단정이 아홉 개인가 — 결함을 잡는 둘이면
-   충분하지 않은가
-4. "모호하면 포기한다"는 안전한 규칙이 구현에서 **"항상 포기한다"로 굳으면** 무엇이
-   죽고, 그것이 왜 테스트에 보이지 않는가
-5. 오탐이 많은 보안 도구의 **실질 재현율은 왜 0 이 되는가**
+1. What **wrong implementation does a test fixing only true positives pass?**
+2. When a verdict maker's two errors give **opposite symptoms**, what shape must the test have?
+3. Why does `tests/run.sh`'s inventory block have nine assertions — are the two that catch the defect not enough?
+4. When the safe rule "give up if ambiguous" hardens in the implementation into **"always give up,"** what dies,
+   and why is that invisible in the test?
+5. Why does a security tool with many false positives have a **practical recall of 0?**
 
-제34장은 "항상 PASS 를 내는 구현"을 배제하는 문제였다. 이 장은 그 **정확한 거울상**을
-다룬다 — 항상 FAIL 을 내는 구현. 두 장을 합쳐야 판정기 하나가 특정된다.
+Chapter 34 was the problem of excluding an "implementation that always gives PASS." This chapter covers its
+**exact mirror image** — an implementation that always gives FAIL. The two chapters together pin down one verdict
+maker.
 
 ---
 
-## 37.1 문제 — 한 판정, 정반대의 두 재난
+## 37.1 The problem — one verdict, two opposite disasters
 
-### 37.1.1 판정의 자리
+### 37.1.1 The verdict's spot
 
-재고 조사는 27화짜리 시리즈를 두 번째로 받을 때 **"이미 있는 회차"** 를 가려내는
-판단이다. 판정 결과가 소비되는 자리는 다운로드 루프 한가운데다.
+Inventory is the judgment of picking out **"episodes already present"** when receiving a 27-episode series a
+second time. The spot where the verdict result is consumed is the middle of the download loop.
 
 ```python
 # cli.py:872-879
-        # 재생 소스를 발급받기 전에 재고부터 본다 — 이미 온전히 받아둔 회차라면
-        # 여기서 끝나고 요청이 한 건도 나가지 않는다.
+        # look at the inventory before issuing the playback source — if it is an episode already fully received,
+        # it ends here and not a single request goes out.
         have = stock.get(ep.number)
         stale = bool(have and not have.ok)
         if have and have.ok and not args.overwrite:
-            _eprint(f"  · 이미 있다 — 건너뛴다 ({have.video.name}). 다시 받으려면 --overwrite")
-            done.append((ep, "건너뜀"))
+            _eprint(f"  · already have it — skipping ({have.video.name}). to re-receive use --overwrite")
+            done.append((ep, "skipped"))
             continue
 ```
 
-`have.ok` 라는 불리언 하나가 **회차 하나의 운명**을 결정한다. `True` 면 그 회차에는
-네트워크 요청이 한 건도 나가지 않고, `False` 면 처음부터 다시 받는다.
+The one boolean `have.ok` decides **one episode's fate.** If `True`, not a single network request goes out for
+that episode, and if `False`, it is re-received from the start.
 
-이 판정이 왜 이름이 아니라 번호를 보는지, 왜 확장자 완전 일치로는 안 되는지는
-모듈 독스트링이 적어 두었다.
+Why this verdict looks at the number and not the name, and why an exact extension match will not do, the module
+docstring wrote.
 
 ```python
 # inventory.py:6-12
-- **파일 이름을 미리 알 수 없다.** 저장 이름은 플레이어 설정의 `title` 에서 오고,
-  그것을 읽으려면 회차마다 재생 소스를 발급받아야 한다(`series.resolve`). 이름을
-  안 뒤에 건너뛰면 27화를 이미 다 받아둔 경우에도 발급 요청이 27번 그대로 나간다 —
-  회차마다 페이지·플레이어·XHR 세 번이므로 80여 건이 헛되이 오간다. 그래서 이름
-  대신 **회차 번호**로 견준다. 번호는 목록 페이지에서 이미 알고 있어 공짜다.
-- **확장자가 지난번과 다를 수 있다.** `--container` 를 바꿔 실행하면 이름은 같고
-  확장자만 다르다. 완전 일치로 보면 전부 없는 것이 되어 27화를 다시 받는다.
+- **The file name cannot be known in advance.** The storage name comes from the player setting's `title`,
+  and to read it you must issue a playback source per episode (`series.resolve`). Skipping after knowing the name
+  means 27 issue requests still go out even when all 27 episodes are already received —
+  three per episode (page·player·XHR), so over 80 travel in vain. So compare by the **episode number**
+  instead of the name. The number is already known from the listing page so it is free.
+- **The extension can differ from last time.** Run with `--container` changed and the name is the same and only
+  the extension differs. Judge by exact match and everything becomes absent and the 27 episodes are re-received.
 ```
 
-두 항목 모두 **판정이 너무 엄격할 때 생기는 손해**를 말한다. 세 번째 항목
-([`inventory.py:13-15`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L13-L15))이 반대 방향을 말하고, 그 방향은 제20장에서 이미 해부했다 —
-끊긴 파일이 완성본 행세를 하는 문제다.
+Both items speak of **the loss that arises when the verdict is too strict.** The third item ([`inventory.py:13-15`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L13-L15))
+speaks of the opposite direction, and that direction was already dissected in Chapter 20 — the problem of a
+truncated file passing as a finished copy.
 
-### 37.1.2 두 방향의 증상이 정반대다
+### 37.1.2 The two directions' symptoms are opposite
 
-제20장 §20.1.2 가 이 비대칭을 비용의 관점에서 정리했다. 여기서는 **테스트 설계의
-관점**에서 다시 본다. 무엇이 다른가 — 각 오류가 **어느 코드 경로에서 나오는가**를
-따진다.
+Chapter 20 §20.1.2 organized this asymmetry from the cost view. Here we see it again from the **test-design
+view.** What differs — weigh **from which code path** each error comes.
 
-| 오류 방향 | 어떤 구현 결함에서 나오는가 | 사용자가 보는 것 | 회복 |
+| Error direction | From which implementation defect it comes | What the user sees | Recovery |
 |---|---|---|---|
-| **오탐**(정상을 결함으로) | 박스 순서 가정, 확장자 완전 일치, 화수 표기 정규화 누락, 작품명 매칭 포기 | 멀쩡한 27화를 매번 다시 받는다 | 자동 — 같은 파일이 다시 온다 |
-| **미탐**(결함을 정상으로) | 크기 하한 없음, 박스 경계 검사 없음, 존재만 확인 | **아무 일도 일어나지 않는다** | 없음 — 도구가 그 회차에 다시 손대지 않는다 |
+| **false positive** (normal as defective) | box-order assumption, extension exact match, missing episode-notation normalization, giving up work-title matching | re-receives 27 fine episodes every time | automatic — the same file comes again |
+| **false negative** (defect as normal) | no size lower bound, no box-boundary check, checking only existence | **nothing happens** | none — the tool never touches that episode again |
 
-오른쪽 두 열이 이 장의 출발점이다. **오탐은 시끄럽고 미탐은 조용하다.** 오탐은
-대역폭과 시간으로 즉시 청구되지만, 미탐은 사용자가 20화를 재생해 볼 때까지 어떤
-신호도 내지 않는다.
+The right two columns are this chapter's starting point. **A false positive is noisy and a false negative is
+quiet.** A false positive is billed immediately in bandwidth and time, but a false negative gives no signal until
+the user plays episode 20.
 
-### 37.1.3 그런데 여기에는 손잡이가 없다
+### 37.1.3 And yet here there is no handle
 
-제22장의 임계값 설계에서는 두 오류가 **하나의 손잡이 양끝**에 매달려 있었다.
-임계를 낮추면 재현율이 오르고 정밀도가 내려간다. 두 오류를 동시에 줄이는 방법이
-임계값 안에는 없었다(§22.2.2).
+In Chapter 22's threshold design the two errors hung **on the two ends of one handle.** Lower the threshold and
+recall rises and precision falls. There was no way within the threshold to reduce both errors at once (§22.2.2).
 
-재고 조사는 다르다. **손잡이가 없다.** 두 방향의 오류가 서로 다른 코드 조각에서
-나오기 때문이다.
+Inventory is different. **There is no handle.** Because the two directions of error come from different code
+pieces.
 
-| 표본 | 반응하는 코드 | 이 조각을 고쳐도 반대 방향이 나빠지는가 |
+| Sample | The reacting code | Does fixing this piece worsen the opposite direction |
 |---|---|---|
-| 0바이트 파일 | `MIN_BYTES`([`inventory.py:35`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L35)) | 아니오 — 정상 영상은 64 KB 를 넘는다 |
-| 60% 에서 잘린 MP4 | 박스 경계 검사([`inventory.py:94-95`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L94-L95)) | 아니오 — 온전한 파일은 경계가 정확히 맞는다 |
-| `moov` 가 뒤에 있는 정상 파일 | 순서를 보지 않는 집합 판정([`inventory.py:96`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L96)) | 아니오 |
-| `그렌라간3.mp4` | `episode_of` 의 화수 정규화 | 아니오 |
-| `그렌라간04.mkv` | `MEDIA_EXTS` · `_head_flaw` | 아니오 |
+| 0-byte file | `MIN_BYTES` ([`inventory.py:35`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L35)) | no — a normal video exceeds 64 KB |
+| an MP4 cut at 60% | box-boundary check ([`inventory.py:94-95`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L94-L95)) | no — an intact file has boundaries matching exactly |
+| a normal file with `moov` after | the order-blind set judgment ([`inventory.py:96`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L96)) | no |
+| `그렌라간3.mp4` | `episode_of`'s episode normalization | no |
+| `그렌라간04.mkv` | `MEDIA_EXTS` · `_head_flaw` | no |
 
-**두 오류를 동시에 줄이는 것이 원리적으로 가능하다.** 그러므로 테스트는 양쪽을
-동시에 요구할 자격이 있다. 임계값에서는 요구할 수 없던 것이다 — 거기서는 요구 자체가
-모순이었으니까.
+**Reducing both errors at once is possible in principle.** So the test has the right to demand both at once. It
+could not be demanded in the threshold case — there, the demand itself was a contradiction.
 
-이 자격이 곧 `tests/run.sh:341-417` 이 아홉 단정을 두는 근거다.
+This right is the basis for `tests/run.sh:341-417` putting nine assertions.
 
 ```bash
 # tests/run.sh:341-344
-# ------------------------------------------------------------------- 재고 조사
-# 두 번째 실행에서 '빠진 회차'만 가려내는 판단. 여기서 잘못 짚으면 증상이 정반대로
-# 갈린다 — 너무 관대하면 깨진 파일이 완성본 행세를 해 회차가 영원히 빠지고,
-# 너무 엄격하면 멀쩡한 27화를 매번 다시 받는다. 양쪽을 함께 고정한다.
+# ------------------------------------------------------------------- inventory
+# The judgment that picks only the 'missing episodes' on the second run. Get it wrong here and the symptom
+# splits the opposite way — too lenient and a broken file passes as finished so the episode is missing forever,
+# too strict and 27 fine episodes are re-received every time. Fix both sides together.
 ```
 
-같은 문장이 README 에도 있다.
+The same sentence is in the README too.
 
 > `README.md:377-380`
 >
-> 재고 조사는 **양방향으로** 고정한다. 너무 관대하면 깨진 파일이 완성본 행세를 해
-> 회차가 영원히 빠지고, 너무 엄격하면 멀쩡한 27화를 매번 다시 받는다. 그래서 결함을
-> 잡는 항목과 함께 정상 파일(`moov` 앞·뒤 양쪽 배치)을 온전하다고 보는지, 화수 표기와
-> 확장자가 달라도 같은 회차로 읽는지를 같이 둔다.
+> The inventory is fixed **in both directions.** Too lenient and a broken file passes as finished so the episode
+> is missing forever, too strict and 27 fine episodes are re-received every time. So along with the items catching
+> the defect, it puts whether it sees a normal file (`moov` placed both before·after) as intact, and whether it
+> reads different episode notation and extension as the same episode.
 
 ---
 
-## 37.2 원리 — 판정기는 두 축으로 잰다
+## 37.2 The principle — a verdict maker is measured on two axes
 
-### 37.2.1 양성 클래스를 먼저 고정한다
+### 37.2.1 Fix the positive class first
 
-혼동 행렬은 제34장 §34.3 에서 이미 도입했다. 다만 그 표를 쓰기 전에 반드시 정해야
-하는 것이 하나 있고, 그것을 정하지 않은 채 "오탐"·"미탐"을 말하면 대화가 뒤집힌다.
+The confusion matrix was already introduced in Chapter 34 §34.3. Only, before using that table there is one
+thing that must be set, and say "false positive"·"false negative" without setting it and the conversation flips.
 
-> **용어** — **양성 클래스(positive class)**: 혼동 행렬에서 "검출 대상"으로 지정한
-> 쪽. 정탐·오탐·미탐이라는 말은 전부 이 지정에 상대적이다. 양성을 어느 쪽으로
-> 잡느냐에 따라 같은 오류가 오탐이 되기도 미탐이 되기도 한다.
+> **Term** — **positive class**: the side designated as the "detection target" in the confusion matrix. The words
+> true positive·false positive·false negative are all relative to this designation. Depending on which side you
+> set as positive, the same error becomes a false positive or a false negative.
 
-이 교재는 검증 도구의 관례를 따라 **양성 = "결함이 있다" = FAIL 쪽**으로 고정한다.
-재고 조사에서는 **"이 회차는 다시 받아야 한다"** 가 양성이다.
+This course, following the verification-tool convention, fixes **positive = "has a defect" = the FAIL side.** In
+inventory, **"this episode must be re-received"** is positive.
 
-| | 도구 판정 = 다시 받는다(양성) | 도구 판정 = 건너뛴다(음성) |
+| | Tool verdict = re-receive (positive) | Tool verdict = skip (negative) |
 |---|---|---|
-| **실제로 손상** | 정탐(true positive) | **미탐(false negative)** — 회차가 영원히 빠진다 |
-| **실제로 온전** | **오탐(false positive)** — 27화를 다시 받는다 | 정상 통과(true negative) |
+| **actually damaged** | true positive | **false negative** — the episode is missing forever |
+| **actually intact** | **false positive** — 27 episodes re-received | true negative |
 
-### 37.2.2 두 지표는 다른 표본으로만 잰다
+### 37.2.2 The two metrics are measured only by different samples
 
-> **용어** — **재현율(recall, 민감도 sensitivity, 정탐률)**: 실제로 결함이 있는 입력
-> 중 도구가 양성으로 판정한 비율. `TP / (TP + FN)`. 제34장 §34.7 에서 정탐률로
-> 도입한 것과 같은 값이다.
+> **Term** — **recall (sensitivity, true-positive rate)**: the ratio of inputs actually having a defect that the
+> tool judged positive. `TP / (TP + FN)`. The same value as introduced as the true-positive rate in Chapter 34
+> §34.7.
 
-> **용어** — **정밀도(precision)**: 도구가 양성으로 판정한 것 중 실제로 결함이었던
-> 비율. `TP / (TP + FP)`. 재현율과 달리 **분모가 도구의 출력**이라는 점이 핵심이다.
+> **Term** — **precision**: the ratio of what the tool judged positive that actually had a defect. `TP / (TP +
+> FP)`. Unlike recall, the core is that the **denominator is the tool's output.**
 
-여기서 테스트 설계의 결론이 바로 나온다.
+Here the test-design conclusion comes out immediately.
 
-| 지표 | 분모 | 재려면 반드시 필요한 표본 |
+| Metric | Denominator | The sample necessarily needed to measure it |
 |---|---|---|
-| 재현율 | 실제 결함의 수 | **결함 표본** — 정상 파일만 있으면 분모가 0 이라 정의되지 않는다 |
-| 정밀도 | 양성 판정의 수 | **정상 표본** — 정상이 하나도 없으면 오탐이 발생할 자리가 없다 |
+| recall | the count of actual defects | **defect samples** — with only normal files the denominator is 0 and it is undefined |
+| precision | the count of positive verdicts | **normal samples** — with no normal at all there is no place for a false positive to arise |
 
-**정상 표본이 없는 테스트 묶음에서는 정밀도를 잴 수 없고, 결함 표본이 없는 묶음에서는
-재현율을 잴 수 없다.** 잴 수 없는 것은 고정되지도 않는다.
+**A test suite with no normal samples cannot measure precision, and a suite with no defect samples cannot measure
+recall.** What cannot be measured is not fixed either.
 
-### 37.2.3 실측 — 네 구현의 두 지표
+### 37.2.3 Measured — the two metrics of four implementations
 
-`tests/run.sh:349-362` 가 만드는 여섯 표본(정상 넷, 손상 둘)에 대해 판정기를 갈아
-끼우며 잰 값이다. 측정 절차는 §37.3.3 에 적는다.
+The values measured, swapping the verdict maker, for the six samples `tests/run.sh:349-362` makes (four normal,
+two damaged). The measurement procedure is written in §37.3.3.
 
-| 구현 | TP | FP | FN | TN | 재현율 | 정밀도 |
+| Implementation | TP | FP | FN | TN | Recall | Precision |
 |---|---|---|---|---|---|---|
-| **`inventory.flaw`(실물)** | 2 | 0 | 0 | 4 | **1.00** | **1.00** |
-| 항상 손상이라고 답한다 | 2 | 4 | 0 | 0 | **1.00** | 0.33 |
-| 항상 온전하다고 답한다 | 0 | 0 | 2 | 4 | 0.00 | **정의되지 않음** |
-| 박스 순서를 검사한다 | 2 | 2 | 0 | 2 | **1.00** | 0.50 |
+| **`inventory.flaw` (real)** | 2 | 0 | 0 | 4 | **1.00** | **1.00** |
+| always answers damaged | 2 | 4 | 0 | 0 | **1.00** | 0.33 |
+| always answers intact | 0 | 0 | 2 | 4 | 0.00 | **undefined** |
+| checks box order | 2 | 2 | 0 | 2 | **1.00** | 0.50 |
 
-둘째 행이 이 장의 표적이다. **"항상 손상"이라고 답하는 한 줄짜리 구현의 재현율은
-1.00 이다.** 실물과 같다. 재현율만 보는 시험은 이 구현을 실물과 구별하지 못한다.
+The second row is this chapter's target. **The recall of a one-line implementation that answers "always damaged"
+is 1.00.** Same as the real one. A test looking at recall only cannot distinguish this implementation from the
+real one.
 
-셋째 행의 "정의되지 않음"도 그냥 넘길 자리가 아니다. 양성 판정이 하나도 없으므로
-`TP + FP = 0` 이고 분모가 0 이다. 제34장 §34.7 이 정보이론으로 말한 것 — **PASS 가
-0비트를 나른다** — 와 같은 사실이 여기서는 **정밀도가 정의되지 않는다**는 형태로
-나타난다. 아무것도 지목하지 않는 도구에는 정확도를 물을 대상 자체가 없다.
+The third row's "undefined" is not a spot to pass over. Since there is not a single positive verdict, `TP + FP =
+0` and the denominator is 0. What Chapter 34 §34.7 said with information theory — **PASS carries 0 bits** — appears
+here in the form of **precision being undefined.** A tool that points at nothing has no target to ask accuracy
+of.
 
-### 37.2.4 핵심 명제 — 제34장의 정확한 거울상
+### 37.2.4 The core proposition — the exact mirror image of Chapter 34
 
-| 고정한 축 | 그 축의 단정 | 살아남는 잘못된 구현 |
+| Axis fixed | That axis's assertion | The surviving wrong implementation |
 |---|---|---|
-| **정상 축만** (오탐 방지) | "정상 파일을 정상이라 한다" | **항상 온전하다고 답하는 구현** — 제34장 §34.1 의 `exit 0` |
-| **결함 축만** (미탐 방지) | "깨진 파일을 깨졌다 한다" | **항상 손상이라고 답하는 구현** — `exit 2` |
-| **양쪽 모두** | 둘 다 | 둘 다 배제된다 |
+| **normal axis only** (false-positive prevention) | "call a normal file normal" | **an implementation that always answers intact** — Chapter 34 §34.1's `exit 0` |
+| **defect axis only** (false-negative prevention) | "call a broken file broken" | **an implementation that always answers damaged** — `exit 2` |
+| **both** | both | both excluded |
 
-두 실패 모드는 **대칭**이지만 **대칭적으로 위험하지는 않다.** 항상 PASS 를 내는
-도구는 거짓 안심을 만들고, 항상 FAIL 을 내는 도구는 **무시당한다.** 무시당한
-도구의 재현율은 서류상 1.00 이면서 실질적으로 0 이다 — 이것이 §37.6 의 주제다.
+The two failure modes are **symmetric** but not **symmetrically dangerous.** A tool that always gives PASS makes
+false reassurance, and a tool that always gives FAIL is **ignored.** An ignored tool has a recall of 1.00 on paper
+while practically 0 — that is §37.6's subject.
 
 ---
 
-## 37.3 코드 — 아홉 단정의 해부
+## 37.3 The code — the dissection of nine assertions
 
-### 37.3.1 표본 — 정상 넷, 손상 둘, 무리 둘
+### 37.3.1 The samples — four normal, two damaged, two groups
 
 ```bash
 # tests/run.sh:347-363
 STOCK="$WORK/stock/그렌라간"
 rm -rf "$WORK/stock"; mkdir -p "$STOCK"
-# 온전한 회차 둘 — 하나는 faststart(moov 앞), 하나는 기본(moov 뒤). 둘 다 정상이다.
+# Two intact episodes — one faststart (moov in front), one default (moov after). both are normal.
 ffmpeg -v error -y -i source.mp4 -t 5 -c copy -movflags +faststart "$STOCK/그렌라간01.mp4"
 ffmpeg -v error -y -i source.mp4 -t 5 -c copy "$STOCK/그렌라간02.mp4"
-# 화수 표기가 다른 회차(`3` vs `03`)와 컨테이너가 다른 회차(.mkv) — 같은 회차여야 한다.
+# An episode with a different episode-number notation (`3` vs `03`) and one with a different container (.mkv) — must be the same episode.
 ffmpeg -v error -y -i source.mp4 -t 5 -c copy "$STOCK/그렌라간3.mp4"
 ffmpeg -v error -y -i source.mp4 -t 5 -c copy "$STOCK/그렌라간04.mkv"
-# 먹싱 도중 끊긴 회차 — 있지만 온전하지 않다.
+# An episode cut off mid-muxing — present but not intact.
 python3 - "$STOCK" <<'PY'
 import sys, pathlib
 d = pathlib.Path(sys.argv[1])
@@ -216,245 +213,243 @@ PY
 for n in 01 02 3 04; do : >"$STOCK/그렌라간${n}.ko.srt"; done
 ```
 
-주석 세 줄이 각각 한 방향을 지목한다. 첫 줄과 둘째 줄은 **"둘 다 정상이다"**,
-**"같은 회차여야 한다"** — 오탐을 막는 표본이다. 셋째 줄만이 결함 표본이다.
+The three comment lines each point at one direction. The first line and second line are **"both are normal"** and
+**"must be the same episode"** — samples blocking false positives. Only the third line is a defect sample.
 
-여기에 `stock_for` 용 표본이 하나 더 붙는다. 판정 대상이 파일이 아니라 **파일
-무리**라는 점이 다르다.
+Here one more sample for `stock_for` attaches. The difference is that the judgment target is not a file but a
+**file group.**
 
 ```bash
 # tests/run.sh:380-396
-# --flat 으로 여러 작품이 한 폴더에 섞인 경우. 작품명이 두 무리에 다 걸리면
-# 번호만으로는 어느 쪽이 내 회차인지 알 수 없다 — 남의 회차를 근거로 건너뛰면
-# 회차가 조용히 빠지므로, 가리지 못할 때는 건너뛰지 않는 편이 옳다.
+# The case where several works are mixed in one folder via --flat. If the work title matches both groups,
+# by number alone you cannot know which side is your episode — skipping on the basis of someone else's episode
+# quietly misses the episode, so when you cannot disambiguate it is right not to skip.
 mixed = folder.parent / "mixed"
 mixed.mkdir(exist_ok=True)
 whole = (folder / "그렌라간01.mp4").read_bytes()
 for stem in ("다른작품", "또다른작품"):
     for n in ("01", "02"):
         (mixed / f"{stem}{n}.mp4").write_bytes(whole)
-# 작품명이 어느 줄기와도 같지 않고 두 줄기 모두에 들어 있다 — 우열이 없다.
+# The title matches no stem and is contained in both stems — there is no superiority.
 picked, why = inventory.stock_for(inventory.scan(mixed), "작품")
 print(f"MIXED {len(picked)} {why}")
 
-# 반대로 우열이 있으면 가려내야 한다. 모호할 때 포기하는 규칙이 '항상 포기한다'로
-# 굳으면 --flat 에서는 재고 조사가 통째로 죽은 코드가 된다.
+# Conversely, when there is superiority it must disambiguate. If the rule "give up when ambiguous"
+# hardens into 'always give up', the inventory becomes wholly dead code under --flat.
 alone, _ = inventory.stock_for(inventory.scan(mixed), "또다른작품 시즌2")
 print(f"ALONE {len(alone)}")
 ```
 
-두 번째 주석이 이 장에서 가장 중요한 문장이다. §37.4 에서 따로 다룬다.
+The second comment is the most important sentence in this chapter. It is covered separately in §37.4.
 
-> **용어** — **죽은 코드(dead code)**: 어떤 실행 경로에서도 결과에 영향을 주지 않는
-> 코드. 여기서는 함수가 호출되기는 하지만 **언제나 같은 값**(빈 재고)을 돌려주어,
-> 그 함수를 상수로 바꿔도 프로그램의 동작이 달라지지 않는 상태를 말한다.
+> **Term** — **dead code**: code that affects the result on no execution path. Here it means the state where a
+> function is called but **always returns the same value** (an empty stock), so replacing that function with a
+> constant does not change the program's behavior.
 
-### 37.3.2 아홉 단정과 그 축
+### 37.3.2 The nine assertions and their axes
 
 ```bash
 # tests/run.sh:399-417
 grep -q 'EP 1 그렌라간01.mp4 ok=True' "$INV" \
-  && ok "정상 회차를 온전하다고 본다 (faststart)" || bad "정상 파일을 손상으로 오인 (faststart)"
+  && ok "sees a normal episode as intact (faststart)" || bad "mistook a normal file for damaged (faststart)"
 grep -q 'EP 2 그렌라간02.mp4 ok=True' "$INV" \
-  && ok "정상 회차를 온전하다고 본다 (moov 뒤)" || bad "정상 파일을 손상으로 오인 (moov 뒤)"
+  && ok "sees a normal episode as intact (moov after)" || bad "mistook a normal file for damaged (moov after)"
 grep -q 'EP 3 그렌라간3.mp4 ok=True' "$INV" \
-  && ok "화수 표기 차이를 같은 회차로 (3 = 03)" || bad "화수 표기가 다르면 못 알아봄"
+  && ok "reads an episode-notation difference as the same episode (3 = 03)" || bad "cannot recognize a different episode notation"
 grep -q 'EP 4 그렌라간04.mkv ok=True' "$INV" \
-  && ok "컨테이너가 달라도 같은 회차로 (.mkv)" || bad "확장자가 다르면 못 알아봄"
+  && ok "reads a different container as the same episode (.mkv)" || bad "cannot recognize a different extension"
 grep -q 'EP 5 .* ok=False' "$INV" \
-  && ok "잘린 파일을 손상으로 검출" || bad "잘린 파일을 완성본으로 오인"
+  && ok "detects a truncated file as damaged" || bad "mistook a truncated file for finished"
 grep -q 'EP 6 .* ok=False' "$INV" \
-  && ok "0바이트 파일을 손상으로 검출" || bad "0바이트를 완성본으로 오인"
+  && ok "detects a 0-byte file as damaged" || bad "mistook 0 bytes for finished"
 grep -q "NOTE '그렌라간'" "$INV" \
-  && ok "작품명이 달라도 파일 무리를 찾는다 (천원돌파 그렌라간 → 그렌라간)" \
-  || bad "작품명과 파일 줄기를 잇지 못함"
+  && ok "finds the file group even with a different title (천원돌파 그렌라간 → 그렌라간)" \
+  || bad "cannot join the title and the file stem"
 grep -q 'MIXED 0' "$INV" \
-  && ok "작품명이 여러 무리에 걸리면 번호로 건너뛰지 않는다" || bad "남의 회차를 근거로 건너뜀"
+  && ok "does not skip by number when the title matches several groups" || bad "skipped on the basis of someone else's episode"
 grep -q 'ALONE 2' "$INV" \
-  && ok "한 무리에만 걸리면 가려낸다 (--flat 에서도 동작)" || bad "가릴 수 있는데도 포기함"
+  && ok "disambiguates when caught by only one group (works with --flat too)" || bad "gave up when it could disambiguate"
 ```
 
-각 단정에 이름을 붙여 정리한다. `bad` 쪽 문구가 그 단정이 막는 실패를 그대로
-말한다는 점을 눈여겨볼 것 — **단정의 이름이 배제 대상의 이름**이다.
+Organize each assertion with a name. Note that the `bad` side's phrase speaks exactly of the failure that
+assertion blocks — **the assertion's name is the name of what is excluded.**
 
-| # | 단정 | 축 | 민감한 구성요소 | 이 단정이 없으면 통과하는 구현 |
+| # | Assertion | Axis | Sensitive component | The implementation that passes without this assertion |
 |---|---|---|---|---|
-| A1 | `EP 1 … ok=True` | 정상 통과 | `_isobmff_flaw` 전반 | (A2 와 함께 대조군 노릇) |
-| A2 | `EP 2 … ok=True` | **정상 통과** | 박스를 **집합**으로 보는 판정 | `moov` 가 앞에 와야 한다고 보는 구현 |
-| A3 | `EP 3 그렌라간3.mp4 ok=True` | **정상 통과** | `episode_of` 화수 정규화 | 두 자리 표기만 회차로 읽는 구현 |
-| A4 | `EP 4 그렌라간04.mkv ok=True` | **정상 통과** | `MEDIA_EXTS` · `_head_flaw` | 확장자 완전 일치만 보는 구현 |
-| A5 | `EP 5 … ok=False` | **정탐** | 박스 경계 검사 | 파일 존재만 확인하는 구현 |
-| A6 | `EP 6 … ok=False` | **정탐** | `MIN_BYTES` | 크기 하한이 없는 구현 |
-| A7 | `NOTE '그렌라간'` | 기본 동작 | `stock_for` 반환 경로 | (§37.4.4 — 생각보다 적게 고정한다) |
-| A8 | `MIXED 0` | **정탐** | 동률에서 포기하는 분기 | 모호해도 채택하는 구현 |
-| A9 | `ALONE 2` | **정상 통과** | 2단계 + 최장 줄기 | **항상 포기하는 구현** |
+| A1 | `EP 1 … ok=True` | true negative | `_isobmff_flaw` overall | (a control together with A2) |
+| A2 | `EP 2 … ok=True` | **true negative** | the judgment seeing boxes as a **set** | an implementation seeing `moov` must be in front |
+| A3 | `EP 3 그렌라간3.mp4 ok=True` | **true negative** | `episode_of` episode normalization | an implementation reading only two-digit notation as an episode |
+| A4 | `EP 4 그렌라간04.mkv ok=True` | **true negative** | `MEDIA_EXTS` · `_head_flaw` | an implementation seeing only an exact extension match |
+| A5 | `EP 5 … ok=False` | **true positive** | box-boundary check | an implementation checking only file existence |
+| A6 | `EP 6 … ok=False` | **true positive** | `MIN_BYTES` | an implementation with no size lower bound |
+| A7 | `NOTE '그렌라간'` | default behavior | `stock_for` return path | (§37.4.4 — fixes less than expected) |
+| A8 | `MIXED 0` | **true positive** | the give-up-on-tie branch | an implementation adopting even when ambiguous |
+| A9 | `ALONE 2` | **true negative** | 3-stage + longest stem | **an implementation that always gives up** |
 
-축이 균형을 이룬다 — 정상 통과 다섯, 정탐 셋. 결함 표본은 둘뿐인데 정상 표본이
-넷인 것은 낭비가 아니다. **정상은 한 가지 모양이 아니기 때문**이다. 손상은
-"완성되지 않았다"는 한 가지 성질이지만, 정상은 `moov` 위치·화수 표기·컨테이너가
-전부 다를 수 있고 각각이 다른 오탐 경로를 연다.
+The axes are balanced — five true negatives, three true positives. That the defect samples are only two while the
+normal samples are four is not waste. **Because normal is not one shape.** Damage is the one property "not
+finished," but normal can differ entirely in `moov` position·episode notation·container, and each opens a
+different false-positive path.
 
-### 37.3.3 변이 실험 — 각 단정이 실제로 배제하는 것
+### 37.3.3 The mutation experiment — what each assertion actually excludes
 
-제34장 §34.3 이 프로그램 전체를 `exit 0`/`exit 2` 스텁으로 갈아치웠던 것과 같은
-방법을, 이번에는 **모듈 수준**에서 돌렸다.
+The same method by which Chapter 34 §34.3 replaced the whole program with an `exit 0`/`exit 2` stub, this time run
+at the **module level.**
 
-> **측정 환경 및 절차** — ffmpeg 8.1.1(macOS, Apple clang 21), Python 3.14.5.
-> `tests/run.sh:347-363` 과 **같은 명령**으로 표본을 만들고(`source.mp4` 도 같은
-> 인자, 640×360·30초), `tests/run.sh:366-397` 의 파이썬 블록과
-> `tests/run.sh:399-417` 의 단정 아홉을 그대로 옮겼다. 변이는 `inventory` 모듈의
-> 함수를 임포트 후 교체하는 방식으로 넣었다. 원본에서 9/9 가 재현되는 것을 먼저
-> 확인했다. **이 실험은 저장소에 들어 있지 않다** — 집필 중 1회 측정이다.
+> **Measurement environment and procedure** — ffmpeg 8.1.1 (macOS, Apple clang 21), Python 3.14.5. I made the
+> samples with the **same commands** as `tests/run.sh:347-363` (`source.mp4` with the same arguments too,
+> 640×360·30 seconds), and moved the Python block of `tests/run.sh:366-397` and the nine assertions of
+> `tests/run.sh:399-417` as-is. The mutations were put in by importing the `inventory` module functions and
+> replacing them. I first confirmed 9/9 reproduces on the original. **This experiment is not in the repository** —
+> a one-off measurement while writing.
 
-| 변이 구현 | 무엇을 바꿨나 | 통과 | 죽은 단정 |
+| Mutation implementation | What was changed | Passing | Dead assertions |
 |---|---|---|---|
-| (원본) | — | **9/9** | — |
-| **항상 손상** | `flaw()` 가 늘 사유를 돌려준다 | 5/9 | A1 A2 A3 A4 |
-| **항상 온전** | `flaw()` 가 늘 빈 문자열을 돌려준다 | 7/9 | A5 A6 |
-| 박스 순서 검사 | `moov` 가 `mdat` 앞이어야 한다 | 7/9 | A2 A3 |
-| 확장자 완전 일치 | `.mp4` 만 회차로 인정 | 8/9 | A4 |
-| 두 자리 화수만 | `그렌라간3` 을 회차로 안 본다 | 8/9 | A3 |
-| **항상 채택** | 모호해도 가장 긴 줄기를 고른다 | 8/9 | A8 |
-| **사다리 제거** | 무리가 하나일 때만 답한다 | 8/9 | A9 |
-| **2단계만 제거** | 부분 포함 단계(`inside`)만 뺀다 | 8/9 | A9 |
+| (original) | — | **9/9** | — |
+| **always damaged** | `flaw()` always returns a reason | 5/9 | A1 A2 A3 A4 |
+| **always intact** | `flaw()` always returns an empty string | 7/9 | A5 A6 |
+| box-order check | `moov` must be before `mdat` | 7/9 | A2 A3 |
+| exact extension match | only `.mp4` admitted as an episode | 8/9 | A4 |
+| two-digit episode only | does not see `그렌라간3` as an episode | 8/9 | A3 |
+| **always adopt** | pick the longest stem even when ambiguous | 8/9 | A8 |
+| **remove the ladder** | answer only when there is one group | 8/9 | A9 |
+| **remove only stage 2** | drop only the partial-containment stage (`inside`) | 8/9 | A9 |
 
-여기서 §37.2.4 의 명제가 수치로 확인된다.
+Here §37.2.4's proposition is confirmed as numbers.
 
-| 가정한 시험 | 그 축의 단정 | 항상 손상 | 항상 온전 |
+| Assumed test | That axis's assertions | Always damaged | Always intact |
 |---|---|---|---|
-| **정탐 축만 고정** | A5 A6 A8 | **3/3 통과 — 배제되지 않는다** | 1/3 |
-| **정상 통과 축만 고정** | A1 A2 A3 A4 A7 A9 | 2/6 | **6/6 통과 — 배제되지 않는다** |
-| 아홉 전부 | A1–A9 | 5/9 | 7/9 |
+| **fix true-positive axis only** | A5 A6 A8 | **3/3 pass — not excluded** | 1/3 |
+| **fix true-negative axis only** | A1 A2 A3 A4 A7 A9 | 2/6 | **6/6 pass — not excluded** |
+| all nine | A1–A9 | 5/9 | 7/9 |
 
-> **정탐만 고정한 테스트는 "항상 FAIL 을 내는 구현"을 통과시킨다.**
-> 정상만 고정한 테스트는 "항상 PASS 를 내는 구현"을 통과시킨다(제34장).
-> 두 문장은 같은 표의 두 행이며, **한 행만 채운 표는 표가 아니다.**
+> **A test fixing only true positives passes an "implementation that always gives FAIL."**
+> A test fixing only normal passes an "implementation that always gives PASS" (Chapter 34).
+> The two sentences are two rows of the same table, and **a table with only one row filled is not a table.**
 
-### 37.3.4 표본이 겹칠 수 있다 — 박스 순서 변이가 알려준 것
+### 37.3.4 Samples can overlap — what the box-order mutation revealed
 
-박스 순서를 검사하는 변이는 A2 를 죽일 것으로 예상했는데 **A3 도 함께 죽었다.**
-이유는 표본 생성 명령에 있다.
+The box-order-checking mutation was expected to kill A2, but **A3 died together too.** The reason is in the
+sample-generation command.
 
-| 표본 | `-movflags +faststart` | `moov` 위치 |
+| Sample | `-movflags +faststart` | `moov` position |
 |---|---|---|
-| `그렌라간01.mp4` | 있음 | 앞 |
-| `그렌라간02.mp4` | 없음 | **뒤** |
-| `그렌라간3.mp4` | 없음 | **뒤** |
-| `그렌라간04.mkv` | (EBML — 해당 없음) | — |
+| `그렌라간01.mp4` | present | front |
+| `그렌라간02.mp4` | absent | **after** |
+| `그렌라간3.mp4` | absent | **after** |
+| `그렌라간04.mkv` | (EBML — N/A) | — |
 
-`그렌라간3.mp4` 는 화수 표기를 시험하려고 만든 표본인데, 만드는 방식 때문에 `moov`
-배치 시험까지 겸하고 있다. **표본 하나가 두 성질을 동시에 지고 있으면, 단정 하나가
-죽었을 때 어느 성질이 깨졌는지 로그만으로는 알 수 없다.**
+`그렌라간3.mp4` is a sample made to test episode notation, but by the way it is made it also tests the `moov`
+placement. **If one sample carries two properties at once, when one assertion dies you cannot know from the log
+alone which property broke.**
 
-이것은 제35장 §35.5 가 실측한 "결함 하나가 여러 검사를 건드린다"의 정상 표본 판이다.
-실무적 영향은 작다 — A2 가 함께 죽으므로 진단이 어렵지는 않다. 다만 **표본의
-성질이 의도한 것 하나로 한정되지 않는다**는 사실은 기록해 둘 값이 있다. 표본을
-줄이면 이 겹침이 늘어나고, 겹치면 실패 원인의 해상도가 떨어진다.
+This is the normal-sample edition of "one defect touches several checks" measured in Chapter 35 §35.5. The
+practical impact is small — since A2 dies together the diagnosis is not hard. But the fact that **the sample's
+property is not limited to the one intended** is worth recording. Reduce the samples and this overlap grows, and
+with overlap the resolution of the failure cause drops.
 
 ---
 
-## 37.4 코드 — 포기하는 규칙이 굳을 때
+## 37.4 The code — when the give-up rule hardens
 
-`flaw()` 쪽 여섯 단정은 제20장에서 이미 다뤘다. 이 장이 새로 여는 것은 나머지
-셋 — `stock_for` 쪽이다. 여기가 **양방향 고정이 아니면 절대 잡히지 않는 결함**의
-교과서적 사례다.
+The six assertions on the `flaw()` side were already covered in Chapter 20. What this chapter newly opens is the
+other three — the `stock_for` side. Here is a textbook case of **a defect never caught without bidirectional
+fixing.**
 
-### 37.4.1 세 단계 사다리와 그 끝의 포기
+### 37.4.1 The three-stage ladder and the give-up at its end
 
 ```python
-# inventory.py:214-231 (독스트링)
+# inventory.py:214-231 (docstring)
 def stock_for(groups: dict[str, dict[int, Item]], title: str) -> tuple[dict[int, Item], str]:
-    """작품명에 해당하는 재고를 고른다. 반환: (회차 번호 → 항목, 사람에게 보일 사유)
+    """Pick the stock for the work title. Returns: (episode number → item, a reason to show a human)
 
-    파일 이름의 줄기(`그렌라간`)와 사이트가 알려준 작품명(`천원돌파 그렌라간`)은
-    자주 어긋난다 — 파일 이름은 플레이어가 정하고 작품명은 목록 페이지가 정하기
-    때문이다. 그래서 완전 일치만 보지 않고 세 단계로 좁힌다.
+    The file name's stem (`그렌라간`) and the work title the site told (`천원돌파 그렌라간`) often go off —
+    because the file name is set by the player and the work title by the listing page. So it does not see
+    only an exact match but narrows in three stages.
 
-        1. 완전 일치                     `작품`      ← `작품`
-        2. 작품명이 줄기를 품는다        `그렌라간`   ← `천원돌파 그렌라간`
-        3. 줄기가 작품명을 품는다        `천원돌파 그렌라간` ← `그렌라간`
+        1. exact match                  `작품`      ← `작품`
+        2. the work title contains the stem     `그렌라간`   ← `천원돌파 그렌라간`
+        3. the stem contains the work title     `천원돌파 그렌라간` ← `그렌라간`
 
-    2단계에서 여럿이 걸리면 **가장 긴 줄기**를 택한다. `다른작품 시즌2` 에는
-    `작품` 과 `다른작품` 이 모두 들어 있지만 더 많이 겹치는 쪽이 그 작품이다.
-    길이가 같아 우열이 없으면 포기한다.
+    If several catch at stage 2, pick the **longest stem.** `다른작품 시즌2` contains both
+    `작품` and `다른작품` but the one overlapping more is that work. If the lengths are equal with no
+    superiority, give up.
 
-    가릴 수 없으면 **빈 재고를 준다.** 잘못 짚어 건너뛰면 회차가 조용히 빠지지만,
-    빈 재고는 기존의 파일명 일치 검사로 되돌아갈 뿐이라 손해가 작다.
+    If it cannot disambiguate it **gives an empty stock.** Skipping by a wrong guess quietly misses the episode,
+    but an empty stock only falls back to the existing filename-match check so the loss is small.
     """
 ```
 
-마지막 문단이 **안전한 실패(fail-safe)** 설계다. 두 오류의 비용이 다르므로, 확신이
-없을 때 비용이 작은 쪽으로 넘어진다. 그 "되돌아가는 자리"도 코드에 실재한다.
+The last paragraph is a **fail-safe** design. Since the two errors' costs differ, when unsure it falls to the
+lower-cost side. That "fallback spot" is present in the code too.
 
 ```python
 # cli.py:892-897
-        # 번호로 가리지 못한 경우(--flat 로 여러 작품이 섞인 폴더)를 위한 뒷받침.
-        # 손상이라 다시 받기로 한 회차는 여기서 다시 걸러내면 안 된다.
+        # A backstop for when it could not disambiguate by number (a folder mixing several works via --flat).
+        # An episode decided to be re-received because it is damaged must not be filtered out again here.
         if out.exists() and not args.overwrite and not stale:
-            _eprint(f"  · 이미 있다 — 건너뛴다 ({out.name}). 다시 받으려면 --overwrite")
-            done.append((ep, "건너뜀"))
+            _eprint(f"  · already have it — skipping ({out.name}). to re-receive use --overwrite")
+            done.append((ep, "skipped"))
             continue
 ```
 
-빈 재고여도 파일명이 정확히 같으면 건너뛴다. 다만 이 뒷받침은 **재생 소스를 발급받은
-뒤**에야 작동한다 — 저장 이름을 알아야 `out` 을 만들 수 있기 때문이다. 즉 요청 80여
-건은 이미 나간 뒤다([`inventory.py:6-10`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L6-L10)). **손해가 작다는 것이지 없다는 것이 아니다.**
+Even with an empty stock, if the file name matches exactly it skips. Only, this backstop works only **after
+issuing the playback source** — because you must know the storage name to make `out`. That is, the 80-odd requests
+have already gone out ([`inventory.py:6-10`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L6-L10)). **The loss is small, not absent.**
 
-### 37.4.2 안전한 실패는 퇴화하기 쉽다
+### 37.4.2 A fail-safe degenerates easily
 
-여기에 이 장의 두 번째 명제가 있다.
+Here is this chapter's second proposition.
 
-> **"확신이 없으면 포기한다"는 규칙은, 구현에서 "언제나 포기한다"로 굳어도
-> 아무 예외를 던지지 않는다.**
+> **The rule "give up if unsure," even hardening in the implementation into "always give up," throws no
+> exception.**
 
-포기는 언제나 **안전한** 답이다. 남의 회차를 채택하지 않고, 깨진 파일을 완성본으로
-읽지도 않는다. 그래서 퇴화한 구현은 위험한 오류를 하나도 내지 않는다 — 다만
-**아무 일도 하지 않을 뿐이다.**
+Giving up is always the **safe** answer. It does not adopt someone else's episode, nor read a broken file as
+finished. So a degenerated implementation gives not a single dangerous error — it just **does nothing.**
 
-![안전한 실패가 퇴화하는 경로와 그것을 갈라내는 단정](/images/lecture/hls-recon/37-degenerate-rule.svg)
+![The path by which a fail-safe degenerates and the assertion that separates it](/images/lecture/hls-recon/37-degenerate-rule.svg)
 
-*그림 37-1 — 안전한 실패는 퇴화하기 쉽다. 조건을 잃은 규칙은 상수 함수와 같다*
+*Figure 37-1 — a fail-safe degenerates easily. A rule that lost its condition is the same as a constant function*
 
-이 교재는 이 상태를 **퇴화한 구현(degenerate implementation)** 이라 부른다 — 조건
-분기가 실질적으로 한쪽으로만 흘러, 그 함수를 상수로 바꿔도 동작이 달라지지 않는
-상태. 제15장의 **우연한 방어**와 짝을 이루는 개념이다. 우연한 방어는 "효과가 있어
-보이지만 다른 층이 만든 것"이고, 퇴화한 구현은 "규칙이 있어 보이지만 조건이 이미
-죽어 있는 것"이다. 둘 다 **측정하지 않으면 구별되지 않는다.**
+This course calls this state a **degenerate implementation** — a state where the conditional branch effectively
+flows to only one side, so replacing that function with a constant does not change behavior. It is a concept
+paired with Chapter 15's **incidental defense.** An incidental defense is "looks effective but made by another
+layer," and a degenerate implementation is "looks like a rule but the condition is already dead." Both are
+**indistinguishable without measuring.**
 
-퇴화가 실제로 일어나는 경로는 버그만이 아니다.
+The paths by which degeneration actually happens are not only bugs.
 
-| 경로 | 어떻게 생기는가 |
+| Path | How it arises |
 |---|---|
-| 리팩터링 중 조건 소실 | 사다리 한 단을 지우면 나머지가 전부 마지막 `return {}` 으로 흘러든다 |
-| 오탐 신고에 대한 대응 | "잘못 짚었다"는 보고가 오면 조건을 좁히는 방향으로 고치기 쉽다. 좁히다 보면 아무것도 통과하지 않는다 |
-| 방어적 예외 처리 | 매칭 로직을 `try/except` 로 감싸고 실패 시 빈 재고를 돌려주면, 안쪽이 늘 예외를 던져도 조용하다 |
-| 정규화 변경 | 제31장 §31.5.1 이 실측한 그대로 — `_key` 에서 NFC 정규화 한 조각만 빼면 27화가 통째로 빈 재고가 된다 |
+| condition lost during refactoring | delete one rung of the ladder and the rest all flow to the final `return {}` |
+| response to a false-positive report | when a "you guessed wrong" report comes it is easy to fix toward narrowing the condition. narrow and nothing passes |
+| defensive exception handling | wrap the matching logic in `try/except` and return an empty stock on failure, and even if the inside always throws it is quiet |
+| a normalization change | exactly as Chapter 31 §31.5.1 measured — remove one NFC-normalization piece from `_key` and 27 episodes become a wholly empty stock |
 
-마지막 행이 중요하다. **이 퇴화는 `stock_for` 를 건드리지 않고도 일어난다.** 비교 키를
-만드는 함수 하나가 바뀌면 사다리는 그대로인 채 모든 단이 헛돈다.
+The last row matters. **This degeneration happens without even touching `stock_for`.** Change one function making
+the comparison key and the ladder stays intact while every rung spins uselessly.
 
-### 37.4.3 A8 과 A9 는 서로를 대신하지 못한다
+### 37.4.3 A8 and A9 cannot substitute for each other
 
-두 단정이 무엇을 배제하는지를 변이로 갈라 보았다.
+I split by mutation what the two assertions exclude.
 
-| 변이 | `MIXED` | `ALONE` | A8 | A9 |
+| Mutation | `MIXED` | `ALONE` | A8 | A9 |
 |---|---|---|---|---|
-| 원본 | `0` | `2` | 통과 | 통과 |
-| **항상 포기**(사다리 제거) | `0` | **`0`** | 통과 | **죽음** |
-| **2단계만 제거** | `0` | **`0`** | 통과 | **죽음** |
-| **항상 채택**(모호해도 최장 줄기) | **`2`** | `2` | **죽음** | 통과 |
+| original | `0` | `2` | pass | pass |
+| **always give up** (remove ladder) | `0` | **`0`** | pass | **dead** |
+| **remove only stage 2** | `0` | **`0`** | pass | **dead** |
+| **always adopt** (longest stem even if ambiguous) | **`2`** | `2` | **dead** | pass |
 
-읽어야 할 것 둘.
+Two things to read.
 
-**첫째, "항상 포기" 변이는 A8 을 통과한다.** 당연하다 — A8 이 요구하는 것이 바로
-"이 경우에는 포기하라"이기 때문이다. 포기를 요구하는 단정으로는 포기 남발을 잡을 수
-없다. 정탐을 요구하는 단정으로 오탐을 잡을 수 없다는 §37.2.2 의 결론이 여기서 가장
-날카롭게 나타난다.
+**First, the "always give up" mutation passes A8.** Of course — because what A8 demands is exactly "give up in
+this case." An assertion demanding a give-up cannot catch a give-up overuse. The conclusion of §37.2.2 that an
+assertion demanding a true positive cannot catch a false positive appears here most sharply.
 
-**둘째, 2단계만 제거해도 결과가 같다.** `inside` 분기는 사다리 셋 중 하나이고,
-`stock_for` 는 여전히 완전 일치와 3단계를 시도한다. 즉 이것은 "함수를 상수로
-바꿨다"는 극단적 변이가 아니라 **한 분기를 빠뜨린 현실적 변이**다. 그런데도 아홉 개
-단정 중 딱 하나만 반응한다.
+**Second, removing only stage 2 gives the same result.** The `inside` branch is one of the three ladder stages,
+and `stock_for` still tries the exact match and stage 3. That is, this is not the extreme mutation "replaced the
+function with a constant" but a **realistic mutation dropping one branch.** And yet exactly one of the nine
+assertions reacts.
 
 ```python
 # inventory.py:245-247
@@ -463,21 +458,21 @@ def stock_for(groups: dict[str, dict[int, Item]], title: str) -> tuple[dict[int,
         return groups[inside[0]], f"'{inside[0]}'"
 ```
 
-이 세 줄이 **A9 하나에 매달려 있다.** `ALONE 2` 를 지우면 이 세 줄은 저장소에서
-사라져도 회귀 테스트가 초록으로 남는다. 제34장 §34.5.2 에서 `grep -q 'CC 불연속'` 을
-지우면 CC 분석 모듈 전체가 사라져도 초록으로 남는다고 한 것과 정확히 같은 구조이며,
-차이는 **여기서 사라지는 것이 검출 기능이 아니라 정상 판정 기능**이라는 점이다.
+These three lines **hang on the single A9.** Delete `ALONE 2` and these three lines can vanish from the
+repository and the regression test stays green. It is exactly the same structure as saying in Chapter 34 §34.5.2
+that deleting `grep -q 'CC discontinuity'` lets the whole CC-analysis module vanish while staying green, and the
+difference is that **what vanishes here is not a detection feature but a normal-verdict feature.**
 
-### 37.4.4 정직하게 — A7 은 사다리를 타지 않는다
+### 37.4.4 Honestly — A7 does not ride the ladder
 
-A7 의 문구는 사다리를 시험하는 것처럼 읽힌다.
+A7's phrase reads as if testing the ladder.
 
 ```
-ok "작품명이 달라도 파일 무리를 찾는다 (천원돌파 그렌라간 → 그렌라간)"
+ok "finds the file group even with a different title (천원돌파 그렌라간 → 그렌라간)"
 ```
 
-실제로는 그렇지 않다. `$STOCK` 폴더에는 `그렌라간` 이라는 줄기 **하나**밖에 없고,
-`stock_for` 는 그 경우 사다리에 들어가기 전에 답한다.
+Actually it does not. The `$STOCK` folder has only **one** stem, `그렌라간`, and `stock_for` in that case answers
+before entering the ladder.
 
 ```python
 # inventory.py:232-236
@@ -488,226 +483,220 @@ ok "작품명이 달라도 파일 무리를 찾는다 (천원돌파 그렌라간
         return only, f"'{stem}'"
 ```
 
-실측으로 확인했다. **사다리 전체를 "항상 포기"로 갈아치운 변이에서도 A7 은
-통과한다**(그 변이의 죽은 단정은 A9 하나뿐이었다). `inventory.scan()` 이 이 폴더에서
-돌려주는 무리의 수도 직접 세어 1 임을 확인했다.
+Confirmed by measurement. **A7 passes even in the mutation replacing the whole ladder with "always give up"**
+(that mutation's only dead assertion was A9). I also directly counted the number of groups `inventory.scan()`
+returns for this folder and confirmed it is 1.
 
-그러므로 정확한 문장은 이렇다.
+So the exact sentence is this.
 
-| A7 이 고정하는 것 | A7 이 고정한다고 읽히지만 고정하지 않는 것 |
+| What A7 fixes | What A7 reads as fixing but does not |
 |---|---|
-| 무리가 하나일 때 그 무리를 돌려주고 사유 문자열에 줄기 이름을 넣는다 | 작품명과 줄기가 다를 때 **부분 포함으로 잇는 능력** |
+| when there is one group, return that group and put the stem name in the reason string | **the ability to join by partial containment** when the title and stem differ |
 
-후자는 A9 가 고정한다. **단정의 이름이 그 단정이 실제로 실행하는 코드를 말해 주지
-않는다.** 이 어긋남은 테스트가 커질수록 늘어나며, 알아내는 방법은 하나뿐이다 —
-해당 코드를 지우거나 망가뜨려 보고 어느 단정이 죽는지 세는 것. 변이 테스트가
-커버리지 측정보다 정확한 이유가 여기 있다(제34장 §34.3).
+The latter is fixed by A9. **An assertion's name does not tell the code that assertion actually executes.** This
+off-ness grows as the test grows, and there is only one way to find it — delete or break the relevant code and
+count which assertion dies. This is why mutation testing is more accurate than coverage measurement (Chapter 34
+§34.3).
 
 ---
 
-## 37.5 일반화 — 조용한 오류와 시끄러운 오류
+## 37.5 Generalization — quiet errors and loud errors
 
-### 37.5.1 같은 구조가 나타나는 곳
+### 37.5.1 Where the same structure appears
 
-두 방향의 오류가 정반대 증상을 내는 판정은 어디에나 있다. 각 행에서 마지막 열이
-**테스트가 먼저 무너지는 쪽**이다 — 조용한 오류는 신고가 들어오지 않으므로 표본이
-모이지 않고, 표본이 없으면 단정도 생기지 않는다.
+A verdict whose two error directions give opposite symptoms is everywhere. In each row the last column is **the
+side the test collapses first** — a quiet error gets no reports so samples do not gather, and with no samples no
+assertion arises.
 
-| 판정 | 양성(=조치한다) | 오탐의 대가 | 미탐의 대가 | 어느 쪽이 조용한가 |
+| Verdict | Positive (=takes action) | Cost of a false positive | Cost of a false negative | Which is quiet |
 |---|---|---|---|---|
-| **재고 조사**(이 장) | 다시 받는다 | 27화 재수신 | 회차가 영원히 빠진다 | **미탐** |
-| 재시도 판정(제8장) | 재시도한다 | 서버를 향한 증폭 | 회복 가능한 실패를 포기 | 오탐 — 남의 서버에서만 보인다 |
-| 자막 중복 제거(제29장) | 중복이다 | 서로 다른 큐를 지운다 | 같은 자막이 두 번 뜬다 | **오탐** — 지워진 것은 안 보인다 |
-| 타임라인 결손(제22장) | 결손이다 | 가변 프레임률에서 오경보 | 결손을 놓친다 | 미탐 |
-| 스팸 필터 | 스팸이다 | 정상 메일이 사라진다 | 스팸이 들어온다 | **오탐** — 안 온 메일은 모른다 |
-| 침입 탐지(IDS) | 침입이다 | 경보 피로 | 침해가 진행된다 | 미탐 |
-| 취약점 스캐너 | 취약하다 | 결과 전체가 버려진다 | 취약점 잔존 | 미탐 |
-| 백신·EDR | 악성이다 | 정상 파일 격리·업무 중단 | 감염 | 미탐 |
-| 린터·정적 분석기 | 위반이다 | 무시하는 습관이 든다 | 결함 통과 | 미탐 |
-| 캐시 무효화 | 무효다 | 캐시 이득 소실 | 낡은 데이터를 서빙 | **미탐** |
-| 선별 검사(의료) | 양성 | 불필요한 정밀검사 | 진단 지연 | 미탐 |
+| **inventory** (this chapter) | re-receive | re-receive 27 episodes | the episode is missing forever | **false negative** |
+| retry verdict (Chapter 8) | retry | amplification toward the server | give up on a recoverable failure | false positive — visible only on someone else's server |
+| subtitle dedup (Chapter 29) | it is a duplicate | erases different cues | the same subtitle appears twice | **false positive** — the erased is not visible |
+| timeline loss (Chapter 22) | it is a loss | false alarm on a variable frame rate | misses the loss | false negative |
+| spam filter | it is spam | legit mail vanishes | spam comes in | **false positive** — the mail that never came is unknown |
+| intrusion detection (IDS) | it is an intrusion | alert fatigue | the compromise proceeds | false negative |
+| vulnerability scanner | it is vulnerable | the whole result is thrown away | the vulnerability remains | false negative |
+| antivirus·EDR | it is malicious | a normal file isolated·work halted | infection | false negative |
+| linter·static analyzer | it is a violation | the habit of ignoring sets in | the defect passes | false negative |
+| cache invalidation | it is invalid | the cache benefit is lost | serving stale data | **false negative** |
+| screening (medical) | positive | needless workup | diagnosis delayed | false negative |
 
-오탐이 조용한 사례가 셋 있다는 점이 중요하다. **"오탐은 항상 시끄럽다"는 것은 이
-도메인의 성질이지 일반 법칙이 아니다.** 지워진 자막 큐와 차단된 정상 메일은 아무도
-세지 않는다. 어느 쪽이 조용한지는 도메인마다 따로 판단해야 한다.
+That there are three cases where the false positive is quiet matters. **"A false positive is always loud" is a
+property of this domain, not a general law.** An erased subtitle cue and a blocked legit mail are counted by no
+one. Which is quiet must be judged separately per domain.
 
-### 37.5.2 테스트 설계 규칙 다섯
+### 37.5.2 Five test-design rules
 
-이 장에서 나오는 실행 가능한 규칙을 정리한다.
+Organize the executable rules from this chapter.
 
-1. **양성 클래스를 문서에 적는다.** 적지 않으면 "오탐"이라는 말이 팀 안에서 두 뜻으로
-   쓰인다. 이 저장소는 `bad` 문구에 방향을 박아 두는 방식으로 해결했다 —
-   `"정상 파일을 손상으로 오인"` 과 `"잘린 파일을 완성본으로 오인"`.
-2. **두 축의 표본을 같은 픽스처에 함께 둔다.** 정상 넷과 손상 둘이 같은 폴더에 있고
-   같은 실행으로 판정된다. 따로 두면 둘 중 하나가 조용히 낡는다.
-3. **정상 표본은 모양별로 나눈다.** "정상"은 한 가지가 아니다. `moov` 앞·뒤, 화수
-   `3`·`03`, `.mp4`·`.mkv` 는 각각 다른 오탐 경로를 연다.
-4. **"포기한다"·"보류한다"·"기본값을 쓴다"는 분기에는 반드시 반대 단정을 붙인다.**
-   포기가 옳은 경우만 고정하면 그 분기는 상수로 퇴화해도 살아남는다.
-5. **단정이 실제로 무엇을 실행하는지는 변이로 확인한다.** 이름과 실행 경로는
-   어긋난다(§37.4.4).
+1. **Write the positive class in the document.** Do not and the word "false positive" is used in two meanings
+   within the team. This repository solved it by nailing the direction into the `bad` phrase — `"mistook a normal
+   file for damaged"` and `"mistook a truncated file for finished"`.
+2. **Put both axes' samples in the same fixture.** Four normal and two damaged are in the same folder and judged
+   in the same run. Put them separately and one of the two quietly ages.
+3. **Split normal samples by shape.** "Normal" is not one thing. `moov` before·after, episode `3`·`03`, `.mp4`·
+   `.mkv` each open a different false-positive path.
+4. **Always attach the opposite assertion to a branch that "gives up"·"withholds"·"uses a default."** Fix only
+   the case where a give-up is right and that branch survives degenerating to a constant.
+5. **Confirm what an assertion actually executes by mutation.** The name and the execution path go off (§37.4.4).
 
-### 37.5.3 한계 — 이 규칙이 항상 성립하지는 않는다
+### 37.5.3 A limit — this rule does not always hold
 
-§37.1.3 에서 본 대로, 두 축을 동시에 요구할 수 있는 것은 **손잡이가 없는 판정기**의
-성질이다. 임계값 하나로 조절되는 판정기(제22장)에서는 두 축을 동시에 만족시키는
-구현이 존재하지 않을 수 있고, 그때 테스트가 양쪽을 다 요구하면 **통과 불가능한
-스위트**가 된다. 그 경우 고정해야 하는 것은 판정이 아니라 **선택한 지점**이다 —
-"이 임계에서 이 표본은 잡히고 저 표본은 안 잡힌다"를 그대로 못박는다.
+As seen in §37.1.3, being able to demand both axes at once is a property of a **handle-less verdict maker.** In a
+verdict maker adjusted by one threshold (Chapter 22) an implementation satisfying both axes at once may not exist,
+and then a test demanding both makes an **impassable suite.** In that case what must be fixed is not the verdict
+but the **chosen point** — nail down "at this threshold this sample is caught and that sample is not" as-is.
 
 ---
 
-## 37.6 보안 — 오탐이 많은 도구는 결국 꺼진다
+## 37.6 Security — a tool with many false positives ends up turned off
 
-### 37.6.1 세 도구, 같은 구조
+### 37.6.1 Three tools, the same structure
 
-침입 탐지·스팸 필터·취약점 스캐너는 모두 이 장의 판정기와 같은 자리에 있다. 세
-도구가 양방향으로 평가되지 않을 때 벌어지는 일도 같다.
+Intrusion detection·spam filter·vulnerability scanner are all in the same spot as this chapter's verdict maker.
+What happens when the three tools are not evaluated bidirectionally is the same too.
 
-| 도구 | 정탐만 고정했을 때의 극단 구현 | 그 구현이 실제로 배포되면 |
+| Tool | The extreme implementation when only true positives are fixed | If that implementation is actually deployed |
 |---|---|---|
-| **IDS·IPS** | 모든 트래픽을 침입이라 한다 | 규칙이 꺼지거나 예외 목록이 무한히 늘어난다 |
-| **스팸 필터** | 모든 메일을 스팸이라 한다 | 사용자가 스팸함을 매일 뒤진다 → 필터를 끈다 |
-| **취약점 스캐너** | 모든 의존성을 취약하다 한다 | 개발팀이 보고서 전체를 무시한다 |
+| **IDS·IPS** | calls all traffic an intrusion | the rule is turned off or the exception list grows infinitely |
+| **spam filter** | calls all mail spam | the user digs through the spam box daily → turns off the filter |
+| **vulnerability scanner** | calls all dependencies vulnerable | the development team ignores the whole report |
 
-세 경우 모두 **재현율은 1.00 이다.** 벤더의 자료에 그렇게 적을 수 있고, 그 숫자는
-거짓이 아니다. 거짓이 아닌 채로 아무 값도 없다.
+In all three the **recall is 1.00.** The vendor's material can write it so, and that number is not a lie. It is
+worthless while not a lie.
 
-### 37.6.2 실질 재현율 — 오탐이 갉아먹는 것은 정밀도가 아니다
+### 37.6.2 Practical recall — what a false positive gnaws is not precision
 
-> **용어** — **경보 피로(alert fatigue)**: 경보가 지나치게 자주, 또는 지나치게 자주
-> 틀리게 울려 담당자가 경보에 반응하지 않게 되는 상태. 개별 경보의 정확성과 무관하게
-> 시스템 전체의 검출 효과를 떨어뜨린다.
+> **Term** — **alert fatigue**: the state where an alert fires too often, or too often wrongly, so the responder
+> stops reacting to alerts. Regardless of an individual alert's accuracy it lowers the whole system's detection
+> effect.
 
-![오탐이 실질 재현율을 0 으로 무너뜨리는 되먹임 고리](/images/lecture/hls-recon/37-fpr-collapse.svg)
+![The feedback loop by which false positives collapse the practical recall to 0](/images/lecture/hls-recon/37-fpr-collapse.svg)
 
-*그림 37-2 — 오탐은 정밀도의 문제로 보이지만, 무너지는 것은 재현율이다*
+*Figure 37-2 — a false positive looks like a precision problem, but what collapses is recall*
 
-핵심은 **명목과 실질의 분리**다.
+The core is the **separation of nominal and practical.**
 
-| | 정의 | 누가 재는가 |
+| | Definition | Who measures it |
 |---|---|---|
-| **명목 재현율** | 시험 환경의 결함 표본 중 도구가 지목한 비율 | 도구 제작자 — 표본이 고정되어 있으므로 값이 변하지 않는다 |
-| **실질 재현율** | 운영 중 실제 사건 중 **사람의 조치로 이어진** 비율 | **아무도 재지 않는다** |
+| **nominal recall** | the ratio of the test environment's defect samples the tool pointed at | the tool maker — the samples are fixed so the value does not change |
+| **practical recall** | the ratio of actual events during operation that **led to a human action** | **no one measures** |
 
-경보를 끄거나 예외를 넓히는 행위는 명목 재현율을 한 자리도 바꾸지 않는다. 도구는
-여전히 잡고 있고, 규칙도 그대로 있다. 다만 그 출력이 어디에도 도달하지 않는다.
+The act of turning off an alert or widening the exceptions does not change the nominal recall by a single digit.
+The tool is still catching, and the rule is still there. Only, that output reaches nowhere.
 
-> **오탐률이 임계를 넘으면 도구는 무시되고, 무시된 도구의 실질 재현율은 0 이다.**
-> 그리고 이 붕괴는 도구가 보고하는 어떤 지표에도 나타나지 않는다.
+> **When the false-positive rate exceeds a threshold the tool is ignored, and an ignored tool's practical recall
+> is 0.**
+> And this collapse appears in no metric the tool reports.
 
-### 37.6.3 기저율이 정밀도를 지배한다
+### 37.6.3 The base rate dominates precision
 
-오탐이 왜 그렇게 쉽게 임계를 넘는지는 산수로 설명된다.
+Why a false positive so easily exceeds a threshold is explained by arithmetic.
 
-> **용어** — **기저율(base rate)**: 모집단에서 실제 양성이 차지하는 비율.
-> **기저율 오류(base rate fallacy)** 는 이 값을 무시한 채 도구의 재현율·오탐률만으로
-> 판정의 신뢰도를 추정하는 오류를 말한다.
+> **Term** — **base rate**: the ratio of actual positives in the population. The **base rate fallacy** is the
+> error of estimating a verdict's reliability from the tool's recall·false-positive rate alone while ignoring this
+> value.
 
-가정한 수치로 계산한다. **실측이 아니라 산수다.**
+Compute with assumed numbers. **Not a measurement but arithmetic.**
 
-| 상황 | 모집단 | 실제 양성 | 재현율 | 오탐률 | 정탐 | 오탐 | 정밀도 |
+| Situation | Population | Actual positives | Recall | False-positive rate | TP | FP | Precision |
 |---|---|---|---|---|---|---|---|
-| 침입 탐지(기저율 0.1%) | 이벤트 10만 건 | 100 | 0.99 | 1% | 99 | 999 | **9.0%** |
-| 재고 조사(기저율 3.7%) | 27화 | 1 | 1.00 | 10% | 1 | 2.6 | **27.8%** |
+| intrusion detection (base rate 0.1%) | 100,000 events | 100 | 0.99 | 1% | 99 | 999 | **9.0%** |
+| inventory (base rate 3.7%) | 27 episodes | 1 | 1.00 | 10% | 1 | 2.6 | **27.8%** |
 
-첫 행의 뜻은 이렇다. **경보 11건 중 10건이 헛것이다.** 오탐률 1%는 도구 사양서에서
-매우 좋아 보이는 값이고, 기저율이 낮으면 그 값으로도 정밀도가 한 자릿수로 내려간다.
+The first row means this. **10 of 11 alerts are false.** A false-positive rate of 1% looks very good on a tool
+spec sheet, and with a low base rate even that value brings precision down to a single digit.
 
-둘째 행은 같은 산수를 이 저장소에 적용한 것이다. 27화 중 한 화가 강제 종료로 깨졌다고
-할 때, 오탐률 10%짜리 판정기의 정밀도는 27.8% — **"다시 받는다"는 판정 넷 중 셋이
-멀쩡한 파일**이다. 그리고 사용자가 보는 것은 정밀도가 아니라 "매번 27화가 다시
-내려받아진다"는 현상이며, 그다음에 하는 일은 재고 조사를 신뢰하지 않는 것이다.
+The second row applies the same arithmetic to this repository. If one of 27 episodes broke by a forced kill, a
+verdict maker with a 10% false-positive rate has precision 27.8% — **three of every four "re-receive" verdicts are
+fine files.** And what the user sees is not precision but the phenomenon "27 episodes are re-downloaded every
+time," and what they do next is to distrust the inventory.
 
-**이것이 오탐 표본이 결함 표본만큼 중요한 이유다.** 기저율이 낮은 영역에서는
-정밀도가 곧 도구의 수명이다.
+**This is why false-positive samples matter as much as defect samples.** In a low-base-rate area precision is the
+tool's lifespan.
 
-### 37.6.4 방어자 관점
+### 37.6.4 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **탐지 엔지니어링** | 규칙마다 **반드시 발화하는 입력**(제34장)과 함께 **반드시 발화하지 않아야 하는 정상 입력**을 짝으로 둔다. 후자가 없는 규칙은 조여도 아무도 모르고, 조인 결과는 경보 피로로 돌아온다 |
-| **SOC 운영** | 경보 처리 결과(정탐/오탐)를 라벨로 남겨 **운영 중 정밀도를 실제로 계산한다.** 계산하지 않으면 "너무 시끄럽다"는 느낌만 남고, 느낌으로는 규칙을 고칠 수 없다 |
-| **보안 도구 도입 담당자** | 벤더의 탐지 목록은 재현율 주장이다. **자기 환경의 기저율**을 넣어 정밀도를 추정하고, 그 값으로 운영 부담을 예측한다. 재현율만 보고 도입한 도구는 6개월 뒤 예외 목록으로 덮인다 |
-| **취약점 관리** | 스캐너 결과를 그대로 티켓으로 만들지 않는다. 오탐이 섞인 채로 개발팀에 전달되면 **보고서 전체의 신뢰가 떨어지고**, 그때 사라지는 것은 오탐이 아니라 정탐이다 |
-| **규칙을 끄는 사람** | 끄는 것 자체가 잘못은 아니다(제15장 — 방어를 꺼야 할 때는 가장 좁은 범위로). 잘못은 **끈 사실이 어디에도 기록되지 않는 것**이다. 예외 목록은 만료일과 근거를 함께 가진다 |
-| **감사자** | "탐지율 99%"를 근거로 받지 않는다. **오탐률·기저율·운영 중 정밀도·예외 목록의 크기**를 함께 요구한다. 넷 중 하나라도 없으면 그 99%는 검증 대상이지 근거가 아니다 |
-| **도구 제작자** | 미탐 조건과 함께 **오탐 조건도 문서화한다.** 제22장 §22.5 의 가변 프레임률처럼, "이런 정상 입력에서 이 검사는 틀린다"를 적어 둔 도구가 적지 않은 도구보다 오래 쓰인다 |
+| **detection engineering** | for each rule pair **an input that necessarily fires** (Chapter 34) with **a normal input that must necessarily not fire.** a rule with no latter is tightened with no one knowing, and the tightened result comes back as alert fatigue |
+| **SOC operations** | leave the alert-handling result (true/false positive) as a label and **actually compute precision during operation.** without computing it only the feeling "too noisy" remains, and by feeling you cannot fix the rule |
+| **security-tool adoption owner** | the vendor's detection list is a recall claim. put in **your environment's base rate** to estimate precision, and predict the operational burden by that value. a tool adopted on recall alone is buried under an exception list in six months |
+| **vulnerability management** | do not turn scanner results directly into tickets. delivered to the dev team with false positives mixed in, **the whole report's trust drops**, and what vanishes then is not the false positives but the true positives |
+| **the person turning off a rule** | turning it off is not itself wrong (Chapter 15 — when defense must be turned off, at the narrowest scope). the wrong is **that the fact of turning it off is recorded nowhere.** an exception list carries an expiry and a basis together |
+| **auditor** | do not accept "99% detection rate" as a basis. require together the **false-positive rate·base rate·operational precision·exception-list size.** missing even one of the four and that 99% is a verification target, not a basis |
+| **tool maker** | document the **false-positive conditions** along with the miss conditions. like Chapter 22 §22.5's variable frame rate, a tool that wrote "this check is wrong on this normal input" is used longer than one that did not |
 
-이 절은 특정 탐지 제품을 회피하는 방법을 다루지 않는다. 다루는 것은 **"내가 켜 둔
-탐지기가 아직 사람에게 도달하고 있는가"** 라는 방어자의 문제다. 제34장이 "탐지기가
-죽었는지"를 물었다면, 이 장은 **"탐지기가 살아 있는데도 아무도 듣지 않게 되는 경로"**
-를 묻는다.
-
----
-
-## 37.7 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **변이 실험은 저장소에 없다.** §37.3.3·§37.4.3 의 표는 집필 중 1회 측정이며 회귀
-  테스트로 고정되어 있지 않다. 즉 **"이 아홉 단정이 이 변이들을 배제한다"는 성질
-  자체는 지켜지지 않는다.** 제34장 §34.9 와 같은 미해결 항목이다.
-- **정밀도 1.00 은 표본 넷에 대한 값이다.** §37.2.3 의 표는 회귀 테스트가 만든 정상
-  표본 네 개에 대한 계산이지, 실제 사용에서의 오탐률이 아니다. 실제 오탐률을 알려면
-  야생의 파일 분포가 필요하고, 이 저장소에는 그런 표본이 없다.
-- **A7 은 이름이 말하는 것을 고정하지 않는다.**(§37.4.4, 실측) 문구를 고치거나 무리가
-  둘 이상인 표본을 추가해야 이름과 실행이 맞는다. 현재는 어긋난 채다.
-- **`GAPS` 는 출력되지만 단정되지 않는다.** `tests/run.sh:378` 이
-  `inventory.subtitle_gaps(stock)` 을 찍지만 이 블록의 아홉 단정 중 그것을 보는 것은
-  없다(확인함). 자막 결손 판정은 뒤의 자막 메우기 블록이 `FILLED 1 0`
-  (`tests/run.sh:460`)으로 간접 고정할 뿐이다.
-- **`--verify-existing`(deep) 경로는 고정되지 않는다.** `flaw(path, deep=True)` 가
-  `ffprobe` 를 띄우는 분기([`inventory.py:153-159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L153-L159))는 이 블록의 어느 단정도 지나가지
-  않는다. 구조 검사를 통과하지만 실제로는 열리지 않는 파일 — 미탐 축의 남은 영역이다.
-- **`MEDIA_EXTS` 의 일부 확장자에는 판정 자체가 없다.** `.avi` 는 재고 조사 대상이
-  되지만 `flaw()` 의 어느 분기에도 걸리지 않아 크기 하한만 넘으면 온전하다고 읽힌다
-  (제20장 §20.3.6·§20.7). **미탐 방향의 실재하는 구멍인데 이 블록에는 대응 표본이
-  없다.**
-- **아홉은 사람이 상상한 아홉이다.** 오탐·미탐이 실제로 어떤 분포로 일어나는지는
-  측정된 적이 없다. 양방향 고정은 **상상한 두 방향**을 고정할 뿐이며, 상상하지 못한
-  실패 모드에 대해서는 제34장 §34.9 의 한계가 그대로 남는다.
-- **§37.6 의 "무시된 도구의 실질 재현율은 0"은 이 저장소에서 측정한 것이 아니다.**
-  경보 피로는 보안 운영에서 널리 보고되는 현상이지만, 이 장은 그 현상을 인용한
-  것이지 실측한 것이 아니다. §37.6.3 의 두 표도 명시했듯 **가정한 수치의 산수**다.
-- **퇴화한 구현이 실제로 이 저장소에서 발생한 적이 있는지는 확인하지 못했다.**
-  §37.4.2 의 네 경로는 코드 구조에서 **가능하다고 추론한 것**이며, 커밋 이력을 뒤져
-  실제 사례를 확인하지는 않았다.
+This section does not cover how to evade a particular detection product. What it covers is the defender's problem
+**"is the detector I turned on still reaching a human."** If Chapter 34 asked "is the detector dead," this chapter
+asks **"the path by which a detector, alive, comes to be heard by no one."**
 
 ---
 
-## 37.8 요약
+## 37.7 Limits and open questions
 
-1. 재고 조사의 판정은 **틀리는 방향에 따라 증상이 정반대**다. 너무 엄격하면 멀쩡한
-   27화를 매번 다시 받고, 너무 관대하면 깨진 파일이 완성본 행세를 해 **그 회차가
-   영원히 복구되지 않는다.** 앞쪽은 시끄럽고 뒤쪽은 조용하다.
-2. **혼동 행렬을 쓰기 전에 양성 클래스를 고정해야 한다.** 이 교재는 검증 도구의
-   관례를 따라 "결함이 있다 = FAIL"을 양성으로 잡는다.
-3. **재현율은 결함 표본으로만, 정밀도는 정상 표본으로만 잰다.** 한쪽 표본이 없는
-   테스트 묶음에서는 그쪽 지표가 정의되지 않고, 정의되지 않는 것은 고정되지도 않는다.
-4. 실측: **"항상 손상"이라고 답하는 구현의 재현율은 1.00 으로 실물과 같다.** 정탐 축
-   세 단정(A5·A6·A8)만 고정하면 이 구현이 **3/3 으로 통과**한다.
-5. 대칭 명제: **정탐만 고정한 테스트는 "항상 FAIL 을 내는 구현"을 통과시킨다.**
-   제34장의 "정상만 고정한 테스트는 항상 PASS 를 내는 구현을 통과시킨다"와 같은 표의
-   두 행이다. 한 행만 채운 표는 표가 아니다.
-6. 정상 표본이 넷인 것은 낭비가 아니다. **정상은 한 가지 모양이 아니다** — `moov`
-   앞·뒤, 화수 `3`·`03`, `.mp4`·`.mkv` 가 각각 다른 오탐 경로를 연다.
-7. **"모호하면 포기한다"는 안전한 규칙은 "항상 포기한다"로 굳어도 아무 예외를 던지지
-   않는다.** 그러면 `--flat` 에서 재고 조사가 죽은 코드가 된다. 포기를 요구하는
-   단정(A8)으로는 이 퇴화를 잡을 수 없고, **가릴 수 있는 경우를 고정한 단정(A9)만이**
-   잡는다. 실측에서 [`inventory.py:245-247`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L245-L247) 세 줄에 매달린 단정은 A9 하나였다.
-8. 단정의 **이름은 그 단정이 실행하는 코드를 말해 주지 않는다.** A7 은 작품명 매칭
-   사다리를 시험하는 것처럼 읽히지만 실제로는 단일 무리 지름길로 답한다(실측).
-   알아내는 방법은 변이뿐이다.
-9. 보안 일반화: 침입 탐지·스팸 필터·취약점 스캐너가 모두 같은 구조이며,
-   **오탐이 임계를 넘은 도구는 무시되고 무시된 도구의 실질 재현율은 0 이다.**
-   그동안 명목 재현율은 한 자리도 움직이지 않는다. 기저율이 낮은 영역에서는
-   **정밀도가 곧 도구의 수명**이다.
+Written honestly.
+
+- **The mutation experiment is not in the repository.** §37.3.3·§37.4.3's tables are a one-off measurement while
+  writing and not fixed by a regression test. That is, **the very property "these nine assertions exclude these
+  mutations" is not kept.** It is the same open item as Chapter 34 §34.9.
+- **Precision 1.00 is a value for four samples.** §37.2.3's table is a calculation for the four normal samples the
+  regression test makes, not the false-positive rate in real use. To know the real false-positive rate you need
+  the distribution of wild files, and this repository has no such sample.
+- **A7 does not fix what its name says** (§37.4.4, measured). The phrase must be fixed or a sample with two or
+  more groups added for the name and the execution to match. Currently it is off.
+- **`GAPS` is output but not asserted.** `tests/run.sh:378` prints `inventory.subtitle_gaps(stock)` but none of
+  this block's nine assertions looks at it (confirmed). The subtitle-loss verdict is only indirectly fixed by the
+  later subtitle-filling block as `FILLED 1 0` (`tests/run.sh:460`).
+- **The `--verify-existing` (deep) path is not fixed.** The branch where `flaw(path, deep=True)` spawns `ffprobe`
+  ([`inventory.py:153-159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L153-L159)) is passed by none of this block's assertions. A file that passes the structure check but does
+  not actually open — the remaining region of the false-negative axis.
+- **Some extensions in `MEDIA_EXTS` have no verdict at all.** `.avi` becomes an inventory target but catches on
+  none of `flaw()`'s branches so if only the size lower bound is exceeded it is read as intact (Chapter 20
+  §20.3.6·§20.7). **A real hole in the false-negative direction, and this block has no corresponding sample.**
+- **The nine are nine a human imagined.** What distribution false positives·false negatives actually occur in was
+  never measured. Bidirectional fixing fixes only the **two imagined directions**, and for failure modes not
+  imagined Chapter 34 §34.9's limit remains as-is.
+- **§37.6's "an ignored tool's practical recall is 0" was not measured in this repository.** Alert fatigue is a
+  widely-reported phenomenon in security operations, but this chapter cited that phenomenon, not measured it.
+  §37.6.3's two tables are, as stated, **arithmetic of assumed numbers.**
+- **Whether a degenerate implementation actually happened in this repository could not be confirmed.** §37.4.2's
+  four paths are **inferred as possible** from the code structure, and I did not dig through the commit history to
+  confirm an actual case.
 
 ---
 
-**다음 장** — 여기까지 제8부는 판정을 PASS 와 FAIL 두 값으로 다뤘다. 그러나 제36장의
-노란 점이 이미 세 번째 값을 보여 주었다 — 관측은 했으나 판정하지 않는 자리. 제38장은
-그 자리를 정면으로 다룬다. 기준선이 성립하지 않을 때 도구는 무엇을 출력해야 하는가,
-그리고 **측정 대상이 측정 기준을 끌고 가면** 검사가 왜 항상 통과하게 되는가 —
-자기 참조 검증의 함정이다.
+## 37.8 Summary
+
+1. The inventory verdict has **opposite symptoms by the direction of the error.** Too strict and 27 fine episodes
+   are re-received every time, too lenient and a broken file passes as finished so **that episode is never
+   recovered.** The former is loud and the latter quiet.
+2. **The positive class must be fixed before using the confusion matrix.** This course, following the
+   verification-tool convention, sets "has a defect = FAIL" as positive.
+3. **Recall is measured only by defect samples, precision only by normal samples.** In a test suite missing one
+   sample side that metric is undefined, and what is undefined is not fixed either.
+4. Measured: **the recall of an implementation answering "always damaged" is 1.00, same as the real one.** Fix
+   only the three true-positive-axis assertions (A5·A6·A8) and this implementation **passes 3/3.**
+5. The symmetric proposition: **a test fixing only true positives passes an "implementation that always gives
+   FAIL."** It is two rows of the same table as Chapter 34's "a test fixing only normal passes an implementation
+   that always gives PASS." A table with only one row filled is not a table.
+6. That the normal samples are four is not waste. **Normal is not one shape** — `moov` before·after, episode
+   `3`·`03`, `.mp4`·`.mkv` each open a different false-positive path.
+7. **The safe rule "give up if ambiguous," even hardening into "always give up," throws no exception.** Then the
+   inventory becomes dead code under `--flat`. An assertion demanding a give-up (A8) cannot catch this
+   degeneration, and **only the assertion fixing the disambiguatable case (A9)** catches it. In the measurement
+   the assertion hanging on [`inventory.py:245-247`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L245-L247)'s three lines was the single A9.
+8. An assertion's **name does not tell the code it executes.** A7 reads as testing the work-title-matching ladder
+   but actually answers via the single-group shortcut (measured). The only way to find out is mutation.
+9. Security generalization: intrusion detection·spam filter·vulnerability scanner are all the same structure, and
+   **a tool whose false positives crossed a threshold is ignored, and an ignored tool's practical recall is 0.**
+   Meanwhile the nominal recall does not move a single digit. In a low-base-rate area **precision is the tool's
+   lifespan.**
+
+---
+
+**Next chapter** — Part 8 so far handled a verdict as the two values PASS and FAIL. But Chapter 36's yellow dot
+already showed a third value — a spot that observed but did not judge. Chapter 38 faces that spot head-on. What
+must the tool output when the baseline does not hold, and why does a check always pass when **the measurement
+target drags the measurement standard** — the trap of self-referential verification.

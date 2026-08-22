@@ -1,320 +1,315 @@
 ---
-untranslated: ko
-title: "회피가 방어를 끄게 만들 때"
-description: "CVE-2023-6602 와 allowed_extensions ALL, 그리고 측정되지 않은 개선"
-date: 2026-08-17
+title: "When Evasion Makes You Turn Off the Defense"
+description: "CVE-2023-6602 and allowed_extensions ALL, and an unmeasured improvement"
+date: 2026-06-22
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-15-evasion-disables-defense.svg
 ---
-## 15.0 이 장에서 답할 것
+## 15.0 What this chapter answers
 
-1. ffmpeg 은 왜 세그먼트 확장자를 검사하는가 — 편의인가 방어인가
-2. 위장 송출을 열려면 무엇을 꺼야 하는가
-3. 그것을 끄면 무엇이 열리는가
-4. **보안 개선이 실제로 개선인지 어떻게 확인하는가**
+1. Why does ffmpeg check the segment extension — convenience or defense?
+2. To open a masquerading delivery, what must you turn off?
+3. Turn it off and what opens?
+4. **How do you confirm whether a security improvement is actually an improvement?**
 
-마지막 질문이 이 장의 정점이다. 이 장은 실제로 개선을 시도했다가 **그 개선이
-측정되지 않는다는 것을 발견한 기록**이기도 하다.
+The last question is this chapter's peak. This chapter is also **a record of actually attempting an
+improvement and discovering that the improvement is not measured.**
 
 ---
 
-## 15.1 문제 — 한 줄이 무엇을 하는가
+## 15.1 The problem — what one line does
 
-제14장에서 확인했듯, ffmpeg 에 플레이리스트를 위임하는 경로는 위장 확장자에 막힌다.
-이 저장소는 그것을 인자 하나로 해결했다. 변경 전 코드는 이랬다.
+As confirmed in Chapter 14, the path delegating the playlist to ffmpeg is blocked by the masquerading
+extension. This repository solved that with one argument. The code before the change was this.
 
 ```python
-# probe.py:48 (변경 전)
+# probe.py:48 (before the change)
 args += ["-allowed_extensions", "ALL"]
 ```
 
-`ALL` — 무엇이든 허용. 위장 세그먼트가 열린다. 문제가 해결된 것처럼 보인다.
+`ALL` — allow anything. The masquerading segment opens. The problem looks solved.
 
-주석도 이 인자가 왜 필요한지를 성실히 설명한다([`probe.py:64-73`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L64-L73)). 그러나 **이 인자가
-무엇을 끄는 것인지는 어디에도 적혀 있지 않았다.** 이 장은 그 빈칸을 채운다.
-
----
-
-## 15.2 원리 — 플레이리스트가 demuxer 를 고른다
-
-### 15.2.1 확장자 검사는 보안 패치다
-
-FFmpeg 상류가 이 검사를 도입한 패치의 커밋 메시지는 그 목적을 명시한다 —
-**CVE-2023-6602** 대응이며, "HLS Force TTY Demuxer" 와 "HLS XBIN Demuxer DoS
-Amplification" 을 고친다고 적혀 있다.
-
-> **용어** — **demuxer(디멀티플렉서)**: 컨테이너 파일에서 오디오·비디오·자막 등
-> 개별 스트림을 분리해 내는 구성 요소. FFmpeg 은 수백 종을 내장하며, 그중 상당수는
-> 영상과 무관한 오래된 포맷이다(TTY 텍스트 애니메이션, XBIN 등).
-
-### 15.2.2 공격 구조
-
-문제의 뿌리는 제14장 §14.3.1 에서 확인한 규격의 성질이다 — **HLS 플레이리스트의
-세그먼트 URI 는 규격상 자유롭다.**
-
-![공격자가 통제하는 것은 플레이리스트 텍스트 한 장뿐이다](/images/lecture/hls-recon/15-attack-chain.svg)
-
-*그림 15-1 — 공격자가 통제하는 것은 플레이리스트 텍스트 한 장뿐이다*
-
-핵심은 **공격자가 "어떤 파서를 실행시킬지"를 원격에서 고를 수 있다**는 것이다.
-플레이리스트는 텍스트 한 장이고, 그것을 여는 순간 수백 개 demuxer 중 하나가
-공격자의 선택에 따라 기동한다.
-
-이것은 **공격면 확대(attack surface expansion)** 의 교과서적 형태다. 취약점은
-demuxer 안에 있지만, 그 demuxer 에 **도달할 수 있게 만든 것**은 HLS 의 URI 자유도다.
-
-### 15.2.3 방어의 형태
-
-확장자 allowlist 는 취약점을 고치지 않는다. **도달 경로를 좁힌다.**
-
-![allowlist 는 취약점을 고치지 않고 도달 경로를 좁힌다](/images/lecture/hls-recon/15-mitigation.svg)
-
-*그림 15-2 — allowlist 는 취약점을 고치지 않고 도달 경로를 좁힌다*
-
-이 구분이 중요하다. **취약점 수정(patch)과 도달 경로 축소(mitigation)는 다른
-층위의 대응이고, 실무에서는 후자가 먼저 배포된다.** 수백 개 demuxer 를 전부 감사하는
-것보다 관문 하나를 좁히는 것이 빠르기 때문이다.
+The comment too diligently explains why this argument is needed ([`probe.py:64-73`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L64-L73)). But **what this argument
+turns off was written nowhere.** This chapter fills that blank.
 
 ---
 
-## 15.3 방어는 한 층이 아니라 셋이다
+## 15.2 The principle — the playlist chooses the demuxer
 
-실측으로 확인한 FFmpeg 8.1.1 의 구조다. 옵션 조합을 바꿔 가며 어느 에러가 나오는지
-추적하면 층이 분리된다.
+### 15.2.1 The extension check is a security patch
 
-![FFmpeg 8 의 확장자 방어 3층 구조](/images/lecture/hls-recon/15-defense-layers.svg)
+The commit message of the patch by which FFmpeg upstream introduced this check states its purpose — it is a
+**CVE-2023-6602** response, and says it fixes the "HLS Force TTY Demuxer" and "HLS XBIN Demuxer DoS
+Amplification."
 
-*그림 15-3 — FFmpeg 8 의 확장자 방어 3층 구조*
+> **Term** — **demuxer (demultiplexer)**: a component that separates individual streams — audio·video·subtitle,
+> etc. — out of a container file. FFmpeg has hundreds built in, and many of them are old formats unrelated to
+> video (TTY text animation, XBIN, etc.).
 
-측정 결과표다.
+### 15.2.2 The attack structure
 
-| 입력 | 옵션 | 결과 | 걸린 층 |
+The problem's root is the spec property confirmed in Chapter 14 §14.3.1 — **an HLS playlist's segment URI is
+free by spec.**
+
+![What the attacker controls is only one sheet of playlist text](/images/lecture/hls-recon/15-attack-chain.svg)
+
+*Figure 15-1 — what the attacker controls is only one sheet of playlist text*
+
+The crux is that **the attacker can choose remotely "which parser to run."** The playlist is one sheet of
+text, and the moment it is opened one of hundreds of demuxers boots according to the attacker's choice.
+
+This is a textbook form of **attack-surface expansion.** The vulnerability is inside a demuxer, but what **made
+it reachable** is HLS's URI freedom.
+
+### 15.2.3 The form of defense
+
+The extension allowlist does not fix the vulnerability. **It narrows the path to reach it.**
+
+![An allowlist does not fix the vulnerability but narrows the path to reach it](/images/lecture/hls-recon/15-mitigation.svg)
+
+*Figure 15-2 — an allowlist does not fix the vulnerability but narrows the path to reach it*
+
+This distinction matters. **A vulnerability fix (patch) and a reach-path reduction (mitigation) are responses
+at different layers, and in practice the latter is deployed first.** Because narrowing one gate is faster than
+auditing all hundreds of demuxers.
+
+---
+
+## 15.3 The defense is not one layer but three
+
+The structure of FFmpeg 8.1.1 confirmed by measurement. Trace which error comes out while changing the option
+combinations and the layers separate.
+
+![FFmpeg 8's three-layer extension-defense structure](/images/lecture/hls-recon/15-defense-layers.svg)
+
+*Figure 15-3 — FFmpeg 8's three-layer extension-defense structure*
+
+The measurement result table.
+
+| Input | Option | Result | Layer caught |
 |---|---|---|---|
-| `.html` / 로컬 | 없음 | 거부 | ② |
-| `.html` / 로컬 | `-allowed_extensions ALL` | **열림** | — |
-| `.html` / 원격 | 없음 | **열림** | — (①에서 기본 허용) |
-| `.txt` / 로컬 | `-allowed_extensions ALL` | 거부 | ① |
-| `.txt` / 로컬 | `-allowed_segment_extensions ALL` | 거부 | ② |
-| `.txt` / 원격 | `-allowed_segment_extensions ALL` | 거부 | ③ |
+| `.html` / local | none | rejected | ② |
+| `.html` / local | `-allowed_extensions ALL` | **opens** | — |
+| `.html` / remote | none | **opens** | — (allowed by default at ①) |
+| `.txt` / local | `-allowed_extensions ALL` | rejected | ① |
+| `.txt` / local | `-allowed_segment_extensions ALL` | rejected | ② |
+| `.txt` / remote | `-allowed_segment_extensions ALL` | rejected | ③ |
 
-여기서 이미 중요한 사실 하나가 나온다. **`-allowed_extensions ALL` 은 ①을 뚫지
-못한다.** `.txt`·`.png` 위장은 ①에서 먼저 걸리므로 이 저장소의 인자로는 열리지
-않는다. 제14장 §14.5.4 에서 `remux` 모드가 `.txt` 스트림에 실패한 이유가 이것이다.
-
----
-
-## 15.4 그래서 `ALL` 은 무엇을 껐는가
-
-②층 전체다. 즉 **CVE-2023-6602 대응 중 한 층을 조건 없이 해제**한다.
-
-여기서 이 장의 첫 번째 명제가 나온다.
-
-> **한쪽의 필터 회피 관행이 다른 쪽의 보안 방어를 끄도록 강요한다.**
-
-구조를 그리면 이렇다.
-
-![결정하는 쪽과 비용을 치르는 쪽이 다르다](/images/lecture/hls-recon/15-externality.svg)
-
-*그림 15-4 — 결정하는 쪽과 비용을 치르는 쪽이 다르다*
-
-송출자는 자신의 회피 목적을 달성하지만, 그 대가는 **자사 콘텐츠를 여는 모든
-클라이언트가 확장자 방어를 완화하는 것**이다. 비용이 제3자에게 전가된다.
-
-이것을 **외부효과(externality)** 라고 부를 수 있다. 결정을 내리는 주체와 비용을
-치르는 주체가 다르며, 결정 주체에게는 비용이 보이지 않는다.
+Here one important fact already comes out. **`-allowed_extensions ALL` does not pierce ①.** A `.txt`·`.png`
+masquerade is caught first at ①, so it does not open with this repository's argument. The reason `remux` mode
+failed on a `.txt` stream in Chapter 14 §14.5.4 is this.
 
 ---
 
-## 15.5 개선을 시도하다 — 그리고 측정하다
+## 15.4 So what did `ALL` turn off?
 
-`ALL` 은 필요 이상으로 넓다. **최소 권한 원칙(principle of least privilege)** 에
-따르면 실제로 필요한 것만 열거해야 한다. 이 도구가 다루는 확장자는 유한하다.
+The whole of layer ②. That is, **it unconditionally lifts one layer of the CVE-2023-6602 response.**
+
+Here comes this chapter's first proposition.
+
+> **One side's filter-evasion practice forces the other side's security defense to be turned off.**
+
+Drawn as a structure, it is this.
+
+![The side that decides and the side that pays the cost are different](/images/lecture/hls-recon/15-externality.svg)
+
+*Figure 15-4 — the side that decides and the side that pays the cost are different*
+
+The deliverer achieves its evasion purpose, but the price is **every client that opens its content relaxing its
+extension defense.** The cost is passed to a third party.
+
+This can be called an **externality.** The party making the decision and the party paying the cost differ, and
+the cost is invisible to the deciding party.
+
+---
+
+## 15.5 Attempting an improvement — and measuring it
+
+`ALL` is broader than necessary. By the **principle of least privilege**, you should enumerate only what is
+actually needed. The extensions this tool handles are finite.
 
 ```python
-# probe.py:52, probe.py:80 (변경 후)
+# probe.py:52, probe.py:80 (after the change)
 ALLOWED_SEGMENT_EXTS = "ts,m4s,mp4,m4v,mov,m4a,aac,mp3,ac3,ec3,vtt,webvtt,m3u8,m3u,html"
 
 args += ["-allowed_extensions", ALLOWED_SEGMENT_EXTS]
 ```
 
-여기서 멈추면 안 된다. **개선이라고 부르려면 개선되었음을 보여야 한다.**
-확인해야 할 것이 둘이다.
+You must not stop here. **To call it an improvement you must show it improved.** Two things to confirm.
 
-1. **기능 회귀가 없는가** — 열려야 할 것이 여전히 열리는가
-2. **공격면이 실제로 줄었는가** — `ALL` 에서 열리던 것이 이제 막히는가
+1. **Is there no functional regression** — do the things that should open still open?
+2. **Did the attack surface actually shrink** — is what opened under `ALL` now blocked?
 
-### 15.5.1 기능 회귀 확인
+### 15.5.1 Functional-regression check
 
-| 입력 | `ALL` (변경 전) | 열거 (변경 후) |
+| Input | `ALL` (before) | enumeration (after) |
 |---|---|---|
-| `.html` / 로컬 | 열림 | **열림** |
-| `.html` / 원격 | 열림 | **열림** |
-| `.ts` / 로컬 | 열림 | **열림** |
+| `.html` / local | opens | **opens** |
+| `.html` / remote | opens | **opens** |
+| `.ts` / local | opens | **opens** |
 
-회귀 없음. 전체 회귀 테스트(`./tests/run.sh`)도 **62/62 통과**했다.
+No regression. The full regression test (`./tests/run.sh`) also **passed 62/62.**
 
-### 15.5.2 공격면 축소 확인 — 예상과 다른 결과
+### 15.5.2 Attack-surface-reduction check — a result different from expectation
 
-②층 기본 목록에는 있지만 이 도구가 쓰지 않는 확장자로 측정했다. 내용은 전부
-동일한 MPEG-TS 이고 파일명만 다르다.
+Measured with extensions that are in the layer-② default list but this tool does not use. The content is all
+identical MPEG-TS and only the filename differs.
 
-| 확장자 | `ALL` (변경 전) | 열거 (변경 후) | 차이 |
+| Extension | `ALL` (before) | enumeration (after) | Difference |
 |---|---|---|---|
-| `.avi` | 거부 | 거부 | 없음 |
-| `.mkv` | 거부 | 거부 | 없음 |
-| `.vob` | 거부 | 거부 | 없음 |
-| `.ogg` | 거부 | 거부 | 없음 |
-| `.wav` | 거부 | 거부 | 없음 |
-| `.flac` | 거부 | 거부 | 없음 |
-| `.3gp` | 거부 | 거부 | 없음 |
-| `.html` | 열림 | 열림 | 없음 |
-| `.ts` | 열림 | 열림 | 없음 |
+| `.avi` | rejected | rejected | none |
+| `.mkv` | rejected | rejected | none |
+| `.vob` | rejected | rejected | none |
+| `.ogg` | rejected | rejected | none |
+| `.wav` | rejected | rejected | none |
+| `.flac` | rejected | rejected | none |
+| `.3gp` | rejected | rejected | none |
+| `.html` | opens | opens | none |
+| `.ts` | opens | opens | none |
 
-**모든 항목에서 동작이 같다.** 공격면 축소가 측정되지 않는다.
-
----
-
-## 15.6 왜 측정되지 않는가 — 우연한 방어
-
-원인은 §15.3 의 3층 구조에 있다. ③층(포맷–확장자 일치 검사)이 **②층 뒤에서,
-그리고 더 엄격하게** 걸러낸다.
-
-![우연한 방어 — ②는 ③에 가려져 있다](/images/lecture/hls-recon/15-incidental-defense.svg)
-
-*그림 15-5 — 우연한 방어 — ②는 ③에 가려져 있다*
-
-즉 **②층은 현재 ③층에 가려져 있다.** ②를 좁히든 넓히든 관측 가능한 차이가 없다.
-
-이 상태를 부를 이름이 필요하다. 이 교재는 **우연한 방어(incidental defense)** 라고
-부른다 — 어떤 통제가 실제로 효과를 내는 것이 아니라, **다른 통제가 그 앞을 막고
-있어서 효과가 있어 보이거나, 반대로 없어 보이는 상태.**
-
-여기서 이 장의 두 번째 명제가 나온다.
-
-> **보안 개선을 측정하지 않으면 그것이 개선인지 알 수 없고,
-> 측정하지 않은 채 개선이라 부르면 보안 극장(security theater)이 된다.**
-
-측정하지 않았다면 이 변경은 "최소 권한 원칙을 적용해 공격면을 줄였다"고 기록됐을
-것이다. 그 기록은 **틀린 문장은 아니지만 참인 근거가 없는 문장**이다. 그리고 다음
-사람은 그 문장을 근거로 "이 부분은 이미 강화되었다"고 판단하게 된다.
+**The behavior is the same on every item.** The attack-surface reduction is not measured.
 
 ---
 
-## 15.7 그럼에도 열거를 택한 이유
+## 15.6 Why is it not measured — the incidental defense
 
-측정되지 않았다면 되돌려야 하는가. 이 교재의 판단은 **유지**이며, 근거는 둘이다.
-근거를 명시하지 않은 유지는 취향이지 공학이 아니므로 적어 둔다.
+The cause is in §15.3's three-layer structure. Layer ③ (the format–extension match check) filters **behind
+layer ②, and more strictly.**
 
-### 근거 1 — 층 사이의 결합을 만들지 않는다
+![The incidental defense — ② is hidden behind ③](/images/lecture/hls-recon/15-incidental-defense.svg)
 
-**심층 방어(defense in depth)** 는 각 층이 **독립적으로** 작동할 때만 성립한다.
-"③이 막아 주니까 ②는 넓게 열어 둬도 된다"는 판단은 ②의 안전성을 ③의 존재에
-의존시킨다. 그러면 ③이 완화되거나 제거되는 순간 ②는 아무 방어도 하지 않는 상태로
-남는다 — 그리고 **그 사실을 아무도 모른다.**
+*Figure 15-5 — the incidental defense — ② is hidden behind ③*
 
-이 저장소는 ffmpeg 버전을 고정하지 않는다. README 의 요구사항은 "ffmpeg/ffprobe 가
-PATH 에 있을 것"이 전부다. ③층이 도입된 것은 비교적 최근(2025년 1월 상류 커밋,
-4.4·7.0·7.1 릴리스 브랜치로 백포트)이고, 그것이 없는 빌드에서는 **②가 유일한
-관문**이다. 즉 이 변경의 효과는 **현재 환경에서 0 이지만 모든 환경에서 0 은 아니다.**
+That is, **layer ② is currently hidden behind layer ③.** Narrow ② or widen it and there is no observable
+difference.
 
-### 근거 2 — 목록 자체가 기록이 된다
+This state needs a name. This course calls it an **incidental defense** — a state where a control does not
+actually take effect, but **another control blocking in front of it makes it look effective, or conversely look
+ineffective.**
 
-`ALL` 은 "무엇이든 연다"는 선언이고, 그것은 이 도구의 실제 필요와 다르다. 열거된
-목록은 **"이 도구가 어떤 세그먼트 포맷을 다루는가"의 단일 출처**가 된다. 새 포맷을
-지원할 때 고쳐야 할 자리가 명시되고, 코드를 읽는 사람이 지원 범위를 알 수 있다.
+Here comes this chapter's second proposition.
 
-### 그리고 정직하게 — 코드에 그대로 적는다
+> **If you do not measure a security improvement you cannot know whether it is an improvement, and calling it
+> an improvement unmeasured becomes security theater.**
 
-중요한 것은 **주석이 측정 결과와 어긋나지 않는 것**이다. 실제 코드에는 이렇게
-적혀 있다.
+Had it not been measured, this change would have been recorded as "applied the least-privilege principle to
+reduce the attack surface." That record is **a sentence not wrong but with no true basis.** And the next person
+comes to judge, on the basis of that sentence, "this part is already strengthened."
+
+---
+
+## 15.7 Why enumeration was chosen anyway
+
+If it was not measured, should it be reverted? This course's judgment is **keep it**, and the basis is two.
+A keep with no stated basis is taste, not engineering, so it is written down.
+
+### Basis 1 — do not make a coupling between layers
+
+**Defense in depth** holds only when each layer works **independently.** The judgment "③ blocks it so ② can be
+opened wide" makes ②'s security depend on ③'s existence. Then the moment ③ is relaxed or removed, ② remains in
+a state defending nothing — and **no one knows that fact.**
+
+This repository does not fix the ffmpeg version. The README's requirement is only "ffmpeg/ffprobe on PATH."
+Layer ③ was introduced relatively recently (an upstream commit January 2025, backported to the 4.4·7.0·7.1
+release branches), and in a build without it **② is the only gate.** That is, this change's effect is **0 in
+the current environment but not 0 in all environments.**
+
+### Basis 2 — the list itself becomes a record
+
+`ALL` is a declaration "open anything," and that differs from this tool's actual need. The enumerated list
+becomes **the single source of truth for "what segment formats this tool handles."** When supporting a new
+format the spot to fix is made explicit, and someone reading the code can know the support range.
+
+### And honestly — write it into the code as is
+
+What matters is that **the comment does not diverge from the measurement result.** The actual code says this.
 
 ```python
 # probe.py:43-46
-# 다만 정직하게 적어 둔다. **ffmpeg 8.1.1 에서 실측한 결과 `ALL` 과 이 열거의 동작은
-# 완전히 같았다.** 뒤에 놓인 포맷–확장자 일치 검사가 먼저 걸러내기 때문이다
-# (내용이 MPEG-TS 인데 확장자가 `.avi` 면 어느 쪽이든 거부된다). 즉 이 변경의 현재
-# 이득은 측정되지 않는다. 그럼에도 열거를 택한 이유는 둘이다.
+# But noted honestly. **Measured on ffmpeg 8.1.1, the behavior of `ALL` and this enumeration was
+# completely the same.** Because the format–extension match check placed behind filters it first
+# (if the content is MPEG-TS but the extension is `.avi`, either way it is rejected). That is, this
+# change's current gain is not measured. The reasons enumeration was chosen anyway are two.
 ```
 
-"공격면을 줄였다"고 쓰지 않았다. **측정한 것과 측정하지 못한 것을 구분해 적는 것**이
-이 교재가 권하는 형식이다.
+It did not write "reduced the attack surface." **Writing what was measured and what was not measured
+separately** is the form this course recommends.
 
 ---
 
-## 15.8 일반화 — 회피와 방어가 같은 통제 지점을 다툴 때
+## 15.8 Generalization — when evasion and defense fight over the same control point
 
-이 장의 구조는 스트리밍 밖에서도 반복된다. 공통 형태는 다음과 같다.
+This chapter's structure repeats outside streaming too. The common form is as follows.
 
-> **어떤 메커니즘이 방어에도 쓰이고 회피에도 쓰이면, 한쪽의 승리가 자동으로 다른
-> 쪽의 패배가 된다.**
+> **When a mechanism is used both for defense and for evasion, one side's victory automatically becomes the
+> other's defeat.**
 
-| 사례 | 방어 측 용도 | 회피 측 용도 | 결과 |
+| Case | The defense-side use | The evasion-side use | Result |
 |---|---|---|---|
-| **확장자 allowlist** | 도달 가능한 파서 축소 | 필터 회피를 위한 위장 | 재생하려면 방어를 완화 |
-| **인증서 검증** | 중간자 공격 차단 | 기업 프록시의 TLS 검사 | 검사하려면 검증을 완화(사설 CA 설치) |
-| **CSP** | XSS 차단 | 정상 인라인 스크립트 | 편의를 위해 `unsafe-inline` 추가 |
-| **SELinux·AppArmor** | 권한 격리 | 정상 앱의 예외적 접근 | 동작하지 않으면 permissive 로 전환 |
-| **CORS** | 교차 출처 읽기 차단 | 정상 API 호출 | 귀찮으면 `Access-Control-Allow-Origin: *` |
+| **extension allowlist** | reducing reachable parsers | masquerade for filter evasion | to play, relax the defense |
+| **certificate verification** | blocking a man-in-the-middle | an enterprise proxy's TLS inspection | to inspect, relax verification (install a private CA) |
+| **CSP** | blocking XSS | a normal inline script | add `unsafe-inline` for convenience |
+| **SELinux·AppArmor** | privilege isolation | a normal app's exceptional access | switch to permissive if it does not work |
+| **CORS** | blocking cross-origin reads | a normal API call | `Access-Control-Allow-Origin: *` if bothersome |
 
-각 행의 마지막 열이 동일하다 — **방어가 정상 사용을 막는 순간, 사용자는 방어를
-끄는 쪽을 택한다.** 그리고 대개 가장 넓은 방식으로 끈다(`ALL`, `*`, `permissive`,
-`unsafe-inline`).
+The last column of each row is identical — **the moment a defense blocks normal use, the user chooses to turn
+the defense off.** And usually turns it off in the broadest way (`ALL`, `*`, `permissive`, `unsafe-inline`).
 
-여기서 실무 원칙이 도출된다.
+Here a practical principle is derived.
 
-> **방어를 꺼야 할 때, 가장 좁은 범위로 꺼라.**
-> `ALL` 대신 필요한 값만. `*` 대신 특정 출처만. permissive 대신 특정 도메인만.
+> **When you must turn off a defense, turn it off in the narrowest scope.**
+> Only the needed value instead of `ALL`. Only a specific origin instead of `*`. Only a specific domain instead
+> of permissive.
 
-이 원칙은 §15.6 의 측정 결과와 충돌하지 않는다. 측정되지 않아도 좁게 끄는 것이
-옳은 이유가 §15.7 의 근거 1 — **층 사이의 결합을 만들지 않기 위해서**다.
+This principle does not conflict with §15.6's measurement result. The reason turning it off narrowly is correct
+even when unmeasured is §15.7's basis 1 — **to not make a coupling between layers.**
 
 ---
 
-## 15.9 방어자 관점
+## 15.9 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **클라이언트 구현자** | 방어를 끌 때 `ALL` 을 쓰지 않는다. 필요한 값을 열거하고, **왜 그 목록인지** 주석으로 남긴다. 그리고 그 변경의 효과를 측정한다 |
-| **송출 사업자** | 회피 관행이 제3자에게 비용을 전가한다는 것을 인식한다. 확장자 위장으로 얻는 이득과, 모든 클라이언트에게 방어 완화를 요구하는 비용을 견준다 |
-| **라이브러리 관리자** | 방어가 정상 사용을 막으면 사용자는 가장 넓게 끈다. 그러므로 **좁게 끄는 경로를 쉽게** 만들어야 한다. FFmpeg 이 `ALL` 과 함께 목록 지정을 받는 것은 이 점에서 옳은 설계다 |
-| **감사자** | "보안 개선"이라고 적힌 변경을 볼 때 **측정 결과를 요구한다.** 측정 없는 개선 주장은 검증 대상이지 근거가 아니다 |
+| **client implementer** | do not use `ALL` when turning off a defense. enumerate the needed values, and leave in a comment **why that list.** and measure that change's effect |
+| **delivery provider** | recognize that an evasion practice passes the cost to a third party. weigh the gain from extension masquerading against the cost of requiring defense relaxation from every client |
+| **library maintainer** | when a defense blocks normal use, the user turns it off in the broadest way. so **make the narrow-off path easy.** that FFmpeg takes a list specification alongside `ALL` is correct design in this respect |
+| **auditor** | when you see a change labeled "security improvement," **require the measurement result.** an improvement claim with no measurement is a verification target, not a basis |
 
 ---
 
-## 15.10 한계와 미해결
+## 15.10 Limits and open questions
 
-- **③층의 정확한 동작을 소스로 확인하지 않았다.** 이 장의 3층 모델은 옵션 조합별
-  에러 메시지에서 **역으로 추론한 것**이다. `libavformat/hls.c` 를 읽으면 층의 경계가
-  다르게 나타날 수 있다. 관측된 동작은 재현 가능하지만, 내부 구조에 대한 서술은
-  블랙박스 추론임을 밝혀 둔다.
-- **③층이 없는 빌드에서 검증하지 못했다.** §15.7 근거 1 의 핵심 주장("③이 없는 빌드에서는
-  ②가 유일한 관문")은 실측이 아니라 추론이다. 확정하려면 구버전 빌드로 같은 실험을
-  반복해야 한다.
-- **`ALLOWED_SEGMENT_EXTS` 목록의 완전성은 보장되지 않는다.** 이 도구가 마주치지 않은
-  정상 확장자가 목록에 빠져 있으면, 미래에 정상 스트림을 막게 된다. `ALL` 에는 없던
-  실패 모드다 — **좁히는 선택에는 이 비용이 따른다.**
-
----
-
-## 15.11 요약
-
-1. ffmpeg 의 세그먼트 확장자 검사는 편의 기능이 아니라 **CVE-2023-6602 대응 방어**다.
-   HLS 플레이리스트의 URI 자유도를 이용해 임의 demuxer 를 원격에서 기동시키는
-   공격면을 좁힌다.
-2. `-allowed_extensions ALL` 은 그 방어 중 한 층을 조건 없이 해제한다.
-3. **회피와 방어가 같은 통제 지점을 다툴 때, 한쪽의 승리는 다른 쪽의 패배가 된다.**
-   송출자의 필터 회피가 모든 클라이언트에게 방어 완화를 요구하는 외부효과를 만든다.
-4. `ALL` 을 열거로 바꾸었고, **기능 회귀는 없었다**(62/62 통과). 그러나 **공격면 축소는
-   측정되지 않았다** — ③층이 ②층을 가리고 있기 때문이다(우연한 방어).
-5. 그럼에도 유지하는 근거는 **층 사이의 결합을 만들지 않는 것**과 **목록이 곧
-   지원 범위의 기록이 되는 것**이다. 근거를 코드 주석에 측정 결과와 함께 남겼다.
-6. **측정하지 않은 보안 개선은 개선이라 부를 수 없다.** 측정한 것과 측정하지 못한
-   것을 구분해 적는 것이 이 교재의 형식이다.
+- **The exact behavior of layer ③ was not confirmed from the source.** This chapter's three-layer model is
+  **inferred in reverse** from the error messages per option combination. Read `libavformat/hls.c` and the
+  layer boundaries may appear differently. The observed behavior is reproducible, but the statement about the
+  internal structure is disclosed as black-box inference.
+- **It could not be verified on a build without layer ③.** §15.7 basis 1's key claim ("in a build without ③, ②
+  is the only gate") is inference, not measurement. To confirm it you would repeat the same experiment with an
+  old-version build.
+- **The completeness of the `ALLOWED_SEGMENT_EXTS` list is not guaranteed.** If a normal extension this tool has
+  not encountered is missing from the list, it will block a normal stream in the future. It is a failure mode
+  `ALL` did not have — **the narrowing choice carries this cost.**
 
 ---
 
-**다음 장** — 제14·15장은 "선언을 믿지 말고 내용을 보라"는 원칙 위에 서 있다.
-그런데 브라우저에서는 정확히 그 원칙이 오랫동안 취약점이었고, 그래서
-`X-Content-Type-Options: nosniff` 라는 방어 헤더가 만들어졌다. 제16장은 같은 원칙이
-한쪽에서는 미덕이고 다른 쪽에서는 취약점인 이유를 다룬다.
+## 15.11 Summary
+
+1. ffmpeg's segment-extension check is not a convenience feature but a **CVE-2023-6602 response defense.** It
+   narrows the attack surface that boots an arbitrary demuxer remotely using the HLS playlist's URI freedom.
+2. `-allowed_extensions ALL` unconditionally lifts one layer of that defense.
+3. **When evasion and defense fight over the same control point, one side's victory is the other's defeat.** The
+   deliverer's filter evasion creates an externality requiring defense relaxation from every client.
+4. `ALL` was changed to an enumeration, and there **was no functional regression** (62/62 passed). But the
+   **attack-surface reduction was not measured** — because layer ③ hides layer ② (the incidental defense).
+5. The basis for keeping it anyway is **not making a coupling between layers** and **the list being a record of
+   the support range.** The basis was left in the code comment along with the measurement result.
+6. **An unmeasured security improvement cannot be called an improvement.** Writing what was measured and what
+   was not measured separately is this course's form.
+
+---
+
+**Next chapter** — Chapters 14·15 stand on the principle "do not trust the declaration, look at the content."
+But in the browser exactly that principle was long a vulnerability, and so the defense header
+`X-Content-Type-Options: nosniff` was made. Chapter 16 covers why the same principle is a virtue on one side and
+a vulnerability on the other.

@@ -1,30 +1,29 @@
 ---
-untranslated: ko
-title: "암호화 입자가 구조를 결정한다"
-description: "SAMPLE-AES 가 거부되는 이유"
-date: 2026-08-18
+title: "Encryption Granularity Determines the Structure"
+description: "Why SAMPLE-AES is rejected"
+date: 2026-07-18
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-26-encryption-granularity.svg
 ---
-## 26.0 이 장에서 답할 것
+## 26.0 What this chapter answers
 
-1. **암호화 입자**란 무엇인가 — 무엇을 단위로 암호화하는가
-2. AES-128 에서 암호 계층은 왜 컨테이너를 한 글자도 몰라도 되는가
-3. SAMPLE-AES 에서는 왜 "세그먼트 통째 복호화"라는 말 자체가 성립하지 않는가
-4. 그런 방식이 **왜 존재하는가** — 무엇이 평문으로 남아야 했는가
-5. 거부한 뒤 내려보낸 경로는 실제로 무엇을 하는가 — 그리고 무엇을 못 하는가
+1. What is **encryption granularity** — what unit is encrypted?
+2. In AES-128, why does the crypto layer not need to know a single letter of the container?
+3. In SAMPLE-AES, why does the very phrase "decrypt the whole segment" not hold?
+4. Why does such a scheme **exist** — what had to remain plaintext?
+5. What does the path sent down after rejection actually do — and what can it not do?
 
-이 장은 제5부의 마지막이고, 제23–25장이 "AES-128 을 어떻게 푸는가"와 "그것이 무엇을
-지키는가"를 다룬 데 이어 **"왜 어떤 암호는 아예 풀지 않기로 했는가"** 를 다룬다.
-답은 암호의 강도와 무관하다. SAMPLE-AES 의 알고리즘은 AES-128-CBC 로 같다. 갈리는
-것은 **그 변환을 무엇에 적용하느냐**뿐이다.
+This chapter is the last of Part 5, and following Chapters 23–25 covering "how to undo AES-128" and "what it
+protects," it covers **"why some ciphers were decided not to be undone at all."** The answer is unrelated to the
+cipher's strength. SAMPLE-AES's algorithm is the same AES-128-CBC. What differs is only **what that transform is
+applied to.**
 
 ---
 
-## 26.1 문제 — 한 줄이 거부하는 것
+## 26.1 The problem — what one line rejects
 
-이 저장소에서 지원 여부를 판정하는 코드는 두 줄이다.
+The code judging support in this repository is two lines.
 
 ```python
 # playlist.py:57-64
@@ -34,43 +33,42 @@ thumbnail: /images/lecture/thumb/hls-recon-26-encryption-granularity.svg
 
     @property
     def is_supported(self) -> bool:
-        # SAMPLE-AES 는 프레임 단위 부분 암호화라 세그먼트 통째 복호화가 불가능하다.
+        # SAMPLE-AES is per-frame partial encryption so whole-segment decryption is impossible.
         return self.method in ("NONE", "AES-128") and self.keyformat == "identity"
 ```
 
-`METHOD` 가 가질 수 있는 값은 RFC 8216 기준으로 셋이다([`playlist.py:52`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L52) 의 주석이
-그대로 열거한다).
+The values `METHOD` can take are three per RFC 8216 ([`playlist.py:52`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L52)'s comment enumerates them as-is).
 
-| `METHOD` | 무엇을 암호화하는가 | 이 저장소 |
+| `METHOD` | What it encrypts | This repository |
 |---|---|---|
-| `NONE` | 없음 | 그대로 통과 |
-| `AES-128` | **세그먼트 전체** | 지원 |
-| `SAMPLE-AES` | **미디어 샘플의 몸통만** | 거부 |
+| `NONE` | nothing | passes through |
+| `AES-128` | **the whole segment** | supported |
+| `SAMPLE-AES` | **only the body of media samples** | rejected |
 
-여기서 짚어야 할 것은 거부의 **근거**다. `is_supported` 는 암호가 약하다고 거부하지
-않는다. SAMPLE-AES 는 AES-128 과 같은 AES-128-CBC 를 쓴다. 키 길이도 같고 모드도
-같다. 거부의 근거는 오직 하나 —
+What to note here is the **basis** of rejection. `is_supported` does not reject because the cipher is weak.
+SAMPLE-AES uses the same AES-128-CBC as AES-128. The key length is the same and the mode is the same. The basis of
+rejection is only one —
 
-> **암호 변환이 적용되는 단위가 다르고, 그 차이가 "복호화"라는 연산이 성립하는
-> 자리 자체를 옮겨 버린다.**
+> **The unit the crypto transform is applied to differs, and that difference moves the very place where the
+> operation "decryption" holds.**
 
-[`playlist.py:63`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L63) 의 주석 한 줄이 이 장 전체의 요약이다. 이 장은 그 한 줄을 펼친다.
+[`playlist.py:63`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L63)'s one comment line is a summary of this whole chapter. This chapter unfolds that one line.
 
 ---
 
-## 26.2 원리 — 암호화 입자
+## 26.2 The principle — encryption granularity
 
-> **용어** — **암호화 입자(encryption granularity, 암호화 입도)**: 암호 변환을
-> 적용하는 최소 단위. "무엇 하나를 통째로 암호화하는가"의 그 **무엇**이다. 파일
-> 하나일 수도, 블록 하나일 수도, 프레임 하나일 수도 있다.
+> **Term** — **encryption granularity**: the minimum unit the crypto transform is applied to. It is the **what**
+> in "what one thing is encrypted whole." It can be one file, one block, or one frame.
 
-제11장에서 **해석 입자**(서명 URL 을 언제 해석하는가)를 다뤘을 때와 같은 축이지만
-대상이 다르다. 그때는 시간 축의 입자였고, 여기서는 **바이트 축의 입자**다.
+It is the same axis as when Chapter 11 covered **interpretation granularity** (when a signed URL is interpreted),
+but the target differs. There it was a granularity on the time axis, and here it is a **granularity on the byte
+axis.**
 
-### 26.2.1 AES-128 — 입자는 세그먼트
+### 26.2.1 AES-128 — the granularity is the segment
 
-RFC 8216 의 `METHOD=AES-128` 은 세그먼트 하나를 **하나의 평문**으로 본다. 세그먼트
-전체가 단일 CBC 체인이고, 앞에서부터 끝까지 암호문이다. 복호화는 이렇게 끝난다.
+RFC 8216's `METHOD=AES-128` views one segment as **one plaintext.** The whole segment is a single CBC chain,
+ciphertext from front to end. Decryption ends like this.
 
 ```python
 # decrypt.py:44-47
@@ -80,161 +78,157 @@ RFC 8216 의 `METHOD=AES-128` 은 세그먼트 하나를 **하나의 평문**으
         return _unpad_pkcs7(plain)
 ```
 
-**이 네 줄 어디에도 "TS" 나 "MP4" 라는 말이 없다.** `data` 는 그냥 바이트열이고,
-결과도 바이트열이다. 복호화가 끝나면 그 바이트열은 **평범한 MPEG-TS 세그먼트**가
-되고, 그때부터는 암호가 없었던 경우와 완전히 같은 경로를 탄다 — 제19장에서 본
-연결(concatenation), 제17장의 패킷 분석, 제21장의 PTS 검사가 모두 그대로 성립한다.
+**Nowhere in these four lines is the word "TS" or "MP4."** `data` is just a byte string and the result is a byte
+string. When decryption ends, that byte string becomes a **plain MPEG-TS segment**, and from then it takes exactly
+the same path as if there had been no cipher — the concatenation seen in Chapter 19, the packet analysis of
+Chapter 17, the PTS check of Chapter 21 all hold as-is.
 
-이것이 **계층 분리**다. 암호 계층의 입력과 출력이 둘 다 "불투명한 바이트열"이므로
-컨테이너 계층은 암호의 존재를 알 필요가 없고, 암호 계층은 컨테이너의 존재를 알
-필요가 없다.
+This is **layer separation.** Since the crypto layer's input and output are both "opaque byte strings," the
+container layer need not know the cipher exists, and the crypto layer need not know the container exists.
 
-### 26.2.2 SAMPLE-AES — 입자는 샘플
+### 26.2.2 SAMPLE-AES — the granularity is the sample
 
-> **용어** — **샘플(sample)**: 미디어 컨테이너에서 시각 하나에 대응하는 데이터
-> 단위. 영상이면 화면 한 장(프레임), 오디오면 오디오 프레임 하나다.
+> **Term** — **sample**: a data unit corresponding to one instant in a media container. For video it is one screen
+> (frame), for audio one audio frame.
 
-> **용어** — **부분 암호화(partial encryption)**: 데이터의 일부만 암호화하고
-> 나머지는 평문으로 남기는 방식. 남기는 부분은 대개 **구조를 읽는 데 필요한
-> 정보**다.
+> **Term** — **partial encryption**: a scheme encrypting only part of the data and leaving the rest plaintext.
+> What is left is usually **the information needed to read the structure.**
 
-SAMPLE-AES 는 세그먼트가 아니라 **샘플 하나하나**를 입자로 삼는다. 그 결과 세그먼트
-안에서 암호문이 놓이는 자리가 이렇게 갈라진다.
+SAMPLE-AES takes as its granularity not the segment but **each individual sample.** As a result, where the
+ciphertext sits inside the segment splits like this.
 
-![AES-128 과 SAMPLE-AES 에서 암호문이 차지하는 자리의 대비](/images/lecture/hls-recon/26-granularity-map.svg)
+![The contrast of where ciphertext sits in AES-128 and SAMPLE-AES](/images/lecture/hls-recon/26-granularity-map.svg)
 
-*그림 26-1 — 같은 세그먼트에서 암호문이 차지하는 자리*
+*Figure 26-1 — where ciphertext sits in the same segment*
 
-평문으로 남는 것을 열거하면 다음과 같다.
+Enumerate what remains plaintext and it is the following.
 
-| 평문으로 남는 것 | 왜 남는가 |
+| What remains plaintext | Why it remains |
 |---|---|
-| TS 패킷 헤더(sync byte · PID · CC) | 중계·다중화에 필요하다 — 제17장 §17.8.1 |
-| adaptation field · PCR | 시각 기준을 잃으면 재생이 성립하지 않는다 |
-| PSI(PAT · PMT) | 어떤 스트림이 들어 있는지 알아야 한다 |
-| PES 헤더(PTS · DTS) | 표시 시각을 모르면 편집도 탐색도 못 한다 |
-| 각 샘플의 **앞부분** | 프레임의 종류·크기를 읽는 자리다 |
+| TS packet header (sync byte · PID · CC) | needed for relay·multiplexing — Chapter 17 §17.8.1 |
+| adaptation field · PCR | lose the time reference and playback does not hold |
+| PSI (PAT · PMT) | you must know which streams are contained |
+| PES header (PTS · DTS) | not knowing the presentation time, you can neither edit nor seek |
+| the **front part** of each sample | the spot where the frame's kind·size is read |
 
-암호문으로 남는 것은 **샘플 몸통뿐**이다. 이 구조에서 "세그먼트를 통째로 복호화한다"는
-연산은 정의되지 않는다. 세그먼트 전체를 CBC 로 밀어 넣으면 평문이어야 할 헤더까지
-암호문 취급을 받아 **정상 데이터가 파괴된다.** 암호문 구간이 어디부터 어디까지인지를
-모르면 복호화 자체를 시작할 수 없다.
+What remains ciphertext is **only the sample body.** In this structure the operation "decrypt the whole segment"
+is undefined. Push the whole segment through CBC and even the header that should be plaintext is treated as
+ciphertext and **normal data is destroyed.** Not knowing from where to where the ciphertext stretch is, you cannot
+even start decryption.
 
-### 26.2.3 그래서 무엇을 알아야 하는가
+### 26.2.3 So what must you know
 
-암호문 구간의 경계를 알려면 아래를 순서대로 파싱해야 한다.
+To know the ciphertext stretch's boundary you must parse the below in order.
 
-| 단계 | 알아내야 하는 것 | 어느 계층의 지식인가 |
+| Step | What must be found | Which layer's knowledge |
 |---|---|---|
-| 1 | TS 패킷 경계와 PID 별 분리 | 컨테이너 |
-| 2 | PES 패킷 재조립 — 패킷 여러 개에 걸친 샘플 하나 | 컨테이너 |
-| 3 | 샘플 경계 — 한 프레임이 어디서 끝나는가 | 컨테이너 + 코덱 |
-| 4 | 샘플 **안에서** 암호화된 구간 | **코덱** |
-| 5 | 코덱별 규칙(리더 길이·암호화 주기) | **코덱** |
+| 1 | TS packet boundaries and per-PID separation | container |
+| 2 | PES packet reassembly — one sample spanning several packets | container |
+| 3 | sample boundary — where does one frame end | container + codec |
+| 4 | the encrypted stretch **inside** the sample | **codec** |
+| 5 | per-codec rules (leader length·encryption period) | **codec** |
 
-4·5 단계가 결정적이다. H.264 는 샘플이 **NAL 유닛**들로 이루어져 있고, 규격은 NAL
-유닛마다 앞쪽 일정 길이를 평문 리더로 남긴 뒤 그 뒤를 16바이트 블록 단위로 **띄엄띄엄**
-암호화하는 패턴을 정의한다. AAC 는 구조가 달라 규칙도 다르다.
+Steps 4·5 are decisive. In H.264 a sample consists of **NAL units**, and the spec defines a pattern that leaves a
+plaintext leader of a certain length in front of each NAL unit and then encrypts after it in **skipped** 16-byte
+block units. AAC has a different structure so the rule differs too.
 
-> **용어** — **NAL 유닛(Network Abstraction Layer unit)**: H.264/H.265 비트스트림의
-> 전송 단위. 종류를 나타내는 헤더와 그 뒤의 페이로드로 이루어지고, 슬라이스 하나가
-> 대개 NAL 유닛 하나에 담긴다.
+> **Term** — **NAL unit (Network Abstraction Layer unit)**: the transport unit of an H.264/H.265 bitstream. It
+> consists of a header indicating its kind and a payload after it, and usually one slice is held in one NAL unit.
 
-> **용어** — **패턴 암호화(pattern encryption)**: 암호화 블록과 평문 블록을 정해진
-> 비율로 번갈아 배치하는 부분 암호화 방식. 복호화 비용을 줄이면서도 내용을 쓸 수
-> 없게 만드는 것이 목적이다.
+> **Term** — **pattern encryption**: a partial-encryption scheme alternating encrypted blocks and plaintext blocks
+> at a fixed ratio. Its purpose is to reduce the decryption cost while still making the content unusable.
 
-**정직하게 적어 둔다.** 리더의 정확한 바이트 수와 암호화 주기는 Apple 의
-«MPEG-2 Stream Encryption Format for HTTP Live Streaming» 이 코덱별로 규정하며,
-이 교재는 그 수치를 원문과 대조하지 않았다(§26.8). 그리고 이 장의 논지에는 그 수치가
-필요하지 않다. 필요한 것은 **수치가 코덱마다 다르다는 사실 자체**다. 코덱마다 다르면
-암호 계층이 코덱을 알아야 하고, 그 순간 계층이 얽힌다.
+**Written honestly.** The leader's exact byte count and the encryption period are stipulated per codec by Apple's
+«MPEG-2 Stream Encryption Format for HTTP Live Streaming», and this course did not cross-check those figures
+against the original (§26.8). And this chapter's thesis does not need those figures. What is needed is **the fact
+itself that the figures differ per codec.** If they differ per codec the crypto layer must know the codec, and at
+that moment the layers entangle.
 
-### 26.2.4 계층 결합이 설계 결정에서 따라 나온다
+### 26.2.4 Layer coupling follows from a design decision
 
-> **용어** — **결합(coupling)**: 한 모듈이 다른 모듈의 내부 구조를 알아야만 동작할
-> 수 있는 상태. 결합이 강하면 한쪽 변경이 다른 쪽을 깨뜨린다.
+> **Term** — **coupling**: a state where one module can operate only if it knows another module's internal
+> structure. With strong coupling, a change on one side breaks the other.
 
-![AES-128 과 SAMPLE-AES 에서 암호 계층이 알아야 하는 범위의 대비](/images/lecture/hls-recon/26-layer-coupling.svg)
+![The contrast of the range the crypto layer must know in AES-128 and SAMPLE-AES](/images/lecture/hls-recon/26-layer-coupling.svg)
 
-*그림 26-2 — 데이터 흐름은 같고, 암호 계층이 알아야 하는 범위만 다르다*
+*Figure 26-2 — the data flow is the same; only the range the crypto layer must know differs*
 
-이 도식에서 눈여겨볼 것은 **화살표가 양쪽에서 똑같다**는 점이다. 데이터는 어느
-쪽에서도 암호 계층 → 컨테이너 계층 → 코덱 계층으로 한 방향으로 흐른다. 달라진 것은
-점선으로 표시한 **지식의 범위**뿐이다.
+What to note in this diagram is that **the arrows are identical on both sides.** On either side data flows in one
+direction, crypto layer → container layer → codec layer. What differs is only the **range of knowledge** marked by
+the dotted line.
 
-> **계층 결합은 코드를 잘못 짜서 생기는 것이 아니라, "무엇을 평문으로 남길 것인가"라는
-> 설계 결정에서 강제로 따라 나온다.**
+> **Layer coupling arises not from writing the code wrong but is forced to follow from the design decision "what to
+> leave plaintext."**
 
-이것이 이 장이 다루는 현상의 정체다. SAMPLE-AES 를 구현하는 사람은 계층을 얽고
-싶어서 얽는 것이 아니다. **얽지 않고는 구현할 방법이 없다.**
+This is the identity of the phenomenon this chapter covers. Whoever implements SAMPLE-AES does not entangle the
+layers because they want to. **There is no way to implement it without entangling them.**
 
 ---
 
-## 26.3 왜 SAMPLE-AES 가 존재하는가
+## 26.3 Why SAMPLE-AES exists
 
-부분 암호화를 "쓸데없이 복잡한 방식"으로 서술하고 끝내면 대칭이 맞지 않는다. 이
-방식은 명확한 요구에서 나왔고, 그 요구를 AES-128 로는 충족할 수 없다.
+Describe partial encryption as "a needlessly complex scheme" and end there and the symmetry is off. This scheme
+came from a clear demand, and that demand cannot be met with AES-128.
 
-공통 요구를 한 문장으로 쓰면 이렇다.
+Write the common demand in one sentence and it is this.
 
-> **키를 갖지 않은 중간자가 스트림을 가공할 수 있어야 한다.**
+> **A man-in-the-middle without the key must be able to process the stream.**
 
-| 요구 | 평문이어야 하는 정보 | 세그먼트 전체 암호화라면 |
+| Demand | Info that must be plaintext | With whole-segment encryption |
 |---|---|---|
-| **광고 삽입·스플라이싱** | 스플라이스 지점, PTS, 세그먼트 경계 | 어디를 자를지조차 키 없이는 알 수 없다 |
-| **트릭 플레이**(배속·탐색) | 프레임 종류(I/P/B)와 표시 시각 | I-프레임 위치를 못 찾아 탐색이 불가능하다 |
-| **재패키징**(TS ↔ fMP4) | 샘플 경계 전체 | 풀었다 다시 걸어야 한다 — 패키저가 키를 쥐게 된다 |
-| **다중 트랙 다중화** | PID, 스트림 종류 | 중계기가 무엇을 나르는지 모른다 |
-| **부분 캐싱·품질 전환** | 패킷·샘플 경계 | 재사용 단위가 세그먼트로 고정된다 |
+| **ad insertion·splicing** | the splice point, PTS, segment boundaries | you cannot even know where to cut without the key |
+| **trick play** (speed·seek) | frame kind (I/P/B) and presentation time | you cannot find I-frame positions so seeking is impossible |
+| **re-packaging** (TS ↔ fMP4) | all sample boundaries | you must undo and re-apply — the packager comes to hold the key |
+| **multi-track multiplexing** | PID, stream kind | the relay does not know what it is carrying |
+| **partial caching·quality switching** | packet·sample boundaries | the reuse unit is fixed at the segment |
 
-> **용어** — **트릭 플레이(trick play)**: 배속 재생·되감기·구간 탐색처럼 순차 재생이
-> 아닌 재생 동작. 대개 I-프레임(다른 프레임을 참조하지 않는 프레임)만 골라 낸다.
+> **Term** — **trick play**: playback actions other than sequential playback, like speed playback·rewind·seek.
+> Usually only I-frames (frames referencing no other frame) are picked out.
 
-> **용어** — **스플라이싱(splicing)**: 스트림 중간에 다른 스트림(광고 등)을 끼워
-> 넣기 위해 경계를 잘라 잇는 작업.
+> **Term** — **splicing**: the work of cutting and joining boundaries to insert another stream (an ad, etc.) into
+> the middle of a stream.
 
-다섯 행이 같은 구조를 공유한다. 어느 것도 **내용을 볼 필요가 없다.** 필요한 것은
-**구조를 볼 권한**이다. AES-128 은 내용과 구조를 하나로 묶어 암호화하므로, 구조를
-보려면 내용을 볼 권한까지 줘야 한다.
+The five rows share the same structure. None of them **needs to see the content.** What is needed is **the
+authority to see the structure.** AES-128 encrypts content and structure bound into one, so to see the structure
+you must give even the authority to see the content.
 
-제17장 §17.8.1 에서 본 원리가 한 층 안쪽에서 반복된다.
+The principle seen in Chapter 17 §17.8.1 repeats one layer deeper.
 
-> **중계에 필요한 정보는 암호화할 수 없다.**
+> **Information needed for the relay cannot be encrypted.**
 
-SAMPLE-AES 는 이 문장의 "중계"를 **가공**으로 바꾼 것이다. 가공에 필요한 정보까지
-평문으로 남기기로 한 결정이며, 그래서 평문 영역이 헤더 4바이트에서 **컨테이너 구조
-전체**로 넓어졌다.
+SAMPLE-AES replaced the "relay" of this sentence with **processing.** It is a decision to leave even the info
+needed for processing plaintext, and so the plaintext region widened from a 4-byte header to **the whole container
+structure.**
 
-바꿔 말하면 암호화 입자를 정하는 일은 **신뢰 경계를 어디에 둘지 정하는 일**이다.
+Put another way, deciding the encryption granularity is **deciding where to put the trust boundary.**
 
-| 방식 | 키 없이 할 수 있는 일 | 키를 가져야 하는 주체 |
+| Scheme | What can be done without the key | Actor that must hold the key |
 |---|---|---|
-| AES-128 | 세그먼트 파일을 옮기고 캐시하는 것뿐 | 재생기 + 스트림을 가공하는 모든 중간자 |
-| SAMPLE-AES | 자르기·잇기·재패키징·트랙 선택·탐색 | **재생기만** |
+| AES-128 | only move and cache the segment file | the player + every man-in-the-middle processing the stream |
+| SAMPLE-AES | cut·join·re-package·track-select·seek | **only the player** |
 
-**SAMPLE-AES 는 키를 가진 주체의 수를 줄인다.** 최소 권한 원칙(제15장 §15.5) 관점에서
-이것은 개선이다. 그 개선의 대가가 §26.2 의 계층 결합이다.
+**SAMPLE-AES reduces the number of actors holding the key.** From the least-privilege principle's view (Chapter 15
+§15.5) this is an improvement. The price of that improvement is §26.2's layer coupling.
 
 ---
 
-## 26.4 코드 — 거부는 어떻게 구현되는가
+## 26.4 The code — how rejection is implemented
 
-### 26.4.1 선언 단계 — 파싱하자마자 판정한다
+### 26.4.1 Declaration stage — judge as soon as it is parsed
 
-`is_supported` 는 `Key` 객체의 속성이므로, 플레이리스트를 파싱하는 순간([`playlist.py:307-316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L307-L316)
-의 `#EXT-X-KEY` 처리) 이미 판정 가능한 상태가 된다. 두 조건이 **and** 로 묶여 있다.
+Since `is_supported` is a property of the `Key` object, the moment the playlist is parsed ([`playlist.py:307-316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L307-L316)'s
+`#EXT-X-KEY` handling) it is already in a judgeable state. The two conditions are bound by **and.**
 
-| 조건 | 무엇을 배제하는가 | 다루는 장 |
+| Condition | What it excludes | Chapter |
 |---|---|---|
-| `method in ("NONE", "AES-128")` | SAMPLE-AES — **이 장** | 26 |
-| `keyformat == "identity"` | Widevine · FairPlay · PlayReady 계열 | 25 |
+| `method in ("NONE", "AES-128")` | SAMPLE-AES — **this chapter** | 26 |
+| `keyformat == "identity"` | Widevine · FairPlay · PlayReady family | 25 |
 
-두 조건이 거부하는 대상은 성격이 전혀 다르다. 앞의 것은 **구조가 맞지 않아서**
-거부하고, 뒤의 것은 **키를 얻는 경로 자체가 다른 체계**여서 거부한다. 하나의 표현식에
-묶여 있지만 이유는 둘이다.
+The targets the two conditions reject are entirely different in nature. The former rejects **because the structure
+does not match**, and the latter rejects because **the very path to obtain the key is a different system.** They are
+bound in one expression but the reasons are two.
 
-### 26.4.2 복호 단계 — 메서드 하나가 컨테이너를 모른다
+### 26.4.2 Decryption stage — one method knows nothing of the container
 
 ```python
 # decrypt.py:33-47
@@ -243,8 +237,8 @@ SAMPLE-AES 는 이 문장의 "중계"를 **가공**으로 바꾼 것이다. 가�
             return data
         if not key.is_supported:
             raise NotImplementedError(
-                f"METHOD={key.method} KEYFORMAT={key.keyformat} 는 세그먼트 단위 "
-                "복호화가 불가능하다 — --mode remux 로 ffmpeg 에 위임할 것"
+                f"METHOD={key.method} KEYFORMAT={key.keyformat} cannot be decrypted "
+                "segment-by-segment — delegate to ffmpeg with --mode remux"
             )
 
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -255,433 +249,427 @@ SAMPLE-AES 는 이 문장의 "중계"를 **가공**으로 바꾼 것이다. 가�
         return _unpad_pkcs7(plain)
 ```
 
-세 갈래다.
+Three branches.
 
-| 분기 | 조건 | 하는 일 |
+| Branch | Condition | What it does |
 |---|---|---|
-| 통과 | `METHOD=NONE` | 입력을 그대로 돌려준다 — 암호 계층이 항등 함수가 된다 |
-| 거부 | 지원하지 않는 방식 | `NotImplementedError` 로 즉시 중단 |
-| 복호 | AES-128 · identity | CBC 한 번, 패딩 제거 한 번 |
+| pass | `METHOD=NONE` | returns the input as-is — the crypto layer becomes the identity function |
+| reject | an unsupported scheme | immediate stop with `NotImplementedError` |
+| decrypt | AES-128 · identity | CBC once, padding removal once |
 
-**두 번째 분기가 이 장의 주인공이다.** 여기서 예외를 던지지 않으면 어떻게 되는가.
-SAMPLE-AES 세그먼트가 세 번째 분기로 들어가 세그먼트 전체가 CBC 복호화를 한 번 받고,
-평문이던 TS 헤더가 무작위 바이트로 바뀐다. 그 결과는 TS 도 아니고 SAMPLE-AES 도
-아닌 쓰레기다. **거부하지 않으면 데이터를 파괴한다.**
+**The second branch is this chapter's protagonist.** What happens if you do not throw an exception here. A
+SAMPLE-AES segment enters the third branch and the whole segment receives one CBC decryption, and the TS header
+that was plaintext turns into random bytes. The result is garbage that is neither TS nor SAMPLE-AES. **Do not
+reject and it destroys the data.**
 
-그리고 세 번째 분기의 코드는 §26.2.1 에서 본 그대로다 — `data` 를 바이트열로만
-다룬다. 이 모듈 전체가 58줄이고, 그 안에 컨테이너를 가리키는 식별자가 하나도 없다.
-같은 파일의 첫 줄 주석이 그 사실을 이미 선언해 두었다.
+And the third branch's code is exactly as seen in §26.2.1 — it handles `data` as a byte string only. This whole
+module is 58 lines, and in it there is not a single identifier pointing at a container. The same file's first-line
+comment already declared that fact.
 
 ```python
 # decrypt.py:5
-키 자체는 평문 16바이트로 URI 에서 내려받는다 — DRM 이 아니라 링크 보호 수준이다.
+The key itself is downloaded as plaintext 16 bytes from a URI — link-protection level, not DRM.
 ```
 
-SAMPLE-AES 를 지원했다면 이 모듈은 무엇을 품어야 했는가.
+Had SAMPLE-AES been supported, what would this module have had to hold.
 
-| 필요한 것 | 대략의 성격 | 이미 있는가 |
+| What is needed | Rough nature | Already present |
 |---|---|---|
-| TS 역다중화 | PID 별 분리, 패킷 재조립 | 없다 — `tsanalyze.py` 는 **검사만** 하고 재조립하지 않는다 |
-| PES 재조립 | 패킷 여러 개에 걸친 샘플 복원 | 없다 |
-| H.264 NAL 파서 | 시작 코드 탐색, 유닛 경계 | 없다 |
-| AAC 프레임 파서 | ADTS 헤더 해석 | 없다 |
-| 코덱별 부분 복호 규칙 | 리더 길이·패턴 | 없다 |
-| fMP4 경로의 대응물 | 샘플 보조 정보 박스 해석 | 없다 |
+| TS demultiplexing | per-PID separation, packet reassembly | no — `tsanalyze.py` **only checks** and does not reassemble |
+| PES reassembly | restoring a sample spanning several packets | no |
+| H.264 NAL parser | start-code search, unit boundaries | no |
+| AAC frame parser | ADTS header interpretation | no |
+| per-codec partial-decrypt rules | leader length·pattern | no |
+| the fMP4 path's counterpart | sample-auxiliary-info box interpretation | no |
 
-여섯 항목 전부가 **컨테이너·코덱 계층의 코드**다. 그리고 이 저장소는 그 계층을 만들지
-않기로 이미 선언했다.
+All six items are **container·codec layer code.** And this repository already declared it would not make that
+layer.
 
 ```python
 # assemble.py:1-6
-"""재조립 계층 — 실제 컨테이너 작업은 전부 ffmpeg 에 위임한다.
+"""Reassembly layer — all actual container work is delegated to ffmpeg.
 
-세그먼트 병합·복호화·타임스탬프 정규화는 ffmpeg 의 hls/mpegts demuxer 가
-이미 규격대로 구현하고 있으므로 여기서 다시 만들지 않는다. 이 모듈의 책임은
-"어떤 인자로 위임할지"와 "진행 상황을 어떻게 계측할지" 뿐이다.
+Segment merging·decryption·timestamp normalization are already implemented per spec
+by ffmpeg's hls/mpegts demuxer, so they are not rebuilt here. This module's responsibility
+is only "with what arguments to delegate" and "how to measure progress."
 """
 ```
 
-**SAMPLE-AES 지원은 이 선언과 정면으로 충돌한다.** 부분 복호를 구현하려면 "여기서
-다시 만들지 않는다"고 한 바로 그것을 만들어야 한다. 거부는 게으름이 아니라 **모듈
-경계를 지키는 결정**이다.
+**SAMPLE-AES support collides head-on with this declaration.** To implement partial decryption you must make the
+very thing said "not rebuilt here." Rejection is not laziness but a **decision to keep the module boundary.**
 
-### 26.4.3 거부의 귀결 — 모드 강등
+### 26.4.3 The consequence of rejection — mode downgrade
 
 ```python
 # cli.py:391-402
 def _decide_mode(args: argparse.Namespace, pl: playlist.Playlist) -> str:
-    """auto 모드 결정 — 세그먼트 단위 계측이 불가능한 조건이면 ffmpeg 위임으로 내린다."""
+    """auto-mode decision — if segment-unit measurement is impossible, drop to ffmpeg delegation."""
     if args.mode != "auto":
         return args.mode
     unsupported = [s for s in pl.segments if s.key and s.key.is_encrypted and not s.key.is_supported]
     if unsupported:
-        _eprint("  · SAMPLE-AES 등 세그먼트 단위 복호화 불가 → remux 모드로 전환")
+        _eprint("  · SAMPLE-AES etc. cannot be decrypted segment-by-segment → switching to remux mode")
         return "remux"
     if pl.is_live:
-        _eprint("  · LIVE 플레이리스트 → remux 모드로 전환 (스냅샷 계측 불가)")
+        _eprint("  · LIVE playlist → switching to remux mode (snapshot measurement impossible)")
         return "remux"
     return "segments"
 ```
 
-`auto` 는 두 조건에서 `remux` 로 내려간다. 하나는 이 장의 SAMPLE-AES 이고, 다른 하나는
-LIVE 다. 두 조건은 서로 무관해 보이지만 **같은 성질**을 공유한다 — 둘 다 "세그먼트를
-하나씩 받아 하나씩 검사하는" 전제를 깨뜨린다. LIVE 는 목록이 고정되지 않아서, SAMPLE-AES 는
-받아도 열 수 없어서다.
+`auto` drops to `remux` under two conditions. One is this chapter's SAMPLE-AES, and the other is LIVE. The two
+conditions look mutually unrelated but share the **same property** — both break the premise "receive segments one
+by one and check one by one." LIVE because the listing is not fixed, SAMPLE-AES because it cannot be opened even
+when received.
 
-`_decide_mode` 가 `args.mode != "auto"` 를 먼저 보는 것도 의도적이다. 사용자가 명시적으로
-`--mode segments` 를 주면 강등하지 않는다. 그 경우 [`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40) 의
-`NotImplementedError` 가 대신 막는다 — **판정이 두 겹**이고, 바깥 겹은 편의(자동 전환),
-안쪽 겹은 안전(데이터 파괴 방지)을 담당한다.
+That `_decide_mode` looks at `args.mode != "auto"` first is intentional too. If the user gives `--mode segments`
+explicitly, it does not downgrade. In that case [`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40)'s `NotImplementedError` blocks it instead —
+**the judgment is two-ply**, and the outer ply handles convenience (auto switching) and the inner ply safety
+(preventing data destruction).
 
-### 26.4.4 강등이 잃는 것
+### 26.4.4 What the downgrade loses
 
-강등은 공짜가 아니다. `remux` 모드에서는 세그먼트를 이 도구가 직접 받지 않으므로,
-세그먼트를 봐야만 할 수 있는 검사가 통째로 사라진다. 코드에 그 절단면이 그대로 있다.
+The downgrade is not free. In `remux` mode this tool does not receive the segments itself, so a check that can only
+be done by looking at the segments disappears wholesale. That cut face is right there in the code.
 
 ```python
 # cli.py:632
         ts=run.ts if mode == "segments" else None,
 ```
 
-실측한 검사 목록 대조다(§26.5 의 같은 스트림, 같은 도구).
+The measured check-list contrast (the same stream, same tool, of §26.5).
 
-| 검사 | `segments` 모드 | `remux` 모드 | 무엇을 보는 검사인가 |
+| Check | `segments` mode | `remux` mode | What the check looks at |
 |---|---|---|---|
-| 플레이리스트 | ✓ | ✓ | 선언값 |
-| 세그먼트 수신 | ✓ | **없음** | 요청별 성공·재시도 |
-| 응답 지연 | ✓ | **없음** | TTFB p50/p95 |
-| 페이로드 유효성 | ✓ | **없음** | 선두 바이트(제14장) |
-| 세그먼트 고유성 | ✓ | **없음** | SHA-256 중복 |
-| TS 무결성 | ✓ | **없음** | CC 유실·**scrambling control**(제17·18장) |
-| 길이 정합 | ✓ | ✓ | 산출물 |
-| 스트림 구성 | ✓ | ✓ | 산출물 |
-| 타임라인 연속성 | ✓ | ✓ | 산출물(제21장) |
-| 전체 디코드 | ✓ | ✓ | 산출물 |
+| playlist | ✓ | ✓ | declared values |
+| segment receive | ✓ | **absent** | per-request success·retry |
+| response latency | ✓ | **absent** | TTFB p50/p95 |
+| payload validity | ✓ | **absent** | leading byte (Chapter 14) |
+| segment uniqueness | ✓ | **absent** | SHA-256 duplicate |
+| TS integrity | ✓ | **absent** | CC loss·**scrambling control** (Chapters 17·18) |
+| length consistency | ✓ | ✓ | output |
+| stream composition | ✓ | ✓ | output |
+| timeline continuity | ✓ | ✓ | output (Chapter 21) |
+| full decode | ✓ | ✓ | output |
 
-**10개에서 5개로 줄어든다.** 특히 아픈 것은 TS 무결성이다. 제17장 §17.9.3 은 이
-검사를 "앞의 세 판정이 전부 틀렸을 때를 위한 마지막 그물"이라고 불렀는데, 강등하면
-그 그물 자체가 걷힌다. 남는 다섯은 전부 **산출물을 열어서 보는 검사**이고, 산출물을
-만든 주체는 방금 위임한 ffmpeg 이다.
+**It drops from 10 to 5.** What hurts especially is TS integrity. Chapter 17 §17.9.3 called this check "the last
+net for when the previous three verdicts are all wrong," and downgrade lifts that net itself. The remaining five
+are all **checks that open the output to look**, and the actor that made the output is the ffmpeg just delegated
+to.
 
-> **위임은 일만 넘기는 것이 아니라 관측 지점도 함께 넘긴다.** 제14장 §14.5.4 에서
-> 위임이 정책을 상속한다고 했다면, 여기서는 위임이 **계측을 포기하게** 만든다.
+> **Delegation hands over not just the work but the observation point too.** If Chapter 14 §14.5.4 said delegation
+> inherits the policy, here delegation makes you **give up measurement.**
 
 ---
 
-## 26.5 실측 — 거부하지 않았다면 무엇이 일어나는가
+## 26.5 Measured — what happens if you do not reject
 
-여기까지는 규격과 코드에서 따라 나온 이야기다. 실제로 무슨 일이 벌어지는지 로컬에서
-측정했다.
+Up to here is the story following from the spec and code. I measured locally what actually happens.
 
-### 26.5.1 실험 설계
+### 26.5.1 Experiment design
 
-외부 스트림은 쓰지 않는다. 제14장 §14.5 와 같은 방식으로 **직접 만든 4초짜리 테스트
-패턴**(`testsrc2` + `sine`, H.264 + AAC, 2세그먼트)과 `/dev/urandom` 에서 뽑은 16바이트
-키 파일을 로컬 HTTP 서버로 내보내고, 플레이리스트의 `#EXT-X-KEY` 선언만 바꿔 가며
-같은 세그먼트를 다르게 **선언**했다.
+No external stream is used. In the same way as Chapter 14 §14.5, I sent a **self-made 4-second test pattern**
+(`testsrc2` + `sine`, H.264 + AAC, 2 segments) and a 16-byte key file pulled from `/dev/urandom` out over a local
+HTTP server, and **declared** the same segments differently by changing only the playlist's `#EXT-X-KEY`
+declaration.
 
-즉 이 실험은 **세그먼트 내용은 전부 같고 선언만 다르다.** 보호된 콘텐츠도, 실제
-키 배포 체계도 관여하지 않는다. 측정 대상은 콘텐츠가 아니라 **도구의 반응**이다.
+That is, in this experiment **the segment content is all the same and only the declaration differs.** Neither
+protected content nor an actual key-distribution system is involved. The measurement target is not the content but
+**the tool's reaction.**
 
-측정 환경: ffmpeg 8.1.1 · macOS · `python3 -m http.server` · 로컬 루프백.
+Measurement environment: ffmpeg 8.1.1 · macOS · `python3 -m http.server` · local loopback.
 
-### 26.5.2 ffmpeg 은 어떻게 반응하는가
+### 26.5.2 How does ffmpeg react
 
-| 플레이리스트의 `#EXT-X-KEY` 선언 | ffmpeg 종료 코드 | 관측된 것 |
+| The playlist's `#EXT-X-KEY` declaration | ffmpeg exit code | What was observed |
 |---|---|---|
-| 없음(대조군) | `0` | 오류 없이 디코드 |
+| none (control) | `0` | decoded with no error |
 | `METHOD=AES-128, URI="enc.key"` | `183` | `Error when loading first segment` · `Invalid data found` |
-| `METHOD=SAMPLE-AES, URI="enc.key"` | **`0`** | 열림. **프레임만 파괴됨** |
+| `METHOD=SAMPLE-AES, URI="enc.key"` | **`0`** | opens. **only the frames destroyed** |
 | `METHOD=SAMPLE-AES, KEYFORMAT="com.apple.streamingkeydelivery", URI="skd://…"` | `183` | `Unable to open key file skd://…` |
 
-두 번째 행과 세 번째 행의 대비가 이 장의 핵심이다. **바이트는 완전히 같고 선언만
-다른데 결과가 정반대다.**
+The contrast of the second and third rows is this chapter's core. **The bytes are completely the same and only
+the declaration differs, yet the results are opposite.**
 
-- **AES-128 로 선언** — ffmpeg 이 세그먼트 전체를 CBC 복호화한다. 평문이던 TS 헤더가
-  무작위 바이트가 되고, 결과는 더 이상 TS 가 아니다. **컨테이너 파싱 자체가 실패하고
-  즉시 하드 실패**한다. (내부 동작은 오류 메시지에서 역으로 읽은 것이다. 관측된
-  사실은 "키를 받아 갔고, 첫 세그먼트를 여는 데 실패했다"까지다.)
-- **SAMPLE-AES 로 선언** — ffmpeg 이 샘플 몸통에만 복호 변환을 건다. **컨테이너는
-  손대지 않으므로 전부 온전하다.** 패킷도, PTS 도, 프레임 개수도 정상이다. 파괴된
-  것은 화면 내용뿐이다.
+- **declared as AES-128** — ffmpeg CBC-decrypts the whole segment. The TS header that was plaintext becomes random
+  bytes, and the result is no longer TS. **The container parsing itself fails and it hard-fails immediately.** (The
+  internal behavior is read in reverse from the error message. The observed fact is only up to "it fetched the key
+  and failed to open the first segment.")
+- **declared as SAMPLE-AES** — ffmpeg applies the decrypt transform only to the sample body. **It does not touch
+  the container so everything is intact.** The packets, the PTS, the frame count are all normal. What is destroyed
+  is only the screen content.
 
-산출물을 비교하면 이렇게 나온다.
+Compare the outputs and it comes out like this.
 
-| 산출물 | 크기 | ffprobe 재생 길이 |
+| Output | Size | ffprobe play length |
 |---|---|---|
-| 대조군(선언 없음) | 424,822 바이트 | 4.040272s |
-| SAMPLE-AES 선언 | 424,625 바이트 | **4.040272s** |
+| control (no declaration) | 424,822 bytes | 4.040272s |
+| SAMPLE-AES declaration | 424,625 bytes | **4.040272s** |
 
-**길이가 소수점 여섯 자리까지 같고 크기는 0.05% 차이다.** 제0장이 출발점으로 삼은
-문장이 다시 나타난다 — 총 길이가 맞는데 중간이 비어 있다. 이번에는 "중간이 비어
-있다"가 아니라 **"전부 들어 있는데 전부 못 쓴다"** 이다.
+**The length is the same to the sixth decimal place and the size differs by 0.05%.** The sentence Chapter 0 took as
+its starting point appears again — the total length matches but the middle is empty. This time it is not "the
+middle is empty" but **"everything is in but none of it is usable."**
 
-> **입자가 굵으면 틀렸을 때 즉시 무너지고, 가늘면 틀렸을 때 멀쩡해 보인다.**
-> 굵은 입자의 실패는 시끄럽고 가는 입자의 실패는 조용하다.
+> **Coarse granularity collapses immediately when wrong; fine granularity looks fine when wrong.** A coarse
+> granularity's failure is noisy and a fine granularity's failure is quiet.
 
-### 26.5.3 이 저장소의 도구는 어떻게 반응하는가
+### 26.5.3 How does this repository's tool react
 
-같은 SAMPLE-AES 선언 플레이리스트를 `hls-recon` 에 물렸다.
+I put the same SAMPLE-AES-declared playlist into `hls-recon`.
 
 ```
-    암호화        : SAMPLE-AES
-    유형          : VOD
-  · SAMPLE-AES 등 세그먼트 단위 복호화 불가 → remux 모드로 전환
+    encryption    : SAMPLE-AES
+    type          : VOD
+  · SAMPLE-AES etc. cannot be decrypted segment-by-segment → switching to remux mode
 ```
 
-`_decide_mode` 가 설계대로 발동한다. 그 뒤 판정 결과를 대조군과 나란히 놓으면 이렇게
-된다.
+`_decide_mode` fires as designed. Set the verdict result side by side with the control and it becomes this.
 
-| 검사 | 대조군(평문, `segments`) | SAMPLE-AES 선언(`auto`→`remux`) |
+| Check | Control (plaintext, `segments`) | SAMPLE-AES declaration (`auto`→`remux`) |
 |---|---|---|
-| 플레이리스트 | ✓ | ✓ |
-| 세그먼트 수신 | ✓ 2개 전량 | — |
-| 페이로드 유효성 | ✓ 전량 미디어 | — |
-| 세그먼트 고유성 | ✓ | — |
-| TS 무결성 | ✓ 2,382패킷 손실 0 | — |
-| 길이 정합 | ! 드리프트 +0.04s | ! 드리프트 +0.04s |
-| 스트림 구성 | ✓ h264 320x180 + aac | ✓ **동일** |
-| 타임라인 연속성 | ✓ 120프레임 결손 0 | ✓ **동일** |
-| 전체 디코드 | ✓ 오류 없음 | ✗ **오류 21건** |
-| **판정** | WARN(길이 드리프트) | **FAIL** |
+| playlist | ✓ | ✓ |
+| segment receive | ✓ both 2 | — |
+| payload validity | ✓ all media | — |
+| segment uniqueness | ✓ | — |
+| TS integrity | ✓ 2,382 packets 0 loss | — |
+| length consistency | ! drift +0.04s | ! drift +0.04s |
+| stream composition | ✓ h264 320x180 + aac | ✓ **identical** |
+| timeline continuity | ✓ 120 frames 0 missing | ✓ **identical** |
+| full decode | ✓ no error | ✗ **21 errors** |
+| **verdict** | WARN (length drift) | **FAIL** |
 
-**구조를 보는 검사는 하나도 걸리지 않는다.** 프레임 120개가 그대로 있고, 간격도
-33.3ms 로 균일하고, 스트림 구성도 같다. 그럴 수밖에 없다 — SAMPLE-AES 는 **구조를
-건드리지 않는 방식**이기 때문이다. 구조 기반 검사는 원리상 이 손상을 볼 수 없다.
+**Not a single structure-viewing check catches.** The 120 frames are all there, the interval is uniform at 33.3ms,
+and the stream composition is the same. It cannot be otherwise — SAMPLE-AES is a **scheme that does not touch the
+structure.** A structure-based check cannot, in principle, see this damage.
 
-잡아낸 것은 마지막 하나, **전체 디코드**뿐이다. 그리고 그것은 끄는 옵션이 있다.
+What it caught is the last one only, **full decode.** And that has an option to turn it off.
 
 ```
 $ hls-recon … --no-decode-check
-  검증 결과: WARN — 확인 필요        ← 종료 코드 0
+  verdict: WARN — needs checking        ← exit code 0
 ```
 
-`--no-decode-check` 를 주면 **판정이 대조군과 글자 하나 다르지 않다.** 둘 다 WARN 이고,
-둘 다 길이 드리프트 하나만 지적하고, 둘 다 종료 코드 0 이다. 화면이 전부 깨진 파일과
-멀쩡한 파일이 같은 판정을 받는다.
+Give `--no-decode-check` and **the verdict does not differ from the control by a single letter.** Both are WARN,
+both point only at one length drift, both are exit code 0. A file with the whole screen broken and a fine file get
+the same verdict.
 
-> **암호화 입자가 가늘수록 "구조는 온전한데 내용만 파괴된" 산출물이 나오기 쉽고,
-> 그런 산출물은 내용을 실제로 디코드해 보기 전에는 정상과 구별되지 않는다.**
+> **The finer the encryption granularity, the easier it is for an output "structurally intact but content-only
+> destroyed" to come out, and such an output is indistinguishable from normal until you actually decode the
+> content.**
 
-이것이 이 저장소가 값비싼 전체 디코드 검사를 기본으로 켜 두는 이유의 한 갈래다
-([`cli.py:1066`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1066) 은 끄는 쪽에만 플래그를 두었다 — 기본은 켬).
+This is one strand of the reason this repository keeps the costly full-decode check on by default ([`cli.py:1066`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1066)
+put a flag only on the turning-off side — default is on).
 
-### 26.5.4 강제로 `segments` 를 주면
+### 26.5.4 If you force `segments`
 
 ```
 $ hls-recon … --mode segments
-NotImplementedError: METHOD=SAMPLE-AES KEYFORMAT=identity 는 세그먼트 단위
-복호화가 불가능하다 — --mode remux 로 ffmpeg 에 위임할 것
+NotImplementedError: METHOD=SAMPLE-AES KEYFORMAT=identity cannot be decrypted
+segment-by-segment — delegate to ffmpeg with --mode remux
 ```
 
-안쪽 겹이 예상대로 막는다. 다만 이 예외는 CLI 에서 잡히지 않아 **파이썬 트레이스백이
-그대로 출력**되고 종료 코드는 1 이다. 안전 판정은 옳게 작동하지만 사용자에게 보이는
-표면은 [`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102) 의 `_diagnose` 가 만들어 온 진단 형식과 어긋난다(§26.8).
+The inner ply blocks it as expected. Only, this exception is not caught in the CLI so **the Python traceback is
+output as-is** and the exit code is 1. The safety verdict works correctly, but the surface shown to the user
+diverges from the diagnostic format [`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102)'s `_diagnose` has built (§26.8).
 
 ---
 
-## 26.6 일반화 — 입자가 굵으면 분리되고, 가늘면 얽힌다
+## 26.6 Generalization — coarse granularity separates, fine granularity entangles
 
-### 26.6.1 하나의 축
+### 26.6.1 One axis
 
-이 장의 대비는 스트리밍에 한정되지 않는다. 축을 한 줄로 쓰면 이렇다.
+This chapter's contrast is not limited to streaming. Write the axis in one line and it is this.
 
-> **암호화 입자를 가늘게 한다는 것은 곧 더 많은 구조를 평문으로 남긴다는 뜻이고,
-> 남긴 구조를 다룰 수 있으려면 암호 계층이 그 구조를 알아야 한다.**
+> **Making the encryption granularity finer means leaving more structure plaintext, and to be able to handle the
+> left structure the crypto layer must know that structure.**
 
-| 영역 | 굵은 입자 | 가는 입자 | 가늘게 하면 얽히는 계층 | 가늘게 해서 얻는 것 |
+| Domain | Coarse granularity | Fine granularity | Layer entangled by going finer | What you gain by going finer |
 |---|---|---|---|---|
-| **HLS** | `AES-128`(세그먼트) | `SAMPLE-AES`(샘플) | 컨테이너·코덱 파서 | 키 없는 가공·트릭 플레이 |
-| **fMP4·DASH** | 파일 전체 암호화 | CENC 부분 샘플 암호화 | 샘플 보조 정보 박스 | 같은 자산을 여러 DRM 으로 |
-| **저장 장치** | 전체 디스크 암호화 | 파일 단위 암호화 | 파일 시스템 | 사용자별 키·선택적 공유 |
-| **데이터베이스** | 테이블스페이스 암호화 | 컬럼·필드 암호화 | 질의 계획·인덱스 | 최소 권한·부분 노출 통제 |
-| **메시지** | 전송 구간 암호화 | 본문만 종단 간 암호화 | 라우팅 헤더 처리 | 중계 서버를 신뢰하지 않아도 됨 |
-| **압축**(대칭 사례) | 파일 통째 압축 | 청크 단위 압축 | 인덱스·탐색 계층 | 임의 접근(random access) |
+| **HLS** | `AES-128` (segment) | `SAMPLE-AES` (sample) | container·codec parser | keyless processing·trick play |
+| **fMP4·DASH** | whole-file encryption | CENC partial-sample encryption | sample-auxiliary-info box | the same asset for several DRMs |
+| **storage** | full-disk encryption | per-file encryption | filesystem | per-user keys·selective sharing |
+| **database** | tablespace encryption | column·field encryption | query plan·index | least privilege·partial-exposure control |
+| **messaging** | transport-segment encryption | body-only end-to-end encryption | routing-header processing | not needing to trust the relay server |
+| **compression** (symmetric case) | whole-file compression | chunk-unit compression | index·seek layer | random access |
 
-> **용어** — **CENC(Common Encryption, ISO/IEC 23001-7)**: ISO-BMFF 계열 컨테이너의
-> 표준 부분 암호화 규격. 샘플 안에서 평문 구간과 암호문 구간의 길이 쌍을 별도
-> 메타데이터로 기록해 두고, 그 표를 보고 복호화한다.
+> **Term** — **CENC (Common Encryption, ISO/IEC 23001-7)**: the standard partial-encryption spec of ISO-BMFF-family
+> containers. It records the pairs of plaintext-stretch and ciphertext-stretch lengths inside a sample as separate
+> metadata, and decrypts by reading that table.
 
-CENC 행이 특히 시사적이다. 이 규격은 §26.2.3 의 5단계 파싱 문제를 **메타데이터로
-외부화**해서 푼다 — 암호 계층이 코덱을 파싱하는 대신, 패키저가 미리 계산해 둔
-"평문 몇 바이트, 암호문 몇 바이트" 표를 읽는다. 결합이 사라지지는 않았고 **컨테이너
-쪽으로 옮겨졌다.** 결합은 지울 수 없고 이동시킬 수 있을 뿐이라는 것을 보여 준다.
+The CENC row is especially suggestive. This spec solves §26.2.3's 5-step parsing problem by **externalizing it as
+metadata** — instead of the crypto layer parsing the codec, it reads a "so many plaintext bytes, so many
+ciphertext bytes" table the packager precomputed. The coupling did not vanish but **moved to the container side.**
+It shows coupling cannot be erased and can only be moved.
 
-마지막 행은 암호가 아닌 대칭 사례로 넣었다. 파일 하나를 통째로 압축하면 중간부터
-읽을 수 없고, 청크로 쪼개면 읽을 수 있는 대신 청크 경계표를 관리해야 한다. **구조를
-남기면 기능이 생기고 관리 대상이 는다** — 압축이든 암호든 같은 저울이다.
+The last row is put in as a symmetric non-crypto case. Compress one file whole and you cannot read from the
+middle; split it into chunks and you can read but must manage a chunk-boundary table. **Leave structure and a
+feature arises and a management target rises** — whether compression or crypto, it is the same scale.
 
-### 26.6.2 반대 방향도 있다
+### 26.6.2 There is a reverse direction too
 
-진짜 축은 입자 그 자체가 아니라 **얼마나 많은 구조를 평문으로 남기는가**이고, 그
-축은 양방향이다. 반대 방향으로 움직인 사례가 QUIC 의 헤더 보호다(제17장 §17.8.1).
-중계에 꼭 필요한 최소한만 남기고 나머지 헤더를 가려 경로 위 관측자가 연결을 추적하지
-못하게 한다. 대가는 대칭적이다 — **중간 장비가 할 수 있는 일이 줄어든다.**
+The real axis is not the granularity itself but **how much structure is left plaintext**, and that axis is
+bidirectional. A case that moved in the opposite direction is QUIC's header protection (Chapter 17 §17.8.1). It
+leaves only the bare minimum needed for relay and masks the rest of the header so an on-path observer cannot track
+the connection. The price is symmetric — **what intermediate gear can do decreases.**
 
-| 사례 | 평문으로 남는 구조 | 중간자가 할 수 있는 일 | 암호 계층이 알아야 하는 것 |
+| Case | Structure left plaintext | What the man-in-the-middle can do | What the crypto layer must know |
 |---|---|---|---|
-| SAMPLE-AES | 컨테이너 전체 | 자르기·잇기·재패키징·탐색 | **컨테이너 + 코덱** |
-| AES-128 | 없음(세그먼트 단위 메타데이터뿐) | 옮기고 캐시하기 | 키와 IV 뿐 |
-| QUIC 헤더 보호 | 라우팅에 꼭 필요한 최소 | 경로 배정만 | 자체 레코드 구조뿐 |
+| SAMPLE-AES | the whole container | cut·join·re-package·seek | **container + codec** |
+| AES-128 | none (only segment-unit metadata) | move and cache | only the key and IV |
+| QUIC header protection | the minimum needed for routing | routing only | only its own record structure |
 
-세 행이 같은 저울의 눈금이다. QUIC 의 이동은 암호화 **입자**를 바꾼 것이 아니라
-암호화 **범위**를 넓힌 것이므로 SAMPLE-AES 와 같은 종류의 변경은 아니다. 그러나 세
-행이 "평문으로 남긴 만큼 중간자가 일할 수 있다"는 같은 관계를 따른다는 점은 공통이다.
-어느 지점을 고를지는 **누구에게 무엇을 시킬 것인가**로 결정되지, 암호학적 우열로
-결정되지 않는다.
+The three rows are marks on the same scale. QUIC's move changed not the encryption **granularity** but widened the
+encryption **scope**, so it is not the same kind of change as SAMPLE-AES. But the commonality is that the three
+rows follow the same relationship "as much as left plaintext, the man-in-the-middle can work." Which point to pick
+is decided by **whom you want to make do what**, not by cryptographic superiority.
 
-### 26.6.3 그래서 무엇을 배우는가
+### 26.6.3 So what do you learn
 
-"결합을 없애라"가 이 장의 결론이 **아니다.** SAMPLE-AES 의 결합은 없앨 수 없다.
-없애려면 요구를 포기해야 하고, 요구를 포기하면 광고 삽입도 트릭 플레이도 못 한다.
+"Remove the coupling" is **not** this chapter's conclusion. SAMPLE-AES's coupling cannot be removed. To remove it
+you must give up the demand, and give up the demand and you can do neither ad insertion nor trick play.
 
-배울 것은 다른 문장이다.
+What to learn is a different sentence.
 
-> **설계 결정은 구현 구조를 강제한다. 그러므로 결정할 때 따라 나올 구조를 함께
-> 계산해야 하고, 그 구조를 감당할 수 없으면 결정을 바꾸거나 그 기능을 포기해야 한다.**
+> **A design decision forces an implementation structure. So when deciding you must compute the structure that
+> will follow together, and if you cannot bear that structure you must change the decision or give up that
+> feature.**
 
-이 저장소가 한 것이 정확히 후자다. 계층 결합을 감당하지 않기로 하고, 대신 **그
-결정을 코드와 문서에 명시**했다. 감당하지 않는 것 자체는 흠이 아니다. 감당하지
-않으면서 감당하는 척하는 것이 흠이다.
-
----
-
-## 26.7 보안 — 부분 암호화의 위협 모델
-
-### 26.7.1 평문으로 남긴 것은 관측된다
-
-부분 암호화의 첫 번째 보안 성질은 정의에서 바로 나온다. **평문으로 남긴 것은
-누구에게나 보인다.**
-
-| 방식 | 경로 위 관측자가 볼 수 있는 것 |
-|---|---|
-| AES-128 | 세그먼트의 개수·크기·요청 시각 |
-| SAMPLE-AES | 그에 더해 **프레임 단위 크기 열, 프레임 종류, 표시 시각, 트랙 구성** |
-
-프레임 크기의 시간 열은 콘텐츠마다 상당히 고유하다. 가변 비트레이트로 부호화하면
-장면 전환에서 프레임이 커지고 정적인 장면에서 작아지므로, 그 열 자체가 지문처럼
-작동할 수 있다. 암호화된 스트리밍 트래픽의 크기 패턴으로 시청 콘텐츠를 식별하려는
-연구 갈래가 존재한다는 것은 알려져 있으나, **이 교재는 그런 식별을 시도하지도
-측정하지도 않았다.** 여기서 확실히 말할 수 있는 것은 원리적인 방향뿐이다 —
-**부분 암호화는 그 방향의 정보량을 늘린다.**
-
-이것은 SAMPLE-AES 의 결함이 아니라 **요구의 대가**다. §26.3 의 다섯 가지 요구는
-전부 "중간자가 구조를 볼 수 있어야 한다"였고, 중간자에게 보이는 것은 관측자에게도
-보인다. 접근을 열어 준 대상만 골라서 열 수는 없다.
-
-### 26.7.2 파서가 암호 경계 안으로 들어온다
-
-두 번째 성질이 실무적으로 더 중요하다.
-
-> **입자를 가늘게 하면 컨테이너·코덱 파서가 키를 쥔 코드와 같은 신뢰 영역으로
-> 들어온다.**
-
-AES-128 복호기는 입력을 검증할 것이 거의 없다. 길이가 16의 배수인지와 패딩이
-온전한지 정도이고, 그마저도 이 저장소는 `_unpad_pkcs7` 에서 패딩 실패를 조용히
-통과시킨다(제24장). 반면 SAMPLE-AES 복호기는 **공격자가 통제할 수 있는 구조 필드를
-읽어야 한다** — PES 길이, NAL 크기, 샘플 개수. 제20장에서 본 "길이 필드를 신뢰한
-파서"의 취약점 계열이 여기서 그대로 재현되고, 이번에는 그 코드가 **키를 메모리에
-들고 있다.**
-
-| 구성 | 신뢰 영역 안의 코드 | 입력 검증 부담 |
-|---|---|---|
-| AES-128 | CBC 복호 + 패딩 제거 | 사실상 없음 |
-| SAMPLE-AES | TS·PES·NAL·ADTS 파서 + 부분 복호 | **파서 취약점 전 범위** |
-
-이 저장소는 `decrypt.py` 58줄로 암호 계층을 끝냈다. 그래서 **그 파서 취약점을 가질
-방법이 없다.** 지원하지 않기로 한 결정이 공격면을 0 으로 유지한다.
-
-> **구현하지 않은 기능에는 취약점이 없다.** 기능 축소는 가장 확실한 완화이며,
-> 유일한 비용은 그 기능을 못 쓰는 것이다.
-
-이 문장은 남용하기 쉽다. "안 만들면 안전하다"는 논리로 필요한 기능까지 거부하면
-도구가 쓸모없어진다. 균형점은 **누가 그 기능을 필요로 하는가**다. 이 도구는 검증
-도구이고, 검증 대상은 자신이 접근 권한을 가진 스트림이다. SAMPLE-AES 는 대개
-DRM 체계와 함께 배치되므로 애초에 이 도구의 대상이 아니다.
-
-### 26.7.3 선언 기반 거부와 우연한 실패
-
-같은 실험에서 하나 더 측정했다. `KEYFORMAT` 을 identity 가 아닌 값으로 선언하되
-키 URI 는 평범한 HTTP 주소로 둔 플레이리스트를 ffmpeg 에 물렸다.
-
-| 선언 | ffmpeg 결과 |
-|---|---|
-| `KEYFORMAT="com.apple.streamingkeydelivery"`, `URI="skd://…"` | 실패 — **키 URI 를 열 수 없어서** |
-| `KEYFORMAT="com.apple.streamingkeydelivery"`, `URI="http://…"` | **열림** — `KEYFORMAT` 은 보지 않고 그대로 진행 |
-
-**ffmpeg 은 `KEYFORMAT` 값을 보고 거부한 것이 아니었다.** 앞 행이 실패한 이유는
-`skd://` 라는 URI 스킴을 열 수 없었기 때문이고, 키를 실제로 받을 수 있게 해 주면
-그대로 진행한다.
-
-제15장에서 이름 붙인 **우연한 방어(incidental defense)** 가 여기서 다시 나타난다 —
-어떤 통제가 실제로 판단해서 막는 것이 아니라, 다른 사정이 그 앞을 막고 있어서
-막히는 것처럼 보이는 상태다. 이 저장소는 반대로 한다.
-
-| | 거부의 근거 | 근거가 사라지면 |
-|---|---|---|
-| ffmpeg(관측된 동작) | 키 URI 를 열 수 없다 | 열 수 있게 되면 그대로 진행한다 |
-| [`playlist.py:57-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L57-L64) | **선언값 자체** | 바뀌지 않는다 |
-
-> **거부는 선언을 근거로 명시적으로 하라.** 우연히 실패하는 것에 기대면, 그 우연이
-> 사라지는 날 아무도 알아채지 못한다.
-
-다만 선언 기반 거부에도 한계가 있다. `is_supported` 는 플레이리스트의 **자기 신고**를
-믿는다(제5장의 주제 그대로다). 플레이리스트가 `METHOD=AES-128` 이라고 적어 놓고 실제
-세그먼트가 다른 방식이면 이 판정은 통과하고, 그때 남는 것은 제17장 §17.9 의
-scrambling control 검사뿐이다. 그리고 §26.4.4 에서 본 대로 **강등하면 그 검사도
-돌지 않는다.** 자기 신고를 믿는 판정과 바이트를 보는 판정이 같은 조건에서 동시에
-비활성화되는 구간이 존재한다는 뜻이다.
-
-### 26.7.4 방어자 관점
-
-| 역할 | 해야 할 일 |
-|---|---|
-| **송출·패키징 사업자** | 부분 암호화를 고를 때 얻는 것(키 없는 가공)과 잃는 것(구조 노출)을 같이 적는다. "암호화했다"는 사실이 아니라 **무엇을 평문으로 남겼는지**가 위협 모델의 입력이다 |
-| **플레이어·라이브러리 구현자** | 부분 복호를 구현하면 파서가 키와 같은 신뢰 영역에 들어온다. 길이·오프셋 필드 검증을 암호 코드와 **같은 수준으로** 감사해야 한다 |
-| **검증 도구 제작자** | 구조 기반 검사는 부분 암호화 손상을 **원리적으로** 못 잡는다. 내용을 실제로 디코드하는 검사를 기본으로 켜 두고, 끄는 것은 사용자의 명시적 선택으로 남긴다 |
-| **도구 사용자** | `--no-decode-check` 같은 옵션이 무엇을 끄는지 안다. 이 장의 실측에서 그 옵션 하나가 FAIL 을 WARN 으로 바꿨다 |
-| **규격 설계자** | 부분 암호화를 정의할 때 "복호기가 무엇을 파싱해야 하는가"를 최소화하는 쪽으로 설계한다. CENC 가 평문·암호문 길이 표를 컨테이너 메타데이터로 뽑아낸 것이 그 방향이다 |
-| **감사자** | "AES-128 로 암호화됨"이라는 문장을 볼 때 **입자를 묻는다.** 같은 알고리즘 이름이 전혀 다른 노출 수준을 뜻할 수 있다 |
+What this repository did is exactly the latter. It decided not to bear the layer coupling, and instead **stated
+that decision in code and doc.** Not bearing it is not itself a flaw. Pretending to bear it while not bearing it is
+the flaw.
 
 ---
 
-## 26.8 한계와 미해결
+## 26.7 Security — the threat model of partial encryption
 
-정직하게 적어 둔다. 이 장에는 실측한 것과 추론에 그친 것이 섞여 있다.
+### 26.7.1 What is left plaintext is observed
 
-- **진짜 SAMPLE-AES 스트림을 만들지 못했다.** §26.5 의 실험은 평문 세그먼트에
-  SAMPLE-AES 를 **선언**해 복호 변환을 걸게 만든 것으로, 실제 SAMPLE-AES 스트림을
-  틀린 키로 여는 상황의 **거울상**이다. 관측하려던 성질(컨테이너는 온전하고 샘플만
-  파괴된다)은 양쪽에서 같지만, 두 상황이 동일하다고 주장하지는 않는다. 확정하려면
-  SAMPLE-AES 패키저가 필요하다.
-- **코덱별 부분 암호화 규칙의 수치를 원문과 대조하지 않았다.** §26.2.3 의 "평문 리더 +
-  띄엄띄엄 암호화"는 규칙의 **형태**이고, 리더 길이·암호화 주기의 구체적 값은 이
-  교재가 확인한 값이 아니다. 이 장의 논지는 그 값에 의존하지 않는다.
-- **컨테이너 쪽 신호 형태를 확인하지 않았다.** 복호기는 어느 스트림·어느 샘플이
-  암호화 대상인지 알아야 하고 그 정보는 컨테이너 안에 있어야 하지만, 그 신호가
-  구체적으로 어떤 형태인지(PMT 기술자 등)는 확인하지 못했다. 추론이다.
-- **README 의 한계 서술과 실측이 어긋난다.** `README.md:411-413` 은 이렇게 적혀 있다.
+Partial encryption's first security property follows directly from the definition. **What is left plaintext is
+visible to anyone.**
 
-  > **SAMPLE-AES / DRM**: 프레임 단위 부분 암호화나 Widevine·FairPlay 로 보호된
-  > 스트림은 대상이 아니다. `auto` 모드가 `remux` 로 내리지만 ffmpeg 도 복호화하지
-  > 못하므로 실패한다.
+| Scheme | What an on-path observer can see |
+|---|---|
+| AES-128 | the segments' count·size·request time |
+| SAMPLE-AES | plus **the per-frame size series, frame kinds, presentation times, track composition** |
 
-  뒷문장이 현재 ffmpeg 에서는 그대로 성립하지 않는다. §26.5.2 에서 ffmpeg 8.1.1 은
-  `METHOD=SAMPLE-AES` 선언을 거부하지 않고 **키를 받아 샘플 단위 복호를 시도했으며**,
-  종료 코드 0 으로 끝났다. `KEYFORMAT` 이 identity 가 아닌 경우에 실패하는 것은
-  맞지만, 그 실패의 이유는 §26.7.3 에서 본 대로 "복호화하지 못해서"가 아니라
-  "키를 받지 못해서"다. 진짜 SAMPLE-AES 스트림과 올바른 키로 확인하기 전까지는
-  **README 의 서술이 틀렸다고도 맞다고도 단정할 수 없다.** 다만 그 근거로 든 이유는
-  이 실측과 어긋난다.
-- **회귀 테스트에 SAMPLE-AES 케이스가 없다.** `tests/run.sh:174` 는 AES-128 복호화를
-  고정하지만, 거부 경로를 고정하는 테스트는 없다. 즉 §26.4 의 두 겹 판정은 **테스트로
-  보호되지 않는다.** 제34장의 오라클 문제 관점에서 보면, 이 장이 서술한 동작은
-  실측으로는 확인됐지만 회귀로는 고정되지 않은 상태다.
-- **강제 `segments` 경로의 표면이 거칠다.** §26.5.4 의 `NotImplementedError` 는 CLI
-  에서 잡히지 않아 트레이스백으로 노출된다. 판정 자체는 옳고 데이터도 파괴되지
-  않지만, [`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102) 의 `_diagnose` 가 세워 온 진단 형식과 어긋난다.
-- **리포트가 암호화 방식을 잘못 표기한다.** 콘솔 구조 출력은 실제 `METHOD` 를 그대로
-  보여 주지만([`cli.py:200-207`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L200-L207)), 리포트로 넘어가는 값은 불리언 하나다.
+The frame-size time series is fairly unique per content. Encode with variable bitrate and frames grow at scene
+changes and shrink in static scenes, so that series itself can work like a fingerprint. It is known that there
+exists a research strand trying to identify viewed content by the size pattern of encrypted streaming traffic, but
+**this course neither attempted nor measured such identification.** What can be said for sure here is only the
+principled direction — **partial encryption increases the information content in that direction.**
+
+This is not a defect of SAMPLE-AES but **the price of the demand.** §26.3's five demands were all "the
+man-in-the-middle must be able to see the structure," and what is visible to the man-in-the-middle is visible to
+the observer too. You cannot open access to only the chosen target.
+
+### 26.7.2 The parser comes inside the crypto boundary
+
+The second property is more important practically.
+
+> **Make the granularity finer and the container·codec parser enters the same trust region as the code holding
+> the key.**
+
+An AES-128 decryptor has almost nothing to verify in the input. Just whether the length is a multiple of 16 and
+whether the padding is intact, and even that this repository quietly passes past on padding failure in
+`_unpad_pkcs7` (Chapter 24). A SAMPLE-AES decryptor, by contrast, **must read structure fields the attacker can
+control** — PES length, NAL size, sample count. The vulnerability class "a parser that trusted the length field"
+seen in Chapter 20 reproduces here as-is, and this time that code **holds the key in memory.**
+
+| Configuration | Code inside the trust region | Input-verification burden |
+|---|---|---|
+| AES-128 | CBC decrypt + padding removal | effectively none |
+| SAMPLE-AES | TS·PES·NAL·ADTS parser + partial decrypt | **the full range of parser vulnerabilities** |
+
+This repository ended the crypto layer in 58 lines of `decrypt.py`. So **it has no way to have those parser
+vulnerabilities.** The decision not to support keeps the attack surface at 0.
+
+> **A feature not implemented has no vulnerability.** Feature reduction is the surest mitigation, and its only cost
+> is not being able to use that feature.
+
+This sentence is easy to abuse. Reject even needed features with the logic "not making it is safe" and the tool
+becomes useless. The balance point is **who needs that feature.** This tool is a verification tool, and its
+verification target is a stream one has access to. SAMPLE-AES is usually deployed together with a DRM system so it
+is not this tool's target in the first place.
+
+### 26.7.3 Declaration-based rejection and incidental failure
+
+I measured one more thing in the same experiment. I put into ffmpeg a playlist declaring `KEYFORMAT` as a
+non-identity value while leaving the key URI as an ordinary HTTP address.
+
+| Declaration | ffmpeg result |
+|---|---|
+| `KEYFORMAT="com.apple.streamingkeydelivery"`, `URI="skd://…"` | fail — **because it could not open the key URI** |
+| `KEYFORMAT="com.apple.streamingkeydelivery"`, `URI="http://…"` | **opens** — does not look at `KEYFORMAT` and proceeds as-is |
+
+**ffmpeg did not reject by looking at the `KEYFORMAT` value.** The reason the front row failed is that it could not
+open the URI scheme `skd://`, and make the key actually fetchable and it proceeds as-is.
+
+The **incidental defense** named in Chapter 15 appears again here — a state where a control does not actually
+judge and block but looks blocked because another circumstance is blocking in front of it. This repository does
+the opposite.
+
+| | The basis of rejection | If the basis vanishes |
+|---|---|---|
+| ffmpeg (observed behavior) | cannot open the key URI | make it openable and it proceeds as-is |
+| [`playlist.py:57-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L57-L64) | **the declared value itself** | does not change |
+
+> **Reject explicitly on the basis of the declaration.** Lean on incidental failure and, the day that coincidence
+> vanishes, no one notices.
+
+Only, declaration-based rejection has a limit too. `is_supported` believes the playlist's **self-report** (exactly
+Chapter 5's subject). If the playlist wrote `METHOD=AES-128` but the actual segment is a different scheme, this
+verdict passes, and what is left then is only Chapter 17 §17.9's scrambling-control check. And as seen in §26.4.4,
+**downgrade and that check does not run either.** It means there exists a stretch where a verdict believing the
+self-report and a verdict looking at the bytes are simultaneously deactivated under the same condition.
+
+### 26.7.4 The defender's view
+
+| Role | What to do |
+|---|---|
+| **delivery·packaging operator** | when choosing partial encryption, write what you gain (keyless processing) and what you lose (structure exposure) together. not the fact "it is encrypted" but **what was left plaintext** is the threat model's input |
+| **player·library implementer** | implement partial decryption and the parser enters the same trust region as the key. length·offset field verification must be audited **at the same level** as the crypto code |
+| **verification-tool maker** | a structure-based check **cannot in principle** catch partial-encryption damage. keep a check that actually decodes the content on by default, and leave turning it off to the user's explicit choice |
+| **tool user** | know what an option like `--no-decode-check` turns off. in this chapter's measurement, that one option turned a FAIL into a WARN |
+| **spec designer** | when defining partial encryption, design toward minimizing "what the decryptor must parse." CENC pulling the plaintext·ciphertext length table out as container metadata is that direction |
+| **auditor** | when you see the sentence "AES-128 encrypted," **ask the granularity.** the same algorithm name can mean an entirely different exposure level |
+
+---
+
+## 26.8 Limits and open questions
+
+Written honestly. This chapter mixes what was measured and what stayed inference.
+
+- **Could not make a real SAMPLE-AES stream.** §26.5's experiment made a decrypt transform be applied by
+  **declaring** SAMPLE-AES on a plaintext segment, which is the **mirror image** of opening an actual SAMPLE-AES
+  stream with a wrong key. The property meant to be observed (the container is intact and only the sample is
+  destroyed) is the same on both sides, but I do not claim the two situations are identical. To settle it a
+  SAMPLE-AES packager is needed.
+- **Did not cross-check the per-codec partial-encryption rules' figures against the original.** §26.2.3's
+  "plaintext leader + skipped encryption" is the rule's **form**, and the concrete values of leader length·
+  encryption period are not values this course confirmed. This chapter's thesis does not depend on those values.
+- **Did not confirm the container-side signal form.** The decryptor must know which stream·which sample is an
+  encryption target and that info must be inside the container, but what concrete form that signal takes (a PMT
+  descriptor, etc.) could not be confirmed. It is inference.
+- **The README's limit narrative and the measurement diverge.** `README.md:411-413` reads like this.
+
+  > **SAMPLE-AES / DRM**: per-frame partial encryption or streams protected by Widevine·FairPlay
+  > are not targets. `auto` mode drops to `remux`, but ffmpeg cannot decrypt them either
+  > so it fails.
+
+  The latter sentence does not hold as-is on current ffmpeg. In §26.5.2 ffmpeg 8.1.1 did not reject the
+  `METHOD=SAMPLE-AES` declaration and **fetched the key and attempted per-sample decryption**, ending with exit
+  code 0. It is true it fails when `KEYFORMAT` is not identity, but the reason for that failure, as seen in
+  §26.7.3, is not "because it could not decrypt" but "because it could not fetch the key." Until confirmed with a
+  real SAMPLE-AES stream and the correct key, **the README's narrative can be asserted neither wrong nor right.**
+  But the reason it gives diverges from this measurement.
+- **There is no SAMPLE-AES case in the regression test.** `tests/run.sh:174` fixes AES-128 decryption, but there
+  is no test fixing the rejection path. That is, §26.4's two-ply judgment is **not protected by a test.** From
+  Chapter 34's oracle-problem view, the behavior this chapter narrated was confirmed by measurement but is not
+  fixed by regression.
+- **The forced-`segments` path's surface is rough.** §26.5.4's `NotImplementedError` is not caught in the CLI so
+  it is exposed as a traceback. The verdict itself is right and the data is not destroyed, but it diverges from the
+  diagnostic format [`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102)'s `_diagnose` has set up.
+- **The report mislabels the encryption scheme.** The console structure output shows the actual `METHOD` as-is
+  ([`cli.py:200-207`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L200-L207)), but the value passed to the report is one boolean.
 
   ```python
   # cli.py:629
@@ -690,52 +678,52 @@ scrambling control 검사뿐이다. 그리고 §26.4.4 에서 본 대로 **강�
 
   ```python
   # report.py:156
-          f"TARGETDURATION {target_duration:g}s, 암호화 {'AES-128' if encrypted else '없음'}",
+          f"TARGETDURATION {target_duration:g}s, encryption {'AES-128' if encrypted else 'none'}",
   ```
 
-  경계에서 `METHOD` 문자열이 버려지므로, SAMPLE-AES 스트림의 리포트에도 **"암호화
-  AES-128"** 이 찍힌다. §26.5.3 의 실행에서 실제로 그렇게 출력됐다 — 콘솔에는
-  `SAMPLE-AES`, 리포트에는 `AES-128` 이다. 판정에는 영향이 없지만, **이 장 전체가
-  "방식 이름이 곧 노출 수준"이라고 말하는 마당에 리포트가 방식을 지운다**는 점에서
-  고쳐야 할 자리다.
-- **부분 복호 구현 비용을 정량화하지 않았다.** §26.4.2 의 여섯 항목이 실제로 몇 줄인지,
-  기존 모듈 경계를 얼마나 침범하는지는 추정하지 않았다. "감당하지 않기로 했다"는
-  판단의 근거는 항목의 **성격**(전부 컨테이너·코덱 계층)이지 측정된 규모가 아니다.
+  Since the `METHOD` string is discarded at the boundary, a SAMPLE-AES stream's report too gets **"encryption
+  AES-128"** printed. In §26.5.3's run it was actually output that way — `SAMPLE-AES` on the console, `AES-128` in
+  the report. No effect on the verdict, but it is a spot to fix in that, **while this whole chapter says "the
+  scheme name is the exposure level," the report erases the scheme.**
+- **Did not quantify the partial-decrypt implementation cost.** How many lines §26.4.2's six items actually are,
+  and how much they invade the existing module boundaries, was not estimated. The basis for the judgment "decided
+  not to bear it" is the items' **nature** (all container·codec layer), not a measured size.
 
 ---
 
-## 26.9 요약
+## 26.9 Summary
 
-1. **암호화 입자**는 암호 변환을 적용하는 최소 단위다. AES-128 은 입자가 세그먼트이고
-   SAMPLE-AES 는 샘플이다. **알고리즘은 둘 다 AES-128-CBC 로 같다** — 갈리는 것은
-   무엇에 적용하느냐뿐이다.
-2. 입자가 세그먼트면 복호화 결과가 평범한 컨테이너가 되므로 **암호 계층이 컨테이너를
-   몰라도 된다.** `decrypt.py` 58줄 안에 컨테이너를 가리키는 식별자가 하나도 없다.
-3. 입자가 샘플이면 컨테이너 구조와 헤더가 평문으로 남고 샘플 몸통만 암호문이 된다.
-   암호문 구간의 경계를 알려면 TS·PES·NAL 을 파싱하고 **코덱별 규칙**까지 알아야
-   한다 — 암호 계층이 컨테이너·코덱 계층에 의존하게 된다.
-4. 그 결합은 실수가 아니라 요구의 그림자다. **키 없는 중간자가 스트림을 가공할 수
-   있어야 한다**는 요구(광고 삽입·트릭 플레이·재패키징)가 컨테이너를 평문으로 남길
-   것을 요구했다. 암호화 입자를 정하는 일은 **신뢰 경계를 배치하는 일**이다.
-5. 이 저장소는 그 결합을 감당하지 않기로 하고 **선언 단계**([`playlist.py:57-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L57-L64))와
-   **복호 단계**([`decrypt.py:33-47`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L33-L47)) 두 겹으로 거부한 뒤, `auto` 에서 `remux` 로
-   강등한다([`cli.py:391-402`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L391-L402)). 강등의 대가로 **검사가 10개에서 5개로 준다** — 제17장의
-   마지막 그물까지 걷힌다.
-6. 실측: 같은 세그먼트를 `AES-128` 로 선언하면 ffmpeg 이 즉시 하드 실패하고,
-   `SAMPLE-AES` 로 선언하면 **종료 코드 0** 으로 끝난다. 산출물은 재생 길이가 소수점
-   여섯 자리까지 대조군과 같고, 구조 기반 검사는 전부 통과하며, `--no-decode-check`
-   를 주면 판정이 정상 스트림과 **글자 하나 다르지 않다.**
-7. 일반화: **입자가 굵으면 계층이 분리되고 가늘면 얽힌다.** 결합은 지울 수 없고
-   옮길 수 있을 뿐이다(CENC 가 그것을 컨테이너 메타데이터로 옮겼다). 그리고
-   **가는 입자의 실패는 조용하다** — 구조가 온전하기 때문이다.
-8. 보안: 부분 암호화는 평문 구조를 노출하고, 파서를 키와 같은 신뢰 영역으로 끌어들인다.
-   거부는 그 공격면을 0 으로 유지하는 결정이며, **거부의 근거는 선언값이어야지 우연한
-   실패여서는 안 된다**(제15장의 우연한 방어).
+1. **Encryption granularity** is the minimum unit the crypto transform is applied to. AES-128's granularity is the
+   segment and SAMPLE-AES's is the sample. **The algorithm is the same AES-128-CBC for both** — what differs is
+   only what it is applied to.
+2. If the granularity is the segment, the decryption result becomes a plain container, so **the crypto layer need
+   not know the container.** Within `decrypt.py`'s 58 lines there is not a single identifier pointing at a
+   container.
+3. If the granularity is the sample, the container structure and headers remain plaintext and only the sample body
+   becomes ciphertext. To know the ciphertext stretch's boundary you must parse TS·PES·NAL and know even the
+   **per-codec rules** — the crypto layer comes to depend on the container·codec layer.
+4. That coupling is not a mistake but the shadow of the demand. The demand **a keyless man-in-the-middle must be
+   able to process the stream** (ad insertion·trick play·re-packaging) required leaving the container plaintext.
+   Deciding the encryption granularity is **arranging the trust boundary.**
+5. This repository decided not to bear that coupling and rejects it two-ply, at the **declaration stage**
+   ([`playlist.py:57-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L57-L64)) and the **decryption stage** ([`decrypt.py:33-47`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L33-L47)), then downgrades from `auto` to
+   `remux` ([`cli.py:391-402`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L391-L402)). At the price of the downgrade, **the checks drop from 10 to 5** — even Chapter
+   17's last net is lifted.
+6. Measured: declare the same segment as `AES-128` and ffmpeg hard-fails immediately, declare it as `SAMPLE-AES`
+   and it ends with **exit code 0.** The output's play length is the same as the control to the sixth decimal,
+   every structure-based check passes, and give `--no-decode-check` and the verdict does not differ from a normal
+   stream by **a single letter.**
+7. Generalization: **coarse granularity separates the layers and fine granularity entangles them.** Coupling
+   cannot be erased and can only be moved (CENC moved it into container metadata). And **a fine granularity's
+   failure is quiet** — because the structure is intact.
+8. Security: partial encryption exposes the plaintext structure and pulls the parser into the same trust region as
+   the key. Rejection is a decision keeping that attack surface at 0, and **the basis of rejection must be the
+   declared value, not an incidental failure** (Chapter 15's incidental defense).
 
 ---
 
-**다음 장** — 제5부는 "무엇을 어떤 단위로 암호화하는가"가 계층 구조를 결정한다는
-결론으로 닫힌다. 제6부는 같은 형태의 문제를 시간 축에서 만난다. 자막 파일은 자기
-시각을 0 부터 세고 영상은 90kHz 클럭으로 세는데, 두 시각을 잇는 근거는 플레이리스트에
-적힌 한 줄뿐이다. 제27장은 그 한 줄에서 오프셋 식을 유도하고, 유도하지 않으면 자막이
-어떻게 어긋나는지를 다룬다.
+**Next chapter** — Part 5 closes with the conclusion that "what is encrypted in what unit" determines the layer
+structure. Part 6 meets a problem of the same form on the time axis. A subtitle file counts its own time from 0
+and the video counts on a 90kHz clock, and the basis joining the two times is only one line written in the
+playlist. Chapter 27 derives the offset formula from that one line, and covers how the subtitles go off if you do
+not derive it.

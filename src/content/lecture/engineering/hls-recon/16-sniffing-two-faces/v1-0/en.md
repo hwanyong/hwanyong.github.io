@@ -1,182 +1,181 @@
 ---
-untranslated: ko
-title: "콘텐츠 스니핑의 양면"
-description: "언제 미덕이고 언제 취약점인가"
-date: 2026-08-17
+title: "The Two Faces of Content Sniffing"
+description: "When it is a virtue and when a vulnerability"
+date: 2026-06-25
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-16-sniffing-two-faces.svg
 ---
-## 16.0 이 장에서 답할 것
+## 16.0 What this chapter answers
 
-1. 브라우저는 왜 서버의 선언을 믿지 않게 되었고, 그것이 어떻게 XSS 벡터가 되었는가
-2. `X-Content-Type-Options: nosniff` 는 정확히 무엇을 끄고 **무엇을 끄지 못하는가**
-3. 같은 "선언을 믿지 말고 내용을 보라"가 이 도구에서는 왜 정확성의 근거인가 —
-   둘을 가르는 기준을 명제로 세울 수 있는가
-4. 이 저장소는 같은 원리를 **세 곳에 독립적으로** 구현했다. 셋이 공유하는 것과 다른 것
-5. 업로드를 받는 서버는 무엇을 함께 써야 하는가. 하나씩만 쓰면 어디가 뚫리는가
+1. Why did the browser come to distrust the server's declaration, and how did that become an XSS vector?
+2. What exactly does `X-Content-Type-Options: nosniff` turn off, and **what can it not turn off?**
+3. Why is the same "do not trust the declaration, look at the content" a basis for correctness in this tool —
+   can the criterion dividing the two be set as a proposition?
+4. This repository implemented the same principle in **three places independently.** What the three share and
+   what differs.
+5. What must a server receiving uploads use together? Use only one and where does it get pierced?
 
 ---
 
-## 16.1 문제 — 같은 문장이 한쪽에서는 방어이고 다른 쪽에서는 취약점이다
+## 16.1 The problem — the same sentence is a defense on one side and a vulnerability on the other
 
-제14·15장은 하나의 문장 위에 서 있었다.
+Chapters 14·15 stood on one sentence.
 
-> **선언을 믿지 말고 내용을 보라.**
+> **Do not trust the declaration, look at the content.**
 
-`.html` 로 오는 세그먼트가 실제로는 MPEG-TS 였고(제14장 §14.1), 그것을 판별하는
-유일한 근거는 페이로드 선두 바이트였다. 확장자도 `Content-Type` 도 서버의 자기
-신고일 뿐이었다.
+A segment coming as `.html` was actually MPEG-TS (Chapter 14 §14.1), and the only basis for determining it was
+the payload's leading bytes. The extension and `Content-Type` were only the server's self-report.
 
-그런데 웹 보안 문헌을 펴면 정확히 반대되는 문장을 읽게 된다.
+And yet open the web-security literature and you read exactly the opposite sentence.
 
-> **선언을 그대로 따르고 내용으로 추측하지 마라.**
+> **Follow the declaration as is and do not guess by the content.**
 
-이것이 `X-Content-Type-Options: nosniff` 라는 응답 헤더가 존재하는 이유다. 이 헤더는
-브라우저에게 "내가 선언한 타입 그대로 처리하고, 본문을 들여다보고 다르게 판단하지
-말라"고 요구한다. 두 문장을 나란히 놓으면 이렇다.
+This is why the response header `X-Content-Type-Options: nosniff` exists. This header demands of the browser
+"process it exactly as the type I declared, and do not look into the body and judge differently." Place the two
+sentences side by side and it is this.
 
-| | 이 도구 | 브라우저 |
+| | This tool | Browser |
 |---|---|---|
-| 원칙 | 선언을 무시하고 내용을 본다 | 내용을 보지 말고 선언을 따른다 |
-| 구현 | `tsanalyze.sniff()` | `X-Content-Type-Options: nosniff` |
-| 그것을 하지 않으면 | 오류 페이지를 세그먼트로 저장하고 "전량 수신 성공"을 보고한다 | 사용자가 올린 텍스트 파일이 스크립트로 실행된다 |
+| Principle | ignore the declaration and look at the content | do not look at the content and follow the declaration |
+| Implementation | `tsanalyze.sniff()` | `X-Content-Type-Options: nosniff` |
+| If you do not do it | save the error page as a segment and report "full receipt success" | a text file the user uploaded is executed as a script |
 
-**둘 다 옳다.** 그렇다면 원칙 진술 쪽에 조건이 빠져 있다는 뜻이다. 이 장은 그 빠진
-조건을 찾아 명제로 세우고, 이 저장소의 코드가 그 조건을 어떻게 만족하는지를 확인한다.
+**Both are correct.** Then it means the principle statement is missing a condition. This chapter finds that
+missing condition and sets it as a proposition, and confirms how this repository's code satisfies that
+condition.
 
-> **용어** — **콘텐츠 스니핑(content sniffing)** / **MIME 스니핑(MIME sniffing)**:
-> 자원의 미디어 타입을 선언된 값(`Content-Type` 헤더·파일 확장자)이 아니라 **본문
-> 바이트를 검사해** 결정하는 절차. 이 교재는 둘을 같은 뜻으로 쓴다.
+> **Term** — **content sniffing** / **MIME sniffing**: the procedure of deciding a resource's media type not by
+> the declared value (the `Content-Type` header·the file extension) but by **inspecting the body bytes.** This
+> course uses the two synonymously.
 
 ---
 
-## 16.2 원리 — 브라우저 MIME 스니핑의 역사
+## 16.2 The principle — the history of browser MIME sniffing
 
-### 16.2.1 왜 브라우저는 선언을 믿지 않게 되었는가
+### 16.2.1 Why did the browser come to distrust the declaration?
 
-스니핑은 브라우저 제작자가 게을러서 생긴 것이 아니다. **서버가 틀린 타입을 주는 일이
-너무 흔했기 때문에** 생겼다. 원인을 나열하면 이렇다.
+Sniffing did not arise from browser makers being lazy. It arose because **servers giving the wrong type was too
+common.** Listing the causes, it is this.
 
-| 원인 | 결과로 나오는 선언 |
+| Cause | The declaration that results |
 |---|---|
-| 웹 서버의 확장자→타입 표가 낡았거나 항목이 없다 | `application/octet-stream` (기본값) |
-| 관리자가 타입 표를 손대지 않고 새 확장자를 서비스한다 | 잘못된 타입 또는 기본값 |
-| 파일 저장소가 업로드 시각의 선언을 그대로 되돌려준다 | 클라이언트가 준 값 = 신뢰할 수 없는 값 |
-| 스크립트가 헤더를 직접 쓰면서 타입을 빠뜨린다 | 헤더 없음 |
-| CGI·프레임워크의 기본 응답 타입이 `text/plain` 이다 | `text/plain` |
+| the web server's extension→type table is stale or has no entry | `application/octet-stream` (the default) |
+| the admin serves a new extension without touching the type table | a wrong type or the default |
+| a file store returns the declaration from upload time as is | the value the client gave = an untrustworthy value |
+| a script writes the header directly and omits the type | no header |
+| a CGI·framework's default response type is `text/plain` | `text/plain` |
 
-여기에 시장 압력이 겹친다. **같은 페이지를 A 브라우저는 보여주고 B 브라우저는
-보여주지 못하면, 사용자는 B 를 버린다.** 서버 설정이 틀렸다는 사실은 사용자에게
-보이지 않고, "이 브라우저에서는 안 나온다"만 보인다. 그래서 브라우저는 "동작하는
-쪽"을 택했고, 그 선택이 곧 스니핑이었다.
+To this is added market pressure. **If the same page is shown by browser A but not by browser B, the user
+abandons B.** That the server config is wrong is invisible to the user; only "it does not show in this browser"
+is visible. So the browser chose "the side that works," and that choice was sniffing.
 
-결과는 두 단계로 굳었다.
+The result hardened in two stages.
 
-1. 각 브라우저가 **서로 다른** 휴리스틱을 갖게 되었다 — 같은 바이트열이 브라우저마다
-   다른 타입으로 해석되는 상태
-2. 그 차이 자체가 보안 문제를 만들었으므로, 결국 **스니핑 알고리즘 자체가 표준화**
-   되었다(WHATWG *MIME Sniffing* 표준)
+1. Each browser came to have a **different** heuristic — a state where the same byte sequence is interpreted as
+   a different type per browser
+2. That difference itself created security problems, so eventually **the sniffing algorithm itself was
+   standardized** (the WHATWG *MIME Sniffing* standard)
 
-두 번째가 중요하다. **표준화는 스니핑을 승인한 것이 아니라, 없앨 수 없다는 사실을
-인정하고 최소한 동작을 하나로 맞춘 것이다.** 규격에서 지워도 구현이 계속하면 웹은
-갈라진다 — 그러느니 명세에 적고 예외 없이 같게 만드는 편이 낫다는 판단이다.
+The second matters. **Standardization did not approve sniffing but acknowledged it cannot be removed and at
+least aligned the behavior into one.** Erase it from the spec and implementations continue and the web splits —
+better, the judgment goes, to write it in the spec and make it identical without exception.
 
-### 16.2.2 어디서 취약점이 되는가 — 판별에서 실행까지의 연쇄
+### 16.2.2 Where it becomes a vulnerability — the chain from determination to execution
 
-문제는 스니핑이 **사용자가 올린 파일**에 적용될 때 드러난다. 전형적인 연쇄는 이렇다.
+The problem surfaces when sniffing is applied to **a file the user uploaded.** The typical chain is this.
 
-| 단계 | 일어나는 일 |
+| Step | What happens |
 |---|---|
-| 1 | 사용자가 파일을 올린다. 확장자는 `.txt`, 내용은 `<script>…</script>` |
-| 2 | 서버는 그것을 `text/plain` 으로 선언해 되돌려준다 — 서버는 규격대로 했다 |
-| 3 | 브라우저가 본문을 들여다보고 "HTML 같다"고 판단한다 |
-| 4 | HTML 파서가 기동한다 — **선언과 다른 파서가 선택된다** |
-| 5 | 파싱 산출물에 스크립트가 있으므로 실행된다 |
-| 6 | 그 스크립트는 **그 파일을 서비스한 출처의 권한**을 얻는다 |
+| 1 | the user uploads a file. the extension is `.txt`, the content is `<script>…</script>` |
+| 2 | the server declares it `text/plain` and returns it — the server did per spec |
+| 3 | the browser looks into the body and judges "looks like HTML" |
+| 4 | the HTML parser boots — **a parser different from the declaration is selected** |
+| 5 | there is a script in the parse output so it is executed |
+| 6 | that script gets **the authority of the origin that served that file** |
 
-> **용어** — **동일 출처 정책(same-origin policy)**: 스킴·호스트·포트가 같은 문서끼리만
-> 서로의 DOM·쿠키·저장소에 접근할 수 있게 하는 브라우저의 기본 격리 규칙. 어떤 코드가
-> 어떤 출처에서 실행되었는가가 곧 그 코드의 권한이다.
+> **Term** — **same-origin policy**: the browser's default isolation rule that only documents with the same
+> scheme·host·port can access each other's DOM·cookies·storage. In what origin a piece of code executed is that
+> code's authority.
 
-> **용어** — **저장형 XSS(stored cross-site scripting)**: 공격자가 심어 둔 스크립트가
-> 서버에 저장되었다가, 다른 사용자가 그 자원을 열 때 **피해자의 브라우저에서 그
-> 사이트의 출처 권한으로** 실행되는 취약점.
+> **Term** — **stored cross-site scripting**: a vulnerability where a script an attacker planted is stored on
+> the server and, when another user opens that resource, is executed **in the victim's browser with that site's
+> origin authority.**
 
-6단계가 전부다. 앞의 다섯 단계는 그 자체로는 위험하지 않다. 위험은 **판별 결과가
-파서 선택을 바꾸고, 파서 선택이 실행 여부를 바꾸고, 실행이 출처의 권한을 얻는**
-연쇄가 끝까지 이어진다는 데 있다.
+Step 6 is the whole. The first five steps are not dangerous in themselves. The danger is that the chain — **the
+determination result changes the parser selection, the parser selection changes whether it executes, and the
+execution gets the origin's authority** — runs to the end.
 
-### 16.2.3 `nosniff` 는 정확히 무엇을 끄는가
+### 16.2.3 What exactly does `nosniff` turn off?
 
-`X-Content-Type-Options: nosniff` 는 이 연쇄의 **3단계**를 끊는다. Internet Explorer 8
-이 도입했고 다른 브라우저가 따랐으며, 지금은 Fetch 표준에 규정돼 있다. 브라우저가
-하는 일은 둘이다.
+`X-Content-Type-Options: nosniff` cuts **step 3** of this chain. Internet Explorer 8 introduced it, other
+browsers followed, and now it is specified in the Fetch standard. What the browser does is two things.
 
-| 동작 | 내용 |
+| Action | Content |
 |---|---|
-| **타입 추정 금지** | 본문을 보고 선언된 미디어 타입을 바꾸지 않는다 |
-| **타입 불일치 차단** | `<script>` 로 요청된 자원의 타입이 JavaScript MIME 타입이 아니면, `<link rel=stylesheet>` 로 요청된 자원이 `text/css` 가 아니면 **로드 자체를 거부한다** |
+| **type-inference ban** | do not change the declared media type by looking at the body |
+| **type-mismatch block** | if the type of a resource requested by `<script>` is not a JavaScript MIME type, or a resource requested by `<link rel=stylesheet>` is not `text/css`, **refuse the load itself** |
 
-두 번째가 종종 잊힌다. `nosniff` 는 수동적인 "추측 안 함"에 그치지 않고 **능동적인
-차단**을 한다. 이미지·JSON 을 스크립트로 끌어다 쓰는 공격(예: 교차 출처 데이터를
-`<script>` 로 읽어내려는 시도)이 여기서 막힌다.
+The second is often forgotten. `nosniff` does not stop at a passive "do not guess" but does an **active block.**
+An attack pulling an image·JSON in as a script (e.g., an attempt to read cross-origin data with `<script>`) is
+blocked here.
 
-**그런데 `nosniff` 가 못 하는 일이 있고, 그것이 이 헤더에 대한 가장 흔한 오해다.**
+**But there is something `nosniff` cannot do, and that is the most common misunderstanding of this header.**
 
-> `nosniff` 는 **선언을 강제 이행할 뿐, 선언을 옳게 만들지 않는다.**
+> `nosniff` **only enforces the declaration; it does not make the declaration correct.**
 
-서버가 사용자 업로드를 `Content-Type: text/html` 로 선언하면서 `nosniff` 를 붙이면,
-브라우저는 **선언대로 성실하게 HTML 로 실행한다.** 헤더는 제 일을 다 했고 결과는
-XSS 다. 그래서 `nosniff` 는 반드시 **올바른 선언**과 짝을 이뤄야 하며, 그것만으로도
-부족하다는 것이 §16.5 의 내용이다.
+If a server declares a user upload as `Content-Type: text/html` and attaches `nosniff`, the browser
+**faithfully executes it as HTML, per the declaration.** The header did its whole job and the result is XSS. So
+`nosniff` must necessarily pair with a **correct declaration**, and that even that is insufficient is §16.5's
+content.
 
-### 16.2.4 명제 — 실행이냐 분류냐
+### 16.2.4 The proposition — execution or classification
 
-이제 §16.1 이 남긴 빈칸을 채울 수 있다.
+Now we can fill the blank §16.1 left.
 
-![브라우저 경로와 이 도구의 경로에서 판별 결과가 흘러 들어가는 곳](/images/lecture/hls-recon/16-verdict-destination.svg)
+![Where the determination result flows in the browser path and this tool's path](/images/lecture/hls-recon/16-verdict-destination.svg)
 
-*그림 16-1 — 같은 판별이 어디로 흘러 들어가는가. 왼쪽은 판별 → 파서 선택 → 실행 →
-출처 권한으로 이어지고, 오른쪽은 판별 → 분류값 → 리포트 항목에서 멈춘다.*
+*Figure 16-1 — where the same determination flows. The left leads determination → parser selection → execution → origin authority, and the right stops at determination → classification value → report item.*
 
-> **스니핑 결과가 실행을 결정하면 취약점이고, 분류를 결정하면 미덕이다.**
+> **If the sniffing result decides execution it is a vulnerability, and if it decides classification it is a
+> virtue.**
 
-세 축으로 정리하면 다음과 같다.
+Organized on three axes, it is as follows.
 
-| | 브라우저의 문서 렌더 | 이 도구의 세그먼트 판정 |
+| | The browser's document render | This tool's segment verdict |
 |---|---|---|
-| 판별 결과가 결정하는 것 | **어떤 파서를 기동할 것인가** | **어느 목록에 넣을 것인가** |
-| 그 파서가 하는 일 | 산출물을 실행한다 | 없다 — 판별 뒤에 파서가 없다 |
-| 오판의 최악 결과 | 피해자 출처에서의 임의 코드 실행 | 검증 판정이 틀린다 |
-| 판별 대상을 통제하는 자 | 공격자(업로더)일 수 있다 | 원격 서버 — 역시 신뢰 경계 밖이다 |
-| 판별 결과가 권한을 여는가 | **연다** | 열지 않는다 |
-| 옳은 정책 | 선언을 따른다(`nosniff`) | 내용을 본다(`sniff`) |
+| What the determination result decides | **which parser to boot** | **which list to put it in** |
+| What that parser does | executes the output | nothing — there is no parser after determination |
+| Worst outcome of a misjudgment | arbitrary code execution in the victim's origin | the verification verdict is wrong |
+| Who controls the determination target | may be an attacker (the uploader) | the remote server — also outside the trust boundary |
+| Does the determination result open authority | **it does** | it does not |
+| The correct policy | follow the declaration (`nosniff`) | look at the content (`sniff`) |
 
-네 번째 행에 주목할 값이 있다. **판별 대상이 신뢰할 수 없는 입력이라는 점은 두 쪽이
-같다.** 이 도구도 원격 CDN 이 준 바이트를 판별한다. 그러므로 둘을 가르는 것은
-"입력이 안전한가"가 아니다. **판별 결과가 무엇을 열어 주는가**다.
+There is a value to note in the fourth row. **That the determination target is untrustworthy input is the same
+for both sides.** This tool too determines bytes a remote CDN gave. So what divides the two is not "is the
+input safe." It is **what the determination result opens.**
 
-마지막 행이 이 장의 형식적 결론이다. 같은 기법이 한쪽에서는 끄는 것이 옳고 다른
-쪽에서는 켜는 것이 옳다 — **보안 원칙은 문맥 없이 참이 아니다.** 이 저장소에는 같은
-형태의 문맥 의존성이 둘 더 있다. 제24장의 패딩 오라클(같은 코드가 서버에서는 취약점,
-검증 도구에서는 미덕)과 제22장의 임계 공개(같은 값의 공개가 감사자에게는 미덕,
-회피자에게는 지도)다.
+The last row is this chapter's formal conclusion. The same technique — on one side turning it off is correct
+and on the other turning it on is correct — **a security principle is not true without context.** This
+repository has two more of the same form of context-dependence. Chapter 24's padding oracle (the same code is a
+vulnerability on the server, a virtue in a verification tool) and Chapter 22's threshold disclosure (the same
+value's disclosure is a virtue for the auditor, a map for the evader).
 
 ---
 
-## 16.3 코드 — 같은 원리의 세 독립 구현
+## 16.3 The code — three independent implementations of the same principle
 
-이 저장소는 "선언을 믿지 않고 내용을 본다"를 **세 곳에 따로 구현했다.** 대상이 다르고
-근거가 다르고 비용이 다르다. 셋을 나란히 놓으면 판별이라는 작업의 설계 공간이 보인다.
+This repository implemented "do not trust the declaration, look at the content" in **three separate places.**
+The target differs, the basis differs, the cost differs. Place the three side by side and the design space of
+the task called determination shows.
 
-### 16.3.1 컨테이너 판별 — 주기성이 근거다
+### 16.3.1 Container determination — periodicity is the basis
 
 ```python
 # tsanalyze.py:28-37
     if len(data) < 8:
         return "unknown"
-    # TS 는 188바이트 주기로 sync byte 가 반복되므로 두 번째 패킷까지 확인한다.
+    # TS repeats a sync byte every 188 bytes, so check up to the second packet.
     if data[0] == SYNC_BYTE and (
         len(data) < PACKET_SIZE + 1 or data[PACKET_SIZE] == SYNC_BYTE
     ):
@@ -186,35 +185,35 @@ XSS 다. 그래서 `nosniff` 는 반드시 **올바른 선언**과 짝을 이뤄
     return "unknown"
 ```
 
-제5장 §5.3.2 와 제14장 §14.4.1 에서 이미 인용한 함수다. 여기서 새로 볼 것은
-**판별 근거의 종류**다.
+A function already cited in Chapter 5 §5.3.2 and Chapter 14 §14.4.1. What is new to see here is **the kind of
+determination basis.**
 
-MPEG-TS 에는 파일 선두를 표시하는 고유한 매직 넘버가 없다. `0x47` 은 한 바이트이고
-임의의 바이트열이 그것으로 시작할 확률은 1/256 이다. 이 판별이 기대는 것은 값이
-아니라 **주기성** — 188바이트 뒤에 같은 값이 다시 온다는 구조다. 두 지점을 보면
-우연 일치 확률이 1/65536 으로 떨어진다.
+MPEG-TS has no unique magic number marking the file head. `0x47` is one byte and the probability an arbitrary
+byte sequence starts with it is 1/256. What this determination relies on is not a value but **periodicity** —
+the structure that the same value comes again 188 bytes later. Look at two points and the chance-match
+probability drops to 1/65536.
 
-ISO-BMFF 쪽은 다르다. 오프셋 4–8 에 놓인 4바이트 상자 타입이 사실상 매직 넘버 역할을
-하며, `_MP4_BOXES`([`tsanalyze.py:17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L17))의 8개 집합 중 하나면 통과다.
+The ISO-BMFF side differs. The 4-byte box type at offset 4–8 effectively serves as a magic number, and if it is
+one of `_MP4_BOXES`'s ([`tsanalyze.py:17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L17)) 8-set it passes.
 
-> **용어** — **매직 넘버(magic number)**: 파일 형식을 식별하기 위해 고정 위치에 놓이는
-> 바이트열. 제14장 §14.2 에서 정의했다. MPEG-TS 처럼 매직 넘버 대신 **주기 구조**로
-> 판별해야 하는 포맷도 있다.
+> **Term** — **magic number**: a byte sequence placed at a fixed position to identify a file format. Defined in
+> Chapter 14 §14.2. There are also formats that must be determined by a **periodic structure** instead of a
+> magic number, like MPEG-TS.
 
-판별 결과가 흘러가는 곳은 [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464) 의 `bogus` 목록이고, 거기서
-[`report.py:198-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L198-L211) 의 "페이로드 유효성" 검사 항목이 된다. **판별과 판정 사이에
-파서가 없다.** 그림 16-1 오른쪽 경로가 이것이다.
+Where the determination result flows is the `bogus` list at [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464), and from there it becomes the
+"payload validity" check item at [`report.py:198-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L198-L211). **There is no parser between determination and verdict.**
+This is Figure 16-1's right path.
 
-### 16.3.2 자막 형식 판별 — 매직 넘버가 없을 때
+### 16.3.2 Subtitle-format determination — when there is no magic number
 
 ```python
 # subtitles.py:417-429
 def _sniff_format(body: bytes) -> str:
-    """자막 본문의 형식을 선두 내용으로 판별한다. 자막이 아니면 빈 문자열.
+    """Determine a subtitle body's format by its leading content. Empty string if not a subtitle.
 
-    Content-Type 을 믿지 않는다 — 자막을 `application/octet-stream` 으로 주는
-    서버가 있고, 반대로 200 으로 온 HTML 오류 페이지도 같은 헤더를 달고 온다.
-    큐 타임코드가 하나라도 있는지가 유일하게 확실한 근거다.
+    Do not trust Content-Type — some servers give subtitles as `application/octet-stream`,
+    and conversely an HTML error page arriving as 200 comes with the same header. Whether
+    there is even one cue timecode is the only sure basis.
     """
     head = body[:4096].decode("utf-8-sig", errors="replace")
     if not _CUE_RE.search(head) and not _CUE_RE.search(
@@ -224,32 +223,32 @@ def _sniff_format(body: bytes) -> str:
     return "vtt" if head.lstrip().upper().startswith("WEBVTT") else "srt"
 ```
 
-여기서는 기댈 매직 넘버가 아예 없다. SubRip(`.srt`)에는 서명이 없고, WebVTT 는
-`WEBVTT` 로 시작해야 하지만 그 서명은 **형식 구분에만** 쓰이고 "자막인가"의 판별에는
-쓰이지 않는다. 판별의 유일한 근거는 큐 타임코드다.
+Here there is no magic number to rely on at all. SubRip (`.srt`) has no signature, and WebVTT must start with
+`WEBVTT` but that signature is used **only for format distinction** and not for the "is it a subtitle"
+determination. The only basis for determination is the cue timecode.
 
 ```python
 # subtitles.py:26-29
-# WebVTT(00:00:01.000) 와 SubRip(00:00:01,000) 의 큐 시각을 함께 받는다.
+# accept both WebVTT (00:00:01.000) and SubRip (00:00:01,000) cue times.
 _CUE_RE = re.compile(
     r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})"
 )
 ```
 
-`-->` 를 사이에 둔 두 시각 — 이것은 매직 넘버가 아니라 **문법 조각**이다. 판별의
-근거가 "선두 몇 바이트"에서 "본문 어딘가에 이 문법이 성립하는가"로 옮겨간 것이고,
-그 대가가 다음 두 가지다.
+Two times with `-->` between them — this is not a magic number but a **grammar fragment.** The basis for
+determination moved from "the leading few bytes" to "does this grammar hold somewhere in the body," and its
+price is the following two.
 
-**첫째, 두 번 읽는다.** `body[:4096]` 에서 먼저 찾고, 없으면 **전체를** 디코드해 다시
-찾는다. BOM·긴 주석·`NOTE` 블록이 앞에 붙는 자막이 실재하기 때문이다. 흔한 경우는
-4 KB 로 끝나고 드문 경우만 전량을 훑는 **비용 비대칭** 설계다.
+**First, it reads twice.** It searches in `body[:4096]` first, and if not found it decodes **the whole** and
+searches again. Because subtitles with a BOM·a long comment·a `NOTE` block prepended really exist. It is a
+**cost-asymmetric** design where the common case ends at 4 KB and only the rare case sweeps the whole thing.
 
-**둘째, 예외를 던지지 않는다.** `errors="replace"` 로 디코딩 실패를 흡수한다. 이진
-쓰레기가 와도 예외 없이 "자막이 아니다"(빈 문자열)로 떨어진다. 판별 함수가 예외를
-던지면 호출부가 **판별 실패**와 **판별 결과가 부정**을 구별하지 못하고, 그 순간
-`try/except` 안에 판정 논리가 섞여 들어간다.
+**Second, it does not throw an exception.** It absorbs decode failures with `errors="replace"`. Even if binary
+garbage comes, it falls to "not a subtitle" (empty string) with no exception. If the determination function
+threw an exception, the call site could not distinguish **a determination failure** from **a negative
+determination result**, and at that moment verdict logic gets mixed into a `try/except`.
 
-판별 결과가 흘러가는 곳은 이렇다.
+Where the determination result flows is this.
 
 ```python
 # subtitles.py:466-476
@@ -259,40 +258,39 @@ _CUE_RE = re.compile(
             continue
         found = _sniff_format(got.body)
         if not found:
-            # 200 이지만 자막이 아니다 — 오류 페이지를 자막으로 저장하지 않는다.
+            # a 200 but not a subtitle — do not save an error page as a subtitle.
             continue
         res.track.uri = url
         dest = out.with_suffix(f".{found}")
         dest.write_bytes(got.body)
 ```
 
-`continue` 다. 세그먼트에서는 같은 판별 실패가 FAIL 이 되는데(§16.3.1) 여기서는
-다음 후보 URL 로 넘어가는 신호다. 이유는 두 URL 의 출처가 다르기 때문이고, 그 대비는
-제5장 §5.3.6 에 있다.
+It is `continue`. In segments the same determination failure becomes FAIL (§16.3.1), whereas here it is a
+signal to move to the next candidate URL. The reason is that the two URLs have different provenance, and that
+contrast is in Chapter 5 §5.3.6.
 
-이 장에서 새로 볼 것은 **475행**이다. 판별 결과 `found` 가 **디스크에 쓰일 파일의
-확장자를 결정한다.** 그림 16-1 의 왼쪽 경로에서 "판별 결과가 파서 선택을 결정한다"고
-말한 것과 형태가 같아 보인다 — 판별 결과가 제어 흐름 밖으로 나가 **자원의 이름**이
-된다.
+What is new to see in this chapter is **line 475.** The determination result `found` **decides the extension of
+the file to be written to disk.** It looks the same in form as saying "the determination result decides the
+parser selection" on Figure 16-1's left path — the determination result goes outside the control flow and
+becomes **a resource's name.**
 
-그럼에도 이것이 안전한 이유는 하나다. **`_sniff_format` 의 치역이 닫힌 집합이다.**
-반환값은 `""` · `"vtt"` · `"srt"` 셋뿐이고, 입력 바이트에서 유도된 문자열이 그대로
-나오는 경로가 없다. 만약 이 함수가 `Content-Type` 의 서브타입이나 URL 의 확장자를
-그대로 돌려주도록 작성됐다면, `with_suffix()` 에 원격이 통제하는 문자열이 들어가는
-**경로 주입** 지점이 된다.
+The one reason this is nonetheless safe is: **`_sniff_format`'s codomain is a closed set.** The return value is
+only `""` · `"vtt"` · `"srt"`, and there is no path where a string derived from the input bytes comes out as is.
+Had this function been written to return the `Content-Type`'s subtype or the URL's extension as is, it would be
+a **path-injection** point where a remote-controlled string goes into `with_suffix()`.
 
-> **판별 함수의 치역이 닫혀 있는가** — 판별 결과가 값 이상의 것(경로·명령·타입)이
-> 될 때 가장 먼저 확인해야 할 성질이다.
+> **Is the determination function's codomain closed** — the property to confirm first when a determination
+> result becomes more than a value (a path·command·type).
 
-회귀 테스트가 이 판별을 고정해 둔 자리도 있다. `.srt` 확장자를 달고 있으면서 내용은
-HTML 인 파일을 서버에 놓고(`tests/run.sh:258-259`), 그것이 자막으로 저장되지 않는지를
-검사한다(`tests/run.sh:292`). **확장자·헤더·내용이 갈라지는 상황을 자막 경로에서도
-따로 고정한 것**이다.
+There is a spot where the regression test fixes this determination too. It places a file with a `.srt` extension
+but HTML content on the server (`tests/run.sh:258-259`) and checks that it is not saved as a subtitle
+(`tests/run.sh:292`). **It fixed the situation where extension·header·content diverge on the subtitle path
+separately too.**
 
-### 16.3.3 구조적 완결성 — 경계의 합이 근거다
+### 16.3.3 Structural completeness — the sum of boundaries is the basis
 
-세 번째 구현은 앞의 둘과 성격이 다르다. 선두 바이트가 아니라 **파일 전체를 가로지르는
-불변식**을 검사한다.
+The third implementation differs in nature from the first two. It checks not the leading bytes but **an
+invariant spanning the whole file.**
 
 ```python
 # inventory.py:75-102
@@ -303,66 +301,65 @@ HTML 인 파일을 서버에 놓고(`tests/run.sh:258-259`), 그것이 자막으
             fh.seek(offset)
             head = fh.read(_BOX_HEADER)
             if len(head) < _BOX_HEADER:
-                return "상자 머리가 잘렸다 — 먹싱이 끝나기 전에 끊겼다"
+                return "the box head is truncated — cut off before muxing finished"
             box_size, kind = struct.unpack(">I4s", head)
-            if box_size == 1:  # 64비트 largesize 가 뒤따른다
+            if box_size == 1:  # a 64-bit largesize follows
                 ext = fh.read(8)
                 if len(ext) < 8:
-                    return "64비트 상자 크기가 잘렸다 — 먹싱이 끝나기 전에 끊겼다"
+                    return "the 64-bit box size is truncated — cut off before muxing finished"
                 box_size = struct.unpack(">Q", ext)[0]
-            elif box_size == 0:  # 파일 끝까지가 이 상자다
+            elif box_size == 0:  # this box goes to the end of the file
                 box_size = size - offset
             name = kind.decode("ascii", errors="replace")
             if box_size < _BOX_HEADER:
-                return f"상자 크기가 비정상이다 ({name}: {box_size})"
+                return f"the box size is abnormal ({name}: {box_size})"
             if offset + box_size > size:
-                return f"{name} 상자가 파일 끝을 넘어간다 — 잘린 파일"
+                return f"the {name} box goes past the end of the file — a truncated file"
             seen.add(kind)
             offset += box_size
     if b"moov" not in seen:
-        return "moov 상자가 없다 — 먹싱이 끝나기 전에 끊겼다"
+        return "no moov box — cut off before muxing finished"
     if b"mdat" not in seen:
-        return "mdat 상자가 없다 — 내용이 비었다"
+        return "no mdat box — the content is empty"
     return ""
 ```
 
-구조는 제20장에서 해부한다. 여기서 볼 것은 **판별로서의 성질** 셋이다.
+The structure is dissected in Chapter 20. What to see here is three **properties as a determination.**
 
-**첫째, 결론의 강도가 다르다.** 선두 바이트 판별은 "이 바이트열은 이 형식처럼
-시작한다"만 말한다. 상자 경계의 합이 파일 크기와 정확히 맞는다는 것은 "이 파일은
-끝까지 일관된 구조를 갖는다"를 말한다. 후자가 훨씬 강한 진술이다.
+**First, the strength of the conclusion differs.** A leading-byte determination says only "this byte sequence
+starts like this format." That the sum of box boundaries matches the file size exactly says "this file has a
+consistent structure to the end." The latter is a much stronger statement.
 
-**둘째, 그런데도 비용이 크기에 비례하지 않는다.** `mdat` 본문은 읽지 않고 `seek` 으로
-건너뛴다. 비용은 O(상자 수)이며, 상자 수는 파일 크기와 무관하게 수십 개 규모다.
+**Second, and yet the cost is not proportional to the size.** It does not read the `mdat` body but skips it with
+`seek`. The cost is O(box count), and the box count is on the order of tens regardless of file size.
 
-**셋째, 경계 검사가 세 곳에 있다.** `box_size < _BOX_HEADER`, `offset + box_size > size`,
-그리고 largesize 를 읽을 때의 `len(ext) < 8`. 이 검사들이 없으면 어떻게 되는가 —
-`box_size` 가 0 에 가까우면 `offset` 이 증가하지 않아 **무한 루프**가 되고, 선언된
-크기가 파일 끝을 넘어가면 정상 파일과 잘린 파일을 구별하지 못한다. 이것이 파서
-견고성의 표준적인 요구다.
+**Third, there are boundary checks in three places.** `box_size < _BOX_HEADER`, `offset + box_size > size`, and
+`len(ext) < 8` when reading largesize. Without these checks — if `box_size` is near 0, `offset` does not
+increase so it becomes an **infinite loop**, and if the declared size goes past the end of the file it cannot
+distinguish a normal file from a truncated one. This is the standard requirement of parser robustness.
 
-판별 결과가 흘러가는 곳은 이렇다.
+Where the determination result flows is this.
 
 ```python
 # cli.py:874-881
         have = stock.get(ep.number)
         stale = bool(have and not have.ok)
         if have and have.ok and not args.overwrite:
-            _eprint(f"  · 이미 있다 — 건너뛴다 ({have.video.name}). 다시 받으려면 --overwrite")
-            done.append((ep, "건너뜀"))
+            _eprint(f"  · already have it — skipping ({have.video.name}). to re-receive use --overwrite")
+            done.append((ep, "skipped"))
             continue
         if stale and not args.overwrite:
-            _eprint(f"  · 다시 받는다 — {have.flaw} ({have.video.name})")
+            _eprint(f"  · re-receiving — {have.flaw} ({have.video.name})")
 ```
 
-**작업 스케줄 결정**이다. 실행도 아니고 파싱도 아니다. 오판의 결과는 둘 중 하나다 —
-멀쩡한 파일을 손상으로 보면 27화를 다시 받고(비용), 손상 파일을 온전하다고 보면
-그 회차가 영원히 복구되지 않는다(누락). 둘 다 실질적 피해지만 **권한 승격은 없다.**
-이 판정의 오탐·미탐을 회귀 테스트가 양방향으로 고정하는 이유는 제37장에서 다룬다.
+It is a **work-schedule decision.** Not execution, not parsing. The result of a misjudgment is one of two —
+see a fine file as damaged and re-receive 27 episodes (cost), or see a damaged file as intact and that episode
+is never recovered (missing). Both are substantial damage but **there is no privilege escalation.** Why the
+regression test fixes this verdict's false positives·false negatives in both directions is covered in Chapter 37.
 
-### 16.3.4 확장자를 믿는 자리 — 모순인가
+### 16.3.4 The spot that trusts the extension — is it a contradiction?
 
-`flaw()` 는 위 세 검사기 중 어느 것을 부를지를 **확장자로 고른다.**
+`flaw()` chooses which of the above three checkers to call **by the extension.**
 
 ```python
 # inventory.py:138-151
@@ -377,365 +374,361 @@ HTML 인 파일을 서버에 놓고(`tests/run.sh:258-259`), 그것이 자막으
         else:
             why = ""
     except OSError as e:
-        return f"읽는 중 실패: {e}"
+        return f"failed while reading: {e}"
     if why:
         return why
 ```
 
-제14장은 "확장자는 아무것도 보증하지 않는다"고 했다. 여기서는 확장자를 근거로
-분기한다. 모순인가. 아니다. 근거가 셋이다.
+Chapter 14 said "the extension guarantees nothing." Here it branches on the basis of the extension. A
+contradiction? No. There are three grounds.
 
-| 근거 | 내용 |
+| Ground | Content |
 |---|---|
-| **신뢰 경계가 다르다** | 이 파일들은 원격이 준 것이 아니라 **이 도구가 방금 자기 손으로 쓴 것**이다. 확장자는 `--container` 옵션에서 온다 |
-| **확장자가 권한을 주지 않는다** | 확장자가 고르는 것은 "어느 검사를 돌릴까"이지 "무엇을 실행할까"가 아니다 |
-| **틀렸을 때의 방향이 안전하다** | 확장자가 실제 내용과 어긋나면 그 컨테이너의 검사가 실패해 `flaw` 로 잡힌다. 최악은 검사를 못 하는 것(미탐)이지 잘못 실행하는 것이 아니다 |
+| **the trust boundary differs** | these files are not remote-given but **written by this tool with its own hand just now.** the extension comes from the `--container` option |
+| **the extension gives no authority** | what the extension chooses is "which check to run," not "what to execute" |
+| **the direction when wrong is safe** | if the extension goes off from the actual content, that container's check fails and it is caught as a `flaw`. the worst is failing to check (a false negative), not wrongly executing |
 
-다만 마지막 근거에는 정직한 단서가 붙는다. `else: why = ""` 분기다. `MEDIA_EXTS`
-([`library.py:17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L17))에 있으나 위 세 갈래에 없는 확장자 — 현재 목록에서는 `.avi` 하나 —
-는 **구조 검사를 아예 받지 않는다.** `MIN_BYTES`(64 KB) 크기 검사만 통과하면 온전한
-것으로 취급된다.
+Only, the last ground carries an honest caveat. It is the `else: why = ""` branch. An extension in `MEDIA_EXTS`
+([`library.py:17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L17)) but not in the above three branches — currently just `.avi` — **receives no structural check at
+all.** Pass only the `MIN_BYTES` (64 KB) size check and it is treated as intact.
 
-이것은 **개방 실패(fail-open)** 다.
+This is **fail-open.**
 
-> **용어** — **개방 실패(fail-open)** / **폐쇄 실패(fail-closed)**: 검사기가 판단할 수
-> 없는 입력을 만났을 때 통과시키는 쪽으로 기울면 개방 실패, 막는 쪽으로 기울면
-> 폐쇄 실패다. 접근 통제는 폐쇄 실패가 원칙이고, 가용성이 중요한 처리 경로는 개방
-> 실패를 택하기도 한다.
+> **Term** — **fail-open** / **fail-closed**: if a checker leans toward passing when it meets an input it cannot
+> judge, it is fail-open; toward blocking, fail-closed. Access control is fail-closed in principle, and a
+> processing path where availability matters sometimes chooses fail-open.
 
-같은 저장소 안에서 두 방향이 갈린다는 점이 흥미롭다.
+That the two directions split within the same repository is interesting.
 
-| 판별 | 모를 때의 반환 | 방향 | 근거 |
+| Determination | Return when unknown | Direction | Ground |
 |---|---|---|---|
-| `tsanalyze.sniff` | `"unknown"` → `bogus` → **FAIL** | 폐쇄 실패 | 세그먼트는 **반드시** 미디어여야 한다. 아니면 그것이 결함이다 |
-| `inventory.flaw` | `""` → **온전함** | 개방 실패 | 이 도구가 만들지 않은 파일이 폴더에 있을 수 있다. 모르는 것을 손상으로 단정하면 남의 파일을 지우자고 하게 된다 |
+| `tsanalyze.sniff` | `"unknown"` → `bogus` → **FAIL** | fail-closed | a segment **must** be media. otherwise that is the fault |
+| `inventory.flaw` | `""` → **intact** | fail-open | a file this tool did not make can be in the folder. declaring the unknown as damaged means proposing to delete someone else's file |
 
-**같은 저장소가 같은 원리를 쓰면서 실패 방향을 반대로 잡았고, 둘 다 근거가 있다.**
-방향을 정하는 것은 기법이 아니라 **그 판정이 무엇을 유발하는가**다 — 이 장의 명제가
-실패 방향 설계에도 그대로 적용되는 자리다.
+**The same repository, using the same principle, set the failure direction oppositely, and both have grounds.**
+What sets the direction is not the technique but **what that verdict induces** — the spot where this chapter's
+proposition applies to failure-direction design too.
 
-### 16.3.5 아무것도 결정하지 않는 네 번째 판별
+### 16.3.5 The fourth determination that decides nothing
 
-판별 위험도의 하한을 보여주는 자리가 하나 더 있다.
+There is one more spot showing the lower bound of determination risk.
 
 ```python
 # cli.py:77-90
     lowered = res.body[:512].lstrip().lower()
     if lowered.startswith((b"<!doctype", b"<html", b"<?xml")):
-        lines.append("  → 영상이 아니라 웹 페이지가 왔다. 서버가 오류 페이지를 200 으로 돌려주는 상황이다.")
+        lines.append("  → a web page came, not video. the server is returning an error page as 200.")
     elif res.body[:2] == b"\x1f\x8b":
-        lines.append("  → gzip 인데 Content-Encoding 이 선언되지 않았다. 서버 설정 문제다.")
+        lines.append("  → it is gzip but Content-Encoding was not declared. a server-config problem.")
     elif not res.body.strip():
-        lines.append("  → 본문이 비어 있다.")
+        lines.append("  → the body is empty.")
     elif res.size <= 200 and all(9 <= b < 127 for b in res.body):
-        # 오류 페이지 대신 한 줄짜리 문자열만 돌려주는 방어(예: "security error")가 있다.
-        # 본문이 곧 서버가 밝힌 거절 사유이므로 그대로 보여주는 편이 어떤 요약보다 정확하다.
-        lines.append(f'  → 서버가 짧은 오류 문구를 200 으로 돌려줬다: "{res.body.decode().strip()}"')
-        lines.append("     플레이리스트 URL 자체가 거절된 것이다 — 아래를 순서대로 확인할 것.")
+        # there is a defense that returns just a one-line string instead of an error page (e.g., "security error").
+        # the body is the refusal reason the server stated, so showing it as is is more accurate than any summary.
+        lines.append(f'  → the server returned a short error string as 200: "{res.body.decode().strip()}"')
+        lines.append("     the playlist URL itself was refused — check the following in order.")
     else:
-        lines.append("  → M3U8 텍스트가 아니다.")
+        lines.append("  → not M3U8 text.")
 ```
 
-`_diagnose`([`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102))는 네 갈래로 내용을 판별하지만, 그 결과로 하는 일은
-**출력 문장 하나를 고르는 것**뿐이다. 제어 흐름이 갈리지 않고, 파일이 만들어지지
-않고, 파서가 기동하지 않는다. 함수의 반환값은 문자열 하나이고 호출부는 그것을 화면에
-찍는다.
+`_diagnose` ([`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102)) determines the content four ways, but what it does as a result is only **choose one
+output sentence.** The control flow does not branch, no file is made, no parser boots. The function's return
+value is one string and the call site prints it to screen.
 
-**판별 결과가 사람이 읽을 문장에만 닿으면 스니핑의 위험은 0 이다.** 이 함수에서 논점이
-되는 것은 스니핑이 아니라 **오류 메시지의 정보량과 정보 누출의 상충**이며, 그것은
-제5장 §5.3.5 에서 다뤘다(클라이언트 도구이므로 정보량이 이긴다. 서버였다면 반대다).
+**When the determination result touches only a human-readable sentence, the risk of sniffing is 0.** What is at
+issue in this function is not sniffing but **the tension between an error message's information content and
+information leakage**, and that was covered in Chapter 5 §5.3.5 (being a client tool, information content wins.
+Had it been a server, the opposite).
 
-### 16.3.6 대조표 — 셋이 공유하는 것과 다른 것
+### 16.3.6 A comparison table — what the three share and what differs
 
-![세 판별 구현이 파일의 어느 범위를 읽는가](/images/lecture/hls-recon/16-scope-of-inspection.svg)
+![What range of the file the three determination implementations read](/images/lecture/hls-recon/16-scope-of-inspection.svg)
 
-*그림 16-2 — 보는 범위가 결론의 강도를 정한다. 선두 판별은 "이렇게 시작한다"까지,
-경계의 합은 "끝까지 일관된다"까지 말할 수 있다.*
+*Figure 16-2 — the range seen sets the strength of the conclusion. A leading determination can say up to "it starts like this," and the sum of boundaries up to "it is consistent to the end."*
 
 | | `tsanalyze.sniff` | `subtitles._sniff_format` | `inventory._isobmff_flaw` | `cli._diagnose` |
 |---|---|---|---|---|
-| **판별 근거** | 188바이트 주기의 `0x47` / 오프셋 4–8 의 상자 타입 | 큐 타임코드 정규식 | 상자 경계의 합 == 파일 크기 | 선두 바이트 패턴 4종 |
-| **근거의 종류** | 주기 구조 · 매직 넘버 | 문법 조각 | 전역 불변식 | 매직 넘버 |
-| **보는 범위** | 선두 189 B | 선두 4 KB, 실패 시 전량 | 파일 전체의 상자 머리 | 선두 512 B |
-| **비용** | O(1) | O(1) 또는 O(n) | O(상자 수) | O(1) |
-| **입력의 출처** | 원격 (경계 밖) | 원격 (경계 밖) | 로컬 (이 도구가 쓴 파일) | 원격 (경계 밖) |
-| **선언 참조** | 안 함 — 인자로 받지 않는다 | 안 함 | 검사기 선택에만(§16.3.4) | 표시용으로만 |
-| **결과가 결정하는 것** | 리포트 항목(`bogus`) | 다음 후보 시도 / 저장 이름 | 재수신 여부 | 출력 문장 |
-| **모를 때의 방향** | 폐쇄 실패(FAIL) | 폐쇄 실패(후보 폐기) | 개방 실패(온전함) | — |
-| **오판의 최악** | 검증 판정이 틀린다 | 자막 누락 또는 오류 페이지 저장 | 재수신 비용 또는 회차 누락 | 잘못된 안내 문구 |
-| **실행 권한을 여는가** | **아니오** | **아니오** | **아니오** | **아니오** |
+| **Determination basis** | `0x47` at a 188-byte period / the box type at offset 4–8 | a cue-timecode regex | sum of box boundaries == file size | 4 leading-byte patterns |
+| **Kind of basis** | periodic structure · magic number | grammar fragment | global invariant | magic number |
+| **Range seen** | leading 189 B | leading 4 KB, whole on failure | the box heads of the whole file | leading 512 B |
+| **Cost** | O(1) | O(1) or O(n) | O(box count) | O(1) |
+| **Input source** | remote (outside the boundary) | remote (outside the boundary) | local (a file this tool wrote) | remote (outside the boundary) |
+| **Declaration reference** | none — not taken as an argument | none | only for checker selection (§16.3.4) | display only |
+| **What the result decides** | a report item (`bogus`) | try the next candidate / save name | whether to re-receive | an output sentence |
+| **Direction when unknown** | fail-closed (FAIL) | fail-closed (discard the candidate) | fail-open (intact) | — |
+| **Worst misjudgment** | the verification verdict is wrong | a missing subtitle or saving an error page | re-receive cost or a missing episode | a wrong guidance message |
+| **Does it open execution authority** | **No** | **No** | **No** | **No** |
 
-**셋이 공유하는 것 넷.**
+**Four things the three share.**
 
-1. **선언을 판정에 쓰지 않는다.** `sniff(data: bytes)` 는 상태 코드도 `Content-Type` 도
-   인자로 받지 않는다 — 받을 수 없으면 실수로 참조할 수도 없다. `_sniff_format(body: bytes)`
-   도 같다. **API 시그니처가 곧 정책의 강제 수단**이다.
-2. **판별과 판정을 분리한다.** 세 함수 모두 사실 진술(값)을 돌려줄 뿐이고, 그것을
-   결함으로 볼지 탐색 신호로 볼지는 호출부가 정한다. 판별 함수가 판정까지 하면 §16.3.2
-   의 `continue` 경로와 §16.3.1 의 FAIL 경로 중 하나는 반드시 틀리게 된다.
-3. **예외를 던지지 않는다.** 판별 실패는 값으로 표현된다(`"unknown"`, `""`). 예외는
-   `OSError` 처럼 판별과 무관한 실패에만 쓰인다([`inventory.py:148-149`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L148-L149)).
-4. **판별 뒤에 파서가 없다.** 세 함수 중 어느 것의 결과도 실행 가능한 구성 요소를
-   고르지 않는다. 그림 16-1 오른쪽 경로가 세 번 반복된다.
+1. **They do not use the declaration for the verdict.** `sniff(data: bytes)` takes neither the status code nor
+   `Content-Type` as an argument — cannot receive them, cannot reference them by mistake. `_sniff_format(body:
+   bytes)` is the same. **The API signature is itself the policy's enforcement means.**
+2. **They separate determination from verdict.** All three functions return only a factual statement (a value),
+   and whether to see it as a fault or a search signal is set by the call site. If a determination function
+   rendered the verdict too, one of §16.3.2's `continue` path and §16.3.1's FAIL path is necessarily wrong.
+3. **They do not throw an exception.** A determination failure is expressed as a value (`"unknown"`, `""`). An
+   exception is used only for a failure unrelated to determination, like `OSError` ([`inventory.py:148-149`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L148-L149)).
+4. **There is no parser after determination.** None of the three functions' results chooses an executable
+   component. Figure 16-1's right path repeats three times.
 
-**다른 것 셋.**
+**Three things that differ.**
 
-1. **결론의 강도** — 선두 판별은 "시작"만, 경계의 합은 "끝까지"를 말한다(그림 16-2).
-2. **신뢰 경계의 위치** — 셋 중 하나만 로컬 파일을 본다. 그래서 그 하나만 확장자를
-   근거로 쓸 여지가 생겼다(§16.3.4).
-3. **실패 방향** — 폐쇄 실패 둘, 개방 실패 하나. 방향은 판정이 유발하는 행동에서
-   결정된다.
+1. **The strength of the conclusion** — a leading determination says only "the start," the sum of boundaries
+   says "to the end" (Figure 16-2).
+2. **The location of the trust boundary** — only one of the three looks at a local file. So only that one gets
+   room to use the extension as a basis (§16.3.4).
+3. **The failure direction** — two fail-closed, one fail-open. The direction is decided by the action the
+   verdict induces.
 
 ---
 
-## 16.4 일반화 — 판별을 안전하게 만드는 세 질문
+## 16.4 Generalization — three questions that make a determination safe
 
-### 16.4.1 명제를 조작 가능한 형태로
+### 16.4.1 The proposition in an operable form
 
-§16.2.4 의 명제는 옳지만 그대로는 검토 도구가 되지 못한다. "실행"과 "분류"의 경계가
-실무에서 늘 선명하지는 않기 때문이다. 조작 가능한 형태로 바꾸면 세 질문이다.
+§16.2.4's proposition is correct but does not become a review tool as is. Because the boundary of "execution"
+and "classification" is not always sharp in practice. Turned into an operable form, it is three questions.
 
-| # | 질문 | 예가 나오면 |
+| # | Question | If yes |
 |---|---|---|
-| 1 | 판별 결과가 **실행 가능한 구성 요소**(파서·디코더·인터프리터·플러그인)를 고르는가 | 그 구성 요소의 취약점이 곧 이 판별의 공격면이다 |
-| 2 | 판별된 자원이 **어떤 출처·권한**으로 처리되는가 | 그 출처가 가진 모든 것이 오판의 배당금이다 |
-| 3 | 판별을 틀리게 만들 입력을 **누가 통제**하는가 | 통제자가 신뢰 경계 밖이면 오판은 우연이 아니라 선택이다 |
+| 1 | Does the determination result choose an **executable component** (parser·decoder·interpreter·plugin) | that component's vulnerability is this determination's attack surface |
+| 2 | With **what origin·authority** is the determined resource processed | everything that origin has is the dividend of a misjudgment |
+| 3 | **Who controls** the input that could make the determination wrong | if the controller is outside the trust boundary, a misjudgment is not a coincidence but a choice |
 
-세 질문 모두 "아니오"면 스니핑은 안전한 편의 기능이다. 하나라도 "예"면 스니핑은 통제
-지점이고, 그 지점에는 다른 층의 방어가 함께 있어야 한다.
+If all three are "no," sniffing is a safe convenience feature. If even one is "yes," sniffing is a control
+point, and that point must have another layer's defense with it.
 
-### 16.4.2 다른 영역에서의 같은 자리
+### 16.4.2 The same spot in other domains
 
-| 자리 | 판별 결과가 결정하는 것 | 질문 1 | 판정 |
+| Spot | What the determination result decides | Q1 | Verdict |
 |---|---|---|---|
-| 브라우저의 문서 렌더 | 파서 선택 → 실행 | 예 | **위험** — `nosniff` 로 끈다 |
-| `file(1)` · libmagic 의 타입 표시 | 사람이 읽을 문자열 | 아니오 | 안전 |
-| 이 저장소의 `sniff` · `_sniff_format` | 분류값 | 아니오 | 안전 |
-| 이미지 라이브러리의 자동 포맷 감지 | **디코더 선택** | 예 | 중간 — 디코더가 메모리 안전하지 않으면 그대로 공격면 |
-| 아카이브 도구의 압축 형식 감지 | **해제기 선택** | 예 | 중간 — 압축 폭탄·경로 순회가 해제기 쪽에 있다 |
-| 안티바이러스의 파일 타입 판별 | **스캔 엔진 선택** | 예 | 중간 — 검사기 자신이 공격 대상이 된다 |
-| FFmpeg 의 포맷 자동 감지 | **demuxer 선택** | 예 | **위험** — 제15장 CVE-2023-6602 가 정확히 이것이다 |
-| 업로드 서버의 저장 타입 결정 | 나중에 서빙할 `Content-Type` | 간접 | **위험** — §16.4.4 |
+| the browser's document render | parser selection → execution | yes | **dangerous** — turn off with `nosniff` |
+| `file(1)` · libmagic's type display | a human-readable string | no | safe |
+| this repository's `sniff` · `_sniff_format` | a classification value | no | safe |
+| an image library's automatic format detection | **decoder selection** | yes | medium — if the decoder is not memory-safe it is an attack surface as is |
+| an archive tool's compression-format detection | **decompressor selection** | yes | medium — the zip bomb·path traversal is on the decompressor side |
+| an antivirus's file-type determination | **scan-engine selection** | yes | medium — the checker itself becomes the attack target |
+| FFmpeg's format auto-detection | **demuxer selection** | yes | **dangerous** — Chapter 15's CVE-2023-6602 is exactly this |
+| an upload server's stored-type decision | the `Content-Type` to serve later | indirect | **dangerous** — §16.4.4 |
 
-**제15장이 이 표의 한 행이었다는 것이 뒤늦게 드러난다.** HLS 플레이리스트의 세그먼트
-URI 확장자가 demuxer 를 고르는 구조는 "판별 결과가 실행 가능한 구성 요소를 고른다"의
-정확한 사례다. 다만 거기서는 판별 근거가 내용이 아니라 **이름**이었고, 그래서 방어도
-내용 검사가 아니라 이름 allowlist 로 놓였다.
+**It belatedly reveals that Chapter 15 was one row of this table.** The structure where the HLS playlist's
+segment-URI extension chooses the demuxer is a precise case of "the determination result chooses an executable
+component." Only, there the determination basis was not the content but the **name**, and so the defense too was
+placed not as a content check but as a name allowlist.
 
-### 16.4.3 폴리글롯 — 판별이 유일 근거일 때의 상한
+### 16.4.3 Polyglots — the upper bound when determination is the sole basis
 
-> **용어** — **폴리글롯 파일(polyglot file)**: 서로 다른 두 개 이상의 형식으로 **동시에
-> 유효하게** 파싱되는 하나의 파일. GIF 이면서 JAR 인 파일, PDF 이면서 ZIP 인 파일 등이
-> 알려져 있다.
+> **Term** — **polyglot file**: one file parsed **validly and simultaneously** as two or more different formats.
+> A file that is a GIF and a JAR, a file that is a PDF and a ZIP, etc., are known.
 
-내용 기반 판별의 상한이 여기 있다. **판별이 "이 파일은 X 인가"를 물을 때, 답이 예라는
-것이 "Y 는 아니다"를 뜻하지 않는다.** 두 형식의 문법이 겹치는 영역이 있으면 하나의
-바이트열이 양쪽 모두를 만족한다.
+The upper bound of content-based determination is here. **When a determination asks "is this file X," an answer
+of yes does not mean "it is not Y."** If two formats' grammars have an overlapping region, one byte sequence
+satisfies both.
 
-이 저장소의 판별에 이 상한이 어떻게 적용되는지 따져 보면 이렇다.
+Examining how this upper bound applies to this repository's determinations, it is this.
 
-| 질문 | 답 |
+| Question | Answer |
 |---|---|
-| `sniff()` 를 통과하는 MPEG-TS 이면서 브라우저가 HTML 로 렌더하는 파일이 가능한가 | **가능해 보인다.** TS 패킷의 페이로드에는 임의 바이트가 들어가고, HTML 파서는 선행 쓰레기를 무시하고 태그를 찾는다. 다만 **이 교재는 실제로 만들어 확인하지 않았다** — 추론이다 |
-| 그것이 이 도구에 문제가 되는가 | **되지 않는다.** 이 도구는 판별 결과로 렌더하지 않는다. 세 질문(§16.4.1)에 전부 "아니오"다 |
-| 그렇다면 누구에게 문제인가 | **그 파일을 브라우저로 여는 다음 소비자.** 이 도구의 산출물이 웹 서버에 놓이는 순간 위험이 이전된다 |
+| Is a file possible that is MPEG-TS passing `sniff()` while the browser renders it as HTML | **it seems possible.** a TS packet's payload takes arbitrary bytes, and an HTML parser ignores leading garbage and finds tags. But **this course did not actually make one and confirm** — it is inference |
+| Is that a problem for this tool | **it is not.** this tool does not render by the determination result. all three questions (§16.4.1) are "no" |
+| Then who is it a problem for | **the next consumer who opens that file with a browser.** the moment this tool's output is placed on a web server, the risk is transferred |
 
-세 번째 행이 §16.4.4 로 이어진다.
+The third row leads to §16.4.4.
 
-### 16.4.4 전이되는 위험 — 판별 결과가 저장될 때
+### 16.4.4 Transferred risk — when the determination result is stored
 
-판별은 시점의 작업이지만 그 결과는 오래 산다. 결과가 **저장되어 다른 결정의 입력이
-되면**, 위험은 판별 시점이 아니라 **소비 시점**에 정해진다.
+Determination is a point-in-time job but its result lives long. When the result is **stored and becomes the
+input to another decision**, the risk is set not at determination time but at **consumption time.**
 
-전형적인 형태가 업로드 서버다.
+The typical form is an upload server.
 
 ```
-업로드 시점:  파일 내용을 스니핑한다 → "이건 image/svg+xml 이군" → DB 에 기록
-서빙 시점:    DB 의 값을 Content-Type 으로 실어 보낸다 → 브라우저가 SVG 를 렌더
-                                                       → SVG 안의 <script> 가 실행
+at upload:   sniff the file content → "this is image/svg+xml" → record in the DB
+at serving:  carry the DB value as Content-Type → the browser renders the SVG
+                                                → the <script> inside the SVG executes
 ```
 
-판별 자체는 옳았다. 그 파일은 정말 SVG 였다. **문제는 판별 결과를 그대로 신뢰하는
-소비자가 뒤에 있었다는 것**이고, 그 소비자는 판별을 수행한 코드가 아니라 몇 달 뒤에
-작성된 서빙 코드다.
+The determination itself was correct. That file really was SVG. **The problem is that a consumer that trusts the
+determination result as is was behind it**, and that consumer is not the code that performed the determination
+but the serving code written months later.
 
-이 저장소에서 같은 형태가 나타나는 자리가 §16.3.2 의 `dest = out.with_suffix(f".{found}")`
-였고, 거기서는 치역이 닫힌 집합이라 안전했다. **구조가 같아도 치역이 열려 있으면 결과가
-달라진다** — 판별 결과가 값을 넘어 이름·타입·경로가 되는 자리를 찾아 치역을 확인하는
-것이 검토의 요령이다.
+The spot where the same form appears in this repository was §16.3.2's `dest = out.with_suffix(f".{found}")`, and
+there it was safe because the codomain is a closed set. **Even if the structure is the same, an open codomain
+changes the result** — finding the spot where a determination result becomes more than a value (a name·type·path)
+and confirming the codomain is the knack of the review.
 
 ---
 
-## 16.5 보안 — 방어자 관점
+## 16.5 Security — the defender's view
 
-### 16.5.1 업로드를 받는 서버가 함께 써야 할 것
+### 16.5.1 What a server receiving uploads must use together
 
-제14장 §14.7.1 의 결론 — "확장자는 통제 지점이 될 수 없다" — 을 업로드 방향으로 돌려
-놓으면 이 절이 된다. **어느 통제도 단독으로는 부족하다.** 각 층이 무엇을 막고 무엇을
-막지 못하는지를 나란히 놓아야 조합이 보인다.
+Turn Chapter 14 §14.7.1's conclusion — "the extension cannot be a control point" — around to the upload
+direction and it becomes this section. **No control is sufficient alone.** You must place side by side what each
+layer blocks and does not block to see the combination.
 
-| 통제 | 막는 것 | 막지 못하는 것 |
+| Control | What it blocks | What it does not block |
 |---|---|---|
-| **확장자 allowlist** | 소박한 실행 파일 업로드(`.php`·`.jsp`) | 내용 위장 — 제14장의 결론 그대로다. 확장자는 내용을 보증하지 않는다 |
-| **내용 판별(매직 넘버)** | 확장자만 바꾼 파일 | 폴리글롯(§16.4.3), 판별기 자체의 오탐 |
-| **정확한 `Content-Type` 재선언** | 업로드 시각의 클라이언트 선언을 그대로 되돌려주는 실수 | 선언이 여전히 실행 가능한 타입(`text/html`·`image/svg+xml`)이면 무의미 |
-| **`X-Content-Type-Options: nosniff`** | 브라우저의 타입 추정, 타입 불일치 스크립트·스타일 로드 | **선언 자체가 `text/html` 이면 아무것도 막지 못한다** |
-| **`Content-Disposition: attachment`** | 인라인 렌더 — 다운로드로 강제한다 | 사용자가 내려받아 여는 것, 이 헤더를 보지 않는 비브라우저 소비자 |
-| **별도 출처(origin) 격리** | 실행되더라도 주 서비스의 쿠키·DOM 에 닿지 못한다 | 그 출처 자체를 노린 공격, 사용자 간 상호 공격(격리가 사용자 단위가 아니면) |
-| **`Content-Security-Policy: sandbox`** | 응답을 불투명한 샌드박스 출처로 밀어 넣어 스크립트·폼을 차단 | 헤더를 무시하는 구형 클라이언트 |
-| **재인코딩·재생성** | 폴리글롯, 메타데이터에 숨긴 페이로드 | 디코더 자체의 취약점 — 재인코딩은 **디코더를 반드시 태운다** |
+| **extension allowlist** | a naive executable upload (`.php`·`.jsp`) | content masquerade — Chapter 14's conclusion as is. the extension does not guarantee the content |
+| **content determination (magic number)** | a file with only the extension changed | a polyglot (§16.4.3), the determiner's own false positive |
+| **correct `Content-Type` re-declaration** | the mistake of returning the client's upload-time declaration as is | meaningless if the declaration is still an executable type (`text/html`·`image/svg+xml`) |
+| **`X-Content-Type-Options: nosniff`** | the browser's type inference, a type-mismatch script·style load | **blocks nothing if the declaration itself is `text/html`** |
+| **`Content-Disposition: attachment`** | inline render — forces a download | the user downloading and opening it, a non-browser consumer that does not look at this header |
+| **separate-origin isolation** | even if executed it cannot reach the main service's cookies·DOM | an attack targeting that origin itself, a user-to-user cross attack (if isolation is not per user) |
+| **`Content-Security-Policy: sandbox`** | pushes the response into an opaque sandbox origin, blocking script·form | an old client that ignores the header |
+| **re-encode·regenerate** | a polyglot, a payload hidden in metadata | the decoder's own vulnerability — re-encoding **necessarily runs the decoder** |
 
-> **용어** — **`Content-Disposition: attachment`**: 응답을 문서로 렌더하지 말고 파일로
-> 내려받으라고 지시하는 HTTP 응답 헤더.
+> **Term** — **`Content-Disposition: attachment`**: an HTTP response header instructing to download the response
+> as a file rather than render it as a document.
 
-> **용어** — **별도 출처 격리(sandbox domain / user-content origin)**: 사용자가 올린
-> 자원을 주 서비스와 **다른 호스트**에서 서비스해, 실행되더라도 동일 출처 정책에 의해
-> 주 서비스의 자격증명·DOM 에 닿지 못하게 하는 배치. 사용자 간 공격까지 막으려면
-> 사용자·업로드 단위로 출처를 더 쪼개야 한다.
+> **Term** — **separate-origin isolation (sandbox domain / user-content origin)**: a placement that serves
+> user-uploaded resources from a **different host** than the main service, so even if executed they cannot reach
+> the main service's credentials·DOM by the same-origin policy. To block even user-to-user attacks you must
+> split the origin further per user·upload.
 
-### 16.5.2 하나씩만 쓰면 무엇이 깨지는가
+### 16.5.2 What breaks if you use only one
 
-표를 조합으로 다시 읽으면 이렇다. **"이렇게 하면 된다"가 아니라 "이렇게만 하면 무엇이
-남는가"의 형식**이다.
+Reading the table again as combinations, it is this. **The form is not "do this and it is done" but "do only
+this and what remains."**
 
-| 이것만 쓰면 | 남는 구멍 |
+| Use only this | The remaining hole |
 |---|---|
-| 확장자 검사만 | `.jpg` 로 올린 HTML 이 통과한다. 서버가 확장자로 타입을 정하면 그때는 안전하지만, 스니핑하는 소비자가 하나라도 있으면 그 소비자에서 터진다 |
-| 매직 넘버 검사만 | 폴리글롯이 통과한다. 그리고 검사를 통과한 파일이 **어떤 타입으로 서빙되는지**는 여전히 정해지지 않았다 |
-| `nosniff` 만 | 선언이 `text/html` 이면 브라우저는 성실하게 실행한다. **`nosniff` 는 선언을 강제할 뿐 옳게 만들지 않는다** |
-| `Content-Disposition` 만 | 브라우저는 렌더하지 않지만, 문서 미리보기 서비스·메일 클라이언트·구형 플러그인 등 이 헤더를 존중하지 않는 소비자가 남는다 |
-| 별도 출처만 | 주 서비스는 지켜지지만, 그 출처 안에서 **사용자 A 의 스크립트가 사용자 B 의 자원을** 읽는다 |
-| 재인코딩만 | 이미지에는 유효하나 문서·아카이브에는 적용 불가. 그리고 재인코딩 자체가 디코더를 태우므로 §16.4.2 의 "디코더 선택" 행이 그대로 살아난다 |
+| extension check only | HTML uploaded as `.jpg` passes. if the server sets the type by extension it is safe then, but if there is even one sniffing consumer it goes off at that consumer |
+| magic-number check only | a polyglot passes. and **what type the passed file is served as** is still undecided |
+| `nosniff` only | if the declaration is `text/html` the browser faithfully executes. **`nosniff` only enforces the declaration, does not make it correct** |
+| `Content-Disposition` only | the browser does not render, but consumers that do not respect this header remain — a document-preview service·mail client·old plugin |
+| separate origin only | the main service is protected, but within that origin **user A's script reads user B's resource** |
+| re-encode only | valid for images but inapplicable to documents·archives. and re-encoding itself runs the decoder so §16.4.2's "decoder selection" row survives as is |
 
-권장 조합을 한 줄로 쓰면 이렇다.
+Writing the recommended combination in one line, it is this.
 
-> **내용으로 판별하고, 판별 결과가 아니라 서버가 정한 안전한 타입으로 선언하고,
-> `nosniff` 로 그 선언을 강제하고, `Content-Disposition` 으로 렌더를 막고,
-> 별도 출처로 실행되었을 때의 피해를 가둔다.**
+> **Determine by the content, declare not by the determination result but by a safe type the server sets,
+> enforce that declaration with `nosniff`, block the render with `Content-Disposition`, and cage the damage of
+> execution with a separate origin.**
 
-다섯이 각각 다른 층을 맡는다는 점이 요점이다. 하나가 뚫려도 다음 층이 남는 배치가
-**심층 방어(defense in depth)** 이고, 제15장 §15.7 에서 확인했듯 각 층이 **독립적으로**
-작동할 때만 성립한다.
+The point is that the five each take a different layer. A placement where the next layer remains even if one is
+pierced is **defense in depth**, and as confirmed in Chapter 15 §15.7 it holds only when each layer works
+**independently.**
 
-### 16.5.3 판별을 쓰는 클라이언트·도구 쪽
+### 16.5.3 The client·tool side that uses determination
 
-이 저장소가 서 있는 자리다. §16.3.6 의 "공유하는 것 넷"을 규칙으로 옮기면 이렇다.
+This is the spot this repository stands at. Moving §16.3.6's "four things they share" into rules, it is this.
 
-| 규칙 | 이렇게 하지 않으면 |
+| Rule | If you do not do it |
 |---|---|
-| 판별 함수에 선언(상태 코드·`Content-Type`·확장자)을 **인자로 주지 않는다** | 누군가 "이 경우에만 헤더를 참고하자"고 분기를 넣는다. 그 분기가 §16.1 표의 두 번째 행을 되살린다 |
-| 판별과 판정을 분리한다 — 판별은 값을, 판정은 호출부가 | 같은 판별을 결함으로도 탐색 신호로도 써야 하는 두 경로 중 하나가 틀린다(§16.3.2) |
-| 판별 실패를 **예외가 아니라 값**으로 돌려준다 | 호출부가 판별 실패와 부정 판별을 구별하지 못하고, `except` 블록에 판정 논리가 섞인다 |
-| 판별 결과가 값을 넘어 **이름·경로·타입**이 되는 자리에서 치역이 닫혀 있는지 확인한다 | 원격이 통제하는 문자열이 파일 경로에 들어간다(§16.3.2, §16.4.4) |
-| 모를 때의 방향(개방/폐쇄)을 **판정이 유발하는 행동**에서 정하고 근거를 적는다 | 방향이 취향으로 정해지고, 다음 사람이 반대로 바꾼다(§16.3.4) |
+| **do not give the declaration (status code·`Content-Type`·extension) as an argument** to the determination function | someone puts in a branch "let's reference the header only in this case." that branch revives the second row of §16.1's table |
+| separate determination and verdict — determination returns a value, the verdict is the call site's | one of the two paths that must use the same determination as a fault and as a search signal is wrong (§16.3.2) |
+| return a determination failure **as a value, not an exception** | the call site cannot distinguish a determination failure from a negative determination, and verdict logic mixes into an `except` block |
+| where a determination result becomes more than a value (a **name·path·type**), confirm the codomain is closed | a remote-controlled string goes into a file path (§16.3.2, §16.4.4) |
+| set the unknown direction (open/closed) by **the action the verdict induces** and write the ground | the direction is set by taste, and the next person changes it the opposite way (§16.3.4) |
 
-### 16.5.4 역할별로 해야 할 일
+### 16.5.4 What to do, by role
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **플랫폼 · 업로드 서비스 운영자** | §16.5.2 의 다섯 층을 함께 건다. 확장자 검사만으로 끝내지 않는다. 사용자 콘텐츠를 주 서비스와 **다른 호스트**에서 서비스한다 |
-| **웹 프레임워크 · 라이브러리 저자** | 파일 응답 API 의 기본값을 `nosniff` + `Content-Disposition: attachment` 로 둔다. 안전한 기본값이 없으면 사용자는 가장 단순한 코드를 쓰고, 그 코드는 대개 헤더가 없다 |
-| **브라우저 · 런타임 구현자** | 스니핑을 없앨 수 없다면 **명세화하고**, 끄는 스위치를 제공하고, 그 스위치가 없을 때의 동작을 보수적으로 잡는다. WHATWG 가 한 일이 정확히 이것이다 |
-| **검증 도구 · 수집기 저자** | §16.5.3 의 다섯 규칙. 그리고 **자기 도구의 산출물이 다음 소비자에게 어떻게 흘러가는지**를 문서에 적는다(§16.4.3 세 번째 행) |
-| **보안 검토자** | "스니핑을 쓰는가"를 묻지 않는다. **"판별 결과가 어떤 권한으로 흘러가는가"** 를 묻는다(§16.4.1 의 세 질문). 스니핑 사용 자체는 결함이 아니다 |
-| **송출 사업자** | 확장자·타입 위장은 수신 측에 스니핑을 **강요한다**. 그 요구가 안전한 소비자(검증 도구)와 위험한 소비자(브라우저)를 구별하지 못한다는 점을 인식한다 |
+| **platform · upload-service operator** | apply §16.5.2's five layers together. do not end with an extension check only. serve user content from a **different host** than the main service |
+| **web framework · library author** | make the file-response API's default `nosniff` + `Content-Disposition: attachment`. with no safe default, the user writes the simplest code, and that code usually has no header |
+| **browser · runtime implementer** | if sniffing cannot be removed, **specify it**, provide a switch to turn it off, and set the behavior when the switch is absent conservatively. what WHATWG did is exactly this |
+| **verification tool · collector author** | §16.5.3's five rules. and write in the docs **how your tool's output flows to the next consumer** (§16.4.3's third row) |
+| **security reviewer** | do not ask "does it use sniffing." ask **"with what authority does the determination result flow"** (§16.4.1's three questions). using sniffing is not itself a fault |
+| **delivery provider** | extension·type masquerade **forces** the receiving side to sniff. recognize that this demand does not distinguish a safe consumer (a verification tool) from a dangerous one (a browser) |
 
-마지막 행이 제3부의 세 장을 하나로 묶는다.
+The last row binds the three chapters of Part 3 into one.
 
 ---
 
-## 16.6 제3부를 닫으며 — 세 장이 이룬 하나의 논증
+## 16.6 Closing Part 3 — the one argument the three chapters made
 
-제14·15·16장은 각각 다른 대상을 다뤘지만 하나의 논증이다.
+Chapters 14·15·16 each dealt with a different target but are one argument.
 
-| 장 | 명제 | 남긴 문제 |
+| Chapter | Proposition | The problem it left |
 |---|---|---|
-| **14** | 이름과 선언은 내용을 보증하지 않는다. 위조할 수 없는 것은 페이로드뿐이다 | 그러면 페이로드를 봐야 하는데, 위임하는 경로에서는 볼 수 없다 |
-| **15** | 그 위장을 재생하려면 다른 쪽의 보안 방어를 완화해야 한다. 회피와 방어가 같은 통제 지점을 다툰다 | 완화한 만큼을 무엇으로 벌충하는가 |
-| **16** | 내용을 직접 본다. **단, 본 결과에 실행 권한을 붙이지 않는 한에서** | — |
+| **14** | the name and declaration do not guarantee the content. what cannot be forged is only the payload | then you must look at the payload, but on the delegating path you cannot |
+| **15** | to play that masquerade you must relax the other side's security defense. evasion and defense fight over the same control point | with what do you make up for the relaxation |
+| **16** | look at the content directly. **but only insofar as you do not attach execution authority to the result** | — |
 
-제16장의 단서 조항이 앞의 두 장을 성립시킨다. **"내용을 보라"는 조건 없는 명령이
-아니다.** 조건이 붙어야 그것이 브라우저에서는 취약점이고 여기서는 미덕이라는 사실이
-모순 없이 설명된다.
+Chapter 16's caveat clause makes the previous two hold. **"Look at the content" is not an unconditional
+command.** With a condition attached, the fact that it is a vulnerability in the browser and a virtue here is
+explained without contradiction.
 
-제3부 전체를 관통하는 것은 접근 통제의 **자기 신고성**이었다. Referer(제9장)·CORS
-헤더(제10장)·서명 URL(제11장)·쿠키(제12장)·난독화(제13장)·확장자와 MIME(제14–16장) —
-전부 "클라이언트나 서버가 스스로 말한 것"이었고, 그 말을 어디까지 믿을지가 매 장의
-질문이었다. 답은 매번 같았다. **말을 믿는 것이 아니라 검증할 수 있는 것을 검증한다.
-검증할 수 없는 것에는 권한을 걸지 않는다.**
-
----
-
-## 16.7 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **§16.2 의 역사 서술은 이 저장소로 검증한 것이 아니다.** 브라우저의 MIME 스니핑
-  도입 경위, `nosniff` 의 도입 시점과 표준화 경로, 스니핑 기반 XSS 의 구체적 형태는
-  공개 표준 문서와 보안 문헌에 근거한 것이며, 이 교재는 브라우저를 대상으로 재현
-  실험을 하지 않았다. **브라우저별·버전별 동작 차이는 확인하지 않았다.**
-- **폴리글롯 가능성은 추론이다.** §16.4.3 의 "MPEG-TS 이면서 HTML 로 렌더되는 파일"은
-  두 포맷의 성질에서 도출한 추론이고 **실제로 만들어 확인하지 않았다.** 확인하려면
-  TS 패킷 페이로드에 마크업을 실은 파일을 만들어 `sniff()` 와 브라우저 양쪽에 넣어
-  봐야 한다. 이 교재의 범위에서는 결론에 영향이 없다(이 도구는 렌더하지 않는다).
-- **같은 판별이 두 곳에 따로 구현돼 있다.** MPEG-TS 판별 규칙(`0x47` 이 188바이트 주기)
-  이 `tsanalyze.sniff`([`tsanalyze.py:31-34`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L31-L34))와 `inventory._ts_flaw`([`inventory.py:113-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L113-L121))
-  에 각각 있다. 전자는 메모리의 `bytes` 를, 후자는 디스크의 `Path` 를 받으므로 시그니처가
-  달라 그대로 재사용할 수 없지만, **판별 규칙 자체는 중복**이다. 192바이트 M2TS 같은
-  변형을 지원하게 되면 두 곳을 함께 고쳐야 하고, 한쪽만 고치면 "받을 때는 통과하는데
-  재고 조사에서는 손상으로 잡히는" 어긋남이 생긴다. 현재 문제를 일으키지는 않았으나
-  구조적 부채다.
-- **`.avi` 는 구조 검사를 받지 않는다.** §16.3.4 의 `else: why = ""` 분기다. `MEDIA_EXTS`
-  ([`library.py:17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L17))에 있으나 세 갈래 어디에도 없는 유일한 확장자이며, 64 KB 크기 검사만
-  통과하면 온전한 것으로 취급된다. 이 도구는 `.avi` 를 만들지 않으므로 실제 경로에서는
-  나타나지 않지만, `--flat` 으로 다른 도구의 산출물이 섞인 폴더를 훑을 때는 나타날 수
-  있다. **개방 실패임을 알고 둔 것인지 빠뜨린 것인지는 코드에서 판단할 수 없었다.**
-- **`_sniff_format` 의 전량 재검사에는 크기 상한이 없다.** 선두 4 KB 에서 큐를 찾지
-  못하면 본문 전체를 UTF-8 로 디코드한다([`subtitles.py:425-427`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L425-L427)). `body` 는 이미 메모리에
-  올라와 있으므로 새로운 노출면은 아니지만, 디코드 비용과 디코드 결과가 차지하는 메모리는
-  본문 크기에 비례한다. 큰 파일을 자막 후보 URL 로 응답하는 서버를 만나면 이 경로가
-  자원 소모 지점이 된다. **실측하지 않았다** — 코드 구조에서 읽은 것이다.
-- **`sniff()` 는 두 컨테이너만 안다.** 패킷화된 오디오처럼 MPEG-TS·ISO-BMFF 가 아닌
-  세그먼트 포맷은 `unknown` 으로 떨어져 오탐이 된다(제14장 §14.8, 제19장 §19.8 에서도
-  같은 한계를 적었다). 폐쇄 실패 방향이므로 조용히 틀리지는 않지만, 지원 범위가 넓은
-  도구라면 한계다.
-- **§16.5.1 의 통제 목록이 완전하다고 보장하지 않는다.** 여덟 층은 널리 권장되는 것들을
-  모은 것이고, 특정 배치에서 무엇이 더 필요한지는 그 서비스의 위협 모델이 정한다.
-  이 표는 **검토의 출발점이지 체크리스트가 아니다.**
+What runs through all of Part 3 was the **self-reporting nature** of access control. Referer (Chapter 9)·CORS
+header (Chapter 10)·signed URL (Chapter 11)·cookie (Chapter 12)·obfuscation (Chapter 13)·extension and MIME
+(Chapters 14–16) — all were "what the client or server said themselves," and how far to trust that word was
+each chapter's question. The answer was the same each time. **Do not trust the word but verify what can be
+verified. Do not put authority on what cannot be verified.**
 
 ---
 
-## 16.8 요약
+## 16.7 Limits and open questions
 
-1. **브라우저의 MIME 스니핑은 서버가 틀린 타입을 주는 일이 흔했기 때문에 생겼다.**
-   그리고 사용자 업로드에 적용되는 순간 저장형 XSS 벡터가 되었다 — 판별이 파서 선택을,
-   파서 선택이 실행을, 실행이 출처의 권한을 결정하는 연쇄 때문이다.
-2. **`X-Content-Type-Options: nosniff` 는 그 연쇄의 판별 단계를 끊는다.** 타입 추정을
-   막고, 타입이 맞지 않는 스크립트·스타일 로드를 차단한다. 그러나 **선언을 강제할 뿐
-   선언을 옳게 만들지 않는다** — 선언이 `text/html` 이면 성실하게 실행한다.
-3. **가르는 기준은 명제로 세울 수 있다. 스니핑 결과가 실행을 결정하면 취약점이고,
-   분류를 결정하면 미덕이다.** 입력이 신뢰할 수 없다는 점은 양쪽이 같다. 다른 것은
-   판별 결과가 여는 권한이다.
-4. 조작 가능한 형태는 세 질문이다 — 판별 결과가 **실행 가능한 구성 요소를 고르는가**,
-   판별된 자원이 **어떤 출처의 권한으로 처리되는가**, 판별을 틀리게 만들 입력을
-   **누가 통제하는가**.
-5. **이 저장소는 같은 원리를 세 곳에 독립 구현했다.** 근거는 각각 188바이트 주기의
-   `0x47`, 큐 타임코드 문법, 상자 경계의 합이다. 넷을 공유한다 — 선언을 인자로 받지
-   않고, 판별과 판정을 분리하고, 예외 대신 값을 돌려주고, **판별 뒤에 파서가 없다.**
-6. **다른 것은 결론의 강도·신뢰 경계·실패 방향이다.** 선두 판별은 "시작"만 말하고
-   경계의 합은 "끝까지"를 말한다. `sniff` 는 폐쇄 실패, `flaw` 는 개방 실패이며
-   **둘 다 근거가 있다** — 방향은 그 판정이 유발하는 행동에서 나온다.
-7. **판별 결과가 저장되어 다른 결정의 입력이 되면 위험은 소비 시점에 정해진다.**
-   이 저장소에서 판별값이 파일 확장자가 되는 자리([`subtitles.py:475`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L475))가 안전한 이유는
-   **치역이 닫힌 집합**이기 때문이다.
-8. **업로드를 받는 서버는 한 층으로 끝낼 수 없다.** 내용 판별 + 서버가 정한 안전한
-   타입 선언 + `nosniff` + `Content-Disposition` + 별도 출처 격리를 함께 건다.
-   확장자 검사만으로는 부족하고(제14장), `nosniff` 만으로도 부족하다.
+Noted honestly.
+
+- **§16.2's historical account was not verified with this repository.** The browser MIME-sniffing introduction
+  history, `nosniff`'s introduction time and standardization path, and the concrete form of sniffing-based XSS
+  are based on public standard documents and security literature, and this course did no reproduction
+  experiment targeting a browser. **Per-browser·per-version behavior differences were not confirmed.**
+- **The polyglot possibility is inference.** §16.4.3's "a file that is MPEG-TS yet renders as HTML" is inference
+  derived from the two formats' properties and was **not actually made and confirmed.** To confirm it you would
+  make a file carrying markup in a TS packet payload and put it into both `sniff()` and a browser. Within this
+  course's scope it does not affect the conclusion (this tool does not render).
+- **The same determination is implemented separately in two places.** The MPEG-TS determination rule (`0x47` at
+  a 188-byte period) is in `tsanalyze.sniff` ([`tsanalyze.py:31-34`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L31-L34)) and `inventory._ts_flaw` ([`inventory.py:113-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L113-L121))
+  separately. The former takes `bytes` in memory, the latter a `Path` on disk, so the signatures differ and it
+  cannot be reused as is, but **the determination rule itself is a duplication.** Support a variant like 192-byte
+  M2TS and you must fix both places, and fix only one and a mismatch arises where "it passes on receipt but is
+  caught as damaged on inventory." It has not caused a problem now but is structural debt.
+- **`.avi` receives no structural check.** It is the `else: why = ""` branch of §16.3.4. It is the only extension
+  in `MEDIA_EXTS` ([`library.py:17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L17)) in none of the three branches, and pass only the 64 KB size check and it is
+  treated as intact. This tool does not make `.avi` so it does not appear on the actual path, but it can appear
+  when sweeping a folder mixed with another tool's output via `--flat`. **Whether it was left fail-open
+  knowingly or missed cannot be judged from the code.**
+- **`_sniff_format`'s whole re-check has no size cap.** If it does not find a cue in the leading 4 KB it decodes
+  the whole body as UTF-8 ([`subtitles.py:425-427`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L425-L427)). `body` is already in memory so it is not a new exposure
+  surface, but the decode cost and the memory the decode result takes are proportional to the body size. Meet a
+  server responding a large file as a subtitle-candidate URL and this path becomes a resource-consumption point.
+  **Not measured** — read from the code structure.
+- **`sniff()` knows only two containers.** A segment format that is not MPEG-TS·ISO-BMFF, like packetized audio,
+  falls to `unknown` and becomes a false positive (the same limit is written in Chapter 14 §14.8 and Chapter 19
+  §19.8 too). Being fail-closed it does not go quietly wrong, but for a tool with a wide support range it is a
+  limit.
+- **§16.5.1's control list is not guaranteed complete.** The eight layers are a gathering of widely recommended
+  ones, and what more is needed in a particular placement is set by that service's threat model. This table is
+  **a review starting point, not a checklist.**
 
 ---
 
-**다음 장** — 제3부는 "무엇을 믿을 수 있는가"를 물었고, 답은 매번 페이로드였다.
-이제 그 페이로드 자체를 연다. 제4부는 `0x47` 뒤에 오는 187바이트에 무엇이 들어 있는지,
-4비트짜리 필드 하나가 어떻게 패킷 유실의 증거가 되는지, 그리고 그 증거가 **무엇을
-잡지 못하는지**를 비트 단위로 다룬다. 제17장은 MPEG-TS 패킷 헤더 4바이트의 해부에서
-시작한다.
+## 16.8 Summary
+
+1. **Browser MIME sniffing arose because servers giving the wrong type was common.** And the moment it is
+   applied to user uploads it becomes a stored-XSS vector — because of the chain where determination decides
+   the parser selection, the parser selection decides execution, and execution decides the origin's authority.
+2. **`X-Content-Type-Options: nosniff` cuts the determination stage of that chain.** It blocks type inference
+   and blocks a type-mismatch script·style load. But it **only enforces the declaration, does not make the
+   declaration correct** — if the declaration is `text/html` it faithfully executes.
+3. **The dividing criterion can be set as a proposition. If the sniffing result decides execution it is a
+   vulnerability, and if it decides classification it is a virtue.** That the input is untrustworthy is the same
+   for both. What differs is the authority the determination result opens.
+4. The operable form is three questions — does the determination result **choose an executable component**, with
+   **what origin's authority** is the determined resource processed, **who controls** the input that could make
+   the determination wrong.
+5. **This repository implemented the same principle in three places independently.** The bases are, respectively,
+   `0x47` at a 188-byte period, cue-timecode grammar, and the sum of box boundaries. They share four — they do
+   not take the declaration as an argument, they separate determination and verdict, they return a value instead
+   of an exception, and **there is no parser after determination.**
+6. **What differs is the strength of the conclusion·the trust boundary·the failure direction.** A leading
+   determination says only "the start" and the sum of boundaries says "to the end." `sniff` is fail-closed,
+   `flaw` is fail-open, and **both have grounds** — the direction comes from the action that verdict induces.
+7. **When the determination result is stored and becomes the input to another decision, the risk is set at
+   consumption time.** The spot where a determination value becomes a file extension ([`subtitles.py:475`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L475)) is safe
+   because **the codomain is a closed set.**
+8. **A server receiving uploads cannot end with one layer.** Apply content determination + a safe type the
+   server sets + `nosniff` + `Content-Disposition` + separate-origin isolation together. An extension check alone
+   is insufficient (Chapter 14), and `nosniff` alone is insufficient too.
+
+---
+
+**Next chapter** — Part 3 asked "what can be trusted," and the answer was always the payload. Now we open that
+payload itself. Part 4 covers, bit by bit, what is in the 187 bytes after `0x47`, how one 4-bit field becomes
+evidence of packet loss, and **what that evidence cannot catch.** Chapter 17 begins with the dissection of the
+MPEG-TS packet header's 4 bytes.

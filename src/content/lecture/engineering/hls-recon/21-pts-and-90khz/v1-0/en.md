@@ -1,34 +1,33 @@
 ---
-untranslated: ko
-title: "PTS 와 90kHz"
-description: "왜 총 길이로는 결손을 못 잡는가"
-date: 2026-08-17
+title: "PTS and 90kHz"
+description: "Why the total length cannot catch loss"
+date: 2026-07-06
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-21-pts-and-90khz.svg
 ---
-## 21.0 이 장에서 답할 것
+## 21.0 What this chapter answers
 
-1. 왜 하필 **90kHz** 인가 — 이 숫자는 어디서 왔고 무엇을 위해 골랐는가
-2. 33비트 값이 왜 5바이트에 흩어져 실리는가 — 비트 하나가 무엇을 막고 있는가
-3. **절대 시각**이라는 성질이 왜 검증에서 함정이 되는가. 그리고 그 함정은 우연인가, 원리인가
-4. 그래서 무엇을 대신 관측해야 하는가. 그 관측은 또 무엇을 놓치는가
+1. Why **90kHz** exactly — where did this number come from and what was it chosen for?
+2. Why is a 33-bit value scattered across 5 bytes — what is one bit blocking?
+3. Why does the **absolute time** property become a trap in verification. And is that trap coincidence or
+   principle?
+4. So what must you observe instead? And what does that observation miss in turn?
 
-제1장은 이 교재의 출발점을 한 문장으로 세워 두었다 — **"총 길이가 맞는데 중간이
-비어 있다."** 그 장에서는 결론을 제시했고, 이 장은 그것을 **tick 단위로 다시 잰다.**
-90kHz 클럭 한 눈금까지 내려가서 보면, 이것이 ffmpeg 의 버그도 MPEG-TS 의 결함도
-아니라 **시각을 절대 좌표로 표현하기로 한 결정의 필연적 귀결**이라는 것이 드러난다.
+Chapter 1 set this course's starting point in one sentence — **"the total length matches but the middle is
+empty."** That chapter presented the conclusion, and this chapter **re-measures it at tick resolution.** Go down
+to a single tick of the 90kHz clock and it is revealed that this is neither an ffmpeg bug nor an MPEG-TS defect
+but **the inevitable consequence of the decision to express time in absolute coordinates.**
 
-이 장의 모든 수치는 로컬에서 직접 잰 것이다. 외부 서버 없이 재현할 수 있다.
+Every number in this chapter was measured directly, locally. It can be reproduced with no external server.
 
 ---
 
-## 21.1 문제 — tick 단위까지 같은 두 파일
+## 21.1 The problem — two files identical down to the tick
 
-### 21.1.1 재현
+### 21.1.1 Reproduction
 
-`tests/run.sh` 가 만드는 것과 같은 스트림을 손으로 만든다. 30초, 30fps, 6초 세그먼트
-5개다.
+Make by hand a stream like the one `tests/run.sh` makes. 30 seconds, 30fps, five 6-second segments.
 
 ```bash
 ffmpeg -v error -y -f lavfi -i "testsrc2=size=640x360:rate=30:duration=30" \
@@ -39,11 +38,11 @@ ffmpeg -v error -y -f lavfi -i "testsrc2=size=640x360:rate=30:duration=30" \
 ffmpeg -v error -y -i source.mp4 -c copy -f hls -hls_time 6 -hls_playlist_type vod \
   -hls_segment_filename "plain/seg%03d.ts" plain/index.m3u8
 
-cp -R plain damaged && rm damaged/seg001.ts     # 중간 조각 하나를 없앤다
+cp -R plain damaged && rm damaged/seg001.ts     # remove one middle piece
 ```
 
-두 플레이리스트를 각각 재조립한다. 플레이리스트는 손대지 않았으므로 `damaged` 쪽은
-`seg001.ts` 를 열려다 실패하고 그 조각을 건너뛴다.
+Reassemble the two playlists each. The playlist was untouched, so the `damaged` side tries to open `seg001.ts`,
+fails, and skips that piece.
 
 ```
 $ ffmpeg -v error -y -i plain/index.m3u8   -c copy ok.mp4    ; echo $?
@@ -52,156 +51,150 @@ $ ffmpeg -v error -y -i damaged/index.m3u8 -c copy hole.mp4  ; echo $?
 0
 ```
 
-**둘 다 종료 코드 0 이고, 오류 출력은 한 줄도 없다.** 산출물을 잰다.
+**Both are exit code 0, and there is not a single line of error output.** Measure the outputs.
 
-| | `ok.mp4` (정상) | `hole.mp4` (6초 결손) |
+| | `ok.mp4` (normal) | `hole.mp4` (6-second loss) |
 |---|---|---|
 | `format.duration` | `30.023401` | `30.023401` |
-| 파일 크기 | 7,899,819 B | 6,319,406 B |
-| 영상 프레임 수 | 900 | **720** |
-| **영상 트랙 지속의 합** | **2,700,000 tick** | **2,700,000 tick** |
+| file size | 7,899,819 B | 6,319,406 B |
+| video frame count | 900 | **720** |
+| **sum of video-track durations** | **2,700,000 tick** | **2,700,000 tick** |
 
-프레임이 180개 사라졌고 파일이 1.58 MB 줄었는데, 재생 길이는 **소수 여섯째 자리까지
-같다.** 마지막 행이 특히 중요하다 — 초 단위 반올림이 감춘 것이 아니다. MP4 가 실제로
-들고 있는 정수 눈금값의 합이 **한 tick도 다르지 않다.**
+180 frames vanished and the file shrank by 1.58 MB, yet the play length is **identical to the sixth decimal
+place.** The last row is especially important — it is not that second-level rounding hid it. The sum of the
+integer tick values the MP4 actually holds does not differ by **a single tick.**
 
-> **용어** — **tick(틱)**: 클럭의 한 눈금. MPEG-TS 의 표시 시각은 초가 아니라 90kHz
-> 클럭의 눈금 수로 실린다. 1 tick = 1/90,000초 ≈ 11.1 µs.
+> **Term** — **tick**: one mark of the clock. MPEG-TS's presentation time is carried not in seconds but in the
+> mark count of a 90kHz clock. 1 tick = 1/90,000 second ≈ 11.1 µs.
 
-### 21.1.2 정밀도는 민감도가 아니다
+### 21.1.2 Precision is not sensitivity
 
-여기서 검증 방법론의 한 문장이 먼저 나온다.
+Here one sentence of verification methodology comes first.
 
-> 관측 지표 `M` 과 결함 `D` 에 대해 `M(정상) = M(D)` 이면, `M` 은 `D` 에 대한 검증이
-> 아니다. **아무리 정밀하게 재도 그렇다.**
+> For an observation metric `M` and a defect `D`, if `M(normal) = M(D)`, then `M` is not a verification for `D`.
+> **However precisely you measure, so it is.**
 
-총 길이는 이 결손에 대해 **완전 불변량**이다. 나노초까지 재도, 정수 tick 으로 재도
-같은 값이 나온다. 측정 장비를 개선해서 해결되는 문제가 아니라 **양을 잘못 고른**
-문제다.
+The total length is a **complete invariant** for this loss. Measure to the nanosecond, measure in integer ticks,
+the same value comes out. It is not a problem solved by improving the measuring instrument but a problem of
+**choosing the wrong quantity.**
 
-왜 하필 총 길이가 불변인가. 그 답이 이 장의 나머지 전부다.
+Why the total length exactly is invariant. That answer is all the rest of this chapter.
 
 ---
 
-## 21.2 원리 ① — 90kHz 는 어디서 왔는가
+## 21.2 Principle ① — where did 90kHz come from
 
-### 21.2.1 27MHz 시스템 클럭과 300 분주
+### 21.2.1 The 27MHz system clock and division by 300
 
-> **용어** — **STC(System Time Clock, 시스템 시각 클럭)**: MPEG-2 시스템 규격이 정한
-> 기준 클럭. 공칭 주파수 **27MHz** 이며, 송신기와 수신기가 이 클럭을 맞추는 것이
-> 동기 재생의 전제다.
+> **Term** — **STC (System Time Clock)**: the reference clock the MPEG-2 systems spec sets. Its nominal frequency
+> is **27MHz**, and the transmitter and receiver matching this clock is the premise of synchronized playback.
 
-> **용어** — **PCR(Program Clock Reference, 프로그램 클럭 기준)**: 송신기의 STC 현재값을
-> 수신기에 알려 주는 필드. TS 패킷의 adaptation field 에 실린다. 수신기는 이 값으로
-> 자기 클럭을 끌어당긴다.
+> **Term** — **PCR (Program Clock Reference)**: a field telling the receiver the transmitter's current STC value.
+> It rides in the TS packet's adaptation field. With this value the receiver pulls its own clock into line.
 
-PCR 은 27MHz 값을 한 덩어리로 싣지 않는다. **33비트의 base 와 9비트의 extension 으로
-쪼개서** 싣고, 원래 값은 다음 식으로 복원한다.
+PCR does not carry the 27MHz value in one lump. It **splits it into a 33-bit base and a 9-bit extension**, and
+the original value is recovered by the following formula.
 
 ```
 PCR = program_clock_reference_base × 300 + program_clock_reference_extension
 ```
 
-extension 은 0–299 를 담으므로 base 의 눈금은 27,000,000 ÷ 300 = **90,000 Hz** 다.
+The extension holds 0–299, so the base's mark is 27,000,000 ÷ 300 = **90,000 Hz.**
 
-![90kHz 눈금의 유래](/images/lecture/hls-recon/21-clock-90khz.svg)
+![The origin of the 90kHz mark](/images/lecture/hls-recon/21-clock-90khz.svg)
 
-*그림 21-1 — 90kHz 는 27MHz 시스템 클럭을 300 으로 나눈 눈금이다. PCR 은 두 조각을
-모두 싣지만, PTS·DTS 는 base 쪽 눈금만 쓴다*
+*Figure 21-1 — 90kHz is the mark of the 27MHz system clock divided by 300. PCR carries both pieces, but PTS·DTS use only the base-side mark*
 
-> **용어** — **PTS(Presentation Time Stamp, 표시 시각)** / **DTS(Decoding Time Stamp,
-> 복호 시각)**: 각각 이 접근 단위를 언제 화면에 내보내야 하는지, 언제 디코더에 넣어야
-> 하는지를 나타내는 값. **둘 다 90kHz 눈금의 33비트 부호 없는 정수**다. B-프레임이
-> 있으면 두 값이 달라진다(제22장에서 다시 다룬다).
+> **Term** — **PTS (Presentation Time Stamp)** / **DTS (Decoding Time Stamp)**: values indicating, respectively,
+> when this access unit must be put out on screen and when it must be fed to the decoder. **Both are 33-bit
+> unsigned integers on the 90kHz mark.** With B-frames present the two values differ (covered again in Chapter
+> 22).
 
-프레임 표시 시각에 27MHz(37 나노초) 해상도는 필요 없다. 그래서 PTS·DTS 는 300 분주된
-90kHz 쪽만 쓴다. **PCR 은 클럭을 맞추는 값이라 정밀해야 하고, PTS 는 프레임을 놓는
-값이라 그렇지 않아도 된다** — 같은 클럭에서 두 해상도를 뽑아 쓰는 설계다.
+A frame's presentation time needs no 27MHz (37 nanosecond) resolution. So PTS·DTS use only the 300-divided 90kHz
+side. **PCR is a value that matches the clock so it must be precise, and PTS is a value that places frames so it
+need not be** — a design drawing two resolutions from the same clock.
 
-### 21.2.2 왜 300 인가 — 프레임률이 정수로 떨어져야 한다
+### 21.2.2 Why 300 — the frame rate must fall to an integer
 
-분주비를 300 으로 고른 결과가 90,000 이라는 값이고, 이 값의 성질이 결정적이다.
+The result of choosing the division ratio 300 is the value 90,000, and this value's property is decisive.
 
-| 프레임률 | 프레임 간격 (초) | 90kHz tick | 정수인가 |
+| Frame rate | Frame interval (sec) | 90kHz tick | Integer |
 |---|---|---|---|
-| 24 | 1/24 | **3750** | 예 |
-| 25 | 1/25 | **3600** | 예 |
-| 30 | 1/30 | **3000** | 예 |
-| 48 | 1/48 | **1875** | 예 |
-| 50 | 1/50 | **1800** | 예 |
-| 60 | 1/60 | **1500** | 예 |
-| 30000/1001 (29.97) | 1001/30000 | **3003** | 예 |
-| 24000/1001 (23.976) | 1001/24000 | 15015/4 = 3753.75 | **아니오** |
-| 60000/1001 (59.94) | 1001/60000 | 3003/2 = 1501.5 | **아니오** |
+| 24 | 1/24 | **3750** | yes |
+| 25 | 1/25 | **3600** | yes |
+| 30 | 1/30 | **3000** | yes |
+| 48 | 1/48 | **1875** | yes |
+| 50 | 1/50 | **1800** | yes |
+| 60 | 1/60 | **1500** | yes |
+| 30000/1001 (29.97) | 1001/30000 | **3003** | yes |
+| 24000/1001 (23.976) | 1001/24000 | 15015/4 = 3753.75 | **no** |
+| 60000/1001 (59.94) | 1001/60000 | 3003/2 = 1501.5 | **no** |
 
-24·25·30 과 그 배수가 전부 정수로 떨어진다. NTSC 계열의 1001 분모 프레임률 중에서도
-**29.97fps 는 정확히 3003 tick** 이다(90000/30000 = 3 이 정수이기 때문이다).
-오디오도 마찬가지다.
+24·25·30 and their multiples all fall to integers. Even among the NTSC-family 1001-denominator frame rates,
+**29.97fps is exactly 3003 tick** (because 90000/30000 = 3 is an integer). Audio is the same.
 
-| 오디오 프레임 | tick | 정수인가 |
+| Audio frame | tick | Integer |
 |---|---|---|
-| AAC 1024샘플 @ 48kHz | **1920** | 예 |
-| AAC 1024샘플 @ 32kHz | **2880** | 예 |
-| AAC 1024샘플 @ 44.1kHz | 102400/49 ≈ 2089.8 | **아니오** |
+| AAC 1024 samples @ 48kHz | **1920** | yes |
+| AAC 1024 samples @ 32kHz | **2880** | yes |
+| AAC 1024 samples @ 44.1kHz | 102400/49 ≈ 2089.8 | **no** |
 
-**이것이 90kHz 를 고른 이유다.** 프레임 간격이 정수 tick 으로 떨어지면 시각을 계속
-더해 나가도 반올림 오차가 누적되지 않는다. 떨어지지 않으면 프레임마다 소수점이
-잘리고, 그 오차가 몇 시간 방송에서 쌓인다.
+**This is the reason 90kHz was chosen.** If the frame interval falls to an integer tick, no rounding error
+accumulates however long you keep adding time. If it does not, a decimal is cut off every frame, and that error
+piles up over hours of broadcast.
 
-**그런데 프레임률 표의 마지막 두 행이 예외다.** 23.976fps 와 59.94fps 는 90kHz 로 정확히
-표현되지 않는다. 이 사실은 뒤에서 임계값 설계와 만난다 — 프레임 간격이 3753 과 3754
-사이를 오가면, 그 흔들림은 **가변 프레임률과 구분되지 않는다**(제22장).
+**But the last two rows of the frame-rate table are exceptions.** 23.976fps and 59.94fps are not exactly
+representable in 90kHz. This fact meets threshold design later — if the frame interval oscillates between 3753
+and 3754, that jitter is **indistinguishable from a variable frame rate** (Chapter 22).
 
-### 21.2.3 왜 33비트인가
+### 21.2.3 Why 33 bits
 
-90kHz 눈금으로 시각을 세면 비트 수가 표현 가능한 시간을 정한다.
+Count time in the 90kHz mark and the bit count sets the representable time.
 
-| 비트 수 | 표현 가능한 tick 수 | 시간 | 하루가 담기는가 |
+| Bit count | Representable tick count | Time | Does a day fit |
 |---|---|---|---|
-| 32 | 4,294,967,296 | **13.26 시간** | 아니오 |
-| **33** | **8,589,934,592** | **26.51 시간** | 예 |
-| 34 | 17,179,869,184 | 53.02 시간 | 예 (과하다) |
+| 32 | 4,294,967,296 | **13.26 hours** | no |
+| **33** | **8,589,934,592** | **26.51 hours** | yes |
+| 34 | 17,179,869,184 | 53.02 hours | yes (excessive) |
 
-32비트로는 하루가 안 들어가고 34비트는 남는다. **33비트는 "방송 하루 + 여유"에
-맞춘 최소치다.** 그리고 그 결정이 곧바로 다음 절의 골칫거리를 만든다 — 33은 8의
-배수가 아니다.
+32 bits does not fit a day and 34 is left over. **33 bits is the minimum fit to "a broadcast day + margin."** And
+that decision immediately makes the next section's headache — 33 is not a multiple of 8.
 
-> **용어** — **wraparound(래핑)**: 카운터가 표현 범위 끝에서 0 으로 되돌아가는 것.
-> 33비트 90kHz PTS 는 약 **26.5시간마다** 래핑한다. 이 저장소가 다루는 회차 길이에서는
-> 일어나지 않지만, 24시간 연속 송출에서는 반드시 일어난다.
+> **Term** — **wraparound**: a counter returning to 0 at the end of its representable range. A 33-bit 90kHz PTS
+> wraps about **every 26.5 hours.** It does not occur at the episode lengths this repository handles, but in a
+> 24-hour continuous delivery it necessarily occurs.
 
 ---
 
-## 21.3 원리 ② — 33비트가 5바이트에 흩어지는 이유
+## 21.3 Principle ② — why 33 bits scatter across 5 bytes
 
-### 21.3.1 PES 헤더의 PTS 필드
+### 21.3.1 The PES header's PTS field
 
-> **용어** — **PES(Packetized Elementary Stream, 패킷화 기본 스트림)**: 압축된 영상·음성
-> 스트림을 시각 정보와 함께 감싼 계층. MPEG-TS 의 188바이트 패킷들이 실어 나르는
-> 내용물이 PES 패킷이고, PTS·DTS 는 이 PES 의 선택 헤더에 들어간다.
+> **Term** — **PES (Packetized Elementary Stream)**: the layer wrapping a compressed video·audio stream together
+> with time information. The content MPEG-TS's 188-byte packets carry is PES packets, and PTS·DTS go into this
+> PES's optional header.
 
-PTS 는 5바이트, 즉 40비트를 쓴다. 값은 33비트뿐이므로 7비트가 남는다. 그 7비트가
-어떻게 쓰이는지가 이 절의 주제다.
+PTS uses 5 bytes, i.e. 40 bits. The value is only 33 bits so 7 bits are left. How those 7 bits are used is this
+section's subject.
 
-앞 절에서 만든 `plain/seg000.ts` 에서 첫 영상 PES 헤더를 직접 꺼내 보면 이렇다.
+Pull the first video PES header directly from the `plain/seg000.ts` made in the previous section and it is this.
 
 ```
 $ python3 -c "
 d=open('plain/seg000.ts','rb').read(); i=d.find(b'\x00\x00\x01\xe0')
 print(d[i:i+14].hex(' '))"
 00 00 01 e0 00 00 80 80 05 21 00 07 e8 b5
-                           ^^^^^^^^^^^^^^ PTS 5바이트
+                           ^^^^^^^^^^^^^^ PTS 5 bytes
 ```
 
-앞의 `00 00 01 e0` 은 PES 시작 코드 접두와 영상 stream_id 다. 마지막 5바이트
-`21 00 07 E8 B5` 가 PTS 다. 비트로 펼치면 배치가 보인다.
+The leading `00 00 01 e0` is the PES start-code prefix and the video stream_id. The last 5 bytes `21 00 07 E8
+B5` are the PTS. Unfold into bits and the layout shows.
 
-![PES 헤더의 PTS 5바이트 배치](/images/lecture/hls-recon/21-pts-bitfield.svg)
+![The PES header's PTS 5-byte layout](/images/lecture/hls-recon/21-pts-bitfield.svg)
 
-*그림 21-2 — 33비트가 4+3+1 / 15+1 / 15+1 로 쪼개져 5바이트에 실린다.
-`21 00 07 E8 B5` 를 복원하면 128090 tick = 1.423222초다*
+*Figure 21-2 — the 33 bits split into 4+3+1 / 15+1 / 15+1 and ride in 5 bytes. Recover `21 00 07 E8 B5` and it is 128090 tick = 1.423222 seconds*
 
-복원 계산은 세 조각을 자리 맞춰 합치는 것뿐이다.
+The recovery calculation is just aligning the three pieces by place and summing.
 
 ```python
 pts = (b[0] >> 1 & 0x07) << 30 | b[1] << 22 | (b[2] >> 1 & 0x7f) << 15 \
@@ -209,7 +202,7 @@ pts = (b[0] >> 1 & 0x07) << 30 | b[1] << 22 | (b[2] >> 1 & 0x7f) << 15 \
 # 128090  →  128090 / 90000 = 1.423222 s
 ```
 
-`ffprobe` 에 물어본 값과 정확히 일치한다.
+It matches exactly the value `ffprobe` reports.
 
 ```
 $ ffprobe -v error -select_streams v:0 -show_entries packet=pts,pts_time \
@@ -217,20 +210,20 @@ $ ffprobe -v error -select_streams v:0 -show_entries packet=pts,pts_time \
 128090,1.423222
 ```
 
-### 21.3.2 남는 세 비트 — marker_bit 이 막는 것
+### 21.3.2 The leftover three bits — what the marker_bit blocks
 
-15비트마다 한 번씩 끼어 있는 `1` 이 **marker_bit(마커 비트)** 다. 규격은 이 자리를
-항상 `1` 로 두라고 정한다. 값이 아니라 **패턴**을 위해 있는 비트다.
+The `1` interposed once every 15 bits is the **marker_bit.** The spec sets this position always to `1`. It is a
+bit there for a **pattern**, not a value.
 
-> **용어** — **start code prefix(시작 코드 접두)**: MPEG 계열 스트림에서 패킷 경계를
-> 찾기 위한 고정 바이트열 `00 00 01`. 파서는 바이트열을 훑다가 이 패턴을 만나면
-> 거기서부터 새 구조가 시작한다고 판단한다.
+> **Term** — **start code prefix**: the fixed byte string `00 00 01` for finding packet boundaries in an
+> MPEG-family stream. When a parser sweeping the byte string meets this pattern it judges a new structure starts
+> from there.
 
-`00 00 01` 은 **0 이 23개 연속한 뒤 1** 이다. 만약 데이터 안에 이 패턴이 우연히
-나타나면 파서는 엉뚱한 곳을 패킷 경계로 잡는다. PTS 가 작은 값일 때가 정확히 위험한
-경우다 — 상위 비트가 전부 0 이기 때문이다.
+`00 00 01` is **23 consecutive 0s then a 1.** If this pattern appears by chance inside the data, the parser
+catches the wrong spot as a packet boundary. When PTS is a small value is exactly the dangerous case — because
+its high bits are all 0.
 
-marker_bit 이 이것을 막는다. `PTS = 0` 을 인코딩하면 이렇게 된다.
+The marker_bit blocks this. Encode `PTS = 0` and it becomes this.
 
 ```
 21 00 01 00 01
@@ -239,26 +232,26 @@ marker_bit 이 이것을 막는다. `PTS = 0` 을 인코딩하면 이렇게 된�
       marker                marker                marker
 ```
 
-**최장 0 런은 15 다.** 15비트마다 1 이 강제되므로 이 5바이트가 어떤 값을 담든
-23개짜리 0 런은 만들어질 수 없다. 즉 **타임스탬프는 시작 코드를 흉내낼 수 없다.**
+**The longest 0-run is 15.** Since a 1 is forced every 15 bits, whatever value these 5 bytes hold, a 0-run of 23
+cannot be made. That is, **a timestamp cannot imitate a start code.**
 
-| 설계 | 이렇게 하지 않으면 |
+| Design | If you do not do this |
 |---|---|
-| 33비트를 4+3+1 / 15+1 / 15+1 로 쪼갠다 | 33비트를 통째로 넣으면 상위 비트가 0 인 작은 시각에서 긴 0 런이 생기고, 그것이 시작 코드를 흉내내 **파서가 스트림 한가운데를 패킷 경계로 오인한다** |
-| marker_bit 을 항상 1 로 둔다 | 0 런의 상한이 사라진다. 특정 PTS 값에서만 재생이 깨지는, 재현 조건을 찾기 극히 어려운 버그가 된다 |
-| 4비트 접두(`0010`)를 둔다 | PTS 만 있는지 PTS·DTS 가 둘 다 있는지 구분할 수 없다. 헤더 길이가 5바이트인지 10바이트인지 모르면 그다음 바이트부터 전부 어긋난다 |
+| split 33 bits into 4+3+1 / 15+1 / 15+1 | put 33 bits in one lump and a small time with high bits 0 makes a long 0-run, and that imitates a start code so **the parser mistakes mid-stream for a packet boundary** |
+| set the marker_bit always to 1 | the upper bound of the 0-run disappears. it becomes a bug that breaks playback only at certain PTS values, extremely hard to find the reproduction condition for |
+| put a 4-bit prefix (`0010`) | you cannot tell whether there is only PTS or both PTS·DTS. not knowing whether the header is 5 or 10 bytes, everything from the next byte on goes off |
 
-이 저장소는 PES 헤더를 직접 파싱하지 않는다(`ffprobe` 에 위임한다). 그럼에도 이
-배치를 알아야 하는 이유는 다음 절이다 — **이 5바이트가 절대 좌표라는 사실이 검증
-전략 전체를 결정한다.**
+This repository does not parse the PES header directly (it delegates to `ffprobe`). Why it must nonetheless know
+this layout is the next section — **the fact that these 5 bytes are absolute coordinates determines the whole
+verification strategy.**
 
 ---
 
-## 21.4 원리 ③ — 절대 좌표는 총량을 보존한다
+## 21.4 Principle ③ — absolute coordinates preserve the total
 
-### 21.4.1 실측 — 뒤 조각의 좌표는 당겨지지 않는다
+### 21.4.1 Measured — the rear piece's coordinate is not pulled forward
 
-세그먼트 다섯 개의 첫 영상 PTS 를 그대로 뽑아 보면 이렇다.
+Pull the first video PTS of the five segments as-is and it is this.
 
 ```
 $ for f in plain/seg00*.ts; do
@@ -273,50 +266,48 @@ plain/seg003.ts  1748090,19.423222
 plain/seg004.ts  2288090,25.423222
 ```
 
-이웃한 값의 차는 정확히 **540,000 tick = 6.000000초**다. 반올림 오차가 없다 —
-§21.2.2 의 정수 분할이 여기서 눈에 보인다.
+The difference between neighboring values is exactly **540,000 tick = 6.000000 seconds.** There is no rounding
+error — §21.2.2's integer division is visible here.
 
-핵심은 각 값이 **그 세그먼트 안에 이미 박혀 있다**는 점이다. `seg002.ts` 는 자기가
-1208090 tick 에서 시작한다고 스스로 말한다. 앞에 무엇이 있었는지, 몇 개가 왔는지와
-무관하게 그렇다. **`seg001.ts` 를 지워도 `seg002.ts` 의 바이트는 한 비트도 바뀌지
-않는다.**
+The core is that each value **is already embedded inside that segment.** `seg002.ts` says of itself that it
+starts at 1208090 tick. It does so regardless of what came before, or how many came. **Delete `seg001.ts` and
+`seg002.ts`'s bytes do not change by a single bit.**
 
-### 21.4.2 왜 이것이 총량을 보존하는가 — 망원 합
+### 21.4.2 Why this preserves the total — the telescoping sum
 
-여기서 한 줄짜리 증명이 나온다. 표시 시각을 `t₀ < t₁ < … < tₙ` 이라 하고, 인접
-간격을 `Δᵢ = tᵢ₊₁ − tᵢ` 라 하자.
+Here comes a one-line proof. Let the presentation times be `t₀ < t₁ < … < tₙ`, and the adjacent interval
+`Δᵢ = tᵢ₊₁ − tᵢ`.
 
-> **용어** — **telescoping sum(망원 합)**: 이웃한 항이 서로 상쇄되어 양 끝만 남는 합.
+> **Term** — **telescoping sum**: a sum where neighboring terms cancel each other, leaving only the two ends.
 > `Σ(tᵢ₊₁ − tᵢ) = tₙ − t₀`.
 
 ```
 Σ Δᵢ  =  (t₁−t₀) + (t₂−t₁) + … + (tₙ−tₙ₋₁)  =  tₙ − t₀
 ```
 
-**총 길이는 타임라인의 양 끝만의 함수다.** 내부에서 점을 몇 개 지우든 `t₀` 와 `tₙ` 이
-그대로면 합은 변하지 않는다. 지워진 자리에서는 두 간격이 하나로 합쳐질 뿐이고, 합쳐진
-간격의 길이는 원래 두 간격의 합과 같다.
+**The total length is a function of only the timeline's two ends.** However many points you delete inside, if
+`t₀` and `tₙ` stay the same the sum does not change. At the deleted spot two intervals merely merge into one, and
+the merged interval's length equals the sum of the original two.
 
-여기서 두 따름정리가 곧바로 나온다.
+From here two corollaries come immediately.
 
-| 따름정리 | 내용 |
+| Corollary | Content |
 |---|---|
-| **내부 결손은 원리적으로 총 길이에 나타나지 않는다** | ffmpeg 의 구현 문제가 아니다. 어떤 도구로 재도 같다 |
-| **경계 결손은 반드시 총 길이에 나타난다** | 첫 조각이 빠지면 `t₀` 가, 마지막이 빠지면 `tₙ` 이 바뀐다. 제1장 §1.3.1 의 측정표가 이 예측과 정확히 일치한다 |
+| **an internal loss does not appear in the total length in principle** | it is not ffmpeg's implementation problem. it is the same measured by any tool |
+| **a boundary loss necessarily appears in the total length** | drop the first piece and `t₀` changes, the last and `tₙ` changes. Chapter 1 §1.3.1's measurement table matches this prediction exactly |
 
-그리고 **검출 가능한 양이 무엇인지**도 따라 나온다. 총량 `Σ Δ` 가 불변이라면 정보는
-`Δ` 의 **분포**에 남아 있다. 관측해야 할 것은 합이 아니라 **차분의 분포**다.
+And **what quantity is detectable** also follows. If the total `Σ Δ` is invariant, the information remains in the
+**distribution** of `Δ`. What must be observed is not the sum but **the distribution of the differences.**
 
-### 21.4.3 표현을 바꿔도 살아남는다 — MP4 의 상대 지속
+### 21.4.3 It survives a change of representation — MP4's relative duration
 
-여기서 흔한 반론이 하나 나온다. "MP4 는 절대 좌표를 쓰지 않는다. 샘플마다 지속 시간을
-적는 상대 표현이다. 그러면 재조립하면서 구멍이 사라지지 않는가?"
+Here comes a common objection. "MP4 does not use absolute coordinates. It is a relative representation writing
+each sample's duration. Then doesn't the hole vanish during reassembly?"
 
-> **용어** — **`stts`(Decoding Time to Sample Box)**: ISO-BMFF 의 박스 중 하나로,
-> 샘플마다 **다음 샘플까지의 지속(sample_delta)** 을 적는다. 절대 좌표가 아니라
-> 상대 지속의 나열이다.
+> **Term** — **`stts` (Decoding Time to Sample Box)**: one of ISO-BMFF's boxes, writing for each sample the
+> **duration to the next sample (sample_delta).** Not absolute coordinates but a sequence of relative durations.
 
-실제로 `hole.mp4` 의 샘플 지속을 전부 세어 보면 이렇다.
+Actually count all of `hole.mp4`'s sample durations and it is this.
 
 ```
 $ ffprobe -v error -select_streams v:0 -show_entries packet=duration \
@@ -325,48 +316,48 @@ $ ffprobe -v error -select_streams v:0 -show_entries packet=duration \
    1 543000
 ```
 
-**샘플 하나의 지속이 543,000 tick 이다.** 3000 + 540,000 — 정상 프레임 간격에
-사라진 세그먼트 6초가 통째로 더해진 값이다.
+**One sample's duration is 543,000 tick.** 3000 + 540,000 — a value where the vanished segment's 6 seconds is
+added whole onto the normal frame interval.
 
-![결손이 표현 변환을 살아남는 경로](/images/lecture/hls-recon/21-hole-survives-remux.svg)
+![The path by which loss survives a representation change](/images/lecture/hls-recon/21-hole-survives-remux.svg)
 
-*그림 21-3 — 절대 좌표를 상대 지속으로 바꿔도 구멍은 한 샘플의 지속에 흡수될 뿐이다.
-두 표현 모두 합은 2,700,000 tick 으로 정상본과 같다*
+*Figure 21-3 — even changing absolute coordinates to relative duration, the hole is merely absorbed into one sample's duration. Both representations sum to 2,700,000 tick, same as the normal copy*
 
-합을 확인한다.
+Confirm the sums.
 
-| | 계산 | 합 |
+| | Calculation | Sum |
 |---|---|---|
 | `ok.mp4` | 3000 × 900 | **2,700,000 tick** |
 | `hole.mp4` | 3000 × 179 + 543,000 + 3000 × 540 | **2,700,000 tick** |
 
-**망원 합이 예측한 그대로다.** 상대 표현으로 옮기는 것은 `Δᵢ` 를 그대로 적는 것이고,
-그 합은 여전히 `tₙ − t₀` 다. 표현을 바꿔도 불변량은 불변량이다.
+**Exactly as the telescoping sum predicted.** Moving to a relative representation is writing `Δᵢ` as-is, and its
+sum is still `tₙ − t₀`. Change the representation and the invariant is still the invariant.
 
-> 결손이 총량에 나타나지 않는 것은 MPEG-TS 의 성질도 MP4 의 성질도 아니다.
-> **"양 끝이 같으면 합도 같다"는 산수의 성질**이고, 어떤 컨테이너로 옮겨도 따라온다.
+> That loss does not appear in the total is neither MPEG-TS's property nor MP4's property.
+> It is **the arithmetic property that "if the two ends are the same the sum is the same"**, and it follows into
+> whatever container you move to.
 
 ---
 
-## 21.5 코드 — 무엇을 대신 관측하는가
+## 21.5 The code — what to observe instead
 
-### 21.5.1 관측 대상은 차분의 분포다
+### 21.5.1 The observation target is the distribution of differences
 
-`probe.gap_scan` 의 독스트링이 §21.4 의 결론을 그대로 적어 두었다.
+`probe.gap_scan`'s docstring wrote §21.4's conclusion as-is.
 
 ```python
 # probe.py:191-198
 def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
-    """영상 트랙의 표시 시각을 훑어 결손 구간을 찾는다.
+    """Sweep the video track's presentation times to find loss stretches.
 
-    총 길이 비교로는 중간 세그먼트 유실을 잡을 수 없다. MPEG-TS 세그먼트는
-    절대 PTS(표시 시각)를 담고 있어서, 한 조각이 빠져도 뒤 조각의 시각이
-    원래대로 유지되어 총 길이가 그대로이기 때문이다. 결손은 총량이 아니라
-    타임라인의 구멍으로 나타나므로 인접 프레임 간격을 직접 본다.
+    A total-length comparison cannot catch a middle-segment loss. Because an MPEG-TS segment
+    carries an absolute PTS (presentation time), so even if one piece is dropped the rear pieces'
+    times stay as they were and the total length is unchanged. Loss appears not as a total but
+    as a hole in the timeline, so look directly at the adjacent frame intervals.
     """
 ```
 
-계측은 `ffprobe` 에 표시 시각만 뽑아 달라고 하는 것으로 시작한다.
+Measurement starts by asking `ffprobe` for only the presentation times.
 
 ```python
 # probe.py:199-209
@@ -383,20 +374,20 @@ def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
     )
 ```
 
-인자 네 개가 각각 결정이다.
+Four arguments, each a decision.
 
-| 인자 | 결정 내용 | 이렇게 하지 않으면 |
+| Argument | The decision | If you do not do this |
 |---|---|---|
-| `-select_streams v:0` | 첫 영상 트랙만 본다 | 오디오 패킷이 섞이면 간격 분포가 두 종류로 갈라져 중앙값이 무의미해진다 |
-| `packet=pts_time` | **패킷** 수준에서 읽는다 | `frame=` 은 디코딩을 요구한다. 30초 영상에서도 수십 배 느리고, 결손 검출에 디코딩 결과는 필요 없다 |
-| `pts_time`(초) | tick 이 아니라 초로 받는다 | tick 은 `time_base` 를 알아야 해석된다. 컨테이너마다 다르므로(TS 는 1/90000, MP4 는 코덱·먹서에 따라 다름) 초로 받아 정규화한다 |
-| `csv=p=0` | 헤더 없는 값만 | 파싱 코드가 포맷 변화에 취약해진다 |
+| `-select_streams v:0` | look at only the first video track | mix in audio packets and the interval distribution splits into two kinds so the median becomes meaningless |
+| `packet=pts_time` | read at the **packet** level | `frame=` requires decoding. tens of times slower even on a 30-second video, and detecting loss needs no decode result |
+| `pts_time` (seconds) | receive not ticks but seconds | ticks need `time_base` to interpret. it differs per container (TS is 1/90000, MP4 depends on codec·muxer) so receive seconds and normalize |
+| `csv=p=0` | only the values, no header | the parsing code becomes fragile to format changes |
 
-세 번째 행은 이 저장소가 위임의 경계를 어디에 두는지 보여 준다. **90kHz 를 초로
-나누는 일은 `ffprobe` 가 하고, 이 코드는 초 단위 실수만 다룬다.** 앞 절에서 확인한
-`128090,1.423222` 의 왼쪽이 `ffprobe` 의 입력이고 오른쪽이 이 코드의 입력이다.
+The third row shows where this repository places the delegation boundary. **Dividing 90kHz by seconds is
+`ffprobe`'s job, and this code handles only floats in seconds.** The left of the `128090,1.423222` confirmed
+above is `ffprobe`'s input and the right is this code's input.
 
-### 21.5.2 파싱은 실패를 삼키지 않는다
+### 21.5.2 The parsing does not swallow failure
 
 ```python
 # probe.py:213-220
@@ -405,22 +396,21 @@ def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
         try:
             times.append(float(tok))
         except ValueError:
-            continue  # N/A 등 시각 없는 패킷
+            continue  # a packet with no time, e.g. N/A
     if len(times) < 3:
-        return GapScan(ok=False, error="표시 시각을 가진 영상 패킷이 부족하다")
+        return GapScan(ok=False, error="too few video packets with a presentation time")
 ```
 
-`N/A` 를 건너뛰는 것은 관대함이지만, **표본이 3개 미만이면 성공을 반환하지 않는다.**
-`ok=False` 는 "결손 없음"이 아니라 "판정할 수 없음"이다. 이 구분이 없으면 시각이 없는
-스트림이 자동으로 PASS 가 된다 — 제38장의 "알 수 없음과 통과를 구별하기"가 여기에
-초기 형태로 들어와 있다. 다만 이 반환값이 리포트까지 제대로 전달되는지는 §21.9 에서
-다시 본다.
+Skipping `N/A` is leniency, but **if the sample is fewer than 3 it does not return success.** `ok=False` is not
+"no loss" but "cannot judge." Without this distinction a stream with no times automatically becomes PASS —
+Chapter 38's "distinguishing unknown from passing" is here in an early form. Only, whether this return value is
+properly conveyed to the report is revisited in §21.9.
 
-### 21.5.3 핵심 계산
+### 21.5.3 The core computation
 
 ```python
 # probe.py:222-233
-    # B-프레임이 있으면 패킷 순서가 표시 순서와 다르므로 시각 기준으로 정렬한다.
+    # with B-frames the packet order differs from the presentation order, so sort by time.
     times.sort()
     deltas = [b - a for a, b in zip(times, times[1:])]
     ordered = sorted(deltas)
@@ -434,34 +424,34 @@ def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
     return scan
 ```
 
-이 실습 스트림에 돌리면 이렇게 나온다.
+Run it on this lab stream and it comes out like this.
 
 ```
 ok.mp4    frames=900  median=0.033333  threshold=0.4000  gaps=[]
 hole.mp4  frames=720  median=0.033333  threshold=0.4000  gaps=[(5.99, 12.023, 6.033)]
 ```
 
-`median=0.033333` 은 정확히 **3000 tick** 이고, 임계값 0.4초는 **36,000 tick** 이다.
-§21.2.2 의 표에서 30fps 행이 그대로 관측된 것이다.
+`median=0.033333` is exactly **3000 tick**, and the threshold 0.4 second is **36,000 tick.** The 30fps row of
+§21.2.2's table is observed as-is.
 
-세 결정을 "하지 않으면 무엇이 깨지는가"로 읽는다.
+Read the three decisions as "if you do not do it, what breaks."
 
-| 결정 | 하지 않으면 |
+| Decision | If you do not |
 |---|---|
-| `times.sort()` | `ffprobe` 는 패킷을 **저장 순서**로 내놓는다. B-프레임이 있으면 표시 순서와 달라 `deltas` 에 **음수가 섞이고**, 그 음수가 중앙값과 임계값을 함께 흔든다. 표시 순서로는 존재하지 않는 구멍이 만들어진다 |
-| `median` (평균이 아니라 중앙값) | 결손 구간 자체가 표본 안에 있다. 평균을 쓰면 6.033초짜리 값 하나가 기준선을 끌어올리고, 임계값이 함께 커져 **결손이 스스로를 정상으로 만든다** |
-| `max(floor, median * factor)` | 30fps 에서 중앙값의 3배는 0.1초다. 바닥값이 없으면 프레임 한두 개 누락이나 가변 프레임률의 정상적 흔들림이 전부 결손이 된다. 실제로 이 실습에서 채택된 값도 `median × 3 = 0.1s` 가 아니라 **바닥값 0.4s** 였다 |
+| `times.sort()` | `ffprobe` puts out packets in **storage order.** with B-frames it differs from presentation order so `deltas` gets **negatives mixed in**, and those negatives shake the median and threshold together. a hole that does not exist in presentation order is made |
+| `median` (median, not average) | the loss stretch itself is in the sample. use the average and one 6.033-second value pulls up the baseline, and the threshold grows with it so **the loss makes itself normal** |
+| `max(floor, median * factor)` | at 30fps three times the median is 0.1 second. with no floor value, a missing frame or two or the normal jitter of a variable frame rate all become loss. in fact the value adopted in this lab too was not `median × 3 = 0.1s` but the **floor value 0.4s** |
 
-임계값의 상수 `3.0` 과 `0.4` 를 어떻게 고르는가, 그리고 그것이 어떤 오탐을 만드는가는
-제22장의 주제다.
+How the threshold constants `3.0` and `0.4` are chosen, and what false positive that makes, is Chapter 22's
+subject.
 
-### 21.5.4 자료구조 — 무엇을 결과로 남기는가
+### 21.5.4 The data structure — what is left as a result
 
 ```python
 # probe.py:165-174
 @dataclass
 class Gap:
-    """재생 타임라인에서 프레임이 존재하지 않는 구간."""
+    """A stretch in the playback timeline where no frame exists."""
 
     start: float
     end: float
@@ -478,7 +468,7 @@ class GapScan:
     ok: bool = False
     gaps: list[Gap] = field(default_factory=list)
     frames: int = 0
-    frame_interval: float = 0.0  # 프레임 간격 중앙값
+    frame_interval: float = 0.0  # median frame interval
     threshold: float = 0.0
     error: str = ""
 
@@ -487,32 +477,32 @@ class GapScan:
         return sum(g.length for g in self.gaps)
 ```
 
-여기서 정확히 읽어야 할 것이 하나 있다. **`Gap` 은 사라진 구간이 아니라 남아 있는 두
-프레임 사이의 간격이다.** `start` 는 결손 직전 프레임의 표시 시각이고 `end` 는 직후
-프레임의 표시 시각이다.
+There is one thing to read exactly here. **`Gap` is not the vanished stretch but the interval between the two
+remaining frames.** `start` is the presentation time of the frame just before the loss and `end` is that of the
+frame just after.
 
-실측값이 그것을 보여 준다 — 6.000초짜리 세그먼트가 빠졌는데 보고된 길이는 **6.033초**다.
+The measured value shows it — a 6.000-second segment vanished and the reported length is **6.033 seconds.**
 
 ```
-6.033 = 6.000 (사라진 세그먼트) + 0.033 (원래도 있었을 프레임 한 칸)
+6.033 = 6.000 (the vanished segment) + 0.033 (the one frame slot that would have been there anyway)
 ```
 
-즉 `lost` 는 결손 하나당 **프레임 간격 하나만큼 과대 보고**한다. 30fps 에서 33ms,
-결손 100건이면 3.3초다. 판정(있다/없다)에는 영향이 없지만 **`lost` 를 정량 지표로
-쓰면 계통 오차가 있다.** 리포트가 이 값을 "합계"로 출력하므로 짚어 둘 필요가 있다.
+That is, `lost` **over-reports by one frame interval per loss.** 33ms at 30fps, 3.3 seconds for 100 losses. No
+effect on the verdict (present/absent) but **using `lost` as a quantitative metric carries a systematic error.**
+Since the report outputs this value as a "total," it needs noting.
 
-`frames` · `frame_interval` · `threshold` 를 같이 남기는 이유도 분명하다. 판정만 남기면
-**왜 그 판정이 나왔는지 사후에 재구성할 수 없다.** 임계값이 0.4초였는지 0.1초였는지
-모르면 같은 리포트를 두 번 읽을 때 결론이 달라진다.
+The reason it also keeps `frames` · `frame_interval` · `threshold` is clear too. Keep only the verdict and **you
+cannot reconstruct after the fact why that verdict came.** Not knowing whether the threshold was 0.4 second or
+0.1 second, the conclusion differs when reading the same report twice.
 
-### 21.5.5 절대 좌표의 다른 쓰임 — `first_pts`
+### 21.5.5 Another use of absolute coordinates — `first_pts`
 
-같은 성질이 검증이 아니라 **정렬**에 쓰이는 자리가 하나 더 있다.
+There is one more spot where the same property is used not for verification but for **alignment.**
 
 ```python
 # probe.py:236-246
 def first_pts(target: str, headers: dict[str, str] | None = None) -> float | None:
-    """영상 트랙의 첫 표시 시각(초). 자막 정렬 기준선으로 쓴다."""
+    """The video track's first presentation time (seconds). Used as the subtitle-alignment baseline."""
     cmd = [require("ffprobe"), "-v", "error", "-hide_banner"]
     cmd += input_args(headers, target)
     cmd += [
@@ -524,70 +514,69 @@ def first_pts(target: str, headers: dict[str, str] | None = None) -> float | Non
     ]
 ```
 
-이 함수가 존재하는 이유가 곧 절대 좌표의 성질이다. **타임라인의 원점은 0 이 아니다.**
-이 실습 스트림에서 첫 PTS 는 128090 tick = **1.423222초**였다. 송출마다 다르고, 알
-방법은 재는 것뿐이다.
+The reason this function exists is exactly the property of absolute coordinates. **The timeline's origin is not
+0.** In this lab stream the first PTS was 128090 tick = **1.423222 seconds.** It differs per delivery, and the
+only way to know is to measure.
 
-자막 정렬식이 이 값을 요구한다.
+The subtitle-alignment formula demands this value.
 
 ```python
 # subtitles.py:188
-MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
+MPEGTS_HZ = 90000  # MPEG-TS system clock
 
 # subtitles.py:218
     return (mpegts / MPEGTS_HZ) - video_pts0 - local_sec
 ```
 
-`X-TIMESTAMP-MAP` 이 주는 값은 90kHz tick 이고, 자막 시각은 초다. 둘을 잇는
-아핀 대응에서 `video_pts0` 는 **원점의 위치**다. 0 이라고 가정하면 이 실습에서는
-자막이 1.42초 밀린다(제27장에서 식 전체를 유도한다).
+The value `X-TIMESTAMP-MAP` gives is 90kHz ticks, and the subtitle time is seconds. In the affine correspondence
+joining the two, `video_pts0` is **the origin's position.** Assume it is 0 and in this lab the subtitles slip by
+1.42 seconds (the whole formula is derived in Chapter 27).
 
-두 함수가 인자를 다르게 받는 것도 우연이 아니다.
+That the two functions take arguments differently is no coincidence either.
 
 | | `gap_scan(path, …)` | `first_pts(target, headers)` |
 |---|---|---|
-| 대상 | **재조립된 로컬 산출물** ([`cli.py:616`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L616)) | **원격 세그먼트 원본** ([`cli.py:266`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L266)) |
-| `input_args` 를 붙이는가 | 아니오 — 로컬 파일이라 헤더·확장자 정책이 필요 없다 | 예 — 원격이라 인증 헤더가 필요하다. 확장자 허용 목록(제14장)은 플레이리스트 입력에만 붙으므로 세그먼트에는 빠진다 |
-| 읽는 범위 | 전체 패킷 | `-read_intervals "%+#1"` — **첫 패킷 하나** |
-| 쓰임 | 결손 검출 | 시간축 원점 확정 |
+| Target | **the reassembled local output** ([`cli.py:616`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L616)) | **the remote segment original** ([`cli.py:266`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L266)) |
+| Attaches `input_args` | no — a local file, so it needs no header·extension policy | yes — remote, so it needs auth headers. the extension allowlist (Chapter 14) attaches only to playlist input so it is absent for segments |
+| Range read | all packets | `-read_intervals "%+#1"` — **the first packet only** |
+| Use | loss detection | fixing the time-axis origin |
 
-`first_pts` 가 산출물이 아니라 원본 세그먼트를 보는 이유는 실측으로 확인된다.
-재조립본의 첫 PTS 는 **2070 tick = 0.023초**로, ffmpeg 이 타임라인을 0 근처로
-다시 잡았다. **원점 정보는 재조립 과정에서 사라진다.** 그래서 원점이 필요하면
-원본을 봐야 한다.
+Why `first_pts` looks at the original segment and not the output is confirmed by measurement. The reassembled
+copy's first PTS is **2070 tick = 0.023 second** — ffmpeg re-set the timeline near 0. **The origin information
+vanishes during reassembly.** So if you need the origin you must look at the original.
 
 ---
 
-## 21.6 코드 — 판정으로 바꾸기
+## 21.6 The code — turning into a verdict
 
-계측치는 아직 판정이 아니다. `report.py` 가 규칙을 적용한다.
+A measurement is not yet a verdict. `report.py` applies the rules.
 
 ```python
 # report.py:303-317
-    # 5) 타임라인 연속성 — 총 길이가 맞아도 중간이 비어 있을 수 있다
+    # 5) timeline continuity — the total length can match while the middle is empty
     if gaps is not None and gaps.ok:
         if gaps.gaps:
             worst = max(gaps.gaps, key=lambda g: g.length)
             where = ", ".join(f"{g.start:.2f}~{g.end:.2f}s" for g in gaps.gaps[:3])
-            more = f" 외 {len(gaps.gaps) - 3}건" if len(gaps.gaps) > 3 else ""
-            # 플레이리스트가 EXT-X-DISCONTINUITY 로 예고한 불연속이면 의도된 이음매일 수 있다.
+            more = f" +{len(gaps.gaps) - 3} more" if len(gaps.gaps) > 3 else ""
+            # if it is a discontinuity the playlist announced with EXT-X-DISCONTINUITY, it may be an intended seam.
             intended = discontinuities >= len(gaps.gaps)
             rep.add(
-                "타임라인 연속성",
+                "timeline continuity",
                 WARN if intended else FAIL,
-                f"결손 {len(gaps.gaps)}건 / 합계 {gaps.lost:.2f}s (최대 {worst.length:.2f}s) "
+                f"{len(gaps.gaps)} gaps / total {gaps.lost:.2f}s (max {worst.length:.2f}s) "
                 f"@ {where}{more}"
-                + (" — EXT-X-DISCONTINUITY 선언 구간과 수가 일치(의도된 이음매 가능)" if intended else ""),
+                + (" — count matches the EXT-X-DISCONTINUITY-declared regions (possibly intended seams)" if intended else ""),
             )
 ```
 
-### 21.6.1 규격이 허용한 예외 — EXT-X-DISCONTINUITY
+### 21.6.1 The spec-permitted exception — EXT-X-DISCONTINUITY
 
-> **용어** — **`EXT-X-DISCONTINUITY`**: HLS 플레이리스트 태그. 다음 세그먼트에서
-> **타임스탬프의 연속성이 끊긴다**고 미리 선언한다. 광고 삽입, 다른 소스의 이어붙임,
-> 인코더 재시작 등이 실제 사례다. RFC 8216 이 정의한 정상 상태이지 오류가 아니다.
+> **Term** — **`EXT-X-DISCONTINUITY`**: an HLS playlist tag. It declares in advance that **timestamp continuity
+> breaks** at the next segment. Ad insertion, splicing of another source, and encoder restart are actual cases.
+> It is a normal state RFC 8216 defines, not an error.
 
-파싱은 한 줄이다.
+The parsing is one line.
 
 ```python
 # playlist.py:331-332
@@ -595,49 +584,49 @@ MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
             pending_disc = True
 ```
 
-세는 것도 한 줄이다.
+The counting is one line too.
 
 ```python
 # cli.py:635
         discontinuities=sum(1 for s in media.segments if s.discontinuity),
 ```
 
-**선언된 불연속이 있으면 갭 스캔이 찾은 구멍은 그 이음매일 수 있다.** 그래서 FAIL
-대신 WARN 으로 낮춘다.
+**If there is a declared discontinuity, the hole the gap scan found may be that seam.** So it lowers to WARN
+instead of FAIL.
 
-> **규격의 예외를 모르는 검사기는 오탐을 쏟아내고, 오탐을 쏟아내는 검사기는 쓰이지
-> 않는다.**
+> **A checker not knowing the spec's exceptions pours out false positives, and a checker that pours out false
+> positives is not used.**
 
-광고가 두 번 들어간 30분짜리 회차에서 이 예외가 없으면 정상 송출이 매번 FAIL 이
-된다. 그런 도구는 며칠 만에 `--no-gap-scan` 이 기본값이 되고, 그 순간 검사는 없는
-것이 된다. **검사기의 유용성은 정탐률이 아니라 오탐률이 결정한다.**
+In a 30-minute episode with two ad insertions, without this exception a normal delivery is FAIL every time. Such
+a tool has `--no-gap-scan` become the default in a few days, and at that moment the check becomes nonexistent.
+**A checker's usefulness is determined not by the true-positive rate but by the false-positive rate.**
 
-### 21.6.2 이 완화가 얼마나 거친가
+### 21.6.2 How coarse this relaxation is
 
-동시에 이 규칙은 **개수만 비교한다.**
+At the same time, this rule **compares only the count.**
 
 ```python
 intended = discontinuities >= len(gaps.gaps)
 ```
 
-`Gap` 은 `start`·`end` 라는 위치를 갖고 있고 `Segment` 도 자기 자리를 알지만, 이
-비교에는 위치가 들어가지 않는다. 결과는 이렇다.
+`Gap` has positions `start`·`end` and `Segment` too knows its own place, but position does not enter this
+comparison. The result is this.
 
-| 상황 | 선언된 불연속 | 발견된 갭 | 판정 | 옳은가 |
+| Situation | Declared discontinuities | Gaps found | Verdict | Correct |
 |---|---|---|---|---|
-| 광고 삽입 1회, 결손 없음 | 1 | 1 (같은 자리) | WARN | 예 |
-| 광고 삽입 1회, **다른 자리에 진짜 결손 1건** | 1 | 1 (다른 자리) | **WARN** | **아니오 — FAIL 이어야 한다** |
-| 광고 삽입 1회, 결손 2건 | 1 | 3 | FAIL | 예 |
-| 광고 삽입 3회, 갭 1건만 발견 | 3 | 1 | WARN | 판단 보류 — 갭 하나가 결손일 수 있다 |
+| 1 ad insertion, no loss | 1 | 1 (same spot) | WARN | yes |
+| 1 ad insertion, **1 real loss at a different spot** | 1 | 1 (different spot) | **WARN** | **no — should be FAIL** |
+| 1 ad insertion, 2 losses | 1 | 3 | FAIL | yes |
+| 3 ad insertions, only 1 gap found | 3 | 1 | WARN | verdict withheld — the one gap could be a loss |
 
-두 번째 행이 **미탐**이다. 위치를 대조하면 없앨 수 있는 미탐이고, 필요한 정보는
-이미 두 자료구조에 다 있다. 지금 하지 않을 뿐이다.
+The second row is a **false negative.** It is a false negative removable by comparing positions, and the needed
+information is already all in the two data structures. It just does not do it now.
 
-이것을 "버그"라고 부르지 않고 그대로 적어 두는 이유는 제15장과 같다. **검사기의
-한계를 아는 것이 검사기를 쓰는 조건이다.** WARN 은 "괜찮다"가 아니라 "이 검사로는
-구분되지 않는다"로 읽어야 한다.
+The reason for writing this down as-is rather than calling it a "bug" is the same as Chapter 15. **Knowing the
+checker's limit is the condition for using the checker.** WARN must be read as "not distinguished by this check,"
+not "it is fine."
 
-### 21.6.3 계측치를 기록으로 남긴다
+### 21.6.3 Leaving the measurement as a record
 
 ```python
 # report.py:325-335
@@ -654,201 +643,196 @@ intended = discontinuities >= len(gaps.gaps)
         }
 ```
 
-판정(`FAIL`)과 근거(`threshold_sec`, `frame_interval_sec`)를 **같이** 남긴다. 판정만
-남기면 나중에 임계값을 바꿨을 때 과거 리포트와 비교할 수 없다.
+It leaves the verdict (`FAIL`) and the basis (`threshold_sec`, `frame_interval_sec`) **together.** Keep only the
+verdict and you cannot compare with a past report when you change the threshold later.
 
-`gaps[:50]` 은 의도된 절단이다. 건수와 합계는 온전히 남기고 목록만 자른다 — 결손이
-수천 건인 스트림에서 JSON 이 폭발하는 것을 막되, **판정에 쓰인 수치는 잃지 않는다.**
-
----
-
-## 21.7 일반화 — 보존량은 검출량이 될 수 없다
-
-이 장의 구조를 도메인 밖으로 옮기면 이렇게 된다.
-
-> **어떤 결함에 대해 불변인 양은, 그 결함의 검출 지표가 될 수 없다.**
-> 검증 지표를 고르는 일은 정밀도를 높이는 일이 아니라 **결함에 반응하는 양을 찾는
-> 일**이다.
-
-같은 구조가 반복되는 곳을 나열하면 다음과 같다. 왼쪽 열은 전부 **합계형(총량)** 이고
-오른쪽 열은 전부 **차분형(순서·간격·경계)** 이다.
-
-| 영역 | 총량 지표 — 내부 결손에 둔감 | 차분 지표 — 민감 |
-|---|---|---|
-| **이 장** | 총 재생 길이 | **인접 PTS 간격의 분포** |
-| 로그 수집 | 수집된 이벤트 총 개수 | 발신 측 시퀀스 번호의 연속성 |
-| 메시지 큐 | 처리 완료 건수 | 오프셋(offset)의 연속성 |
-| DB 복제 | 양쪽 행 수 일치 | LSN·binlog 위치의 연속성 |
-| 파일 전송 | 총 바이트 수 | 청크 인덱스의 빠짐 |
-| 백업 | 총 용량 | 파일별 목록·해시 대조 |
-| 시계열 센서 | 샘플 총 개수 | 타임스탬프 간격의 분포 |
-| 회계 | 잔액 합계 | 전표 일련번호의 연속성 |
-| MPEG-TS 패킷 계층 | 총 패킷 수 | **continuity counter 의 연속성**(제18장) |
-
-마지막 행이 재미있다. 이 저장소는 **같은 원리를 두 계층에서 두 번** 쓴다 — 패킷
-계층에서는 4비트 순환 카운터의 차분을 보고([`tsanalyze.py:112-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L112-L119)), 표시 시각 계층에서는
-PTS 의 차분을 본다. 두 검사는 다른 것을 잡는다.
-
-| | CC 불연속 검사 | 타임라인 갭 스캔 |
-|---|---|---|
-| 관측 대상 | 세그먼트 원본 바이트 | 재조립된 산출물 |
-| 잡는 것 | 세그먼트 **안**의 패킷 유실 | 세그먼트 **단위**의 결손 |
-| 못 잡는 것 | 정확히 16의 배수만큼의 유실 | 프레임 간격 임계값 미만의 결손 |
-| 사후 재현 | **불가** — 산출물엔 TS 헤더가 없다 | 가능 — 파일만 있으면 된다 |
-
-**둘 중 하나만으로는 부족하고, 어느 쪽도 다른 쪽을 대체하지 않는다.** 검증 항목을
-늘리는 것이 아니라 **서로 다른 사각을 가진 항목을 고르는 것**이 커버리지다.
-
-한 가지 더. 총량 지표가 쓸모없다는 뜻이 아니다. §21.4.2 의 두 번째 따름정리대로
-**경계 결손은 총량에만 나타난다.** [`report.py:262-278`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L262-L278) 의 길이 정합 검사는 갭
-스캔이 못 보는 것을 본다. 두 검사는 상보적이다.
+`gaps[:50]` is an intended cut. It keeps the count and total whole and cuts only the list — it prevents the JSON
+exploding in a stream with thousands of losses while **not losing the numbers used in the verdict.**
 
 ---
 
-## 21.8 보안 — 절대 시각이 만드는 것과 남기는 것
+## 21.7 Generalization — a conserved quantity cannot be a detection quantity
 
-### 21.8.1 조작이 편집이 아니라 생략이 되는 이유
+Move this chapter's structure outside the domain and it becomes this.
 
-절대 좌표의 성질을 공격자 관점에서 다시 읽으면 이렇게 된다.
+> **A quantity invariant under some defect cannot be that defect's detection metric.**
+> Choosing a verification metric is not raising precision but **finding a quantity that responds to the defect.**
 
-> **삭제자는 아무것도 다시 계산할 필요가 없다.**
+List where the same structure repeats and it is the following. The left column is all **aggregate (total)** and
+the right column is all **difference (order·interval·boundary).**
 
-상대 시간 표현이었다면 중간을 들어낸 뒤 뒤쪽 시각을 전부 다시 써야 한다. 절대 좌표는
-그럴 필요가 없다 — 남은 조각들이 이미 자기 좌표를 들고 있다. 그래서 이 조작은
-**편집이 아니라 생략**이고, 흔적을 남기는 단계가 아예 없다.
-
-여기서 세그먼트 단위 서명·해시의 한계가 드러난다.
-
-| 방어 수단 | 보증하는 것 | 이 조작을 잡는가 |
+| Domain | Total metric — insensitive to internal loss | Difference metric — sensitive |
 |---|---|---|
-| TLS | 각 응답의 무결성·진정성 | **아니오** — 응답을 지우는 것은 프로토콜 위반이 아니다 |
-| 세그먼트별 해시·서명 | 받은 조각이 진짜다 | **아니오** — 남은 조각의 서명은 전부 유효하다 |
-| 총 재생 길이 대조 | 양 끝이 온전하다 | **아니오** — §21.4.2 |
-| 전체 디코드 | 파일이 끝까지 열린다 | **아니오** — 구멍은 정상 디코딩된다 |
-| **인접 PTS 간격 분포** | 타임라인의 연속성 | **예** |
+| **this chapter** | total play length | **the distribution of adjacent PTS intervals** |
+| log collection | total count of collected events | continuity of the sender-side sequence number |
+| message queue | count of processed items | continuity of the offset |
+| DB replication | matching row counts on both sides | continuity of the LSN·binlog position |
+| file transfer | total byte count | missing chunk index |
+| backup | total capacity | per-file listing·hash comparison |
+| time-series sensor | total sample count | the distribution of timestamp intervals |
+| accounting | balance total | continuity of the voucher serial number |
+| MPEG-TS packet layer | total packet count | **continuity of the continuity counter** (Chapter 18) |
 
-앞의 네 줄이 전부 **개별 조각의 진위**를 묻고, 마지막 줄만 **집합의 완전성**을 묻는다.
-완전성은 다른 축이며, 이 축을 재는 검사를 따로 두지 않으면 아무리 서명을 붙여도
-비어 있다.
+The last row is interesting. This repository uses **the same principle at two layers, twice** — at the packet
+layer it looks at the difference of a 4-bit cyclic counter ([`tsanalyze.py:112-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L112-L119)), and at the presentation-time
+layer it looks at the difference of PTS. The two checks catch different things.
 
-### 21.8.2 그런데 같은 성질이 유일한 지렛대이기도 하다
-
-동시에 이 장의 대칭을 놓치면 안 된다. **절대 좌표이기 때문에 산출물만으로 결손을
-계산할 수 있다.**
-
-남은 조각들이 스스로 "나는 1208090 tick 에서 시작한다"고 말하므로, 파일만 받은
-사람도 어디가 비었는지 알 수 있다. 만약 재조립 과정에서 시각이 상대 간격으로
-다시 매겨지고 구멍이 메워졌다면(뒤가 앞으로 당겨졌다면), **결손은 산출물에서 완전히
-관측 불가능해진다.** 그때 남는 검사는 수신 시점의 HTTP 결과뿐이고, 그것은 사후에
-재현할 수 없다(제1장).
-
-> **함정과 지렛대가 같은 성질에서 나온다.** 절대 좌표는 총 길이 검사를 무력화하면서
-> 동시에 타임라인 검사를 가능하게 한다. 어느 쪽이 되는지는 **무엇을 관측하기로
-> 했는가**가 정한다.
-
-### 21.8.3 공격자가 통제하는 범위별 위협 모델
-
-검증 도구의 한계를 정직하게 그리려면 "공격자가 어디까지 통제하는가"를 나눠야 한다.
-
-| 통제 범위 | 가능한 조작 | 이 도구의 반응 |
+| | CC discontinuity check | timeline gap scan |
 |---|---|---|
-| 경로 위 — 응답 차단만 | 특정 세그먼트를 404·타임아웃으로 | **잡는다** — 타임라인 연속성 FAIL (+ 수신 실패) |
-| 세그먼트 본문 재기입 | 남은 조각의 PTS 를 당겨 구멍을 메움 | **부분** — 타임라인은 통과하지만 총 길이가 6초 줄어 **길이 정합**이 FAIL |
-| 본문 재기입 + 채움 삽입 | 구멍을 위조 콘텐츠로 채움 | **못 잡는다** — 두 검사 모두 통과. 다만 영상 6초를 생성해야 하므로 비용이 다른 차원이다 |
-| 플레이리스트까지 | 선언 길이·세그먼트 수 자체를 줄임 | **못 잡는다** — **기준선이 오염된다** |
+| Observation target | segment original bytes | the reassembled output |
+| What it catches | packet loss **inside** a segment | **segment-unit** loss |
+| What it misses | loss of exactly a multiple of 16 | loss below the frame-interval threshold |
+| Post-hoc reproduction | **impossible** — the output has no TS header | possible — only the file is needed |
 
-두 번째 행이 이 절의 요점이다. **길이 정합과 타임라인 연속성이 함께 있으면 둘 중
-하나만 피하는 조작은 다른 하나에 걸린다.** 상보적인 검사 두 개가 공격자에게 요구하는
-작업량을 한 단계 올린다.
+**Neither alone is enough, and neither replaces the other.** Coverage is not adding verification items but
+**choosing items with mutually different blind spots.**
 
-네 번째 행은 이 도구의 원리적 한계다. 이 도구가 검증하는 명제는 **"플레이리스트가
-선언한 것과 실제로 받은 것이 일치하는가"** 이지 **"플레이리스트가 진실인가"** 가
-아니다. 오라클이 같은 채널로 오면 오라클을 검증할 수단이 없다(제34·38장).
+One more thing. It does not mean the total metric is useless. Per §21.4.2's second corollary, **a boundary loss
+appears only in the total.** [`report.py:262-278`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L262-L278)'s length-consistency check sees what the gap scan cannot. The two
+checks are complementary.
 
-> 이 교재는 콘텐츠 보호(DRM) 우회를 다루지 않는다. 여기서 다루는 것은 **완전성
-> 검증의 위협 모델** 이며, 그 반대편인 "권한 없는 취득"의 절차는 이 교재의 범위 밖이다
-> (`00-curriculum.md` §0.1).
+---
 
-### 21.8.4 방어자 관점 — 역할별로 무엇을 해야 하는가
+## 21.8 Security — what absolute time makes and what it leaves
 
-| 역할 | 해야 할 일 |
+### 21.8.1 Why the tampering becomes an omission, not an edit
+
+Read the property of absolute coordinates from the attacker's view again and it becomes this.
+
+> **The deleter needs to recompute nothing.**
+
+Had it been a relative time representation, after taking out the middle you would have to rewrite all the rear
+times. Absolute coordinates need none of that — the remaining pieces already hold their own coordinates. So this
+tampering is **an omission, not an edit**, and there is simply no step that leaves a trace.
+
+Here the limit of per-segment signing·hashing is revealed.
+
+| Defense | What it guarantees | Does it catch this tampering |
+|---|---|---|
+| TLS | each response's integrity·authenticity | **no** — deleting a response is not a protocol violation |
+| per-segment hash·signature | the received piece is genuine | **no** — the remaining pieces' signatures are all valid |
+| total-play-length comparison | the two ends are intact | **no** — §21.4.2 |
+| full decode | the file opens to the end | **no** — the hole decodes normally |
+| **adjacent PTS interval distribution** | the timeline's continuity | **yes** |
+
+The first four rows all ask **each piece's authenticity**, and only the last asks **the set's completeness.**
+Completeness is a different axis, and without a separate check measuring this axis, however many signatures you
+attach it is empty.
+
+### 21.8.2 But the same property is also the only lever
+
+At the same time, do not miss this chapter's symmetry. **Because it is absolute coordinates, loss can be computed
+from the output alone.**
+
+Since the remaining pieces say of themselves "I start at 1208090 tick," even someone who received only the file
+can know where it is empty. Had the time been renumbered as relative intervals during reassembly and the hole
+filled (had the rear been pulled forward), **loss would become completely unobservable in the output.** Then the
+only check left is the HTTP result at receipt time, and that cannot be reproduced after the fact (Chapter 1).
+
+> **The trap and the lever come from the same property.** Absolute coordinates disable the total-length check
+> while at the same time enabling the timeline check. Which it becomes is set by **what you decided to observe.**
+
+### 21.8.3 The threat model by the attacker's range of control
+
+To draw a verification tool's limit honestly you must split "how far the attacker controls."
+
+| Control range | Possible tampering | This tool's reaction |
+|---|---|---|
+| on-path — response blocking only | make a certain segment 404·timeout | **catches** — timeline-continuity FAIL (+ receive failure) |
+| segment-body rewrite | pull the remaining pieces' PTS to fill the hole | **partial** — the timeline passes but the total length shrinks by 6 seconds so **length consistency** FAILs |
+| body rewrite + fill insertion | fill the hole with forged content | **cannot catch** — both checks pass. only, it must generate 6 seconds of video so the cost is a different dimension |
+| up to the playlist | shrink the declared length·segment count itself | **cannot catch** — **the baseline is contaminated** |
+
+The second row is this section's point. **With length consistency and timeline continuity together, tampering
+that evades only one catches on the other.** Two complementary checks raise the attacker's required workload one
+level.
+
+The fourth row is this tool's principled limit. The proposition this tool verifies is **"does what the playlist
+declared match what was actually received"**, not **"is the playlist truthful."** If the oracle comes over the
+same channel there is no means to verify the oracle (Chapters 34·38).
+
+> This course does not cover content-protection (DRM) bypass. What is covered here is **the threat model of
+> completeness verification**, and its opposite, the procedure of "unauthorized acquisition," is outside this
+> course's scope (`00-curriculum.md` §0.1).
+
+### 21.8.4 The defender's view — what to do by role
+
+| Role | What to do |
 |---|---|
-| **아카이브·증거 보관 운영자** | "총 길이 일치"를 접수 기준으로 쓰지 않는다. 접수 시점에 **타임라인 연속성**을 재고 그 수치(프레임 수·간격 중앙값·임계값)를 함께 보관한다. 나중에는 다시 잴 수 없는 값이 있다 |
-| **송출 사업자** | 의도된 이음매에는 반드시 `EXT-X-DISCONTINUITY` 를 선언한다. 선언하지 않으면 정상 송출이 검증 도구에서 결손으로 보이고, 그 오탐이 쌓이면 **검사가 꺼진다** — 결과적으로 진짜 결손도 지나간다 |
-| **CDN 운영자** | 세그먼트 단위 5xx·404 를 "재시도로 흡수되는 일시 오류"로 취급하지 않는다. 흡수되지 않고 산출물의 구멍이 된다. 오류율을 **세그먼트 단위**로 계측한다 |
-| **검증 도구 구현자** | 총량 지표와 차분 지표를 **둘 다** 둔다. 한쪽의 사각이 다른 쪽의 정탐 영역이다. 그리고 완화 규칙(WARN 강등)은 **무엇을 근거로 완화했는지**를 리포트에 남긴다 |
-| **감사자** | "검증 통과"라는 문장을 볼 때 **어떤 양을 쟀는지** 묻는다. 총 길이만 비교한 검증은 내부 결손에 대해 아무 정보도 주지 않는다 |
+| **archive·evidence-custody operator** | do not use "total length matches" as an intake criterion. measure **timeline continuity** at intake time and keep its numbers (frame count·interval median·threshold) together. some values cannot be re-measured later |
+| **delivery operator** | always declare `EXT-X-DISCONTINUITY` for intended seams. do not declare it and a normal delivery looks like loss in the verification tool, and once those false positives pile up **the check is turned off** — as a result real loss passes too |
+| **CDN operator** | do not treat a per-segment 5xx·404 as "a transient error absorbed by retry." it is not absorbed and becomes a hole in the output. measure the error rate **per segment** |
+| **verification-tool implementer** | keep **both** the total metric and the difference metric. one's blind spot is the other's true-positive area. and the relaxation rule (WARN downgrade) must leave in the report **on what basis it relaxed** |
+| **auditor** | when you see the sentence "verification passed," ask **what quantity was measured.** a verification comparing only the total length gives no information about internal loss |
 
-마지막 행이 §21.1.2 의 명제와 이어진다. **PASS 는 "무결"이 아니라 "이 지표로는 잡히지
-않음"이다.** 지표를 밝히지 않은 PASS 는 정보가 아니다.
-
----
-
-## 21.9 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **`ok=False` 가 리포트에 나타나지 않는다.** [`report.py:304`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L304) 의 조건은
-  `if gaps is not None and gaps.ok:` 이므로, 갭 스캔이 실패하면(영상 패킷 3개 미만,
-  `ffprobe` 오류) **항목 자체가 리포트에서 사라지고 `gaps.error` 도 버려진다.**
-  리포트를 보는 사람은 "검사가 통과했는지, 아예 돌지 않았는지" 구별할 수 없다.
-  §21.5.2 에서 코드가 애써 만든 "판정 불가" 상태가 출력 계층에서 소실되는 지점이다.
-  제38장의 "알 수 없음과 통과를 구별하기" 원칙에 어긋난다.
-- **`lost` 는 결손당 프레임 간격 하나만큼 과대 보고한다**(§21.5.4). 판정에는 영향이
-  없지만 정량 비교에는 계통 오차가 있다.
-- **불연속 완화는 위치를 대조하지 않는다**(§21.6.2). 개수만 비교하므로 "선언된 이음매
-  1건 + 다른 자리의 진짜 결손 1건"을 WARN 으로 낮춘다. 필요한 정보는 이미 자료구조에
-  있으므로 고칠 수 있는 미탐이다.
-- **갭 스캔은 산출물에만 돈다**([`cli.py:616`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L616)). 원본 세그먼트에는 돌지 않으므로
-  **송출이 만든 구멍과 재조립이 만든 구멍을 구별하지 못한다.** 수신 계층의 실패
-  기록과 대조해야 원인을 가를 수 있다.
-- **영상 트랙 하나만 본다.** `-select_streams v:0` 이므로 오디오 전용 송출은 판정
-  대상이 아니고, 영상이 여러 트랙인 경우 첫 트랙만 검사한다. 오디오만 결손된 경우는
-  이 검사에 걸리지 않는다.
-- **33비트 래핑을 다루지 않는다.** 26.5시간을 넘는 스트림에서 PTS 가 0 으로 돌아가면
-  `times.sort()` 이후 거대한 간격 하나가 만들어질 것으로 **추론**되지만, 실측하지
-  않았다. `ffprobe` 가 래핑을 내부에서 보정하는지도 확인하지 못했다. 이 저장소가
-  다루는 회차 길이에서는 발생하지 않으므로 미검증인 채로 둔다.
-- **비정수 프레임률을 실측하지 않았다.** §21.2.2 의 표대로 23.976·59.94fps 는 90kHz
-  로 정확히 떨어지지 않는다. 반올림 흔들림이 `median` 과 임계값에 어떤 영향을 주는지는
-  이 장에서 재지 않았다 — 제22장의 과제다.
-- **27MHz 라는 값 자체의 선정 이유는 이 저장소 밖의 지식이다.** ITU-R BT.601 의 휘도
-  표본화 주파수 13.5MHz 의 2배라는 설명이 널리 인용되지만, 규격 원문의 근거 서술로
-  확인하지 않았다. 이 장이 코드와 실측으로 뒷받침하는 것은 **27,000,000 ÷ 300 =
-  90,000** 이라는 관계와 프레임률 정수 분할 성질까지다.
-- **PES 헤더 실측은 표본 하나다.** `21 00 07 E8 B5` 는 ffmpeg 8.1.1 + libx264 가 만든
-  파일 하나에서 읽었다. 다른 인코더가 PTS·DTS 를 둘 다 싣는 경우(접두 `0011`/`0001`,
-  10바이트)는 확인하지 않았다.
+The last row connects to §21.1.2's proposition. **PASS is not "intact" but "not caught by this metric."** A PASS
+that does not state its metric is not information.
 
 ---
 
-## 21.10 요약
+## 21.9 Limits and open questions
 
-1. **90kHz 는 27MHz 시스템 클럭을 300 으로 나눈 눈금**이다. PCR 은 33비트 base 와
-   9비트 extension 으로 27MHz 를 복원하지만, PTS·DTS 는 base 쪽 눈금만 쓴다.
-   이 값이 선택된 이유는 **24·25·30·50·60fps 와 29.97fps 의 프레임 간격이 모두 정수
-   tick 으로 떨어지기 때문**이다 — 23.976·59.94 는 떨어지지 않는다.
-2. **33비트는 "방송 하루 + 여유"의 최소치**다(26.5시간). 8의 배수가 아니라서 5바이트에
-   4+3+1 / 15+1 / 15+1 로 흩어져 실리고, 15비트마다 강제되는 **marker_bit** 이 최장
-   0 런을 15 로 묶어 **타임스탬프가 시작 코드 `00 00 01` 을 흉내내지 못하게** 한다.
-3. **총 길이가 내부 결손에 불변인 것은 산수의 성질이다.** `Σ Δᵢ = tₙ − t₀` 라는
-   망원 합이므로, 양 끝이 그대로면 내부에서 무엇이 사라지든 합은 같다. 실측에서
-   정상본과 결손본의 영상 지속 합이 **둘 다 정확히 2,700,000 tick** 이었다.
-4. **표현을 바꿔도 따라온다.** MP4 는 상대 지속을 쓰지만 사라진 6초는 샘플 하나의
-   지속 `543,000 tick` 에 흡수될 뿐이다. 컨테이너를 바꾸는 것으로는 해결되지 않는다.
-5. **검출 가능한 정보는 차분의 분포에 있다.** `gap_scan` 은 인접 표시 시각의 간격을
-   전부 훑어 `max(0.4s, 중앙값×3)` 을 넘는 곳을 찾는다. 중앙값·정렬·바닥값 셋 중
-   하나만 빠져도 검사가 스스로를 무력화한다.
-6. **규격이 허용한 예외를 안다.** `EXT-X-DISCONTINUITY` 로 예고된 불연속은 WARN 으로
-   낮춘다 — 오탐을 쏟는 검사기는 꺼지고, 꺼진 검사는 없는 검사다. 다만 이 완화는
-   **개수만 비교하고 위치를 대조하지 않는다**(미탐 1종).
-7. 일반 규칙: **보존량은 검출량이 될 수 없다.** 결함에 불변인 양은 아무리 정밀하게
-   재도 검증이 아니다. 검증 설계는 정밀도를 올리는 일이 아니라 **결함에 반응하는 양을
-   고르는 일**이다.
+Written honestly.
+
+- **`ok=False` does not appear in the report.** [`report.py:304`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L304)'s condition is `if gaps is not None and gaps.ok:`, so
+  if the gap scan fails (fewer than 3 video packets, an `ffprobe` error) **the item itself disappears from the
+  report and `gaps.error` is thrown away too.** The person reading the report cannot tell "did the check pass or
+  did it not run at all." It is the spot where the "cannot judge" state the code took pains to make in §21.5.2 is
+  lost at the output layer. It violates Chapter 38's "distinguishing unknown from passing" principle.
+- **`lost` over-reports by one frame interval per loss** (§21.5.4). No effect on the verdict but a systematic
+  error in quantitative comparison.
+- **The discontinuity relaxation does not compare positions** (§21.6.2). Comparing only the count, it lowers "1
+  declared seam + 1 real loss at a different spot" to WARN. The needed information is already in the data
+  structures so it is a fixable false negative.
+- **The gap scan runs only on the output** ([`cli.py:616`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L616)). It does not run on the original segments, so it **cannot
+  distinguish a hole the delivery made from a hole the reassembly made.** You must compare against the receive
+  layer's failure record to split the cause.
+- **It looks at only one video track.** With `-select_streams v:0`, an audio-only delivery is not a verdict
+  target, and when video has several tracks only the first is checked. An audio-only loss does not catch on this
+  check.
+- **It does not handle 33-bit wrapping.** In a stream exceeding 26.5 hours, when PTS returns to 0 a single huge
+  interval would **presumably** be made after `times.sort()`, but it was not measured. Whether `ffprobe`
+  internally corrects the wrapping was not confirmed either. It does not occur at the episode lengths this
+  repository handles so it is left unverified.
+- **Non-integer frame rates were not measured.** Per §21.2.2's table, 23.976·59.94fps do not fall exactly to
+  90kHz. What effect the rounding jitter has on the `median` and threshold was not measured in this chapter — it
+  is Chapter 22's task.
+- **The reason for the value 27MHz itself is knowledge outside this repository.** The explanation that it is
+  twice ITU-R BT.601's luma sampling frequency 13.5MHz is widely cited, but it was not confirmed against the
+  spec's own basis narrative. What this chapter backs with code and measurement is up to the relationship
+  **27,000,000 ÷ 300 = 90,000** and the frame-rate integer-division property.
+- **The PES-header measurement is one sample.** `21 00 07 E8 B5` was read from one file ffmpeg 8.1.1 + libx264
+  made. The case where another encoder carries both PTS·DTS (prefix `0011`/`0001`, 10 bytes) was not confirmed.
 
 ---
 
-**다음 장** — 이 장은 "차분의 분포를 보라"까지 왔고, 그 분포에서 무엇을 결손으로
-부를지는 상수 두 개가 정한다 — `factor=3.0` 과 `floor=0.4`. 이 숫자들은 어디서
-왔는가. 가변 프레임률에서, 그리고 §21.2.2 가 남긴 비정수 프레임률에서 무엇이
-깨지는가. 제22장은 임계값 설계를 오탐·미탐의 균형 문제로 다룬다.
+## 21.10 Summary
+
+1. **90kHz is the mark of the 27MHz system clock divided by 300.** PCR recovers 27MHz with a 33-bit base and a
+   9-bit extension, but PTS·DTS use only the base-side mark. The reason this value was chosen is **that the frame
+   intervals of 24·25·30·50·60fps and 29.97fps all fall to integer ticks** — 23.976·59.94 do not.
+2. **33 bits is the minimum of "a broadcast day + margin"** (26.5 hours). Not a multiple of 8, it scatters across
+   5 bytes as 4+3+1 / 15+1 / 15+1, and the **marker_bit** forced every 15 bits caps the longest 0-run at 15,
+   keeping **a timestamp from imitating the start code `00 00 01`.**
+3. **That the total length is invariant under internal loss is an arithmetic property.** It is the telescoping
+   sum `Σ Δᵢ = tₙ − t₀`, so if the two ends stay the same, whatever vanishes inside the sum is the same. In the
+   measurement, the video-duration sum of the normal copy and the loss copy were **both exactly 2,700,000
+   tick.**
+4. **It follows even under a change of representation.** MP4 uses relative duration, but the vanished 6 seconds
+   is merely absorbed into one sample's duration `543,000 tick`. Changing the container does not solve it.
+5. **The detectable information is in the distribution of differences.** `gap_scan` sweeps all adjacent
+   presentation-time intervals and finds spots exceeding `max(0.4s, median×3)`. Omit even one of median·sort·
+   floor and the check disables itself.
+6. **Know the spec-permitted exception.** A discontinuity announced by `EXT-X-DISCONTINUITY` is lowered to WARN
+   — a checker pouring out false positives gets turned off, and a turned-off check is a nonexistent check. Only,
+   this relaxation **compares only the count and does not compare positions** (one kind of false negative).
+7. General rule: **a conserved quantity cannot be a detection quantity.** A quantity invariant under a defect is
+   not a verification however precisely you measure. Verification design is not raising precision but **choosing
+   a quantity that responds to the defect.**
+
+---
+
+**Next chapter** — this chapter came up to "look at the distribution of differences," and what in that
+distribution to call loss is set by two constants — `factor=3.0` and `floor=0.4`. Where did these numbers come
+from. What breaks under a variable frame rate, and under the non-integer frame rates §21.2.2 left. Chapter 22
+treats threshold design as a balance problem of false positives·false negatives.

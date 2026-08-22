@@ -1,38 +1,38 @@
 ---
-untranslated: ko
-title: "URL 정규화와 멱등성"
-description: "%20 과 %2520"
-date: 2026-08-15
+title: "URL Normalization and Idempotency"
+description: "%20 and %2520"
+date: 2026-06-03
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-07-url-normalization.svg
 ---
-## 7.0 이 장에서 답할 것
+## 7.0 What this chapter answers
 
-1. 주소에 한글이나 공백이 박혀 있으면 정확히 어디서 무엇이 깨지는가
-2. 그 수선을 받는 쪽마다 따로 하면 왜 안 되는가
-3. `_PATH_SAFE` 가 `%` 를 안전 문자로 남기는 것은 무슨 뜻인가
-4. URI 를 낳는 지점을 하나로 모으면 무엇이 보장되는가
-5. **같은 성질이 왜 공격 측에서는 우회 수단이 되는가 — 그리고 검증은 언제 해야 하는가**
+1. When Korean or a space is embedded in an address, exactly where and what breaks?
+2. Why can't that repair be done separately at each receiving side?
+3. What does it mean for `_PATH_SAFE` to leave `%` as a safe character?
+4. What is guaranteed by gathering the point that births a URI into one?
+5. **Why does the same property become a bypass on the attacker's side — and when must verification be done?**
 
-다섯째가 이 장의 정점이다. 앞의 넷은 "이 코드가 왜 이렇게 생겼는가"이고, 다섯째는
-**그 규율이 깨진 시스템이 어떻게 뚫리는가**다. 둘은 같은 명제의 앞뒷면이다.
+The fifth is this chapter's peak. The first four are "why this code looks the way it does," and the fifth is
+**how a system that broke that discipline gets breached.** The two are the front and back of the same
+proposition.
 
 ---
 
-## 7.1 문제 — 요청이 만들어지기도 전에 죽는다
+## 7.1 The problem — it dies before the request is even made
 
-### 7.1.1 관찰
+### 7.1.1 Observation
 
-자막 파일을 정적 경로에 두는 송출이 있다. 그 경로가 이렇게 생겼다.
+There is a delivery that places subtitle files on a static path. That path looks like this.
 
 ```
 https://cdn.example/subtitles/old/그렌라간01.srt
 ```
 
-한글이 퍼센트 인코딩 없이 그대로 박혀 있다. 브라우저 주소창에 붙여 넣으면 열린다 —
-브라우저가 뒤에서 변환해 주기 때문이다. 파이썬 표준 라이브러리는 그렇게 하지 않는다.
-로컬 서버에 그 이름의 파일을 실제로 두고 측정한 결과다.
+Korean is embedded raw, without percent-encoding. Paste it into a browser's address bar and it opens —
+because the browser converts it behind the scenes. Python's standard library does not do that. A measurement
+with a file of that name actually placed on a local server.
 
 ```
 >>> raw url: http://127.0.0.1:51267/subtitles/old/그렌라간01.srt
@@ -42,156 +42,153 @@ UnicodeEncodeError: 'ascii' codec can't encode characters in position 19-22: ord
 OK 200 b'x'
 ```
 
-**파일은 있는데 요청이 만들어지지 않는다.** 이 실패에는 세 가지 특징이 있다.
+**The file exists but the request is not made.** This failure has three characteristics.
 
-| 특징 | 내용 |
+| Characteristic | Content |
 |---|---|
-| **HTTP 바이트가 한 개도 나가지 않는다** | TCP 연결조차 맺어지지 않는다. `http.client` 는 요청 줄(request line)을 먼저 조립해 ASCII 로 인코딩하고 소켓은 그 뒤에 연결하므로, 예외가 연결보다 앞선다 |
-| **예외 이름이 원인을 가린다** | `UnicodeEncodeError` 는 텍스트 처리 오류처럼 보인다. 네트워크·서버·권한 어느 쪽도 가리키지 않는다 |
-| **위치가 어긋나 보인다** | 경로에서 한글은 15번째 글자부터인데 예외는 **19번째**라고 말한다 |
+| **not a single HTTP byte goes out** | not even a TCP connection is made. `http.client` first assembles the request line and encodes it to ASCII, and the socket connects after that, so the exception precedes the connection |
+| **the exception name hides the cause** | `UnicodeEncodeError` looks like a text-processing error. it points at neither network·server·permission |
+| **the position looks off** | in the path the Korean is from the 15th character, but the exception says the **19th** |
 
-> **용어** — **요청 줄(request line)**: HTTP 요청 메시지의 첫 줄.
-> `<메서드> SP <요청 대상> SP <버전>` 형태로, 위 경우 `GET /subtitles/old/그렌… HTTP/1.1` 이다.
+> **Term** — **request line**: the first line of an HTTP request message. In the form
+> `<method> SP <request-target> SP <version>`, in the above case `GET /subtitles/old/그렌… HTTP/1.1`.
 
-세 번째가 실패 지점을 정확히 짚어 준다. 경로 문자열만 인코딩했다면 위치는 15여야
-한다. 19 는 `GET ` 네 글자를 더한 값이다 — 즉 파이썬이 인코딩하려던 것은 경로가
-아니라 **요청 줄 전체**다. `http.client` 는 요청 줄을 조립한 뒤 통째로
-`encode("ascii")` 하고, 그 자리에서 죽는다.
+The third pinpoints the failure location. Had it encoded only the path string, the position should be 15. 19
+is that plus the four characters `GET `. That is, what Python was trying to encode is not the path but **the
+whole request line.** `http.client` assembles the request line and then does `encode("ascii")` on the whole
+thing, dying on the spot.
 
-그리고 이 도구는 같은 주소를 **두 종류의 소비자**에게 넘긴다.
+And this tool hands the same address to **two kinds of consumer.**
 
-| 소비자 | 실패 방식 |
+| Consumer | Failure mode |
 |---|---|
-| `urllib` (직접 수신) | `UnicodeEncodeError` — 요청 줄 작성 시점 (위 실측) |
-| `ffmpeg` (위임 수신) | 코드 주석은 "입력을 열지 못한다"고 적는다 — **이 서술은 재현되지 않았다.** §7.6 에 측정 결과를 적는다 |
+| `urllib` (direct receipt) | `UnicodeEncodeError` — at the time of writing the request line (measured above) |
+| `ffmpeg` (delegated receipt) | the code comment says "cannot open the input" — **this statement was not reproduced.** §7.6 records the measurement |
 
-`normalize_url` 의 독스트링이 이 상황을 그대로 적어 두었다.
+`normalize_url`'s docstring wrote this situation down as is.
 
 ```python
 # fetch.py:36-44
 def normalize_url(url: str) -> str:
-    """요청에도 ffmpeg 에도 그대로 넘길 수 있는 형태로 URL 을 정규화한다.
+    """Normalize a URL into a form that can be handed as is to both the request and ffmpeg.
 
-    경로에 한글이 퍼센트 인코딩 없이 박힌 주소를 그대로 내보내는 송출이 있다
-    (`…/subtitles/그렌라간01.srt`). URL 은 규격상 ASCII 이므로 그런 주소는
-    urllib 이 요청 줄을 쓰는 순간 UnicodeEncodeError 로 죽고, ffmpeg 도 입력을
-    열지 못한다. 받는 쪽마다 따로 손보면 한 곳은 반드시 빠지므로 여기서 한 번에
-    맞춘다.
+    There is a delivery that sends out an address with Korean embedded in the path without
+    percent-encoding (`…/subtitles/그렌라간01.srt`). A URL is ASCII by spec, so such an
+    address dies with UnicodeEncodeError the moment urllib writes the request line, and ffmpeg
+    too cannot open the input. Repair it separately at each receiving side and one place is
+    surely missed, so we fix it here in one place.
     """
 ```
 
-마지막 문장이 이 장의 설계 명제다 — **"받는 쪽마다 따로 손보면 한 곳은 반드시
-빠진다."**
+The last sentence is this chapter's design proposition — **"repair it separately at each receiving side and
+one place is surely missed."**
 
-### 7.1.2 그러면 어디서 손볼 것인가
+### 7.1.2 So where to repair it
 
-후보는 셋이다.
+There are three candidates.
 
-| 후보 | 방식 | 문제 |
+| Candidate | Method | Problem |
 |---|---|---|
-| **A. 소비자마다** | `urllib` 호출 직전, `ffmpeg` 인자 조립 직전에 각각 인코딩 | 소비자가 넷이고 앞으로 늘어난다. 하나를 빠뜨리면 그 경로만 조용히 깨진다 |
-| **B. 생산 지점에서** | 주소가 만들어지는 자리에서 한 번 인코딩하고, 이후로는 이미 인코딩된 값만 돈다 | 생산 지점이 여러 곳이면 규율을 강제할 방법이 없다 |
-| **C. B + 경계 재확인** | 생산 지점을 하나로 모으고, 각 소비자 경계에서 **한 번 더** 같은 함수를 통과시킨다 | 두 번 걸리는 것이 안전하려면 그 함수가 **멱등**이어야 한다 |
+| **A. per consumer** | encode right before the `urllib` call and right before assembling the `ffmpeg` args, each | there are four consumers and they will grow. miss one and only that path breaks quietly |
+| **B. at the production point** | encode once at the spot the address is made, and afterward only already-encoded values circulate | if there are several production points there is no way to enforce the discipline |
+| **C. B + boundary re-confirmation** | gather the production points into one, and pass through the same function **once more** at each consumer boundary | for two applications to be safe, that function must be **idempotent** |
 
-이 저장소는 C 를 택했다. 그리고 C 가 성립하려면 인코딩 함수가 특정 성질을 가져야
-하는데, **퍼센트 인코딩은 기본적으로 그 성질이 없다.** 이 장은 그 간극을 다룬다.
+This repository chose C. And for C to hold, the encoding function must have a certain property, which
+**percent-encoding basically does not have.** This chapter covers that gap.
 
-### 7.1.3 두 번 걸면 무슨 일이 일어나는가 — 반사실 측정
+### 7.1.3 What happens if you apply it twice — a counterfactual measurement
 
-`normalize_url` 의 안전 문자 목록에서 `%` 하나만 빼고 같은 파이프라인을 돌린
-결과다. 로컬 HTTP 서버에 한글·공백이 든 경로의 최소 HLS 를 두고 실측했다.
+The result of removing only `%` from `normalize_url`'s safe-character list and running the same pipeline.
+Measured with a minimal HLS on a local HTTP server, with a path containing Korean·space.
 
 ```
-=== 현재 (_PATH_SAFE 에 % 있음) ===
-요청된 첫 세그먼트 : …%EA%B7%B8%EB%A0%8C%2001/%EA%B7%B8%EB%A0%8C%2001_000.ts
-결과              : [(200, 'ok'), (200, 'ok'), (200, 'ok')]
+=== current (% in _PATH_SAFE) ===
+first segment requested : …%EA%B7%B8%EB%A0%8C%2001/%EA%B7%B8%EB%A0%8C%2001_000.ts
+result                  : [(200, 'ok'), (200, 'ok'), (200, 'ok')]
 
-=== 반사실 (% 를 뺀 경우) ===
-요청된 첫 세그먼트 : …%252001/%25EA%25B7%25B8%25EB%25A0%258C%252001_000.ts
-결과              : [(404, …), (404, …), (404, …)]
+=== counterfactual (% removed) ===
+first segment requested : …%252001/%25EA%25B7%25B8%25EB%25A0%258C%252001_000.ts
+result                  : [(404, …), (404, …), (404, …)]
 ```
 
-`%20` 이 `%2520` 이 되었다. 이 장의 제목이 여기서 나온다.
+`%20` became `%2520`. This chapter's title comes from here.
 
-그런데 더 중요한 것은 **실패의 모양**이다.
+But more important is the **shape of the failure.**
 
-| 관측 | 값 |
+| Observation | Value |
 |---|---|
-| 플레이리스트 요청 | **성공** (200) |
-| 세그먼트 요청 | 전부 404 |
+| playlist request | **success** (200) |
+| segment requests | all 404 |
 
-플레이리스트는 열린다. 그 주소는 아직 `%` 를 한 글자도 담고 있지 않아서 첫 번째
-인코딩만 받았기 때문이다. 두 번째 인코딩은 **플레이리스트에서 뽑은 주소**부터
-걸리므로, 증상은 "우리 인코딩이 틀렸다"가 아니라 **"서버가 세그먼트를 안 준다"**
-로 보인다. 원인과 증상이 한 계층 떨어져 있다.
+The playlist opens. Because that address does not yet contain a single `%` character, so it received only
+the first encoding. The second encoding catches from **the address extracted from the playlist**, so the
+symptom looks like not "our encoding is wrong" but **"the server does not give the segments."** The cause and
+the symptom are one layer apart.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — `%` 를 안전 문자에서 빼면 목록은
-> 받아지고 내용만 전부 404 가 된다. 로그에는 404 만 남으므로 핫링크 차단·토큰
-> 만료와 구별되지 않는다(제9·11장). **틀린 계층을 의심하게 만드는 실패다.**
+> **What breaks if you do not do this** — remove `%` from the safe characters and the list is received while
+> only the content all 404s. Only 404s remain in the log, so it is indistinguishable from a hotlink block·
+> token expiry (Chapters 9·11). **A failure that makes you suspect the wrong layer.**
 
 ---
 
-## 7.2 원리 — 퍼센트 인코딩은 멱등이 아니다
+## 7.2 The principle — percent-encoding is not idempotent
 
-### 7.2.1 URI 는 ASCII 다
+### 7.2.1 A URI is ASCII
 
-> **용어** — **URI(Uniform Resource Identifier, 통합 자원 식별자)**: 자원을 가리키는
-> 문자열의 일반 규격. RFC 3986 이 정한다. URL 은 그중 **위치로 가리키는** 부분집합의
-> 통칭이다. 이 장에서 규격을 말할 때는 URI 로 쓴다.
+> **Term** — **URI (Uniform Resource Identifier)**: the general spec for a string that points at a resource.
+> Defined by RFC 3986. A URL is the collective name for the subset that **points by location.** When
+> speaking of the spec in this chapter, we write URI.
 
-RFC 3986 은 URI 를 US-ASCII 의 제한된 부분집합 — 숫자, 영문자, 몇 개의 기호 —
-으로만 구성한다. 한글은 그 집합에 없다. 그래서 비-ASCII 문자를 주소에 담으려면
-**바이트로 바꾼 뒤 그 바이트를 ASCII 로 표기**해야 한다. 그 표기법이 퍼센트
-인코딩이다.
+RFC 3986 composes a URI only from a limited subset of US-ASCII — digits, letters, a few symbols. Korean is
+not in that set. So to carry a non-ASCII character in an address you must **convert it to bytes and then
+represent those bytes in ASCII.** That representation is percent-encoding.
 
-> **용어** — **퍼센트 인코딩(percent-encoding)**: 옥텟 하나를 `%` 와 16진수 두
-> 자리(`%HH`)로 표기하는 방법. RFC 3986 §2.1. `pct-encoded = "%" HEXDIG HEXDIG`.
+> **Term** — **percent-encoding**: the method of representing one octet as `%` and two hex digits (`%HH`).
+> RFC 3986 §2.1. `pct-encoded = "%" HEXDIG HEXDIG`.
 
-> **용어** — **옥텟(octet)**: 8비트 바이트. 규격은 "문자"가 아니라 옥텟을 인코딩
-> 대상으로 말한다 — 문자를 어떤 인코딩으로 바이트열로 바꿀지는 별개 결정이며,
-> 오늘날 웹에서는 UTF-8 이다.
+> **Term** — **octet**: an 8-bit byte. The spec speaks of the encoding target as octets, not "characters" —
+> which encoding to convert a character to bytes with is a separate decision, and on today's web it is UTF-8.
 
-`그` 하나는 UTF-8 로 3옥텟(`EA B7 B8`)이고, 퍼센트 인코딩하면 `%EA%B7%B8` 9글자가
-된다. 이 확장이 이 장의 모든 이야기의 출발점이다.
+The single `그` is 3 octets (`EA B7 B8`) in UTF-8, and percent-encoded becomes the 9 characters `%EA%B7%B8`.
+This expansion is the starting point of everything in this chapter.
 
-비-ASCII 를 포함하는 식별자에도 별도 규격이 있다.
+There is a separate spec for identifiers containing non-ASCII too.
 
-> **용어** — **IRI(Internationalized Resource Identifier, 국제화 자원 식별자)**:
-> 비-ASCII 문자를 허용하는 식별자 규격. RFC 3987. **IRI → URI 변환**은 비-ASCII
-> 문자를 UTF-8 옥텟열로 바꾼 뒤 각 옥텟을 `%HH` 로 치환하는 것이다(§3.1 Step 2).
+> **Term** — **IRI (Internationalized Resource Identifier)**: the identifier spec that allows non-ASCII
+> characters. RFC 3987. The **IRI → URI conversion** is turning non-ASCII characters into a UTF-8 octet
+> sequence and then substituting each octet with `%HH` (§3.1 Step 2).
 
-§7.1.1 의 주소는 정확히 IRI 이고, `normalize_url` 이 하는 일은 그 IRI 를 URI 로
-바꾸는 것이다. 규격이 이 변환에 대해 무엇을 요구하는지는 §7.2.4 에서 인용한다.
+§7.1.1's address is exactly an IRI, and what `normalize_url` does is turn that IRI into a URI. What the spec
+requires of this conversion is cited in §7.2.4.
 
-### 7.2.2 RFC 3986 의 문자 부류
+### 7.2.2 RFC 3986's character classes
 
-인코딩 함수를 이해하려면 규격이 문자를 어떻게 나누는지부터 정확히 알아야 한다.
-세 부류다.
+To understand the encoding function you must first know precisely how the spec divides characters. There are
+three classes.
 
-> **용어** — **비예약 문자(unreserved characters)**: 어떤 문맥에서도 데이터로만
-> 쓰이는 문자. `ALPHA / DIGIT / "-" / "." / "_" / "~"` (RFC 3986 §2.3).
-> 퍼센트 인코딩해도 의미가 같으므로, **인코딩된 것을 풀어도 안전한 유일한 부류**다.
+> **Term** — **unreserved characters**: characters used only as data in any context.
+> `ALPHA / DIGIT / "-" / "." / "_" / "~"` (RFC 3986 §2.3). Percent-encode them and the meaning is the same, so
+> they are **the only class safe to decode when encoded.**
 
-> **용어** — **예약 문자(reserved characters)**: 구분자로 쓰일 수 있는 문자.
+> **Term** — **reserved characters**: characters that may be used as delimiters.
 > `reserved = gen-delims / sub-delims` (RFC 3986 §2.2).
-> **gen-delims** = `: / ? # [ ] @` — URI 의 대분류 성분을 가르는 문자.
-> **sub-delims** = `! $ & ' ( ) * + , ; =` — 성분 **안에서** 스킴별 하위 구분자로
-> 쓰일 수 있는 문자.
+> **gen-delims** = `: / ? # [ ] @` — the characters that divide a URI's major components.
+> **sub-delims** = `! $ & ' ( ) * + , ; =` — characters that may be used **within** a component as
+> scheme-specific sub-delimiters.
 
-세 번째 부류는 위 둘 어디에도 없는 나머지 — 공백, 비-ASCII, `"`, `<`, `>` 등 —
-이며 **반드시 퍼센트 인코딩해야 한다.**
+The third class is the rest, in neither of the above — space, non-ASCII, `"`, `<`, `>`, etc. — and **must be
+percent-encoded.**
 
-핵심은 예약 문자의 취급이다. RFC 3986 §2.2 가 못박는다.
+The crux is the treatment of reserved characters. RFC 3986 §2.2 nails it.
 
 > URIs that differ in the replacement of a reserved character with its
 > corresponding percent-encoded octet are not equivalent.
 
-**`/` 와 `%2F` 는 다른 URI 다.** 그러므로 인코딩 함수는 "무엇이 데이터이고 무엇이
-구분자인가"를 이미 알고 있어야 한다. 이것이 인코딩을 **성분별로** 해야 하는 이유다 —
-경로에서 `/` 는 구분자이지만 파일명 안의 `/` 는 데이터이고, 후자는 반드시 `%2F` 가
-되어야 한다.
+**`/` and `%2F` are different URIs.** Therefore the encoding function must already know "what is data and what
+is a delimiter." This is why encoding must be done **per component** — in a path `/` is a delimiter but a `/`
+inside a filename is data, and the latter must become `%2F`.
 
-성분별로 허용되는 문자는 ABNF 로 정의돼 있다.
+The characters allowed per component are defined in ABNF.
 
 ```abnf
 ; RFC 3986
@@ -202,26 +199,26 @@ query         = *( pchar / "/" / "?" )                              ; §3.4
 fragment      = *( pchar / "/" / "?" )                              ; §3.5
 ```
 
-> **용어** — **pchar(path character)**: 경로 한 조각(segment)에 그대로 놓일 수 있는
-> 문자. 비예약 문자, 퍼센트 인코딩된 삼중자, sub-delims 전체, 그리고 `:` 와 `@`.
+> **Term** — **pchar (path character)**: a character that can be placed as is in one path segment. The
+> unreserved characters, a percent-encoded triplet, all of sub-delims, and `:` and `@`.
 
-이 ABNF 는 §7.3.1 에서 코드의 상수와 **한 글자씩 대조**한다. 먼저 규격이 인코딩
-횟수에 대해 무엇을 말하는지를 본다.
+This ABNF is compared **character by character** with the code's constant in §7.3.1. First we see what the
+spec says about the number of encodings.
 
-### 7.2.3 `%` 의 이중 역할, 그리고 규격의 금지 조항
+### 7.2.3 The double role of `%`, and the spec's prohibition clause
 
-`%` 는 특별하다. 표기의 **시작 표지**이면서, 동시에 데이터로 쓰일 수 있는 평범한
-문자이기도 하다. 데이터로서의 `%` 는 `%25` 로 써야 한다.
+`%` is special. It is both the **start marker** of the notation and, at the same time, an ordinary character
+that may be used as data. `%` as data must be written `%25`.
 
-여기서 모호성이 생긴다. 문자열 `%20` 을 보고 두 가지로 읽을 수 있다.
+Here ambiguity arises. Looking at the string `%20`, it can be read two ways.
 
-| 읽기 | 결과 |
+| Reading | Result |
 |---|---|
-| **인코딩된 것으로** | 공백 한 글자 |
-| **날것 그대로** | `%`, `2`, `0` 세 글자 → 인코딩하면 `%2520` |
+| **as encoded** | one space character |
+| **as raw** | the three characters `%`, `2`, `0` → encoded becomes `%2520` |
 
-**문자열만 보고는 어느 쪽인지 알 수 없다.** 판단하려면 "이 문자열이 이미 인코딩을
-거쳤는가"라는 **바깥 정보**가 필요하다. RFC 3986 §2.4 가 이 문제를 정면으로 다룬다.
+**You cannot tell which from the string alone.** To judge, you need the **outside information** "has this
+string already gone through encoding." RFC 3986 §2.4 addresses this problem head-on.
 
 > Because the percent ("%") character serves as the indicator for percent-encoded
 > octets, it must be percent-encoded as "%25" for that octet to be used as data
@@ -230,160 +227,160 @@ fragment      = *( pchar / "/" / "?" )                              ; §3.5
 > misinterpreting a percent data octet as the beginning of a percent-encoding,
 > or vice versa in the case of percent-encoding an already percent-encoded string.
 
-같은 절이 **어디서** 인코딩해야 하는지도 말한다.
+The same section also says **where** to encode.
 
 > Under normal circumstances, the only time when octets within a URI are
 > percent-encoded is during **the process of producing the URI from its component
 > parts.** … Once produced, a URI is always in its percent-encoded form.
 
-두 문장을 합치면 이 장의 설계 규칙이 그대로 나온다.
+Combine the two sentences and this chapter's design rule comes out directly.
 
-> **인코딩은 URI 를 성분으로부터 만들어 내는 그 지점에서, 정확히 한 번.
-> 그 뒤로 URI 는 언제나 인코딩된 형태다.**
+> **Encode at the very point of producing the URI from its components, exactly once. After that a URI is
+> always in its encoded form.**
 
-이 저장소의 `_absolute` 독스트링이 규격의 이 문장을 코드 주석으로 옮겨 놓은 것과
-같다 — "여기가 URI 를 낳는 유일한 지점이다"([`playlist.py:31`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L31)).
+This repository's `_absolute` docstring is the same as moving this sentence of the spec into a code comment —
+"this is the only point that births a URI" ([`playlist.py:31`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L31)).
 
-### 7.2.4 멱등성 — 정의와 두 함수
+### 7.2.4 Idempotency — the definition and two functions
 
-> **용어** — **멱등(idempotent)**: 함수 `f` 에 대해 모든 입력 `x` 에서
-> `f(f(x)) = f(x)` 가 성립하는 성질. 두 번 이상 적용해도 한 번 적용한 것과 결과가
-> 같다. 분산 시스템에서는 같은 요청을 두 번 보내도 상태가 한 번 보낸 것과 같다는
-> 뜻으로 쓰인다(제29장의 at-least-once 전달이 그 문맥이다).
+> **Term** — **idempotent**: for a function `f`, the property that `f(f(x)) = f(x)` holds for all inputs `x`.
+> Applying it two or more times gives the same result as applying it once. In distributed systems it is used
+> to mean that sending the same request twice leaves the state the same as sending it once (Chapter 29's
+> at-least-once delivery is that context).
 
-퍼센트 인코딩을 **소박하게** 구현하면 멱등이 아니다. 파이썬 `quote()` 의 기본값
-(경로 구분자만 안전)으로 같은 문자열에 반복 적용한 실측이다.
+Implement percent-encoding **naively** and it is not idempotent. A measurement of repeatedly applying Python's
+`quote()` default (only the path separator safe) to the same string.
 
-| 적용 횟수 | 결과 |
+| Applications | Result |
 |---|---|
 | 0 | `/hls/Episode%2001.ts` |
 | 1 | `/hls/Episode%252001.ts` |
 | 2 | `/hls/Episode%25252001.ts` |
 
-`%` 가 매번 `%25` 로 늘어나므로 적용할 때마다 **다른 문자열**이 된다. 길이가
-단조 증가하고 수렴하지 않는다.
+`%` grows to `%25` each time, so it becomes a **different string** each application. The length increases
+monotonically and does not converge.
 
-같은 입력에 `normalize_url` 을 반복한 결과다.
+The result of repeating `normalize_url` on the same input.
 
-| 적용 횟수 | 결과 |
+| Applications | Result |
 |---|---|
 | 0 | `/hls/Episode%2001.ts` |
 | 1 | `/hls/Episode%2001.ts` |
 | 2 | `/hls/Episode%2001.ts` |
 
-**고정점이다.** 차이를 만든 것은 안전 문자 목록에 `%` 가 들어 있다는 사실 하나뿐이다.
+**A fixed point.** The one thing that made the difference is the fact that `%` is in the safe-character list.
 
-이 성질은 규격이 요구하는 것이기도 하다. RFC 3987 §3.1 이 IRI → URI 변환에 대해
-명시한다.
+This property is also what the spec requires. RFC 3987 §3.1 states for the IRI → URI conversion.
 
 > The mapping is also an identity transformation for URIs and **is idempotent**;
 > applying the mapping a second time will not change anything.
 
-즉 "이미 URI 인 것에 변환을 걸어도 아무 일이 없어야 한다"가 규격의 요구다.
-`normalize_url` 의 안전 문자에 `%` 가 있는 것은 편의가 아니라 **이 요구의 구현**이다.
+That is, "applying the conversion to something already a URI must do nothing" is the spec's requirement. That
+`normalize_url`'s safe characters include `%` is not a convenience but **the implementation of this
+requirement.**
 
-### 7.2.5 멱등을 얻는 대가 — 단사성을 버린다
+### 7.2.5 The price of idempotency — you give up injectivity
 
-공짜가 아니다. 규칙을 정확히 쓰면 이렇다.
+It is not free. Written precisely, the rule is this.
 
-> **입력에 이미 있는 `%` 는 인코딩 표지로 간주하고 건드리지 않는다.**
+> **A `%` already in the input is regarded as an encoding marker and left untouched.**
 
-그러면 **데이터로서의 `%`** 를 표현할 방법이 이 함수에는 없다.
+Then there is no way in this function to represent **`%` as data.**
 
-> **용어** — **단사(injective)**: 서로 다른 입력이 언제나 서로 다른 출력을 갖는
-> 성질. `x ≠ y ⟹ f(x) ≠ f(y)`.
+> **Term** — **injective**: the property that different inputs always have different outputs.
+> `x ≠ y ⟹ f(x) ≠ f(y)`.
 
-`normalize_url` 은 단사가 아니다. 실측이다.
+`normalize_url` is not injective. A measurement.
 
-| 입력 (서로 다른 문자열) | 출력 | 서버가 디코드해 읽는 이름 |
+| Input (different strings) | Output | The name the server decodes and reads |
 |---|---|---|
-| `/hls/a b.ts` — 리터럴 공백 | `/hls/a%20b.ts` | `a b.ts` |
-| `/hls/a%20b.ts` — 리터럴 `%` `2` `0` | `/hls/a%20b.ts` | `a b.ts` ← **의도는 `a%20b.ts`** |
+| `/hls/a b.ts` — literal space | `/hls/a%20b.ts` | `a b.ts` |
+| `/hls/a%20b.ts` — literal `%` `2` `0` | `/hls/a%20b.ts` | `a b.ts` ← **the intent was `a%20b.ts`** |
 
-두 입력은 다른 문자열인데 출력이 같다. 그러므로 **이름에 `%20` 이 문자 그대로 들어간
-파일은 이 함수만으로는 가리킬 수 없다.** 그 이름의 올바른 URI 는 `a%2520b.ts` 인데,
-`normalize_url` 은 입력의 `%` 를 표지로 보므로 그 값을 만들어 내지 못한다.
+The two inputs are different strings but the output is the same. Therefore **a file with `%20` literally in
+its name cannot be pointed to by this function alone.** That name's correct URI is `a%2520b.ts`, but
+`normalize_url` sees the input's `%` as a marker and cannot produce that value.
 
-한 가지 덧붙일 것이 있다. **함수가 무능한 것이 아니라 정보가 없는 것이다.**
-호출자가 "이것은 이름이다"라는 사실을 알고 먼저 인코딩해 주면 리터럴 `%` 도 정확히
-전달된다.
+There is one thing to add. **The function is not incompetent; it has no information.** If the caller knows "this
+is a name" and encodes it first, even a literal `%` is delivered exactly.
 
 ```
 quote("a%20b.ts", safe="")                      -> 'a%2520b.ts'
-normalize_url("https://…/hls/a%2520b.ts")       -> 'https://…/hls/a%2520b.ts'   (변화 없음)
+normalize_url("https://…/hls/a%2520b.ts")       -> 'https://…/hls/a%2520b.ts'   (no change)
 ```
 
-§7.3.6 의 사이드카 경로가 정확히 이 형태다 — 이름 전용 인코더가 앞에 서고, 정규화기는
-뒤에서 통과만 시킨다. **표현할 수 없는 것은 "리터럴 `%`" 가 아니라 "이름인지 URI 인지
-모르는 날것 문자열 속의 리터럴 `%`" 다.**
+§7.3.6's sidecar path is exactly this form — a name-only encoder stands in front, and the normalizer only
+passes it through behind. **What cannot be represented is not "a literal `%`" but "a literal `%` inside a raw
+string that does not know whether it is a name or a URI."**
 
-깨진 이스케이프도 그대로 통과한다.
+A broken escape passes through too.
 
 ```
-'https://cdn.example/hls/100%.ts'   -> 'https://cdn.example/hls/100%.ts'    (%  뒤에 16진수 두 자리 없음)
-'https://cdn.example/hls/a%zz.ts'   -> 'https://cdn.example/hls/a%zz.ts'    (%zz 는 유효한 삼중자가 아님)
+'https://cdn.example/hls/100%.ts'   -> 'https://cdn.example/hls/100%.ts'    (no two hex digits after %)
+'https://cdn.example/hls/a%zz.ts'   -> 'https://cdn.example/hls/a%zz.ts'    (%zz is not a valid triplet)
 ```
 
-둘 다 **유효한 URI 가 아니다.** 함수는 고쳐 주지 않는다 — 고치려면 "이 `%` 는
-데이터"라고 판단해야 하는데, 그 판단이 곧 멱등성을 깨는 판단이기 때문이다.
+Both are **not valid URIs.** The function does not fix them — to fix them it would have to judge "this `%` is
+data," and that judgment is exactly the one that breaks idempotency.
 
-**멱등성과 날것 문자열 속 리터럴 `%` 의 처리는 동시에 가질 수 없다.** 이 코드는
-멱등성을 골랐고, 근거는 도메인에 있다 — HLS 세그먼트 이름에 리터럴 `%` 가 들어오는
-일은 관측되지 않았고, 같은 주소가 여러 계층을 지나가는 일은 매 요청마다 일어난다.
-§7.6 에서 이 선택의 한계를 다시 적는다.
+**Idempotency and handling a literal `%` inside a raw string cannot be had at once.** This code chose
+idempotency, and the basis is in the domain — a literal `%` entering an HLS segment name was not observed, and
+the same address passing through several layers happens on every request. §7.6 records the limits of this
+choice again.
 
 ---
 
-## 7.3 코드 — 한 함수, 하나의 생산 지점
+## 7.3 The code — one function, one production point
 
-### 7.3.1 `_PATH_SAFE` 는 RFC 3986 의 pchar 다
+### 7.3.1 `_PATH_SAFE` is RFC 3986's pchar
 
 ```python
 # fetch.py:30-33
-# URL 각 부분에서 그대로 두어도 되는 문자. `%` 를 남기는 것이 핵심이다 — 이미
-# 인코딩된 주소를 다시 인코딩하면 `%20` 이 `%2520` 이 되어 다른 주소가 된다.
+# characters that may be left as is in each URL part. leaving `%` is the crux — re-encode an
+# already-encoded address and `%20` becomes `%2520`, a different address.
 _PATH_SAFE = "/%:@!$&'()*+,;=~"
 _QUERY_SAFE = _PATH_SAFE + "?"
 ```
 
-이 16글자는 임의로 고른 목록이 아니다. §7.2.2 의 ABNF 와 한 글자씩 대응한다.
+These 16 characters are not an arbitrarily chosen list. They correspond character by character with §7.2.2's
+ABNF.
 
-| `_PATH_SAFE` 의 문자 | RFC 3986 상 정체 | 왜 안전한가 |
+| Character in `_PATH_SAFE` | Identity in RFC 3986 | Why it is safe |
 |---|---|---|
-| `/` | path-abempty 의 조각 구분자 | 경로 구조 자체다. 인코딩하면 계층이 사라진다 |
-| `%` | pct-encoded 의 시작 표지 | **이미 인코딩된 것을 다시 인코딩하지 않기 위해** |
-| `:` `@` | pchar 에 명시된 gen-delims 두 개 | 경로 조각 안에서 데이터로 허용된다 |
-| `!$&'()*+,;=` | **sub-delims 11개 전부** | pchar 에 포함된다 |
-| `~` | 비예약 문자 | 파이썬 `quote()` 가 이미 항상 보존한다 — **중복 명시** |
+| `/` | path-abempty's segment separator | it is the path structure itself. encode it and the hierarchy vanishes |
+| `%` | pct-encoded's start marker | **so as not to re-encode something already encoded** |
+| `:` `@` | the two gen-delims named in pchar | allowed as data within a path segment |
+| `!$&'()*+,;=` | **all 11 sub-delims** | included in pchar |
+| `~` | an unreserved character | Python `quote()` already always preserves it — **redundant specification** |
 
-정리하면 다음 등식이 성립한다.
+In sum, the following equation holds.
 
 ```
-_PATH_SAFE  =  pchar ∪ { "/" }        (여기서 pct-encoded 의 실현이 "%" 다)
-_QUERY_SAFE =  pchar ∪ { "/", "?" }   =  query 와 fragment 의 허용 집합
+_PATH_SAFE  =  pchar ∪ { "/" }        (here the realization of pct-encoded is "%")
+_QUERY_SAFE =  pchar ∪ { "/", "?" }   =  the allowed set of query and fragment
 ```
 
-빠진 것도 규격과 맞는다.
+What is missing matches the spec too.
 
-| 제외된 문자 | 이유 |
+| Excluded character | Reason |
 |---|---|
-| `?` (경로에서) | 질의 문자열의 시작 구분자다. 경로에 데이터로 들어가면 `%3F` 여야 한다 |
-| `#` (전 성분에서) | 프래그먼트 시작 구분자. 어느 성분 안에서도 데이터면 `%23` 이어야 한다 |
-| `[` `]` | RFC 3986 상 **authority 의 IP-literal 표기에만** 허용된다. 경로·질의에서는 인코딩 대상 |
+| `?` (in a path) | the start delimiter of the query string. as data in a path it must be `%3F` |
+| `#` (in all components) | the fragment start delimiter. as data within any component it must be `%23` |
+| `[` `]` | in RFC 3986 allowed **only in authority's IP-literal notation.** in path·query they are encoding targets |
 
-`~` 가 중복 명시라는 점은 사소하지만 규격과 구현의 층위를 보여준다. RFC 3986 §2.4 는
-`%7E` 를 `~` 로 되돌려도 해석이 바뀌지 않는다고 명시하고, 파이썬 `quote()` 의
-항상-안전 집합은 정확히 비예약 문자 집합(`A-Za-z0-9-._~`)이다. 실측으로 확인했다.
+That `~` is a redundant specification is minor but shows the layers of spec and implementation. RFC 3986 §2.4
+states that turning `%7E` back into `~` does not change the interpretation, and Python `quote()`'s
+always-safe set is exactly the unreserved-character set (`A-Za-z0-9-._~`). Confirmed by measurement.
 
 ```
-quote 의 항상 안전 문자: -.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~
+quote's always-safe characters: -.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~
 ```
 
-**목록에 규격의 이름을 붙일 수 있다는 것은 그 목록이 검증 가능하다는 뜻이다.**
-"경험적으로 이 문자들은 괜찮더라"와는 다르다. 새 문자를 추가하자는 제안이 오면
-"그것은 어느 성분의 ABNF 에 있는가"로 답할 수 있다.
+**That a list can be labeled with the spec's names means that list is verifiable.** It is different from
+"empirically these characters seem fine." When a proposal to add a new character comes, you can answer "which
+component's ABNF is it in."
 
-### 7.3.2 `normalize_url` — 성분을 자른 뒤 성분별 규칙으로
+### 7.3.2 `normalize_url` — cut into components, then per-component rules
 
 ```python
 # fetch.py:45-54
@@ -399,177 +396,175 @@ quote 의 항상 안전 문자: -.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi
     )
 ```
 
-세 가지 결정이 들어 있다.
+There are three decisions in it.
 
-**① 통째로 인코딩하지 않는다.** `urlsplit` 으로 다섯 성분으로 자른 뒤 성분별로 다른
-안전 집합을 쓴다. §7.2.2 에서 본 대로 `?` 는 경로에서는 구분자이고 질의 안에서는
-데이터이기 때문이다. 문자열 전체에 한 규칙을 걸면 **스킴의 `:` 와 authority 의 `//`
-까지 인코딩되어 주소가 아니게 된다.**
+**① Do not encode the whole thing.** After cutting into five components with `urlsplit`, use a different safe
+set per component. As seen in §7.2.2, `?` is a delimiter in a path and data within a query. Apply one rule to
+the whole string and **even the scheme's `:` and authority's `//` get encoded and it is no longer an
+address.**
 
-**② 프래그먼트에도 질의 규칙을 쓴다.** ABNF 상 `query` 와 `fragment` 의 허용 집합이
-글자 그대로 같으므로(`*( pchar / "/" / "?" )`) 상수를 하나로 공유한다. 이것은 절약이
-아니라 정확성이다 — 두 벌로 나눠 두면 한쪽만 고쳐질 여지가 생긴다.
+**② Use the query rule for the fragment too.** Since by ABNF `query` and `fragment` have literally the same
+allowed set (`*( pchar / "/" / "?" )`), share one constant. This is not thrift but correctness — split into
+two and there is room for only one to be fixed.
 
-**③ `scheme` 과 `netloc` 은 통과시킨다.** 다음 절에서 따로 본다.
+**③ `scheme` and `netloc` are passed through.** Seen separately in the next section.
 
-### 7.3.3 왜 netloc 은 손대지 않는가
+### 7.3.3 Why is netloc not touched?
 
-호스트 이름의 비-ASCII 는 퍼센트 인코딩으로 처리하지 않는다. **punycode**(RFC 3492)
-기반의 IDNA 변환을 쓴다. 규격도 그렇게 갈라 놓는다 — RFC 3987 §3.1 은 호스트
-성분(`ireg-name`)에 대해서만 별도로 "ToASCII 연산으로 변환해도 된다(MAY)"고 적는다.
+A host name's non-ASCII is not handled by percent-encoding. It uses the IDNA conversion based on **punycode**
+(RFC 3492). The spec splits it that way too — RFC 3987 §3.1 states, only for the host component
+(`ireg-name`), that "it MAY be converted with the ToASCII operation."
 
-실측하면 `normalize_url` 은 IDN 호스트를 그대로 통과시킨다.
+Measured, `normalize_url` passes an IDN host through as is.
 
 ```
 'https://한글도메인.example/a.ts'  ->  'https://한글도메인.example/a.ts'
 ```
 
-이 자리에서 퍼센트 인코딩을 걸면 **틀린 변환**이 된다. 호스트에 `%EA%B7%B8` 를 실어
-보내는 것은 punycode 가 아니고, DNS 조회가 성립하지 않는다. 즉 이것은 누락이 아니라
-**층위를 지킨 것**이다. 파이썬에서 실제 변환은 `http.client.putrequest` 가 Host 헤더를
-쓰는 자리에서 일어난다 — `netloc.encode("ascii")` 를 먼저 시도하고 실패하면
-`netloc.encode("idna")` 로 물러선다(표준 라이브러리 소스로 확인).
+Apply percent-encoding at this spot and it is a **wrong conversion.** Carrying `%EA%B7%B8` in the host is not
+punycode, and the DNS lookup does not hold. That is, this is not an omission but **keeping the layers.** In
+Python the actual conversion happens where `http.client.putrequest` writes the Host header — it first tries
+`netloc.encode("ascii")` and falls back to `netloc.encode("idna")` on failure (confirmed in the standard
+library source).
 
-다만 정직하게 적어 둔다 — **이 저장소가 IDN 호스트를 실측한 사례는 없다.** 위
-서술은 규격과 표준 라이브러리 동작에서 나온 것이지, 이 도구가 IDN 송출을 처리해
-본 기록이 아니다.
+But recorded honestly — **this repository has no case of measuring an IDN host.** The above statement comes
+from the spec and standard-library behavior, not a record of this tool processing an IDN delivery.
 
-### 7.3.4 URI 를 낳는 유일한 지점
+### 7.3.4 The only point that births a URI
 
-플레이리스트 본문에 적히는 세그먼트 주소는 대개 상대 참조다.
+The segment addresses written in a playlist body are usually relative references.
 
 ```
 #EXTINF:6.000,
 seg000.ts
 ```
 
-이것을 절대 주소로 만드는 자리가 곧 **URI 가 태어나는 자리**다.
+The spot that turns this into an absolute address is **the spot where a URI is born.**
 
 ```python
 # playlist.py:30-38
 def _absolute(base_url: str, uri: str | None) -> str | None:
-    """플레이리스트에 적힌 URI 를 절대 주소로 만든다 — 여기가 URI 를 낳는 유일한 지점이다.
+    """Make a URI written in the playlist into an absolute address — this is the only point that births a URI.
 
-    절대화와 함께 퍼센트 인코딩까지 끝낸다. 이후 이 값은 요청에도, ffmpeg 입력에도
-    그대로 쓰이므로 어느 한쪽에서만 정규화하면 다른 쪽이 열지 못한다.
+    Along with absolutization, it finishes percent-encoding too. Afterward this value is used as is in
+    both the request and the ffmpeg input, so normalize on only one side and the other cannot open it.
     """
     if not uri:
         return uri
     return normalize_url(urljoin(base_url, uri) if base_url else uri)
 ```
 
-![상대 URI 와 기준 URL 이 한 함수로만 들어가고 거기서 나온 값을 네 소비자가 나눠 쓴다](/images/lecture/hls-recon/07-uri-birth.svg)
+![A relative URI and a base URL enter only one function, and four consumers share the value that came out of it](/images/lecture/hls-recon/07-uri-birth.svg)
 
-*그림 7-1 — URI 를 낳는 유일한 지점 — 들어오는 문은 하나, 나가는 문은 넷*
+*Figure 7-1 — the only point that births a URI — one door in, four doors out*
 
-> **용어** — **단일 출처(SSOT, Single Source of Truth)**: 어떤 값이 시스템 안에서
-> 단 한 곳에서만 생산되고, 나머지는 모두 그 값을 참조하기만 하는 설계. 값이 여러
-> 곳에서 만들어지면 **서로 다른 값이 같은 이름으로 돌아다니는** 상태가 언젠가
-> 반드시 생긴다.
+> **Term** — **SSOT (Single Source of Truth)**: a design where a value is produced in only one place in the
+> system and all the rest only reference it. If a value is made in several places, a state where **different
+> values circulate under the same name** will inevitably arise someday.
 
-이 함수를 부르는 자리가 플레이리스트 파서 안에 넷이고, **그 넷이 전부다.**
+The spots that call this function are four inside the playlist parser, and **those four are all of them.**
 
-| 호출 지점 | 무엇의 URI 인가 |
+| Call site | URI of what |
 |---|---|
-| [`playlist.py:229`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L229) | 세그먼트와 variant (태그가 아닌 줄 = 직전 태그가 가리키는 URI) |
-| [`playlist.py:282`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L282) | `#EXT-X-MEDIA` 의 자막·오디오 트랙 |
-| [`playlist.py:313`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L313) | `#EXT-X-KEY` 의 복호화 키 |
-| [`playlist.py:325`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L325) | `#EXT-X-MAP` 의 초기화 세그먼트 |
+| [`playlist.py:229`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L229) | segments and variants (a non-tag line = the URI the preceding tag points to) |
+| [`playlist.py:282`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L282) | `#EXT-X-MEDIA`'s subtitle·audio track |
+| [`playlist.py:313`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L313) | `#EXT-X-KEY`'s decryption key |
+| [`playlist.py:325`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L325) | `#EXT-X-MAP`'s initialization segment |
 
-**한 줄에 두 가지가 들어 있다는 점이 중요하다.**
+**That two things are in one line is important.**
 
 ```python
 normalize_url(urljoin(base_url, uri) if base_url else uri)
 ```
 
-`urljoin` 은 RFC 3986 §5 의 참조 해석(reference resolution)이고, 그 안에 §5.2.4 의
-점 세그먼트 제거(`remove_dot_segments`)가 포함된다. `normalize_url` 은 §2.1 의
-퍼센트 인코딩이다. **둘은 다른 절의 다른 연산이며, 순서가 이 한 줄에 고정된다.**
-호출자가 순서를 고를 여지가 없다.
+`urljoin` is RFC 3986 §5's reference resolution, and inside it is §5.2.4's dot-segment removal
+(`remove_dot_segments`). `normalize_url` is §2.1's percent-encoding. **The two are different operations of
+different sections, and the order is fixed in this one line.** The caller has no room to choose the order.
 
-실측으로 확인한 결과다. 기준 URL 이 **정규화 전이든 후든** 결과가 같다.
+A result confirmed by measurement. Whether the base URL is **before or after normalization**, the result is
+the same.
 
-| 상대 URI | 기준이 날것일 때 | 기준이 정규화됐을 때 | 같은가 |
+| Relative URI | When the base is raw | When the base is normalized | Same? |
 |---|---|---|---|
-| `seg000.ts` | `…/%EA%B7%B8%EB%A0%8C%2001/seg000.ts` | 같음 | ✔ |
-| `../keys/키.bin` | `…/hls/keys/%ED%82%A4.bin` | 같음 | ✔ |
-| `그렌 01_000.ts` | `…/%EA%B7%B8%EB%A0%8C%2001/%EA%B7%B8%EB%A0%8C%2001_000.ts` | 같음 | ✔ |
+| `seg000.ts` | `…/%EA%B7%B8%EB%A0%8C%2001/seg000.ts` | same | ✔ |
+| `../keys/키.bin` | `…/hls/keys/%ED%82%A4.bin` | same | ✔ |
+| `그렌 01_000.ts` | `…/%EA%B7%B8%EB%A0%8C%2001/%EA%B7%B8%EB%A0%8C%2001_000.ts` | same | ✔ |
 
-두 번째 행에서 `../` 가 사라진 것이 `urljoin` 의 몫이고, 한글이 삼중자로 바뀐 것이
-`normalize_url` 의 몫이다. **두 경로가 같은 값으로 수렴한다**는 사실이 §7.1.2 의
-방식 C 를 성립시킨다.
+In the second row `../` disappearing is `urljoin`'s doing, and Korean turning into triplets is
+`normalize_url`'s doing. The fact that **the two paths converge to the same value** is what makes §7.1.2's
+method C hold.
 
-### 7.3.5 호출 횟수는 소비자마다 다르다 — 그래도 값은 같다
+### 7.3.5 The number of calls differs per consumer — yet the value is the same
 
-경계에서 한 번 더 거는 자리가 있다.
+There is a spot that applies it once more at the boundary.
 
 ```python
 # fetch.py:151
         url = normalize_url(url)
 ```
 
-이미 `_absolute` 를 통과한 값이 여기서 또 통과한다. 낭비처럼 보이지만 아니다 —
-`Fetcher.get` 은 플레이리스트 파서를 거치지 않은 주소도 받는다. **사용자가 명령줄에
-붙여 넣은 첫 주소**, 시리즈 페이지의 링크, 사이드카 자막 후보가 그렇다. 이 자리는
-"무엇이 오든 여기서부터는 URI 다"를 보증하는 관문이다.
+A value that already passed `_absolute` passes here again. It looks like waste but is not — `Fetcher.get`
+receives addresses that did not pass through the playlist parser too. **The first address the user pasted on
+the command line**, a series-page link, a sidecar-subtitle candidate are such. This spot is the gate that
+guarantees "whatever comes, from here it is a URI."
 
-한 번 받는 동안 실제로 몇 번 걸리는지 계측했다. 세그먼트 3개짜리 로컬 스트림에
-`normalize_url` 을 감싸 호출을 세었다.
+Measured how many times it actually applies during one receipt. Wrapped `normalize_url` to count calls on a
+local 3-segment stream.
 
 ```
-normalize_url 호출 총 7회
-   1. 변환됨    http://127.0.0.1:PORT/그렌 01/index.m3u8          ← 사용자 입력, fetch 경계
-   2. 변환됨    …/그렌 01/그렌 01_000.ts                          ← _absolute
-   3. 변환됨    …/그렌 01/그렌 01_001.ts                          ← _absolute
-   4. 변환됨    …/그렌 01/그렌 01_002.ts                          ← _absolute
-   5. 변화없음  …%2001/%EA%B7%B8%EB%A0%8C%2001_000.ts             ← fetch 경계 (재통과)
-   6. 변화없음  …%2001/%EA%B7%B8%EB%A0%8C%2001_001.ts             ← fetch 경계 (재통과)
-   7. 변화없음  …%2001/%EA%B7%B8%EB%A0%8C%2001_002.ts             ← fetch 경계 (재통과)
+normalize_url called 7 times total
+   1. transformed    http://127.0.0.1:PORT/그렌 01/index.m3u8          ← user input, fetch boundary
+   2. transformed    …/그렌 01/그렌 01_000.ts                          ← _absolute
+   3. transformed    …/그렌 01/그렌 01_001.ts                          ← _absolute
+   4. transformed    …/그렌 01/그렌 01_002.ts                          ← _absolute
+   5. no change      …%2001/%EA%B7%B8%EB%A0%8C%2001_000.ts             ← fetch boundary (re-pass)
+   6. no change      …%2001/%EA%B7%B8%EB%A0%8C%2001_001.ts             ← fetch boundary (re-pass)
+   7. no change      …%2001/%EA%B7%B8%EB%A0%8C%2001_002.ts             ← fetch boundary (re-pass)
 ```
 
-7회 중 3회가 **아무 일도 하지 않는 호출**이다. 그리고 소비자마다 누적 횟수가 다르다.
+Of the 7, 3 are **calls that do nothing.** And the accumulated count differs per consumer.
 
-| 소비자 | 누적 적용 횟수 | 경로 |
+| Consumer | Accumulated applications | Path |
 |---|---|---|
-| HTTP 세그먼트 수신 | **2회** | `_absolute` → [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) |
-| 복호화 키 요청 | **2회** | `_absolute` → [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) |
-| ffmpeg 입력 — 마스터에서 고른 variant | **1회** | `_absolute` 만 ([`cli.py:195`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L195) 의 `chosen.uri`) |
-| ffmpeg 입력 — 사용자가 미디어 플레이리스트를 직접 준 경우 | **0회** | [`cli.py:177`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L177) 이 입력 문자열을 그대로 `media_url` 로 삼는다 |
-| 리포트 JSON 기록 | **1회** | `_absolute` 만 (`report.py:475,486`) |
+| HTTP segment receipt | **2** | `_absolute` → [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) |
+| decryption-key request | **2** | `_absolute` → [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) |
+| ffmpeg input — variant chosen from the master | **1** | `_absolute` only ([`cli.py:195`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L195)'s `chosen.uri`) |
+| ffmpeg input — user gave the media playlist directly | **0** | [`cli.py:177`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L177) takes the input string as `media_url` as is |
+| report JSON record | **1** | `_absolute` only (`report.py:475,486`) |
 
-**횟수가 계층마다 다른데 값은 같다.** 이것이 멱등성이 실제로 사 주는 것이다.
-멱등이 아니었다면 이 표의 1회 행과 2회 행이 서로 다른 주소가 되고, `probe` 가 본
-스트림과 `fetch` 가 받은 스트림이 다른 자원이 된다.
+**The count differs per layer but the value is the same.** This is what idempotency actually buys. Had it not
+been idempotent, the 1-application row and the 2-application row of this table would be different addresses,
+and the stream `probe` saw and the stream `fetch` received would be different resources.
 
-네 번째 행은 예외이며, **이 장의 규율이 지켜지지 않은 자리**다. `_load` 는 사용자가
-준 문자열을 그대로 base URL 로 돌려주고([`cli.py:138`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L138)), 그 값이 마스터가 아니면
-`media_url` 이 되어 ffmpeg 로 간다([`cli.py:177`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L177)). 세그먼트 주소는 `_absolute` 가
-정규화하므로 무사하지만, **ffmpeg 에 넘어가는 최상위 주소만 정규화를 거치지 않는다.**
-독스트링이 경고한 바로 그 형태 — "받는 쪽마다 따로 손보면 한 곳은 반드시 빠진다" —
-가 실제로 한 곳 남아 있다. 영향과 재현 여부는 §7.6 에 적는다.
+The fourth row is the exception, and **the spot where this chapter's discipline is not kept.** `_load` returns
+the user-given string as the base URL as is ([`cli.py:138`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L138)), and if that value is not a master it becomes
+`media_url` and goes to ffmpeg ([`cli.py:177`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L177)). The segment addresses are safe because `_absolute` normalizes
+them, but **only the top-level address going to ffmpeg does not pass normalization.** Exactly the form the
+docstring warned of — "repair it separately at each receiving side and one place is surely missed" — actually
+remains in one place. The impact and reproducibility are recorded in §7.6.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — 방식 B(생산 지점에서만)를 택하고
-> [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) 을 지우면, 명령줄에서 날것 한글 주소를 넣은 실행만 §7.1.1 의
-> `UnicodeEncodeError` 로 죽는다. 플레이리스트 안의 주소는 멀쩡하므로 **입력
-> 방식에 따라 갈리는 실패**가 되고, 재현 조건을 짚기 어렵다.
+> **What breaks if you do not do this** — choose method B (only at the production point) and delete
+> [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151), and only a run that entered a raw Korean address on the command line dies with §7.1.1's
+> `UnicodeEncodeError`. The addresses inside the playlist are fine, so it becomes a **failure that splits by
+> input method**, and the reproduction condition is hard to pin.
 
-### 7.3.6 이름에서 URI 로 — 인코더와 정규화기의 역할 분담
+### 7.3.6 From name to URI — division of labor between the encoder and the normalizer
 
-플레이리스트에 자막 선언이 없고 정적 경로에 파일만 놓인 송출이 있다. 이때는 URI 를
-**주워 오는** 것이 아니라 **이름으로부터 조립**해야 한다.
+There is a delivery with no subtitle declaration in the playlist and only a file placed on a static path. Here
+a URI is not **picked up** but **assembled from a name.**
 
 ```python
 # subtitles.py:398-414
 def sidecar_urls(name: str, origin: str) -> list[str]:
-    """이름과 origin 으로 자막 URL 후보를 조립한다 (경로 × 확장자 × 이름 표기)."""
+    """Assemble subtitle-URL candidates from a name and an origin (path × extension × name form)."""
     u = urlparse(origin.strip())
     if u.scheme not in ("http", "https") or not u.netloc:
-        raise ValueError(f"자막 origin 이 URL 이 아니다: {origin!r}")
+        raise ValueError(f"the subtitle origin is not a URL: {origin!r}")
     base = urlunparse((u.scheme, u.netloc, "", "", "", ""))
     urls: list[str] = []
     for variant in name_variants(name):
-        # 한글·공백이 든 이름이 그대로 경로에 들어가므로 인코딩한다. '/' 도 이름의
-        # 일부일 수는 없으니 safe 를 비워 통째로 인코딩한다.
+        # a name with Korean·space enters the path as is, so encode it. '/' cannot be part of
+        # a name either, so empty the safe set and encode the whole thing.
         encoded = quote(variant, safe="")
         for path in SIDECAR_PATHS:
             for ext in SIDECAR_EXTS:
@@ -579,91 +574,89 @@ def sidecar_urls(name: str, origin: str) -> list[str]:
     return urls
 ```
 
-여기서 쓰는 것은 `normalize_url` 이 **아니다.** `quote(variant, safe="")` — 안전
-집합이 완전히 비어 있다. 두 함수의 역할이 다르기 때문이다.
+What is used here is **not** `normalize_url`. It is `quote(variant, safe="")` — the safe set is completely
+empty. Because the two functions have different roles.
 
 | | `quote(name, safe="")` | `normalize_url(url)` |
 |---|---|---|
-| **입력** | 사람이 정한 **이름**. URI 가 아니다 | URI 이거나 URI 가 되려는 문자열 |
-| **`/` 취급** | 인코딩한다 (`%2F`) — 이름의 일부일 리 없다 | 보존한다 — 경로 구분자다 |
-| **`%` 취급** | 인코딩한다 (`%25`) — 이름 속 리터럴이다 | 보존한다 — 인코딩 표지다 |
-| **멱등한가** | **아니다** | 그렇다 |
-| **적용 횟수** | 정확히 한 번 | 몇 번이든 |
+| **input** | a human-decided **name.** not a URI | a URI, or a string trying to become a URI |
+| **`/` treatment** | encodes it (`%2F`) — cannot be part of a name | preserves it — it is the path separator |
+| **`%` treatment** | encodes it (`%25`) — a literal within the name | preserves it — an encoding marker |
+| **idempotent?** | **No** | Yes |
+| **applications** | exactly once | any number |
 
-![이름 하나가 요청줄이 되기까지의 세 단계](/images/lecture/hls-recon/07-encode-once.svg)
+![The three stages from one name to a request line](/images/lecture/hls-recon/07-encode-once.svg)
 
-*그림 7-2 — 이름 하나가 요청줄이 되기까지 — 인코딩은 정확히 한 번, 정규화는 몇 번이든*
+*Figure 7-2 — from one name to a request line — encoding exactly once, normalization any number of times*
 
-`safe=""` 는 실수처럼 보이기 쉽다. `/` 까지 인코딩하기 때문이다. 그러나 이 자리에서
-`variant` 는 **경로가 아니라 경로 조각 하나**다. RFC 3986 의 `segment` 에 들어갈
-값이므로 `/` 는 데이터이고, 데이터인 `/` 는 §7.2.2 에서 본 대로 `%2F` 여야 한다.
+`safe=""` looks easily like a mistake. Because it encodes even `/`. But at this spot `variant` is **not a path
+but one path segment.** It is a value going into RFC 3986's `segment`, so `/` is data, and data `/` must be
+`%2F` as seen in §7.2.2.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — `safe="/"`(파이썬 기본값)로 두면 이름에
-> `/` 가 든 순간 경로 계층이 하나 늘어난다. `그렌라간 1/2화` 라는 이름은
-> `/subtitles/old/그렌라간 1/2화.srt` 를 요청하게 되고, 서버 쪽에서는 **다른
-> 디렉터리**를 가리킨다. 이름이 경로 구조를 바꾸는 것 — 이것이 §7.5 에서 다룰
-> 경로 순회의 씨앗과 같은 형태다.
+> **What breaks if you do not do this** — leave `safe="/"` (Python's default) and the moment a name contains
+> `/` a path layer is added. The name `그렌라간 1/2화` comes to request `/subtitles/old/그렌라간 1/2화.srt`,
+> and on the server side it points at a **different directory.** A name changing the path structure — this is
+> the same form as the seed of the path traversal §7.5 covers.
 
-그리고 이 값은 `Fetcher.get` 을 거치며 `normalize_url` 을 **한 번 더** 지난다.
-그때 아무 일도 일어나지 않는 것이 §7.2.4 의 고정점 성질이다. `%EC%97%90` 의 `%` 가
-보존되므로 `%25EC%2597%2590` 이 되지 않는다.
+And this value passes `normalize_url` **once more** through `Fetcher.get`. That nothing happens then is §7.2.4's
+fixed-point property. `%EC%97%90`'s `%` is preserved, so it does not become `%25EC%2597%2590`.
 
-이 경로는 회귀 테스트로 고정돼 있다.
+This path is fixed by a regression test.
 
 ```bash
 # tests/run.sh:246-249
-# ------------------------------------------------------- 사이드카 자막 (URL 조립)
-# 플레이리스트에 자막 선언이 없는 송출. 이름과 origin 으로 URL 을 만들어 받는다.
-# 한글·화수 표기를 그대로 쓰는 것은 URL 인코딩과 이름 후보 생성까지 함께 고정하기
-# 위해서다 — 실제로 마주친 경로가 그 형태였다.
+# ------------------------------------------------------- sidecar subtitle (URL assembly)
+# a delivery with no subtitle declaration in the playlist. make a URL from a name and origin and receive it.
+# using Korean·episode notation as is is to also fix down URL encoding and name-candidate generation
+# — the path actually encountered was of that form.
 ```
 
-테스트는 파일 이름을 `에피소드01.srt` 로 두고, 도구가 그 이름으로부터 URL 을
-조립해 받아 오는 전 과정을 통과시킨다. **파일 시스템의 이름 → 인코딩 → 요청 →
-서버의 디코딩 → 같은 파일**이라는 왕복이 한 번에 고정된다. 받은 바이트가 원본과
-같은지까지 비교하므로(`cmp -s`), 중간에 이름이 바뀌면 실패한다.
+The test leaves the filename as `에피소드01.srt`, and passes the whole process where the tool assembles the URL
+from that name and receives it. The round trip **file-system name → encoding → request → server's decoding →
+the same file** is fixed at once. It even compares whether the received bytes are the same as the original
+(`cmp -s`), so if the name changes in between it fails.
 
-### 7.3.7 헤더도 같은 규칙을 받는다
+### 7.3.7 Headers get the same rule
 
-정규화가 필요한 곳은 요청 줄만이 아니다.
+Where normalization is needed is not only the request line.
 
 ```python
 # series.py:99-109
 def _from(referer: str) -> dict[str, str]:
-    """이 요청에만 얹을 Referer/Origin.
+    """The Referer/Origin to attach to this request only.
 
-    사슬의 각 단계는 서로 다른 곳에서 열린다 — 회차 페이지는 사이트 안에서,
-    플레이어는 회차 페이지 안의 iframe 으로, 재생 소스는 플레이어 안의 XHR 로.
-    브라우저가 보내는 것과 같은 값을 보내야 한다. 하나라도 비면 서버가 404 로
-    돌려보내는데, 없는 페이지처럼 보여서 원인을 짚기 어렵다.
+    Each stage of the chain is opened from a different place — the episode page from within the
+    site, the player as an iframe within the episode page, the playback source as an XHR within
+    the player. You must send the same values a browser sends. Leave even one empty and the server
+    returns a 404 that looks like a missing page, making the cause hard to pin.
     """
-    # 헤더 값은 ASCII 로 쓰인다. 한글이 든 회차 주소를 그대로 Referer 에 넣으면
-    # 요청이 만들어지는 순간 죽으므로, 주소와 같은 규칙으로 인코딩해서 싣는다.
+    # header values are written as ASCII. put a Korean-containing episode address into Referer raw
+    # and it dies the moment the request is made, so encode it by the same rule as the address.
     return {"Referer": normalize_url(referer), "Origin": _origin(referer)}
 ```
 
-`Referer` 는 **헤더 값에 실린 URI** 다. 요청 줄과 같은 ASCII 제약을 받으므로 같은
-함수를 쓴다. 주목할 것은 "주소와 **같은 규칙으로**"라는 표현이다 — 헤더용 인코딩을
-따로 만들지 않았다.
+`Referer` is **a URI carried in a header value.** It gets the same ASCII constraint as the request line, so it
+uses the same function. What is notable is the phrase "by the same rule **as the address**" — no separate
+header encoding was made.
 
-이것이 왜 중요한지는 서버 쪽을 생각하면 드러난다. 핫링크 차단은 `Referer` 값을
-**문자열로 비교**한다(제9장). 요청 줄과 `Referer` 가 서로 다른 규칙으로 인코딩되면
-브라우저가 보낸 것과 다른 값이 실리고, 검사는 통과하지 못한다. **두 자리가 같은
-함수를 쓴다는 사실 자체가 일치를 보증한다.**
+Why this matters becomes clear thinking about the server side. Hotlink blocking **compares the `Referer` value
+as a string** (Chapter 9). If the request line and `Referer` are encoded by different rules, a value different
+from what the browser sent is carried, and the check does not pass. **The very fact that the two spots use the
+same function guarantees the match.**
 
-### 7.3.8 반대 방향 — 디코드해야만 보이는 결함
+### 7.3.8 The reverse direction — a fault visible only by decoding
 
-지금까지는 인코딩 방향만 봤다. 이 저장소에는 반대 방향이 꼭 필요한 자리가 하나
-있고, 그 자리가 이 장의 규율을 가장 잘 보여준다.
+So far only the encoding direction has been seen. There is one spot in this repository that necessarily needs
+the reverse direction, and that spot shows this chapter's discipline best.
 
 ```python
 # series.py:131-148
 def _series_url_of_episode(page: str, url: str) -> str:
-    """회차 페이지에서 시리즈 페이지 주소를 얻는다.
+    """Get the series-page address from an episode page.
 
-    빵부스러기 링크의 제목에는 끝 공백이 붙어 있는 경우가 있다. 그 주소도 200 을
-    돌려주지만 **목록이 비어서** 온다 — 오류로 보이지 않는 실패다. 그래서 받은
-    주소를 그대로 쓰지 않고 제목 부분의 공백을 떼어 정규화한다.
+    A breadcrumb link's title sometimes has a trailing space. That address returns 200 too but comes
+    **with an empty list** — a failure that does not look like an error. So do not use the received
+    address as is but strip the space of the title part and normalize.
     """
     …
     absolute = urljoin(url, href.group(1))
@@ -671,94 +664,94 @@ def _series_url_of_episode(page: str, url: str) -> str:
     return u._replace(path=unquote(u.path).rstrip()).geturl()
 ```
 
-문제는 이렇다. HTML 에서 뽑은 링크의 경로가 `/c/작품%20` 이다. 끝에 공백이 하나
-붙어 있고, 그 주소는 **200 을 돌려주면서 빈 목록**을 준다.
+The problem is this. The path of a link extracted from the HTML is `/c/작품%20`. A space is attached to the
+end, and that address **returns 200 while giving an empty list.**
 
-공백을 떼려면 `rstrip()` 을 해야 한다. 그런데 인코딩된 상태에서는 그것이 통하지
-않는다. 실측이다.
+To strip the space you must do `rstrip()`. But in the encoded state that does not work. A measurement.
 
 ```
-인코딩 상태에서 rstrip : 'https://site.example/c/%EC%9E%91%ED%92%88%20'   ← 변화 없음
-unquote 후 rstrip     : 'https://site.example/c/작품'
-그 뒤 normalize_url    : 'https://site.example/c/%EC%9E%91%ED%92%88'
+rstrip in the encoded state : 'https://site.example/c/%EC%9E%91%ED%92%88%20'   ← no change
+rstrip after unquote        : 'https://site.example/c/작품'
+then normalize_url          : 'https://site.example/c/%EC%9E%91%ED%92%88'
 ```
 
-끝의 공백이 `%20` 이라는 **세 글자의 ASCII 문자열**로 표현돼 있기 때문이다.
-`rstrip()` 은 문자열 끝에서 공백 문자를 찾는데, 거기 있는 것은 숫자 `0` 이다.
-지울 것을 찾지 못하고 그대로 돌려준다. **디코드하지 않으면 존재조차 보이지 않는
-결함이다.**
+Because the trailing space is represented as the **three-character ASCII string** `%20`. `rstrip()` looks for
+a space character at the string's end, but what is there is the digit `0`. It finds nothing to strip and
+returns it as is. **A fault whose very existence is invisible unless you decode.**
 
-그래서 이 자리는 세 단계를 밟는다.
+So this spot takes three stages.
 
-| 단계 | 연산 | 왜 |
+| Stage | Operation | Why |
 |---|---|---|
-| 1 | `unquote(u.path)` | 결함(끝 공백)을 **보이게** 만든다 |
-| 2 | `.rstrip()` | 결함을 제거한다 — 데이터 층위의 조작 |
-| 3 | (경계에서) `normalize_url` | 다시 URI 로 되돌린다 — [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) 이 한다 |
+| 1 | `unquote(u.path)` | makes the fault (trailing space) **visible** |
+| 2 | `.rstrip()` | removes the fault — a data-layer operation |
+| 3 | (at the boundary) `normalize_url` | turns it back into a URI — [`fetch.py:151`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L151) does it |
 
-3단계를 이 함수가 직접 하지 않는다는 점을 눈여겨볼 만하다. 반환값은 날것 한글이
-든 문자열이고, URI 로 만드는 일은 경계에 맡긴다. §7.2.3 의 규칙 그대로다 — **인코딩은
-URI 를 만들어 내는 그 지점에서 한 번.**
+That this function does not do stage 3 itself is worth noting. The return value is a string with raw Korean,
+and turning it into a URI is left to the boundary. Exactly §7.2.3's rule — **encode once, at the point of
+producing the URI.**
 
-여기서 이 장의 두 번째 명제가 나온다.
+Here comes this chapter's second proposition.
 
-> **문자열을 조작해야 한다면 디코드된 표현에서 하고, 그 결과를 다시 인코딩하는
-> 것은 경계의 일이다. 인코딩된 표현 위에서 직접 조작하면 조작이 조용히 실패한다.**
+> **If you must operate on a string, do it on the decoded representation, and re-encoding the result is the
+> boundary's job. Operate directly on the encoded representation and the operation fails quietly.**
 
-`%20` 을 못 보고 지나간 `rstrip()` 은 예외를 던지지 않는다. 값을 그대로 돌려줄
-뿐이다. 그리고 그 주소는 200 을 돌려준다. **어느 층에서도 오류가 나지 않는데
-결과만 비어 있다** — 제5장에서 본 "성공한 실패"의 또 다른 형태다.
+The `rstrip()` that passed over `%20` throws no exception. It merely returns the value as is. And that address
+returns 200. **No error at any layer, yet the result is empty** — another form of the "successful failure" seen
+in Chapter 5.
 
 ---
 
-## 7.4 일반화 — 변환은 경계에서 한 번
+## 7.4 Generalization — transform at the boundary, once
 
-### 7.4.1 형태를 뽑으면
+### 7.4.1 Extract the form
 
-이 장의 코드 전부가 하나의 형태를 공유한다.
+All the code in this chapter shares one form.
 
-> **표현을 바꾸는 변환은 시스템의 경계에서 한 번만 하고, 안쪽은 한 가지 표현만
-> 다룬다. 안쪽에서 다시 변환해도 안전하려면 그 변환이 멱등이어야 한다.**
+> **A transform that changes the representation is done only once at the system's boundary, and the inside
+> handles only one representation. For a re-transform on the inside to be safe too, that transform must be
+> idempotent.**
 
-앞 문장이 규율이고 뒤 문장이 **그 규율이 깨졌을 때의 안전망**이다. 실무에서는 둘 다
-필요하다 — 규율만으로는 새 코드가 규율을 어기는 것을 막지 못하고, 안전망만으로는
-어디서 변환이 일어나는지 아무도 모르게 된다.
+The first sentence is the discipline and the second is **the safety net for when that discipline is broken.**
+In practice both are needed — the discipline alone does not stop new code from violating it, and the safety
+net alone leaves no one knowing where the transform happens.
 
-### 7.4.2 멱등인 변환과 아닌 변환
+### 7.4.2 Idempotent transforms and non-idempotent ones
 
-같은 자리에 놓이는 변환들을 멱등성 축으로 나누면 위험한 것이 어느 쪽인지 보인다.
+Divide the transforms placed at the same spot by the idempotency axis and it shows which side is dangerous.
 
-| 변환 | 멱등인가 | 두 번 걸면 |
+| Transform | Idempotent? | Apply twice |
 |---|---|---|
-| 퍼센트 인코딩 (소박한 구현) | **아니다** | `%20` → `%2520` → `%252520` (발산) |
-| 퍼센트 인코딩 (`%` 보존, 이 코드) | 그렇다 | 변화 없음 |
-| 퍼센트 **디코딩** | **아니다** | `%2520` → `%20` → 공백 (다른 값) |
-| HTML 엔티티 이스케이프 | **아니다** | `&` → `&amp;` → `&amp;amp;` |
-| SQL 인용부호 이스케이프 | **아니다** | `'` → `''` → `''''` |
-| Base64 인코딩 | **아니다** | 길이가 4/3 배씩 증가 |
-| 대문자화 · 소문자화 | 그렇다 | 변화 없음 |
-| 유니코드 NFC 정규화 | 그렇다 | 변화 없음 (제31장) |
-| 절대 경로 해석 (`Path.resolve`) | 그렇다 | 변화 없음 |
-| 점 세그먼트 제거 | 그렇다 | 변화 없음 |
-| 공백 제거 (`strip`) | 그렇다 | 변화 없음 |
+| percent-encoding (naive implementation) | **No** | `%20` → `%2520` → `%252520` (diverges) |
+| percent-encoding (`%` preserved, this code) | Yes | no change |
+| percent-**decoding** | **No** | `%2520` → `%20` → space (different value) |
+| HTML entity escape | **No** | `&` → `&amp;` → `&amp;amp;` |
+| SQL quote escape | **No** | `'` → `''` → `''''` |
+| Base64 encoding | **No** | length increases by 4/3 each time |
+| uppercasing · lowercasing | Yes | no change |
+| Unicode NFC normalization | Yes | no change (Chapter 31) |
+| absolute path resolution (`Path.resolve`) | Yes | no change |
+| dot-segment removal | Yes | no change |
+| whitespace strip (`strip`) | Yes | no change |
 
-**"인코딩"이라는 이름이 붙은 것은 대체로 멱등이 아니고, "정규화"라는 이름이 붙은
-것은 대체로 멱등이다.** 우연이 아니다.
+**Those named "encoding" are mostly not idempotent, and those named "normalization" are mostly idempotent.**
+It is not a coincidence.
 
-> **용어** — **동치류(equivalence class)**: 어떤 관계로 "같다"고 묶이는 값들의
-> 집합. **대표원(representative)**: 그 집합에서 대표로 고른 하나의 값.
+> **Term** — **equivalence class**: the set of values grouped as "the same" by some relation.
+> **representative**: one value chosen as the representative from that set.
 
-정규화는 정의상 **동치류마다 대표원을 골라 그 값으로 보내는 연산**이고, 대표원을
-다시 보내면 자기 자신이 나온다. 그래서 멱등이다. 반면 인코딩은 표현을 **다른 표현으로
-옮기는** 연산이고, 옮겨진 것을 또 옮기면 또 다른 표현이 된다.
+Normalization is by definition **an operation that picks a representative per equivalence class and sends the
+value to it**, and send the representative again and it comes out itself. That is why it is idempotent.
+Encoding, by contrast, is an operation that **moves a representation to another representation**, and move the
+moved thing again and it becomes yet another representation.
 
-`normalize_url` 이 인코딩을 하면서도 이름이 `encode_url` 이 아닌 것은 이 구분과
-맞는다. 이 함수는 URI 가 아닌 문자열과 이미 URI 인 문자열을 **모두 URI 로 보내고,
-이미 URI 인 것은 제자리에 둔다.** 그래서 멱등일 수 있다.
+That `normalize_url` does encoding yet is named not `encode_url` matches this distinction. This function sends
+**both** non-URI strings and already-URI strings to URIs, **and leaves what is already a URI in place.** That
+is why it can be idempotent.
 
-### 7.4.3 정규화되지 않은 값이 키가 되면
+### 7.4.3 When an un-normalized value becomes a key
 
-멱등성과 단일 출처가 함께 사 주는 것 하나가 더 있다 — **키의 신뢰성**이다.
+There is one more thing idempotency and single-source buy together — **the reliability of a key.**
 
 ```python
 # decrypt.py:24-31
@@ -769,122 +762,121 @@ URI 를 만들어 내는 그 지점에서 한 번.**
         return self._cache[key.uri]
 ```
 
-`KeyCache` 는 키 URI 를 문자열 그대로 캐시 키로 쓴다. 이것이 옳게 동작하는 근거는
-**모든 `key.uri` 가 [`playlist.py:313`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L313) 을 통과한 값**이라는 사실뿐이다. 같은 키를
-가리키는 두 표기가 캐시에 따로 들어갈 수 없다.
+`KeyCache` uses the key URI as the cache key, as a string. The basis for this working correctly is only the
+fact that **every `key.uri` is a value that passed [`playlist.py:313`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L313).** Two notations pointing at the same
+key cannot go into the cache separately.
 
-정규화 지점이 흩어져 있었다면 같은 키가 **정규화된 표기와 안 된 표기**로 각각
-캐시에 들어간다. `…/키.bin` 과 `…/%ED%82%A4.bin` 은 서버에게 같은 자원이지만
-파이썬 딕셔너리에게는 다른 키다. 증상은 "키를 두 번 받는다" — 기능은 정상이고 요청
-수만 늘어난다. **성능 저하로만 보이는 정확성 결함**이다.
+Had the normalization point been scattered, the same key goes into the cache separately as **a normalized
+notation and a non-normalized one.** `…/키.bin` and `…/%ED%82%A4.bin` are the same resource to the server but
+different keys to a Python dict. The symptom is "the key is received twice" — the feature is normal and only
+the request count rises. **A correctness fault that looks only like a performance degradation.**
 
-(`…/key.bin` 과 `…/key%2Ebin` 처럼 **둘 다 정규화를 통과한** 두 표기가 같은 자원을
-가리키는 경우는 이 코드가 합쳐 주지 못한다. `normalize_url` 이 RFC 3986 §6.2.2 의
-정규화를 전부 하지는 않기 때문이며, §7.6 에서 다시 적는다.)
+(The case where two notations that **both passed normalization** — like `…/key.bin` and `…/key%2Ebin` —
+point at the same resource, this code cannot merge. Because `normalize_url` does not do all of RFC 3986
+§6.2.2's normalization, recorded again in §7.6.)
 
-같은 형태가 나타나는 곳을 모으면 이렇다.
+Gather the places the same form appears.
 
-| 영역 | 키가 되는 값 | 정규화가 어긋나면 |
+| Domain | The value that becomes a key | If normalization is off |
 |---|---|---|
-| HTTP 캐시 | 요청 URI | 같은 자원이 두 항목으로 캐시된다. 반대로 다른 자원이 한 항목으로 합쳐지면 **캐시 오염** |
-| 중복 제거 집합 | URL · 식별자 | 중복이 걸러지지 않는다 (제29장의 자막 큐 중복 제거와 같은 구조) |
-| 접근 통제 목록 | 경로 · 사용자명 | **다른 표기로 목록을 우회한다** → §7.5 |
-| 멱등성 키 | 요청 식별자 | 같은 요청이 두 번 수행된다 |
-| 파일 시스템 | 파일명 | 눈에 같은 두 항목 (제31장) |
+| HTTP cache | the request URI | the same resource is cached as two entries. conversely if different resources merge into one entry, **cache poisoning** |
+| dedup set | URL · identifier | duplicates are not filtered (the same structure as Chapter 29's subtitle-cue dedup) |
+| access-control list | path · username | **bypass the list with a different notation** → §7.5 |
+| idempotency key | request identifier | the same request is performed twice |
+| file system | filename | two entries that look the same (Chapter 31) |
 
-세 번째 행이 보안 절로 넘어가는 다리다. **키가 정규화되지 않았다는 것은 검증이
-정규화되지 않은 값을 봤다는 뜻이고, 그것이 곧 우회다.**
+The third row is the bridge to the security section. **A key not being normalized means verification saw a
+non-normalized value, and that is a bypass.**
 
 ---
 
-## 7.5 보안 — 이중 인코딩 우회
+## 7.5 Security — the double-encoding bypass
 
-### 7.5.1 구조
+### 7.5.1 The structure
 
-이 장 전체의 성질을 공격자 관점으로 뒤집어 읽으면 이렇게 된다.
+Read this whole chapter's property inverted to the attacker's view and it becomes this.
 
-> **디코드 횟수가 계층마다 다르면, 같은 문자열이 계층마다 다른 값으로 보인다.**
+> **When the number of decodings differs per layer, the same string looks like a different value per layer.**
 
-> **용어** — **이중 인코딩 우회(double encoding bypass)**: 금지된 문자열을 두 번
-> 퍼센트 인코딩해 검증기를 통과시킨 뒤, 검증 이후 계층의 추가 디코딩이 그것을
-> 금지된 문자열로 되돌리게 하는 기법. 넓게는 **정준화 공격(canonicalization
-> attack)** 의 한 종류이며, CWE-174(Double Decoding of the Same Data)로 분류된다.
+> **Term** — **double encoding bypass**: a technique of percent-encoding a forbidden string twice to pass a
+> verifier, then having a post-verification layer's additional decoding turn it back into the forbidden
+> string. Broadly it is a kind of **canonicalization attack**, classified as CWE-174 (Double Decoding of the
+> Same Data).
 
-> **용어** — **정준화(canonicalization)**: 같은 것을 뜻하는 여러 표기를 하나의
-> 표준 표기로 모으는 연산. 이 장의 `normalize_url` 이 URI 에 대한 정준화다.
+> **Term** — **canonicalization**: the operation of gathering several notations meaning the same thing into
+> one standard notation. This chapter's `normalize_url` is canonicalization for URIs.
 
-> **용어** — **경로 순회(path traversal)**: 상위 디렉터리 이동 표기(`../`)를 입력에
-> 넣어 의도된 디렉터리 밖의 파일에 도달하는 공격. CWE-22.
+> **Term** — **path traversal**: an attack of putting parent-directory-move notation (`../`) into the input to
+> reach a file outside the intended directory. CWE-22.
 
-![요청·검증기·파일 계층에서 누적 디코드 횟수가 다르다](/images/lecture/hls-recon/07-decode-mismatch.svg)
+![The accumulated decode count differs at the request·verifier·file layers](/images/lecture/hls-recon/07-decode-mismatch.svg)
 
-*그림 7-3 — 이중 인코딩 우회 — 계층마다 누적 디코드 횟수가 다르다*
+*Figure 7-3 — the double-encoding bypass — the accumulated decode count differs per layer*
 
-그림의 각 계층에서 같은 요청이 어떻게 보이는지 표로 옮기면 이렇다.
+Move to a table how the same request looks at each layer of the figure.
 
-| 계층 | 누적 디코드 | 그 계층이 보는 문자열 | 판정 |
+| Layer | Accumulated decode | The string that layer sees | Verdict |
 |---|---|---|---|
-| ① 도착 | 0 | `/files/%252e%252e%252fetc/passwd` | — |
-| ② 검증기 | 1 | `/files/%2e%2e%2fetc/passwd` | 상위 이동 표기 없음 → **통과** |
-| ③ 파일 계층 | 2 | `/files/../etc/passwd` | 상위 디렉터리 도달 |
+| ① arrival | 0 | `/files/%252e%252e%252fetc/passwd` | — |
+| ② verifier | 1 | `/files/%2e%2e%2fetc/passwd` | no parent-move notation → **pass** |
+| ③ file layer | 2 | `/files/../etc/passwd` | reaches the parent directory |
 
-②는 거짓말을 하지 않았다. 자기가 본 문자열에는 정말로 `../` 가 없다. **문제는
-②가 본 것이 ③이 쓰는 것과 다르다는 사실이다.**
+② did not lie. In the string it saw there really is no `../`. **The problem is the fact that what ② saw is
+different from what ③ uses.**
 
-### 7.5.2 왜 횟수가 어긋나는가
+### 7.5.2 Why the counts get misaligned
 
-계층마다 디코딩 여부를 독립적으로 결정하고, 서로가 서로의 결정을 모르기 때문이다.
-실제 스택에서 디코딩이 일어날 수 있는 자리를 나열하면 이렇다.
+Because each layer independently decides whether to decode, and each does not know the others' decisions.
+Listing the spots decoding can happen in a real stack.
 
-| 자리 | 디코딩하는가 | 비고 |
+| Spot | Decodes? | Note |
 |---|---|---|
-| 리버스 프록시 · 로드밸런서 | 구현·설정에 따라 다름 | 정규화 후 업스트림에 **정규화된 형태로** 전달하는 설정이 흔하다 |
-| WAF · 필터 규칙 | 대개 한다 | 얼마나 여러 번 하는지가 제품마다 다르다 |
-| 웹 프레임워크 라우터 | 대개 한다 | 경로 변수 추출 시 |
-| 애플리케이션 코드 | 개발자가 부른 만큼 | `unquote()` 를 습관적으로 한 번 더 부르는 자리 |
-| 파일 계층 · OS | 하지 않는다 | 문자열을 그대로 경로로 쓴다 |
+| reverse proxy · load balancer | varies by implementation·config | a config passing a **normalized form** upstream after normalizing is common |
+| WAF · filter rule | usually does | how many times varies by product |
+| web-framework router | usually does | when extracting path variables |
+| application code | as many as the developer called | a spot that habitually calls `unquote()` one more time |
+| file layer · OS | does not | uses the string as a path as is |
 
-> **용어** — **WAF(Web Application Firewall, 웹 애플리케이션 방화벽)**: HTTP 요청을
-> 규칙과 대조해 악성 패턴을 차단하는 중간 장치. 규칙은 대개 문자열·정규식 매칭이다.
+> **Term** — **WAF (Web Application Firewall)**: an intermediate device that matches HTTP requests against
+> rules to block malicious patterns. The rules are usually string·regex matching.
 
-**어느 한 계층이 잘못한 것이 아니다.** 각자 합리적인 선택을 했고, 그 선택들의 합이
-어긋난 것이다. 그래서 이 취약점은 코드 리뷰에서 잘 잡히지 않는다 — 한 파일만 봐서는
-아무 문제가 없다.
+**No one layer did wrong.** Each made a reasonable choice, and the sum of those choices is misaligned. So this
+vulnerability is not easily caught in code review — looking at one file alone, there is no problem.
 
-여기서 이 장의 세 번째 명제가 나온다. 이 장의 핵심이다.
+Here comes this chapter's third proposition. It is the crux of this chapter.
 
-> **정규화 시점과 검증 시점이 어긋나면 그 자체가 취약점이다.
-> 검증은 반드시 최종 정규화 이후에 해야 한다.**
+> **When the normalization time and the verification time are misaligned, that itself is a vulnerability.
+> Verification must be done after the final normalization.**
 
-이 명제는 CWE 에도 이름이 있다.
+This proposition has a name in CWE too.
 
-> **용어** — **CWE-180(Incorrect Behavior Order: Validate Before Canonicalize)**:
-> 정준화보다 먼저 검증을 수행하는 잘못된 순서. 검증이 통과시킨 값이 정준화를 거쳐
-> 금지된 값이 되는 부류의 결함을 가리킨다.
+> **Term** — **CWE-180 (Incorrect Behavior Order: Validate Before Canonicalize)**: the wrong order of
+> performing verification before canonicalization. It refers to the class of fault where a value verification
+> passed becomes a forbidden value after canonicalization.
 
-§7.4.2 의 표를 다시 보면 위험한 조합이 정확히 어디인지 보인다. **멱등이 아닌
-변환이 검증 이후에 남아 있는 것**이 조건이다. 변환이 멱등이면 검증 시점의 값과
-사용 시점의 값이 같으므로 이 결함이 성립하지 않는다.
+Look at §7.4.2's table again and it shows exactly where the dangerous combination is. The condition is **a
+non-idempotent transform remaining after verification.** If the transform is idempotent, the value at
+verification and the value at use are the same, so this fault does not hold.
 
-### 7.5.3 이 장의 코드는 어느 쪽인가
+### 7.5.3 Which side is this chapter's code?
 
-`normalize_url` 은 **인코딩 방향의 정준화**이고, 위 공격은 **디코딩 방향**에서
-일어난다. 부호가 반대다. 그러나 성질은 같다.
+`normalize_url` is **canonicalization in the encoding direction**, and the above attack happens in the
+**decoding direction.** The sign is opposite. But the property is the same.
 
-| | 이 장의 코드 (클라이언트) | 이중 인코딩 우회 (서버) |
+| | This chapter's code (client) | Double-encoding bypass (server) |
 |---|---|---|
-| 방향 | 인코딩 | 디코딩 |
-| 횟수가 어긋나면 | 주소가 **다른 자원**을 가리킨다 → 404 | 경로가 **다른 파일**을 가리킨다 → 유출 |
-| 성질 | 멱등이라 어긋나도 값이 같다 | 멱등이 아니라 어긋나면 값이 달라진다 |
-| 결과 | 안전 | 취약 |
+| direction | encoding | decoding |
+| if the count is misaligned | the address points at a **different resource** → 404 | the path points at a **different file** → leak |
+| property | idempotent, so the value is the same even if misaligned | not idempotent, so the value differs if misaligned |
+| result | safe | vulnerable |
 
-**같은 성질을 어느 쪽에서 보느냐의 차이다.** 클라이언트는 "몇 번 걸려도 같은 값"을
-원하고, 그래서 멱등한 변환을 골랐다. 서버 측 디코딩은 본질적으로 멱등이 아니므로
-같은 방법을 쓸 수 없고, 대신 **횟수를 하나로 고정**해야 한다.
+**It is a difference of which side you view the same property from.** The client wants "the same value however
+many times applied," and so chose an idempotent transform. Server-side decoding is inherently not idempotent,
+so it cannot use the same method, and instead must **fix the count to one.**
 
-### 7.5.4 이 저장소의 서버 쪽 코드
+### 7.5.4 This repository's server-side code
 
-이 저장소에도 HTTP 를 받는 코드가 있다. 테스트용 서버다.
+This repository has code that receives HTTP too. A test server.
 
 ```python
 # tests/gzip_server.py:22-25
@@ -894,200 +886,190 @@ URI 를 만들어 내는 그 지점에서 한 번.**
             return
 ```
 
-두 가지를 확인할 수 있다.
+Two things can be confirmed.
 
-**① 디코드 횟수가 0 이다.** `BaseHTTPRequestHandler` 는 `self.path` 를 퍼센트
-디코드하지 않는다. 실측했다.
+**① The decode count is 0.** `BaseHTTPRequestHandler` does not percent-decode `self.path`. Measured.
 
 ```
 200  /plain/index.m3u8
-404  /%EC%97%90%ED%94%BC%EC%86%8C%EB%93%9C01.vtt     ← 파일은 존재하지만 열리지 않는다
+404  /%EC%97%90%ED%94%BC%EC%86%8C%EB%93%9C01.vtt     ← the file exists but does not open
 404  /에피소드01.vtt
 ```
 
-디코드하지 않으므로 `%2e%2e` 는 끝까지 `%2e%2e` 라는 이름의 디렉터리를 찾을 뿐이고,
-**횟수가 어긋날 여지 자체가 없다.** 다만 이것은 방어라기보다 미구현이다 —
-퍼센트 인코딩된 정상 경로도 열지 못한다. 현재 테스트는 ASCII 경로만 쓰므로 드러나지
-않는다(§7.6).
+Since it does not decode, `%2e%2e` only looks for a directory literally named `%2e%2e` to the end, and **there
+is no room for the count to be misaligned.** But this is not so much a defense as an unimplemented feature — it
+cannot open even a percent-encoded normal path. The current tests use only ASCII paths, so it does not surface
+(§7.6).
 
-**② 검증이 정준화 이후에 온다.** `resolve()` 로 심볼릭 링크와 `..` 를 모두 푼
-**최종 절대 경로**를 만든 뒤, 그 값에 대해 `ROOT` 하위인지 검사한다. 순서가 바뀌어
-`self.path` 문자열에서 `".." in path` 를 검사한 뒤 열었다면 §7.5.1 의 구조가 그대로
-성립한다.
+**② Verification comes after canonicalization.** After making the **final absolute path** with `resolve()`
+resolving all symbolic links and `..`, it checks against that value whether it is under `ROOT`. Had the order
+been reversed, checking `".." in path` on the `self.path` string and then opening, §7.5.1's structure would
+hold as is.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — 문자열 검사로 `..` 를 막고 나서 경로를
-> 합치면, `..%2f`·`%2e%2e/`·`....//` 같은 표기가 전부 각각의 우회가 된다. 표기의
-> 가짓수를 막는 싸움은 끝나지 않는다. **최종 값 하나를 검사하면 표기의 가짓수와
-> 무관해진다.**
+> **What breaks if you do not do this** — block `..` with a string check and then join the path, and notations
+> like `..%2f`·`%2e%2e/`·`....//` each become a separate bypass. The fight against the variety of notations
+> never ends. **Check one final value and it becomes independent of the variety of notations.**
 
-비교 대상으로, 회귀 테스트가 콘텐츠를 서빙할 때 쓰는 `python3 -m http.server`
-(`tests/run.sh:149`)는 정반대로 **정확히 한 번 디코드한 뒤** 경로 조각에서 `..` 와
-`.` 를 걸러낸다. 횟수가 1 로 고정돼 있고 검증이 그 뒤에 있으므로, 역시 어긋날
-여지가 없다. **횟수가 0 이든 1 이든 상관없다 — 하나로 정해져 있고 검증이 그
-뒤라는 것이 중요하다.**
+For comparison, `python3 -m http.server` (`tests/run.sh:149`), which the regression test uses to serve
+content, does the opposite — it **decodes exactly once** and then filters out `..` and `.` from the path
+segments. The count is fixed at 1 and verification is after it, so there is no room for misalignment either.
+**Whether the count is 0 or 1 does not matter — what matters is that it is fixed to one and verification is
+after it.**
 
-### 7.5.5 방어자 관점
+### 7.5.5 The defender's view
 
-우회 경로만 설명하고 끝내지 않는다. 역할별로 해야 할 일을 적는다.
+We do not explain only bypass paths and stop. What to do, by role.
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **애플리케이션 개발자** | 검증을 **최종 사용 직전의 값**에 건다. 문자열이 아니라 해석된 결과(절대 경로·파싱된 URI·정수)를 검사한다. 금지 목록(`..`, `%2e`)을 늘리는 방향은 끝이 없다 |
-| **프레임워크·라이브러리 설계자** | 디코딩 지점을 **하나로 노출**하고, 그 앞뒤 값을 구분되는 타입으로 만든다. `RawPath` 와 `DecodedPath` 가 다른 타입이면 순서 실수가 컴파일 단계에서 잡힌다 |
-| **인프라 운영자** | 프록시·WAF·애플리케이션 중 **어디가 디코딩하는지 문서화**하고 총 횟수를 고정한다. 프록시가 정규화한 형태를 업스트림에 전달하는지, 원문을 전달하는지가 결정적이다 |
-| **WAF 규칙 작성자** | 규칙이 보는 값과 애플리케이션이 쓰는 값이 같은지 확인한다. 다르면 그 규칙은 **있는데 없는 것**이며, 있다는 사실이 오히려 위험하다 |
-| **감사자** | "입력을 검증한다"는 주장에는 **어느 시점의 값을 검증하는가**를 물어야 한다. 검증 함수 자체가 아니라 검증과 사용 사이에 있는 변환이 문제다 |
-| **클라이언트 구현자** (이 저장소) | 변환을 멱등으로 만들고 생산 지점을 하나로 모은다. 그러면 계층마다 몇 번 걸리든 값이 같다 |
+| **application developer** | put the check on **the value just before final use.** check not the string but the interpreted result (absolute path·parsed URI·integer). growing the blocklist (`..`, `%2e`) never ends |
+| **framework·library designer** | **expose the decoding point as one**, and make the values before and after it distinct types. if `RawPath` and `DecodedPath` are different types, an order mistake is caught at compile time |
+| **infrastructure operator** | **document which of proxy·WAF·application decodes**, and fix the total count. whether the proxy passes the normalized form upstream or the original is decisive |
+| **WAF-rule author** | confirm that the value the rule sees and the value the application uses are the same. if they differ, that rule is **there but not there**, and its existence is rather a danger |
+| **auditor** | the claim "we validate the input" must be met with **at what time's value do you validate.** the problem is not the validation function itself but the transform between validation and use |
+| **client implementer** (this repository) | make the transform idempotent and gather the production points into one. then however many times it applies per layer, the value is the same |
 
-두 번째 행이 가장 근본적이다. **순서를 지키라고 요구하는 것보다 순서를 틀릴 수 없게
-만드는 것이 낫다.** 이 저장소가 `_absolute` 한 곳에서 `urljoin` 과 `normalize_url`
-을 붙여 놓은 것도 같은 발상이다 — 호출자에게 순서 선택권을 주지 않는다.
+The second row is most fundamental. **Making it impossible to get the order wrong is better than requiring the
+order be kept.** That this repository attached `urljoin` and `normalize_url` together in one `_absolute` spot
+is the same idea — it gives the caller no choice of order.
 
-### 7.5.6 같은 구조의 다른 알파벳
+### 7.5.6 The same structure in a different alphabet
 
-이 장의 명제는 퍼센트 인코딩에만 걸리는 것이 아니다. "검증 이후에 값을 바꾸는
-변환이 남아 있다"는 조건만 만족하면 어떤 변환이든 같은 결함을 만든다.
+This chapter's proposition catches not only on percent-encoding. Any transform makes the same fault as long as
+it satisfies the condition "a value-changing transform remains after verification."
 
-| 변환 | 검증기가 보는 것 | 이후 변환이 만드는 것 |
+| Transform | What the verifier sees | What a later transform makes |
 |---|---|---|
-| 퍼센트 디코딩 (이 장) | `%2e%2e` | `..` |
-| 유니코드 정규화 | 검증을 통과하는 표기 | 금지된 값 (제31장) |
-| 대소문자 접기 | 목록에 없는 표기 | 목록에 있는 값 |
-| 경로 정규화 | `a/b/../c` | `a/c` |
-| 문자 인코딩 변환 | 다른 바이트열 | 같은 문자 |
+| percent-decoding (this chapter) | `%2e%2e` | `..` |
+| Unicode normalization | a notation that passes the check | a forbidden value (Chapter 31) |
+| case folding | a notation not in the list | a value in the list |
+| path normalization | `a/b/../c` | `a/c` |
+| character-encoding conversion | a different byte sequence | the same character |
 
-두 번째 행이 제7부의 주제다. **문자 정규화와 퍼센트 인코딩은 실제로 같은 변환
-사슬에 놓여 있다** — RFC 3987 §3.1 의 IRI → URI 변환은 1단계에서 (입력이 비유니코드
-표현일 때) NFC 정규화를 요구하고, 2단계에서 UTF-8 퍼센트 인코딩을 한다. 이 장은
-그 사슬의 뒤쪽 절반이고, 앞쪽 절반은 제31장에서 다룬다. 구조가 같으므로 §7.5.2 의
-명제가 그대로 적용된다는 것만 여기서 확인해 두고 넘어간다.
+The second row is Part 7's subject. **Character normalization and percent-encoding are actually on the same
+transform chain** — RFC 3987 §3.1's IRI → URI conversion requires NFC normalization in stage 1 (when the input
+is a non-Unicode representation) and does UTF-8 percent-encoding in stage 2. This chapter is the back half of
+that chain, and the front half is covered in Chapter 31. Since the structure is the same, we only confirm here
+that §7.5.2's proposition applies as is and move on.
 
 ---
 
-## 7.6 한계와 미해결
+## 7.6 Limits and open questions
 
-정직하게 적어 둔다.
+Noted honestly.
 
-- **날것 문자열 속의 리터럴 `%` 는 표현할 수 없다.** §7.2.5 에서 본 대로 멱등성의
-  대가이며 버그가 아니라 선택이다. 이름에서 조립하는 경로(§7.3.6)는 전용 인코더가
-  앞에 서므로 영향이 없고, **플레이리스트에 적힌 상대 URI 와 사용자가 붙여 넣은
-  주소**에서만 성립한다. 다만 **선택의 근거가 관측 부재**라는 점은 약하다 — "그런
-  이름을 본 적이 없다"는 "그런 이름이 없다"가 아니다. 마주치면 `normalize_url` 이
-  조용히 깨진 이스케이프를 통과시키고, 서버는 404 나 400 을 준다.
+- **A literal `%` inside a raw string cannot be represented.** As seen in §7.2.5, it is the price of
+  idempotency and a choice, not a bug. A path assembled from a name (§7.3.6) has a dedicated encoder in front
+  so it is unaffected, and it holds only in **a relative URI written in a playlist and an address the user
+  pasted.** But that **the choice's basis is an absence of observation** is weak — "I have never seen such a
+  name" is not "no such name exists." Meet it and `normalize_url` passes a quietly broken escape through, and
+  the server gives a 404 or 400.
 
-- **깨진 이스케이프를 검출하지 않는다.** `%zz`·`%2` 같은 입력이 그대로 나간다.
-  검출하려면 삼중자 문법을 검사하는 단계를 추가해야 하는데, 그 검사가 §7.2.5 의
-  모호성을 다시 불러온다("이 `%` 는 표지인가 데이터인가"). 현재는 검사하지 않는다.
+- **It does not detect a broken escape.** Inputs like `%zz`·`%2` go out as is. To detect it you would add a
+  stage checking the triplet syntax, and that check reintroduces §7.2.5's ambiguity ("is this `%` a marker or
+  data"). Currently it does not check.
 
-- **`normalize_url` 은 RFC 3986 §6.2.2 의 정규화를 전부 하지는 않는다.** 실측이다.
+- **`normalize_url` does not do all of RFC 3986 §6.2.2's normalization.** A measurement.
 
   ```
   'https://CDN.Example:443/a/../b/c.ts'  ->  'https://CDN.Example:443/a/../b/c.ts'
   ```
 
-  스킴·호스트 소문자화(§6.2.2.1), 삼중자 16진수 대문자화(§6.2.2.1), 비예약 문자의
-  불필요한 인코딩 해제(§6.2.2.2), 점 세그먼트 제거(§6.2.2.3) 중 어느 것도 하지
-  않는다. 마지막 것은 `_absolute` 안에서 `urljoin` 이 해 주지만, `normalize_url`
-  **단독**으로는 하지 않는다. **이 함수는 "URI 동등성 판정용 정준형"을 만들지
-  않는다** — 이름은 정규화이지만 실제 범위는 "IRI → URI 변환 + 비합법 문자 인코딩"에
-  가깝다.
+  Scheme·host lowercasing (§6.2.2.1), triplet-hex uppercasing (§6.2.2.1), unnecessary-encoding removal of
+  unreserved characters (§6.2.2.2), dot-segment removal (§6.2.2.3) — it does none of them. The last is done by
+  `urljoin` inside `_absolute`, but `normalize_url` **alone** does not. **This function does not make a
+  "canonical form for URI-equivalence judgment"** — the name is normalization but the actual scope is closer
+  to "IRI → URI conversion + encoding of illegal characters."
 
-  이것이 실제로 문제가 되는 자리는 §7.4.3 의 캐시 키다. `…/key.bin` 과
-  `…/key%2Ebin` 은 규격상 같은 자원을 가리키지만(§6.2.2.2 는 비예약 문자의 인코딩을
-  풀라고 한다) 이 코드는 둘을 다른 문자열로 남기므로 캐시 항목이 둘로 갈린다.
-  **관측되지 않았고, 관측할 계측도 없다.**
+  Where this actually becomes a problem is §7.4.3's cache key. `…/key.bin` and `…/key%2Ebin` point at the same
+  resource by spec (§6.2.2.2 says to decode unreserved characters), but this code leaves the two as different
+  strings so the cache entry splits into two. **Not observed, and there is no measurement to observe it.**
 
-- **호출 횟수 계측은 최소 재현 환경의 값이다.** §7.3.5 의 "7회"는 세그먼트 3개짜리
-  로컬 스트림에 계측 코드를 감싸 측정한 것이고, 실제 실행(자막·키·시리즈 경로 포함)의
-  횟수는 이보다 많다. 표의 **비율**과 **소비자별 누적 횟수의 차이**가 요점이지
-  절대값이 아니다.
+- **The call-count measurement is a value from a minimal reproduction environment.** §7.3.5's "7 times" is
+  measured by wrapping counting code on a local 3-segment stream, and the count of a real run (including
+  subtitle·key·series paths) is higher than this. The **ratio** and the **difference in accumulated count per
+  consumer** in the table are the point, not the absolute value.
 
-- **"ffmpeg 도 입력을 열지 못한다"는 주석이 재현되지 않았다.** [`fetch.py:41-42`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L41-L42) 의
-  서술이다. ffmpeg 8.1.1 로 같은 조건을 만들어 측정한 결과는 반대였다 — 한글과 공백이
-  든 경로의 HLS 를 로컬 서버에 두고 **날것 URL 을 그대로** 넘겼는데 열렸다.
+- **The comment "ffmpeg too cannot open the input" was not reproduced.** It is the statement at
+  [`fetch.py:41-42`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L41-L42). The result of making the same condition and measuring with ffmpeg 8.1.1 was the
+  opposite — placed an HLS with a Korean·space path on a local server and passed **the raw URL as is**, and it
+  opened.
 
   ```
   $ ffprobe -v error -show_entries format=duration -of csv=p=0 "http://127.0.0.1:8979/그렌 01/index.m3u8"
   4.000000
 
-  # 서버가 받은 요청 줄
+  # the request line the server received
   "GET /%EA%B7%B8%EB%A0%8C%2001/index.m3u8 HTTP/1.1"
   ```
 
-  **ffmpeg 이 스스로 퍼센트 인코딩해서 보냈다.** 즉 이 버전에서는 위임 경로가
-  `normalize_url` 없이도 동작한다. 세 가지 가능성이 있고 어느 것인지 확정하지 못했다 —
-  (a) 주석이 더 오래된 ffmpeg 에서 관측된 것, (b) 실제 CDN 의 경로가 이 재현과 다른
-  성질(예: 질의 문자열 안의 비-ASCII)을 가졌던 것, (c) 주석이 urllib 쪽 실패에서
-  유추한 서술인 것.
+  **ffmpeg percent-encoded and sent it itself.** That is, in this version the delegated path works even without
+  `normalize_url`. There are three possibilities and which one could not be determined — (a) the comment was
+  observed on an older ffmpeg, (b) a real CDN's path had a different property from this reproduction (e.g.,
+  non-ASCII inside a query string), (c) the comment was a statement inferred from the urllib-side failure.
 
-  다만 **결론이 바뀌지는 않는다.** urllib 쪽 실패는 §7.1.1 에서 실측했고, 이 저장소는
-  ffmpeg 버전을 고정하지 않으므로(제15장 §15.7 과 같은 논거) 상류 구현의 자발적
-  인코딩에 기대는 것은 근거가 약하다. **측정된 것과 측정되지 않은 것을 구분해 적는
-  것**이 이 교재의 형식이므로 그대로 남긴다.
+  But **the conclusion does not change.** The urllib-side failure was measured in §7.1.1, and this repository
+  does not fix the ffmpeg version (same argument as Chapter 15 §15.7), so relying on an upstream
+  implementation's voluntary encoding is weak grounds. **Recording what was measured and what was not
+  separately** is this course's form, so it is left as is.
 
-- **ffmpeg 로 가는 최상위 주소는 정규화를 거치지 않는다.** §7.3.5 의 네 번째 행이다.
-  사용자가 미디어 플레이리스트 URL 을 직접 주면 `cli.py:138 → 177 → 539/595` 경로로
-  **날것 문자열이 그대로** `probe`·`assemble` 에 전달된다. 위 항목의 측정에 따르면
-  ffmpeg 8.1.1 에서는 문제가 되지 않으므로 **현재 관측되는 증상은 없다.** 그러나
-  이것은 §15.6 이 말한 **우연한 방어**와 같은 상태다 — 이 자리가 안전한 이유가
-  이 저장소의 결정이 아니라 상류의 동작이다. 고치는 방법은 자명하다(`_load` 가
-  `normalize_url(src)` 를 돌려주면 된다). **이 장에서 코드를 고치지는 않았다.**
+- **The top-level address going to ffmpeg does not pass normalization.** It is the fourth row of §7.3.5. If the
+  user gives the media playlist URL directly, the raw string is passed **as is** to `probe`·`assemble` via the
+  `cli.py:138 → 177 → 539/595` path. By the above item's measurement it is not a problem on ffmpeg 8.1.1, so
+  **there is no currently observed symptom.** But this is the same state as the **accidental defense** §15.6
+  spoke of — the reason this spot is safe is not this repository's decision but the upstream's behavior. The
+  way to fix it is obvious (`_load` returning `normalize_url(src)`). **This chapter did not fix the code.**
 
-- **IDN 호스트는 실측하지 못했다.** §7.3.3 의 서술은 규격(RFC 3987 §3.1)과 표준
-  라이브러리 동작에서 나온 것이다. 이 도구가 IDN 호스트 송출을 처리한 기록은 없다.
+- **An IDN host could not be measured.** §7.3.3's statement comes from the spec (RFC 3987 §3.1) and
+  standard-library behavior. There is no record of this tool processing an IDN-host delivery.
 
-- **`tests/gzip_server.py` 는 퍼센트 인코딩된 경로를 열지 못한다.** §7.5.4 의 실측이
-  그것이다. 현재 테스트가 이 서버에 요청하는 것은 `/plain/` 아래의 ASCII 경로뿐이라
-  (`tests/run.sh:157,183,191`) 드러나지 않는다. 한글 경로를 이 서버로 옮기면 즉시
-  404 가 된다. **테스트 픽스처가 본 서버보다 좁은 경우를 다루고 있다**는 뜻이며,
-  인코딩 왕복을 고정하는 테스트는 `python3 -m http.server` 쪽에만 있다.
+- **`tests/gzip_server.py` cannot open a percent-encoded path.** §7.5.4's measurement is that. The current test
+  requests of this server only ASCII paths under `/plain/` (`tests/run.sh:157,183,191`), so it does not
+  surface. Move a Korean path to this server and it 404s immediately. It means **the test fixture handles a
+  narrower case than the server itself**, and the test fixing the encoding round trip is only on the
+  `python3 -m http.server` side.
 
-- **`series.discover` 의 중복 제거 키는 정규화 전 값이다.** `page_url` 을
-  `urljoin` 결과 그대로 `seen` 집합에 넣는다([`series.py:171-174`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L171-L174)). 같은 회차가 두
-  표기로 실려 있으면 중복 제거가 실패한다 — §7.4.3 이 경고한 형태다. **실제로
-  그런 목록을 관측한 적은 없고**, 실패해도 같은 회차를 두 번 받는 정도의 영향이다.
+- **`series.discover`'s dedup key is the pre-normalization value.** It puts `page_url` into the `seen` set as
+  the `urljoin` result as is ([`series.py:171-174`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L171-L174)). If the same episode is carried in two notations, dedup
+  fails — the form §7.4.3 warned of. **No such list was actually observed**, and even if it fails the impact is
+  about receiving the same episode twice.
 
 ---
 
-## 7.7 요약
+## 7.7 Summary
 
-1. URI 는 규격상 ASCII 다(RFC 3986). 한글·공백이 박힌 주소는 **연결 전에**
-   `UnicodeEncodeError` 로 죽는다. TCP 연결조차 맺어지지 않아 HTTP 바이트가 한 개도
-   나가지 않은 상태이고, 예외 이름은 텍스트 처리 오류처럼 보인다. (같은 주석이 주장하는
-   ffmpeg 쪽 실패는 **재현되지 않았다** — §7.6.)
-2. **퍼센트 인코딩은 멱등이 아니다.** 소박하게 구현하면 `%20` → `%2520` →
-   `%252520` 으로 발산한다. RFC 3986 §2.4 가 "같은 문자열을 두 번 이상 인코딩하거나
-   디코딩해서는 안 된다"고 명시한다.
-3. `_PATH_SAFE` 가 `%` 를 남기는 것이 이 코드를 멱등으로 만든다. 실측 반사실 —
-   `%` 를 빼면 **플레이리스트는 열리고 세그먼트만 전부 404** 가 된다. 원인과 증상이
-   한 계층 떨어진 실패다.
-4. `_PATH_SAFE` 는 임의 목록이 아니라 **RFC 3986 의 `pchar` ∪ {`/`}** 이고,
-   `_QUERY_SAFE` 는 `query`·`fragment` 의 허용 집합과 정확히 같다. 목록에 규격의
-   이름을 붙일 수 있다는 것이 곧 검증 가능성이다.
-5. **URI 를 낳는 지점은 하나다**([`playlist.py:30-38`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L30-L38)). 플레이리스트 상대 경로·
-   시리즈 페이지 링크·사이드카 후보·헤더의 Referer 가 전부 같은 함수를 지난다.
-   `urljoin`(참조 해석)과 `normalize_url`(인코딩)의 **순서가 한 줄에 고정**되어
-   호출자에게 선택권이 없다.
-6. 소비자마다 누적 적용 횟수가 다르다 — HTTP 수신은 2회, ffmpeg 입력은 1회,
-   그리고 **0회인 자리가 하나 남아 있다**(사용자가 직접 준 미디어 플레이리스트 URL,
-   §7.3.5·§7.6). **횟수가 다른데 값이 같은 것**이 멱등성이 사 주는 전부다.
-7. 멱등성의 대가는 **단사성**이다. 이 함수는 날것 문자열 속의 리터럴 `%` 를
-   표현하지 못한다. 동시에 가질 수 없는 둘 중 하나를 고른 것이며, 근거는 도메인에
-   있다. 이름 전용 인코더가 앞에 서는 경로(§7.3.6)는 영향받지 않는다.
-8. 문자열 조작은 **디코드된 표현**에서 하고 인코딩은 경계에 맡긴다. `%20` 으로
-   남은 끝 공백은 `rstrip()` 에 보이지 않고, 그 주소는 **200 에 빈 목록**을 돌려준다.
-9. **정규화 시점과 검증 시점이 어긋나면 그 자체가 취약점이다.** 검증기가 1회
-   디코드하고 파일 계층이 2회 디코드하면, `%252e%252e` 가 검증을 통과한 뒤 `..` 가
-   된다(CWE-174 · CWE-180). 어느 계층도 잘못하지 않았고 합이 어긋난 것이다.
-10. 방어는 **최종 값 하나를 검사**하는 것이다. `tests/gzip_server.py:22-25` 가
-    `resolve()` 이후에 검사하는 것이 그 형태다. 금지 표기 목록을 늘리는 방향은
-    끝나지 않는다.
+1. A URI is ASCII by spec (RFC 3986). An address with Korean·space embedded dies with `UnicodeEncodeError`
+   **before the connection.** Not even a TCP connection is made, so not a single HTTP byte has gone out, and
+   the exception name looks like a text-processing error. (The ffmpeg-side failure the same comment claims was
+   **not reproduced** — §7.6.)
+2. **Percent-encoding is not idempotent.** Implement it naively and `%20` → `%2520` → `%252520` diverges. RFC
+   3986 §2.4 states "must not percent-encode or decode the same string more than once."
+3. That `_PATH_SAFE` leaves `%` makes this code idempotent. A measured counterfactual — remove `%` and **the
+   playlist opens while only the segments all 404.** A failure with cause and symptom one layer apart.
+4. `_PATH_SAFE` is not an arbitrary list but **RFC 3986's `pchar` ∪ {`/`}**, and `_QUERY_SAFE` is exactly the
+   allowed set of `query`·`fragment`. That a list can be labeled with the spec's names is verifiability.
+5. **The point that births a URI is one** ([`playlist.py:30-38`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L30-L38)). A playlist relative path·series-page link·
+   sidecar candidate·a header's Referer all pass the same function. The **order** of `urljoin` (reference
+   resolution) and `normalize_url` (encoding) is fixed in one line, so the caller has no choice.
+6. The accumulated applications differ per consumer — HTTP receipt 2, ffmpeg input 1, and **one spot remains at
+   0** (a media playlist URL the user gave directly, §7.3.5·§7.6). **That the count differs but the value is
+   the same** is all idempotency buys.
+7. The price of idempotency is **injectivity.** This function cannot represent a literal `%` inside a raw
+   string. It chose one of the two that cannot be had at once, and the basis is in the domain. The path where a
+   name-only encoder stands in front (§7.3.6) is unaffected.
+8. Do string operations on the **decoded representation** and leave encoding to the boundary. A trailing space
+   left as `%20` is invisible to `rstrip()`, and that address returns **200 with an empty list.**
+9. **When the normalization time and the verification time are misaligned, that itself is a vulnerability.** If
+   the verifier decodes once and the file layer decodes twice, `%252e%252e` passes verification and then
+   becomes `..` (CWE-174 · CWE-180). No layer did wrong; the sum is misaligned.
+10. The defense is **checking one final value.** That `tests/gzip_server.py:22-25` checks after `resolve()` is
+    that form. Growing the list of forbidden notations never ends.
 
 ---
 
-**다음 장** — 여기까지 주소는 옳게 만들어졌고, 요청은 나갈 수 있다. 그런데 세그먼트가
-수백 개라면 하나씩 받을 이유가 없고, 실패한 요청을 몇 번까지 다시 시도할지도 정해야
-한다. 제8장은 병렬 수신에서 **결과 순서를 어떻게 보존하는가**, 어떤 상태 코드를
-재시도하고 어떤 것을 즉시 포기하는가, 그리고 평균이 아니라 **p95** 를 보는 이유를
-다룬다. 재시도는 서버 입장에서 자기 자신을 향한 증폭이 될 수 있으므로, 무엇을 다시
-해 볼 만한가는 성능 문제이자 예의 문제다.
+**Next chapter** — up to here the address is made correctly and the request can go out. But if there are
+hundreds of segments there is no reason to receive them one at a time, and you must also decide how many times
+to retry a failed request. Chapter 8 covers **how the result order is preserved** in parallel receipt, which
+status codes to retry and which to give up on immediately, and the reason for looking at **p95** rather than
+the mean. Since a retry can be amplification toward the server itself, what is worth trying again is a
+performance issue and a matter of courtesy.

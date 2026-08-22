@@ -1,71 +1,77 @@
 ---
-untranslated: ko
-title: hls-recon 강의 — 스트림에서 파일로
-description: hls-recon 프로젝트의 코드를 교재 삼아, HLS 스트림을 로컬 파일로 되돌리고 그것이 온전한지 검증하며 배우는 컴퓨터 과학과 웹 보안.
-date: 2026-08-15
+title: The hls-recon Course — From Stream to File
+description: Computer science and web security, taught from the hls-recon codebase — reassembling an HLS stream into a local file and verifying that it arrived intact.
+date: 2026-05-18
 version: '1.0'
 tags: ['streaming', 'web-security', 'computer-science']
 thumbnail: /images/lecture/thumb/hls-recon.svg
 project: hls-recon
 ---
 
-이 강의는 개인 프로젝트 [**hls-recon**](https://github.com/hwanyong/hls-recon) 에서 나왔다.
-그 저장소의 실제 코드(15개 모듈 4,173 LOC + 회귀 테스트 525 LOC)를 교재 삼아,
-**웹 스트리밍을 로컬 파일로 되돌리는 과정에 필요한 컴퓨터 과학과 그 과정에 내재한 보안 한계**
-를 39차시에 걸쳐 다룬다.
+This course grew out of a personal project, [**hls-recon**](https://github.com/hwanyong/hls-recon).
+Using that repository's actual code (15 modules, 4,173 LOC + 525 LOC of regression tests) as the
+textbook, it covers — across 39 sessions — **the computer science needed to turn web streaming back
+into a local file, and the security limits inherent in that process.**
 
-출발점은 한 문장이다.
+It starts from a single sentence.
 
-> **총 길이가 맞는데 중간이 비어 있다.**
+> **The total length matches, but the middle is empty.**
 
-`ffmpeg -i master.m3u8 -c copy out.mp4` 는 중간 세그먼트가 HTTP 404 로 빠져도 조용히
-건너뛰고 종료 코드 0 으로 끝난다. 산출물의 총 재생 길이조차 정상과 같다. 왜 이런 일이
-가능한지 답하려면 MPEG-TS 의 표시 시각이 절대 좌표라는 사실을 알아야 하고, 그것을 알면
-"총 길이 비교"라는 검증이 왜 무력한지가 따라 나온다. 이 강의는 그 연쇄를 8부에 걸쳐 따라간다.
+`ffmpeg -i master.m3u8 -c copy out.mp4` silently skips a segment that drops out with an HTTP 404 and
+still exits 0. Even the output's total playback length matches a clean run. Answering why that is
+possible requires knowing that an MPEG-TS presentation timestamp is an absolute coordinate, and once
+you know that, why "compare the total length" is a powerless check follows on its own. This course
+follows that chain across eight parts.
 
-## 무엇을 배우는가
+## What you'll learn
 
-| 부 | 다루는 것 |
+| Part | What it covers |
 |---|---|
-| 1 문제의 성립 | 스트림과 파일의 두 존재론, ABR·HLS, RFC 8216 2계층 간접 참조 |
-| 2 전송 | HTTP 무상태성과 무결성의 부재, 상태 코드의 의미론적 붕괴, 콘텐츠 협상, URL 정규화 |
-| 3 접근 통제 | 핫링크·CORS·서명 URL·앰비언트 자격증명, 난독화의 한계, 확장자 위장과 CVE-2023-6602 |
-| 4 비트 수준 | MPEG-TS 188바이트 패킷, 4비트 순환 카운터, 자기동기 포맷, ISO-BMFF, PTS·90kHz |
-| 5 암호 | AES-128-CBC, IV 유도, 패딩, "AES-128 은 왜 DRM 이 아닌가", 암호화 입자 |
-| 6 시간과 분산 | 두 시간축의 아핀 대응, 33비트 래핑, at-least-once 와 멱등성, 위임의 경계 |
-| 7 표현과 이식성 | 유니코드 정규화, 파일명 인터페이스, 정규식의 정확도 |
-| 8 검증 방법론 | 테스트 오라클 문제, 결함 주입, 대조군, 양방향 고정, 판정의 종합 |
+| 1 The problem takes shape | The two ontologies of stream and file, ABR·HLS, RFC 8216's two-tier indirection |
+| 2 Transport | HTTP statelessness and the absence of integrity, the semantic collapse of status codes, content negotiation, URL normalization |
+| 3 Access control | Hotlink·CORS·signed URLs·ambient credentials, the limits of obfuscation, extension masquerading and CVE-2023-6602 |
+| 4 The bit level | The MPEG-TS 188-byte packet, the 4-bit cyclic counter, self-synchronizing formats, ISO-BMFF, PTS·90kHz |
+| 5 Cryptography | AES-128-CBC, IV derivation, padding, "why AES-128 is not DRM", encryption granularity |
+| 6 Time and distribution | The affine mapping of two clocks, 33-bit wrapping, at-least-once and idempotency, the boundary of delegation |
+| 7 Representation and portability | Unicode normalization, the filename as an interface, the accuracy of a regex |
+| 8 Verification methodology | The test oracle problem, fault injection, the control group, bidirectional fixing, synthesizing a verdict |
 
-각 차시는 **문제 → 원리 → 코드 → 일반화 → 보안** 다섯 단으로 짜였다. 코드를 인용하는
-자리에는 `file.py:line` 형식의 앵커가 붙어 있고, 그 앵커는 저장소의 실제 줄로 이어진다.
+Each session is built in five movements — **problem → principle → code → generalization → security**.
+Where code is cited, an anchor in `file.py:line` form is attached, and that anchor resolves to the
+real line in the repository.
 
-## 실습 파일 — 내려받아 직접 돌리기
+## Practice files — download and run them yourself
 
-이 강의의 모든 실측은 **로컬에서 닫힌다.** 인터넷도, 특정 스트리밍 서비스도 필요 없다.
-`ffmpeg` 와 `python3` 만으로 평문 TS·AES-128·fMP4·멀티 variant·자막 트랙을 직접 만들고,
-로컬 HTTP 서버로 흘려보내고, 결함을 주입해 검증 도구가 실제로 잡는지 확인한다.
+Every measurement in this course **closes locally.** No internet, no particular streaming service is
+needed. With only `ffmpeg` and `python3` you build plain TS, AES-128, fMP4, multi-variant, and subtitle
+tracks by hand, serve them over a local HTTP server, and inject faults to confirm the verification tools
+actually catch them.
 
 ```bash
 git clone https://github.com/hwanyong/hls-recon.git
 cd hls-recon
 
-# 요구사항: python 3.10+, ffmpeg/ffprobe (PATH 에 있어야 한다)
+# Requirements: python 3.10+, ffmpeg/ffprobe (must be on PATH)
 brew install ffmpeg
-pip install .          # hls-recon 명령이 설치된다 (cryptography 는 함께 딸려온다)
+pip install .          # installs the hls-recon command (cryptography comes along)
 
-./tests/run.sh         # 스트림 5종을 만들고, 결함을 주입하고, 62개 검사를 돌린다
+./tests/run.sh         # builds 5 kinds of stream, injects faults, runs 62 checks
 ```
 
-`./tests/run.sh` 한 줄이 전 과정을 한 번에 돈다 — 스트림 생성부터 결함 주입, 대조군
-비교(같은 결손에 ffmpeg 은 조용히 성공한다)까지. 설치하지 않고 저장소에서 바로 쓰려면
-`./hls-recon` 이 실행 파일이다. 각 스트림을 손으로 하나씩 만드는 법과 결함 8종을 주입하는
-법은 저장소의 `docs/appendix-A-lab-setup.md` 에 명령까지 그대로 적혀 있다.
+The single line `./tests/run.sh` runs the whole process at once — from stream generation through fault
+injection to the control comparison (ffmpeg alone silently succeeds on the same loss). To use it straight
+from the repository without installing, `./hls-recon` is the executable. How to build each stream by hand
+and how to inject the 8 kinds of fault is written out, commands and all, in the repository's
+`docs/appendix-A-lab-setup.md`.
 
-## 다루지 않는 것
+## What this course does not cover
 
-- **DRM 우회.** 이 저장소는 `KEYFORMAT=identity` 인 AES-128 만 처리하고 Widevine ·
-  FairPlay · PlayReady · SAMPLE-AES 를 코드 레벨에서 거부한다. 강의는 "AES-128 이 왜
-  DRM 이 아닌가"를 위협 모델의 문제로 설명하되, 상용 보호 시스템의 키 추출 기법은 다루지 않는다.
-- **영상 코덱 내부.** 이 코드는 재인코딩을 하지 않는다(`-c copy`). 코덱은 불투명한 바이트열로 다룬다.
-- **권한 없는 콘텐츠 취득의 정당화.** 접근 통제 메커니즘을 해부하는 목적은 그것이 어디까지
-  보증하고 어디부터 보증하지 못하는지를 아는 것이다. 방어자·감사자 관점에서 읽어야 의미가 있다.
+- **DRM circumvention.** This repository handles only AES-128 with `KEYFORMAT=identity` and rejects
+  Widevine · FairPlay · PlayReady · SAMPLE-AES at the code level. The course explains "why AES-128 is
+  not DRM" as a question of threat models, but does not cover key-extraction techniques for commercial
+  protection systems.
+- **The inside of a video codec.** This code does no re-encoding (`-c copy`). Codecs are treated as
+  opaque byte streams.
+- **Justifying the acquisition of content without authorization.** The point of dissecting access-control
+  mechanisms is to know how far they guarantee and where they stop guaranteeing. They are only meaningful
+  read from a defender's and an auditor's perspective.

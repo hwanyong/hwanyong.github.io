@@ -1,34 +1,34 @@
 ---
-untranslated: ko
-title: "4비트 순환 카운터의 한계"
-description: "검사기의 미탐률을 수로 적는다"
-date: 2026-08-17
+title: "The Limits of a 4-Bit Cyclic Counter"
+description: "Writing the checker's miss rate as a number"
+date: 2026-06-29
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-18-cc-counter-limits.svg
 ---
-## 18.0 이 장에서 답할 것
+## 18.0 What this chapter answers
 
-1. CC 검사는 정확히 무엇을 검출하는가
-2. 무엇을 검출하지 **못하는가** — 그 집합을 빠짐없이 적을 수 있는가
-3. 미탐률은 얼마인가. 그 수는 무엇에 의존하는가
-4. 오탐을 피하려고 둔 예외가 미탐을 어떻게 늘리는가
-5. 못 잡는 것을 알면서도 이 검사를 쓰는 이유는 무엇인가
+1. What exactly does the CC check detect?
+2. What does it **fail** to detect — can you write that set exhaustively?
+3. What is the miss rate? What does that number depend on?
+4. How does an exception placed to avoid false positives increase misses?
+5. Why use this check while knowing what it cannot catch?
 
-다섯째가 이 장의 정점이다. 이 장은 검사기를 자랑하는 장이 아니라 **검사기의 실패
-확률을 실측해 적어 두는 장**이다.
+The fifth is this chapter's summit. This chapter is not one that boasts of the checker but **one that measures
+and writes down the checker's failure probability.**
 
-> **용어** — **미탐(false negative, 위음성)**: 결함이 실제로 있는데 검사기가 없다고
-> 판정하는 것. 반대는 **오탐(false positive, 위양성)** — 결함이 없는데 있다고
-> 판정하는 것. 검사기 설계는 대개 둘 사이의 교환이다.
+> **Term** — **false negative (miss)**: the checker judging a defect absent when it is actually present. The
+> opposite is a **false positive** — judging a defect present when it is absent. Checker design is usually a
+> trade between the two.
 
 ---
 
-## 18.1 문제 — 검사기가 PASS 를 냈다
+## 18.1 The problem — the checker gave a PASS
 
-먼저 실측부터 본다. 다음 두 실행은 **같은 도구, 같은 옵션**이고 입력만 다르다.
+First look at the measurement. The following two runs are the **same tool, same options** and differ only in
+input.
 
-### 18.1.1 대조군 — 손대지 않은 스트림
+### 18.1.1 Control — the untouched stream
 
 ```bash
 ffmpeg -v error -y -f lavfi -i "testsrc2=size=320x180:rate=30:duration=10" \
@@ -39,98 +39,97 @@ ffmpeg -v error -y -f lavfi -i "testsrc2=size=320x180:rate=30:duration=10" \
 ```
 
 ```
-  ✓ TS 무결성          6,032 패킷 / PID 5종, 손실 0
-  ✓ 타임라인 연속성    영상 프레임 300개 연속, 결손 0 (간격 중앙값 33.3ms, 임계 400ms)
-  ✓ 전체 디코드        끝까지 오류 없이 디코드
-  검증 결과: PASS — 송출 데이터 정상
+  ✓ TS integrity        6,032 packets / 5 PIDs, 0 loss
+  ✓ timeline continuity 300 video frames continuous, 0 missing (interval median 33.3ms, threshold 400ms)
+  ✓ full decode         decoded to the end with no error
+  verdict: PASS — delivery data normal
 ```
 
-### 18.1.2 실험군 — 패킷 16개를 지운 스트림
+### 18.1.2 Experiment — the stream with 16 packets deleted
 
-`seg002.ts` 의 영상 PID 연속 구간(패킷 251–421번) 한가운데에서 **패킷 16개
-= 3,008바이트를 잘라냈다.** 앞뒤는 그대로다.
+In the middle of `seg002.ts`'s video-PID continuous run (packets 251–421), **16 packets = 3,008 bytes were cut
+out.** Before and after are untouched.
 
 ```
-  ✓ TS 무결성          6,016 패킷 / PID 5종, 손실 0        ← 손실 0 이라고 한다
-  ✓ 타임라인 연속성    영상 프레임 299개 연속, 결손 0       ← 한 프레임이 사라졌는데 결손 0
-  ✗ 전체 디코드        오류 6건 — [h264 @ …] mb_type 1034 in P slice too large at 17 3
-  검증 결과: FAIL — 결함 검출
+  ✓ TS integrity        6,016 packets / 5 PIDs, 0 loss        ← it says 0 loss
+  ✓ timeline continuity 299 video frames continuous, 0 missing ← a frame vanished, yet 0 missing
+  ✗ full decode         6 errors — [h264 @ …] mb_type 1034 in P slice too large at 17 3
+  verdict: FAIL — defect detected
 ```
 
-세 줄을 나란히 놓고 읽어야 한다.
+Set the three lines side by side and read them.
 
-| 검사 | 대조군 | 실험군 | 판정 |
+| Check | Control | Experiment | Verdict |
 |---|---|---|---|
-| TS 무결성 (CC) | 6,032 패킷, 손실 0 | **6,016 패킷, 손실 0** | PASS — **놓쳤다** |
-| 타임라인 연속성 (PTS) | 프레임 300개 | **프레임 299개**, 결손 0 | PASS — **놓쳤다** |
-| 전체 디코드 | 오류 없음 | 오류 6건 | FAIL — 잡았다 |
+| TS integrity (CC) | 6,032 packets, 0 loss | **6,016 packets, 0 loss** | PASS — **missed** |
+| timeline continuity (PTS) | 300 frames | **299 frames**, 0 missing | PASS — **missed** |
+| full decode | no error | 6 errors | FAIL — caught |
 
-**패킷 수가 16 줄었고 프레임이 하나 사라졌는데 두 검사가 "손실 0"·"결손 0"을 냈다.**
-숫자는 리포트에 그대로 찍혀 있지만, 비교할 기준선이 없으므로 그 숫자만으로는 아무것도
-알 수 없다. 결함을 잡은 것은 **완전히 다른 실패 모형을 가진 셋째 검사**뿐이다.
+**The packet count dropped by 16 and one frame vanished, yet two checks gave "0 loss"·"0 missing."** The numbers
+are printed in the report as-is, but with no baseline to compare against, those numbers alone tell you nothing.
+What caught the defect was **only the third check, which has a completely different failure model.**
 
-이 장이 세울 명제는 여기서 이미 보인다.
+The proposition this chapter will set is already visible here.
 
-> **PASS 는 "무결"이 아니라 "이 검사로는 못 잡았다"는 뜻이다.**
+> **PASS means not "intact" but "this check could not catch it."**
 
-이제 왜 하필 16개였는지, 그리고 못 잡는 경우를 **빠짐없이** 적을 수 있는지를 본다.
+Now we see why it was 16 specifically, and whether the missed cases can be written **exhaustively.**
 
 ---
 
-## 18.2 원리 — 4비트가 셀 수 있는 것
+## 18.2 The principle — what 4 bits can count
 
-### 18.2.1 카운터는 헤더의 마지막 4비트다
+### 18.2.1 The counter is the header's last 4 bits
 
-> **용어** — **continuity counter(연속성 카운터, CC)**: MPEG-TS 패킷 헤더 4바이트의
-> 마지막 4비트 필드. PID 별로 독립이며, **페이로드를 실은 패킷마다** 0–15 를 순환하며
-> 1씩 증가한다. 값이 건너뛰면 그 사이 패킷이 유실된 것이다.
+> **Term** — **continuity counter (CC)**: the last 4-bit field of the MPEG-TS packet header's 4 bytes. It is
+> independent per PID, and **for each packet carrying payload** it cycles 0–15 and increments by 1. A skipped
+> value means a packet was lost in between.
 
-![MPEG-TS 패킷 헤더 4바이트의 비트 배치와 continuity counter 의 위치](/images/lecture/hls-recon/18-cc-field.svg)
+![The bit layout of the MPEG-TS packet header's 4 bytes and the position of the continuity counter](/images/lecture/hls-recon/18-cc-field.svg)
 
-*그림 18-1 — MPEG-TS 패킷 헤더 4바이트 중 마지막 4비트가 continuity counter 다*
+*Figure 18-1 — of the MPEG-TS packet header's 4 bytes, the last 4 bits are the continuity counter*
 
-이 저장소의 모듈 독스트링이 그 역할을 한 문장으로 적어 둔다.
+This repository's module docstring writes that role in one sentence.
 
 ```python
 # tsanalyze.py:3-5
-ffmpeg 는 디코딩 관점의 오류만 보고한다. 송출 검증에서 정작 필요한 것은
-"전송 도중 패킷이 빠졌는가"이고, 그 답은 TS 패킷 헤더의 4비트
-continuity counter 에 있다 — PID 별로 0~15 를 순환하므로 값이 건너뛰면 유실이다.
+ffmpeg reports only decode-view errors. What delivery verification actually needs is
+"was a packet dropped in transit," and that answer is in the TS packet header's 4-bit
+continuity counter — it cycles 0-15 per PID, so a skipped value is a loss.
 ```
 
-**왜 이런 필드가 있는가.** MPEG-TS 는 1990년대 방송 전송로(위성·케이블·지상파)를 위해
-설계됐다. 전송로는 신뢰할 수 없고 재전송도 없다. 수신기는 "지금 받은 패킷이 앞 패킷의
-다음인가"를 스스로 판단해야 했고, 그 판단에 쓸 수 있는 예산이 **패킷당 4비트**였다.
-188바이트 중 4비트 — 0.27% 다. 이 예산이 이 장의 모든 한계를 낳는다.
+**Why is there such a field.** MPEG-TS was designed for 1990s broadcast transport paths (satellite·cable·
+terrestrial). The path is untrustworthy and there is no retransmission. The receiver had to judge for itself
+"is the packet just received the next one after the previous," and the budget it could spend on that judgment
+was **4 bits per packet.** 4 bits of 188 bytes — 0.27%. This budget births every limit in this chapter.
 
-### 18.2.2 관측 함수 — 유실 개수는 관측되지 않는다
+### 18.2.2 The observation function — the loss count is not observed
 
-어떤 PID 에서 페이로드를 실은 패킷 `k`개가 연속으로 사라졌다고 하자. 유실 직전 패킷의
-CC 값을 `p` 라 하면, 다음으로 관측되는 패킷의 CC 는 다음과 같다.
+Say `k` payload-carrying packets were lost consecutively on some PID. Call the CC value of the packet just
+before the loss `p`; then the CC of the next observed packet is the following.
 
 ```
-관측 CC = (p + 1 + k) mod 16
+observed CC = (p + 1 + k) mod 16
 ```
 
-검사기가 볼 수 있는 것은 `관측 CC` 하나뿐이다. `k` 자체는 어디에도 실려 오지 않는다.
-즉 **검사기는 `k` 를 관측하는 것이 아니라 `k mod 16` 을 관측한다.** 16으로 나눈
-나머지가 같은 유실은 서로 구별되지 않는다 — `k = 16` 과 `k = 0`(유실 없음)은 이
-카운터에게 **같은 사건**이다.
+What the checker can see is only `observed CC`. `k` itself is carried nowhere. That is, **the checker observes
+not `k` but `k mod 16`.** Losses with the same remainder mod 16 are indistinguishable from each other — `k = 16`
+and `k = 0` (no loss) are the **same event** to this counter.
 
-이것은 구현의 결함이 아니라 **정보량의 문제**다. 4비트는 16가지 상태만 구별할 수 있고,
-유실 개수는 16가지보다 많은 값을 가질 수 있다. 표현 공간보다 큰 것을 표현하려 하면
-반드시 충돌이 생긴다. 비둘기집 원리의 직접적 귀결이다.
+This is not an implementation flaw but **an information-content problem.** 4 bits can distinguish only 16 states,
+and the loss count can take more than 16 values. Try to represent something larger than the representation space
+and a collision necessarily arises. It is a direct consequence of the pigeonhole principle.
 
 ---
 
-## 18.3 코드 — 검사 규칙과 세 개의 예외
+## 18.3 The code — the check rule and three exceptions
 
 ```python
 # tsanalyze.py:104-119
         has_payload = bool(pkt[3] & 0x10)
         cc = pkt[3] & 0x0F
 
-        # CC 는 payload 를 실은 패킷에서만 증가한다. adaptation-only 패킷은 유지.
+        # CC increases only in packets carrying payload. an adaptation-only packet holds it.
         if not has_payload:
             last_cc[pid] = cc
             continue
@@ -138,17 +137,17 @@ CC 값을 `p` 라 하면, 다음으로 관측되는 패킷의 CC 는 다음과 �
         prev = last_cc.get(pid)
         if prev is not None:
             expected = (prev + 1) & 0x0F
-            if cc != expected and cc != prev:  # cc == prev 는 규격상 허용된 중복 패킷
+            if cc != expected and cc != prev:  # cc == prev is a spec-permitted duplicate packet
                 rep.cc_discontinuities += 1
                 if len(rep.cc_detail) < 20:
                     rep.cc_detail.append((pid, expected, cc))
         last_cc[pid] = cc
 ```
 
-열여섯 줄이지만 규칙은 넷이고, 그중 셋이 **오탐을 막기 위한 예외**다. 각 예외가 없으면
-무엇이 깨지는지를 실측으로 확인했다.
+Sixteen lines, but the rules are four, and three of them are **exceptions to prevent false positives.** I
+confirmed by measurement what breaks without each exception.
 
-### 18.3.1 예외 ① — PID 별 독립 카운터
+### 18.3.1 Exception ① — a per-PID independent counter
 
 ```python
 # tsanalyze.py:96-98
@@ -157,130 +156,128 @@ CC 값을 `p` 라 하면, 다음으로 관측되는 패킷의 CC 는 다음과 �
             continue
 ```
 
-CC 는 스트림 전체가 아니라 **PID 별로** 순환한다. 하나의 TS 안에는 여러 기본 스트림이
-다중화되어 있고, 각각 자기 카운터를 가진다. 실측한 시험 스트림의 구성은 이렇다.
+CC cycles not per whole stream but **per PID.** Inside one TS several elementary streams are multiplexed, each
+with its own counter. The composition of the measured test stream is this.
 
-| PID | 역할 | 패킷 수 | 비율 |
+| PID | Role | Packet count | Ratio |
 |---|---|---|---|
-| `0x0100` | 영상 (H.264) | 1,033 | 90.5% |
-| `0x0101` | 오디오 (AAC) | 104 | 9.1% |
-| `0x0000` | PAT (프로그램 연관 표) | 2 | 0.2% |
-| `0x1000` | PMT (프로그램 맵 표) | 2 | 0.2% |
-| `0x0011` | SDT (서비스 기술 표) | 1 | 0.1% |
+| `0x0100` | video (H.264) | 1,033 | 90.5% |
+| `0x0101` | audio (AAC) | 104 | 9.1% |
+| `0x0000` | PAT (Program Association Table) | 2 | 0.2% |
+| `0x1000` | PMT (Program Map Table) | 2 | 0.2% |
+| `0x0011` | SDT (Service Description Table) | 1 | 0.1% |
 
-`NULL_PID`(`0x1FFF`)는 대역폭 채우기용 널 패킷이고 CC 값이 규격상 무정의라 아예 건너뛴다.
-다만 이 줄을 지워도 ffmpeg 가 만든 CBR 스트림에서는 오탐이 0건이었다 — 그 널 패킷의 CC 가
-전부 0 이라 §18.3.3 의 중복 예외가 흡수한다. 이 줄이 막는 것은 널 패킷에 CC 를 달리 매기는
-다중화기에서의 오탐이다.
+`NULL_PID` (`0x1FFF`) is a bandwidth-filling null packet, and its CC value is spec-undefined so it is skipped
+entirely. Only, even if you delete this line, in the CBR stream ffmpeg made no false positive arose — because
+those null packets' CC are all 0, so §18.3.3's duplicate exception absorbs it. What this line prevents is a
+false positive on a multiplexer that assigns CC to null packets differently.
 
-### 18.3.2 예외 ② — payload 없는 패킷은 카운터를 올리지 않는다
+### 18.3.2 Exception ② — a packet without payload does not raise the counter
 
-> **용어** — **adaptation field(적응 필드)**: TS 패킷에서 페이로드 앞에 놓이는 가변 길이
-> 영역. PCR(기준 클럭)·랜덤 액세스 표시·스터핑 바이트가 들어간다. 헤더의
-> `adaptation_field_control` 2비트가 이 필드와 페이로드의 유무를 정한다.
+> **Term** — **adaptation field**: a variable-length area placed before the payload in a TS packet. It contains
+> the PCR (reference clock)·random-access marker·stuffing bytes. The header's `adaptation_field_control` 2 bits
+> set the presence of this field and payload.
 
-`adaptation_field_control` 이 `10`(적응 필드만, 페이로드 없음)인 패킷은 규격상 **CC 를
-증가시키지 않는다.** 이것을 모르고 "모든 패킷마다 +1"로 검사하면 정상 스트림이
-전부 결함이 된다.
+A packet whose `adaptation_field_control` is `10` (adaptation field only, no payload) **does not increase CC**
+by spec. Not knowing this and checking "+1 for every packet" makes a normal stream all defect.
 
-합성 스트림(정상 패킷 200개 + adaptation-only 패킷 200개, 총 400패킷)으로 확인했다.
+I confirmed with a synthetic stream (200 normal packets + 200 adaptation-only packets, 400 total).
 
-| 규칙 | 오탐 |
+| Rule | False positives |
 |---|---|
-| 현재 코드 | **0건** |
-| `has_payload` 검사와 중복 예외를 **둘 다** 제거 | **200건** — 정상 스트림 전체가 결함 판정 |
+| current code | **0** |
+| remove **both** the `has_payload` check and the duplicate exception | **200** — the whole normal stream is judged defective |
 
-### 18.3.3 예외 ③ — `cc == prev` 는 허용된 중복 패킷이다
+### 18.3.3 Exception ③ — `cc == prev` is a permitted duplicate packet
 
-MPEG-TS 규격은 **같은 패킷을 한 번 더 보내는 것**을 허용한다(주로 PCR 을 실은
-패킷에서, 전송로 오류에 대비한 중복 송출). 중복 패킷은 CC 를 올리지 않으므로 앞
-패킷과 CC 가 같다. `cc != prev` 조건이 이 경우를 통과시킨다.
+The MPEG-TS spec permits **sending the same packet once more** (mainly in packets carrying the PCR, a duplicate
+transmission against transport-path errors). A duplicate packet does not raise CC, so its CC equals the previous
+packet's. The `cc != prev` condition lets this case pass.
 
-중복 패킷 10개를 섞은 합성 스트림으로 확인했다.
+I confirmed with a synthetic stream mixing 10 duplicate packets.
 
-| 규칙 | 오탐 |
+| Rule | False positives |
 |---|---|
-| 현재 코드 | **0건** |
-| `cc != prev` 예외 제거 | **10건** — 중복 송출 전량이 유실로 오판 |
+| current code | **0** |
+| remove the `cc != prev` exception | **10** — all duplicate transmissions misjudged as loss |
 
-### 18.3.4 예외 ④ — 첫 패킷에는 기준선이 없다
+### 18.3.4 Exception ④ — the first packet has no baseline
 
-`prev is None` 이면 검사하지 않고 기준값만 심는다. 그 PID 를 처음 보았을 때는 비교할
-직전 값이 없기 때문이다. 이 규칙은 필연이지만 **사각지대를 하나 만든다** — §18.7 에서
-그 대가를 잰다.
+If `prev is None`, it does not check but only plants the baseline. Because the first time it sees that PID there
+is no previous value to compare against. This rule is inevitable but **makes one blind spot** — §18.7 measures
+that price.
 
-### 18.3.5 한 번의 유실 = 한 건의 불연속
+### 18.3.5 One loss = one discontinuity
 
-마지막 줄 `last_cc[pid] = cc` 가 불연속 검출 **후에도** 실행된다. 즉 검출 직후
-카운터가 재동기되므로, 한 번의 유실 사건은 **1건**으로만 집계된다. 12개 패킷을 지운
-저장소의 결함 주입에서 그 세그먼트가 내는 `cc_discontinuities` 가 12가 아니라 2인 이유가
-이것이다(검출된 PID 가 둘).
+The last line `last_cc[pid] = cc` runs **even after** a discontinuity is detected. That is, the counter resyncs
+right after detection, so one loss event is counted as **1** only. This is why in the repository's defect
+injection deleting 12 packets, that segment's `cc_discontinuities` is 2, not 12 (two PIDs detected).
 
-> **"CC 불연속 N건"의 N 은 유실된 패킷 수가 아니라 유실 사건의 수다.**
-> 리포트 문구([`report.py:236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L236))가 `CC 불연속 5건(패킷 유실)` 이므로 오독하기 쉽다.
+> **The N in "N CC discontinuities" is not the number of lost packets but the number of loss events.**
+> Since the report wording ([`report.py:236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L236)) is `5 CC discontinuities (packet loss)`, it is easy to misread.
 
 ---
 
-## 18.4 미탐 집합 — 정확히 두 개의 잉여류
+## 18.4 The miss set — exactly two residue classes
 
-이제 §18.2.2 의 관측 함수와 §18.3 의 규칙을 겹친다. 검출 조건은 이렇다.
+Now overlay §18.2.2's observation function with §18.3's rules. The detection condition is this.
 
 ```
-검출 ⟺  관측 CC ≠ expected   그리고   관측 CC ≠ prev
+detect ⟺  observed CC ≠ expected   and   observed CC ≠ prev
 ```
 
-`관측 CC = (p + 1 + k) mod 16`, `expected = (p + 1) mod 16`, `prev = p` 를 대입하면
-검출에 실패하는 조건이 정확히 둘로 떨어진다.
+Substitute `observed CC = (p + 1 + k) mod 16`, `expected = (p + 1) mod 16`, `prev = p`, and the condition for
+detection to fail falls exactly into two.
 
-| 조건 | 유도 | 검사기가 내리는 결론 |
+| Condition | Derivation | The conclusion the checker draws |
 |---|---|---|
-| `관측 CC == expected` | `k ≡ 0 (mod 16)` | 유실이 없었다 |
-| `관측 CC == prev` | `k ≡ 15 (mod 16)` | 규격상 허용된 **중복 패킷**이다 |
+| `observed CC == expected` | `k ≡ 0 (mod 16)` | there was no loss |
+| `observed CC == prev` | `k ≡ 15 (mod 16)` | it is a spec-permitted **duplicate packet** |
 
-![유실 패킷 수 k 를 16으로 나눈 나머지 중 정확히 둘이 검사를 빠져나간다](/images/lecture/hls-recon/18-blind-residues.svg)
+![Of the remainders of lost-packet count k mod 16, exactly two escape the check](/images/lecture/hls-recon/18-blind-residues.svg)
 
-*그림 18-2 — 16개 잉여류 중 정확히 둘이 이 검사를 빠져나간다*
+*Figure 18-2 — of the 16 residue classes, exactly two escape this check*
 
-### 18.4.1 실측 — 합성 단일 PID 스트림
+### 18.4.1 Measured — a synthetic single-PID stream
 
-PID 하나짜리 스트림 400패킷을 만들고, 중간에서 `k = 1…48` 개를 지운 뒤
-`tsanalyze.analyze()` 를 그대로 호출했다.
+I made a 400-packet single-PID stream, deleted `k = 1…48` packets in the middle, and called
+`tsanalyze.analyze()` as-is.
 
 ```
-미검출 k: [15, 16, 31, 32, 47, 48]   →  k mod 16 ∈ {0, 15}
+undetected k: [15, 16, 31, 32, 47, 48]   →  k mod 16 ∈ {0, 15}
 ```
 
-**추론과 실측이 정확히 일치한다.** 다른 42개 값은 모두 검출된다.
+**Inference and measurement match exactly.** The other 42 values are all detected.
 
-### 18.4.2 그래서 미탐률은 1/16 이 아니라 2/16 이다
+### 18.4.2 So the miss rate is not 1/16 but 2/16
 
-교재의 지식 추출 매트릭스(`docs/00-curriculum.md` C2 항)는 이 한계를 **1/16** 으로
-적었다. 카운터의 정보이론적 한계만 보면 그것이 맞다 — 16의 배수 유실은 어떤 구현으로도
-잡을 수 없다.
+The course's knowledge-extraction matrix (`docs/00-curriculum.md` item C2) wrote this limit as **1/16.** Looking
+only at the counter's information-theoretic limit, that is right — a multiple-of-16 loss cannot be caught by any
+implementation.
 
-그러나 **이 구현의 미탐률은 2/16 = 12.5%** 다. 차이를 만든 것은 §18.3.3 의 중복 패킷
-예외다.
+But **this implementation's miss rate is 2/16 = 12.5%.** What made the difference is §18.3.3's duplicate-packet
+exception.
 
-> **오탐을 줄이려고 둔 예외 하나가 미탐률을 정확히 두 배로 만들었다.**
+> **One exception placed to reduce false positives doubled the miss rate exactly.**
 
-이것을 "버그"라고 부르면 안 된다. 그 예외가 없으면 정상 스트림에서 오탐이 나고,
-**오탐이 나는 검사기는 아무도 쓰지 않는다.** 쓰이지 않는 검사기의 미탐률은 100% 다.
-설계는 옳고, 대가는 실재하며, 대가를 적어 두지 않는 것만이 잘못이다.
+This must not be called a "bug." Without that exception a normal stream gives false positives, and **nobody uses
+a checker that false-positives.** A checker no one uses has a 100% miss rate. The design is right, the price is
+real, and only not writing down the price is the fault.
 
 ---
 
-## 18.5 미탐률은 하나의 수가 아니다
+## 18.5 The miss rate is not a single number
 
-12.5% 는 **유실 길이가 균등 난수일 때**의 수다. 현실의 유실은 난수가 아니다. 그래서
-같은 검사기의 미탐률이 모형에 따라 0.4% 가 되기도 하고 83% 가 되기도 한다.
+12.5% is the number **when the loss length is a uniform random.** Real-world loss is not random. So the same
+checker's miss rate becomes 0.4% under one model and 83% under another.
 
-### 18.5.1 실측 설계
+### 18.5.1 The measurement design
 
-실제 다중화 스트림(`seg000.ts`, 1,142패킷)에서 **가능한 모든 절단 위치**에 대해 길이
-`L` 의 연속 절단을 넣고 검출 여부를 셌다. 절단은 188바이트 경계에 맞췄다(어긋나면
-§18.7 의 동기 검사가 대신 잡는다).
+On an actual multiplexed stream (`seg000.ts`, 1,142 packets), for **every possible cut position** I inserted a
+consecutive cut of length `L` and counted whether it was detected. The cut was aligned to the 188-byte boundary
+(off-boundary and §18.7's sync check catches it instead).
 
-| 유실 길이 L | 미탐 위치 / 전체 | 미탐률 |
+| Loss length L | Missed positions / total | Miss rate |
 |---|---|---|
 | 1 | 7 / 1,140 | 0.6% |
 | 2 | 6 / 1,139 | 0.5% |
@@ -298,74 +295,71 @@ PID 하나짜리 스트림 400패킷을 만들고, 중간에서 `k = 1…48` 개
 | 33 | 38 / 1,108 | 3.4% |
 | **47** | 884 / 1,094 | **80.8%** |
 | **48** | 843 / 1,093 | **77.1%** |
-| **L = 1…48 전체 평균** | **5,765 / 53,592** | **10.76%** |
+| **L = 1…48 overall average** | **5,765 / 53,592** | **10.76%** |
 
-### 18.5.2 읽는 법 셋
+### 18.5.2 Three ways to read it
 
-**첫째 — 평균은 이론값에 수렴한다.** 전체 평균 10.76% 는 §18.4 의 12.5% 와 가깝다.
-이론이 틀리지 않았다는 확인이다.
+**First — the average converges to the theoretical value.** The overall average 10.76% is close to §18.4's
+12.5%. It confirms the theory was not wrong.
 
-**둘째 — 평균은 아무것도 말해 주지 않는다.** 실제 분포는 0.4% 와 83% 로 갈리는
-쌍봉이다. "미탐률 약 10%"라는 요약은 **어느 쪽 봉우리도 설명하지 못한다.**
-평균이 이상치를 감추는 것과 같은 문제가 여기서도 나타난다([`report.py:56-61`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L56-L61) 이
-TTFB 를 평균이 아니라 p50·p95 로 보는 이유와 같다).
+**Second — the average tells you nothing.** The actual distribution is a bimodal split into 0.4% and 83%. The
+summary "miss rate about 10%" **explains neither peak.** The same problem of the average hiding outliers appears
+here too (the same reason [`report.py:56-61`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L56-L61) views TTFB by p50·p95 and not the average).
 
-**셋째 — 위험한 것은 무작위 유실이 아니라 구조적 유실이다.** `L ≡ 0` 또는
-`L ≡ 15 (mod 16)` 일 때만 미탐률이 치솟는다. 그런데 현실의 유실은 균등 난수가 아니라
-**고정 크기 단위**로 일어난다.
+**Third — what is dangerous is not random loss but structural loss.** The miss rate spikes only when `L ≡ 0` or
+`L ≡ 15 (mod 16)`. And real-world loss occurs not as a uniform random but in **fixed-size units.**
 
-| 유실 단위 | 크기 | 16패킷 배수와 정렬되는가 |
+| Loss unit | Size | Aligned with a multiple of 16 packets |
 |---|---|---|
-| TS 패킷 1개 | 188 B | — |
-| 이더넷 MTU 1개 (RTP/UDP TS 는 보통 7패킷) | 1,316 B | 7 — 아니다 |
-| 4 KB 디스크 블록 | 4,096 B | 21.8 — 아니다 |
-| **3,008 B (=188×16)** | 3,008 B | **정확히 16** |
-| CDN 오브젝트 청크 · 임의 절단 | 가변 | 구현에 따라 |
+| 1 TS packet | 188 B | — |
+| 1 Ethernet MTU (RTP/UDP TS is usually 7 packets) | 1,316 B | 7 — no |
+| 4 KB disk block | 4,096 B | 21.8 — no |
+| **3,008 B (=188×16)** | 3,008 B | **exactly 16** |
+| CDN object chunk · arbitrary cut | variable | depends on implementation |
 
-즉 미탐률은 **유실을 만들어 내는 계층의 단위 크기**에 달려 있다. 그 계층이 16패킷
-배수로 일하면 이 검사는 그 계층의 오류에 **구조적으로 눈이 먼다.** 어떤 특정 전송
-스택이 그런 단위를 쓰는지는 이 저장소에서 확인하지 못했다 — 추론에 그친다(§18.11).
+That is, the miss rate hangs on **the unit size of the layer producing the loss.** If that layer works in
+multiples of 16 packets, this check is **structurally blind** to that layer's errors. Whether any particular
+transport stack uses such a unit could not be confirmed in this repository — it stays inference (§18.11).
 
 ---
 
-## 18.6 다중화가 만드는 우연한 방어, 그리고 그 구멍
+## 18.6 The incidental defense multiplexing makes, and its hole
 
-### 18.6.1 여러 PID 가 동시에 맞아야 미탐이다
+### 18.6.1 Multiple PIDs must match simultaneously for a miss
 
-CC 가 PID 별로 독립이므로, 연속 절단이 여러 PID 를 가로지르면 **모든 PID 가 동시에
-잉여류 {0, 15} 에 떨어져야** 미탐이 된다. PID 두 개면 (1/8)² ≈ 1.6%, 다섯 개면
-사실상 0 이다.
+Since CC is independent per PID, when a consecutive cut crosses several PIDs, a miss occurs only if **all PIDs
+fall simultaneously into the residue classes {0, 15}.** With two PIDs (1/8)² ≈ 1.6%, with five it is
+effectively 0.
 
-저장소의 결함 주입(12패킷 제거)이 잡히는 이유가 이것이다. 절단 지점이 PID 경계를
-가로질러 영상 8개·오디오 2개·PAT 1개·PMT 1개를 함께 지웠고, 오디오의 `k = 2` 가
-곧바로 걸렸다.
+This is why the repository's defect injection (removing 12 packets) is caught. The cut point crossed a PID
+boundary and deleted 8 video·2 audio·1 PAT·1 PMT together, and audio's `k = 2` caught immediately.
 
-이것은 제15장에서 이름 붙인 **우연한 방어(incidental defense)** 다 — 다중화는 검출을
-위해 설계된 것이 아닌데 결과적으로 검출률을 끌어올린다.
+This is the **incidental defense** named in Chapter 15 — multiplexing was not designed for detection but as a
+result pulls up the detection rate.
 
-### 18.6.2 그런데 다중화에는 큰 구멍이 있다
+### 18.6.2 But multiplexing has a big hole
 
-우연한 방어는 우연이므로 보장되지 않는다. 실측한 스트림에서 각 PID 의 **연속 구간
-길이**는 이렇다.
+Incidental defense is incidental so it is not guaranteed. In the measured stream each PID's **continuous run
+length** is this.
 
-| PID | 연속 구간 길이 |
+| PID | Continuous run lengths |
 |---|---|
-| `0x0100` 영상 | 30 · 71 · 135 · 146 · 149 · 161 · 170 · 171 |
-| `0x0101` 오디오 | 9 · 15 · 16 · 16 · 16 · 16 · 16 |
-| PAT · PMT · SDT | 각 1 |
+| `0x0100` video | 30 · 71 · 135 · 146 · 149 · 161 · 170 · 171 |
+| `0x0101` audio | 9 · 15 · 16 · 16 · 16 · 16 · 16 |
+| PAT · PMT · SDT | 1 each |
 
-영상 패킷이 최대 171개까지 끊기지 않고 이어진다. **길이 16의 절단은 이 구간 안에
-통째로 들어가고, 그러면 영향받는 PID 가 하나뿐이다.** 그런 위치가 1,125곳 중 918곳이고,
-미탐 923곳 = 82% 의 대부분이 여기서 나온다. §18.5 표의 봉우리가 바로 그 923곳이다.
+Video packets run unbroken up to 171 at a time. **A cut of length 16 fits wholly inside this run, and then only
+one PID is affected.** There are 918 such positions of 1,125, and most of the 923 misses = 82% come from here.
+The peaks in §18.5's table are exactly those 923.
 
-> **다중화는 미탐률을 낮추지만, 한 PID 가 대역의 90% 를 차지하는 실제 영상 스트림에서는
-> 그 효과가 특정 유실 길이에서 완전히 사라진다.**
+> **Multiplexing lowers the miss rate, but in an actual video stream where one PID takes 90% of the band, that
+> effect vanishes completely at a specific loss length.**
 
-### 18.6.3 회귀 테스트가 12를 고른 것은 우연이 아니다
+### 18.6.3 The regression test choosing 12 is no accident
 
 ```bash
 # tests/run.sh:134-137
-p = d / "seg002.ts"                       # 결함 1: TS 패킷 12개 제거 → CC 점프
+p = d / "seg002.ts"                       # defect 1: remove 12 TS packets → a CC jump
 raw = p.read_bytes()
 cut = (len(raw) // 188 // 2) * 188
 p.write_bytes(raw[:cut] + raw[cut + 188 * 12:])
@@ -373,115 +367,116 @@ p.write_bytes(raw[:cut] + raw[cut + 188 * 12:])
 
 ```bash
 # tests/run.sh:483
-grep -q 'CC 불연속'            "$DLOG" && ok "패킷 유실 검출"       || bad "패킷 유실 미검출"
+grep -q 'CC discontinuity'  "$DLOG" && ok "packet loss detected"   || bad "packet loss missed"
 ```
 
-**12는 잉여류 {0, 15} 의 밖에 있다.** 만약 누군가 "깔끔하게 16으로 맞추자"고 이 숫자를
-바꾸면, 절단 위치에 따라 이 테스트는 **간헐적으로 실패한다.** 그리고 실패를 본 사람은
-"검사기가 깨졌다"고 결론 내릴 것이다. 실제로는 검사기가 설계대로 동작한 것인데도.
+**12 is outside the residue classes {0, 15}.** If someone changes this number to "make it a clean 16," depending
+on the cut position this test **fails intermittently.** And the person seeing the failure will conclude "the
+checker broke." In reality the checker worked exactly as designed.
 
-두 가지 교훈이 겹친다.
+Two lessons overlap.
 
-1. **결함 주입 값은 검사기의 사각지대를 피해서 골라야 한다.** 그렇지 않으면 테스트가
-   검사기가 아니라 사각지대를 측정한다.
-2. **그 이유가 주석에 없으면 다음 사람이 바꾼다.** 현재 주석은 "패킷 12개 제거"라고만
-   적혀 있고 **왜 12인지는 적혀 있지 않다.** 이 장이 그 빈칸이다.
+1. **The defect-injection value must be chosen to avoid the checker's blind spot.** Otherwise the test measures
+   not the checker but the blind spot.
+2. **If the reason is not in a comment the next person changes it.** The current comment only says "remove 12
+   packets" and **does not say why 12.** This chapter is that blank.
 
 ---
 
-## 18.7 카운터가 아예 보지 않는 것
+## 18.7 What the counter does not look at at all
 
-미탐은 잉여류만이 아니다. 카운터 규칙 자체가 만드는 사각지대가 넷 더 있다.
+Misses are not only residue classes. There are four more blind spots the counter rule itself makes.
 
-### 18.7.1 PID 의 첫 패킷과 마지막 패킷
+### 18.7.1 A PID's first packet and last packet
 
-`L = 1`(패킷 하나만 제거) 스윕에서 미탐이 7곳 나왔다. 그 7곳의 정체를 조사했다.
+In the `L = 1` (delete a single packet) sweep, 7 misses arose. I investigated the identity of those 7.
 
-| 위치 | PID | 정체 |
+| Position | PID | Identity |
 |---|---|---|
-| 1 | `0x0000` PAT | 그 PID 의 **첫** 패킷 |
-| 2 | `0x1000` PMT | 그 PID 의 **첫** 패킷 |
-| 3 | `0x0100` 영상 | 그 PID 의 **첫** 패킷 |
-| 173 | `0x0101` 오디오 | 그 PID 의 **첫** 패킷 |
-| 561 | `0x0000` PAT | 그 PID 의 **마지막** 패킷 |
-| 562 | `0x1000` PMT | 그 PID 의 **마지막** 패킷 |
-| 1132 | `0x0100` 영상 | 그 PID 의 **마지막** 패킷 |
+| 1 | `0x0000` PAT | that PID's **first** packet |
+| 2 | `0x1000` PMT | that PID's **first** packet |
+| 3 | `0x0100` video | that PID's **first** packet |
+| 173 | `0x0101` audio | that PID's **first** packet |
+| 561 | `0x0000` PAT | that PID's **last** packet |
+| 562 | `0x1000` PMT | that PID's **last** packet |
+| 1132 | `0x0100` video | that PID's **last** packet |
 
-**7곳이 하나도 빠짐없이 "첫 패킷 아니면 마지막 패킷"이다.**
+**All 7, without exception, are "either the first packet or the last packet."**
 
-- **첫 패킷**: 지우면 그다음 패킷이 첫 패킷이 되고, `prev is None` 이라 검사가 건너뛴다.
-- **마지막 패킷**: 지우면 비교할 후속 패킷이 없다.
+- **first packet**: delete it and the next packet becomes the first, and with `prev is None` the check skips.
+- **last packet**: delete it and there is no following packet to compare.
 
-즉 **경계에서는 카운터가 원리적으로 무력하다.** 이것은 확률이 아니라 확정적 미탐이다.
+That is, **at boundaries the counter is powerless in principle.** This is not a probability but a deterministic
+miss.
 
-### 18.7.2 페이로드 훼손 — 개수는 맞고 내용이 틀린 경우
+### 18.7.2 Payload corruption — count right, content wrong
 
-패킷 20개의 페이로드를 0으로 덮되 헤더 4바이트는 그대로 두고 측정했다.
+I overwrote 20 packets' payload with zeros but left the header 4 bytes as-is and measured.
 
 ```
 cc_discontinuities = 0,  sync_errors = 0,  clean = True
 ```
 
-**완전히 침묵한다.** CC 는 패킷의 **개수**를 세는 장치이지 **내용**을 검사하는 장치가
-아니다. 비트 뒤집힘·부분 덮어쓰기·잘못된 복호화 결과는 이 검사의 관심 밖이다.
+**It is completely silent.** CC is a device that counts the **number** of packets, not one that inspects the
+**content.** A bit flip·partial overwrite·wrong decryption result is outside this check's concern.
 
-### 18.7.3 경계에 맞지 않는 절단 — 다른 검사가 대신 잡는다
+### 18.7.3 An off-boundary cut — another check catches it instead
 
-바이트 단위로 어긋난 절단을 넣으면 이후 모든 패킷의 정렬이 깨진다.
+Insert a cut off by a byte and all packets after it lose alignment.
 
-| 절단 | `sync_errors` | `cc_discontinuities` |
+| Cut | `sync_errors` | `cc_discontinuities` |
 |---|---|---|
-| 100 B (비정렬) | **569** | 0 |
-| 2,256 B (= 188×12, 정렬) | 0 | **1** |
-| 2,356 B (= 188×12 + 100, 비정렬) | **557** | 0 |
+| 100 B (unaligned) | **569** | 0 |
+| 2,256 B (= 188×12, aligned) | 0 | **1** |
+| 2,356 B (= 188×12 + 100, unaligned) | **557** | 0 |
 
-CC 는 0을 내지만 **동기 검사가 대신 잡는다.** 그리고 `sync_errors` 는 WARN 이 아니라
-FAIL 이다([`report.py:245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L245)). 두 검사의 실패 모형이 겹치지 않게 설계되어 있다는 뜻이다 —
-이것이 심층 방어가 검증 도구에서 취하는 형태다.
+CC gives 0 but **the sync check catches it instead.** And `sync_errors` is FAIL, not WARN ([`report.py:245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L245)). It
+means the two checks are designed so their failure models do not overlap — this is the form defense in depth
+takes in a verification tool.
 
-### 18.7.4 선두 바이트가 깨진 세그먼트 — 상류가 잡는다
+### 18.7.4 A segment with a broken leading byte — the upstream catches it
 
 ```python
 # tsanalyze.py:78-80
     if len(data) < PACKET_SIZE or data[0] != SYNC_BYTE:
-        # fMP4(ftyp/moof 시작) 등 TS 가 아닌 컨테이너 — 분석 대상 아님
+        # a non-TS container like fMP4 (starts with ftyp/moof) — not an analysis target
         return rep
 ```
 
-선두 3바이트를 지운 TS 를 넣으면 `analyze()` 는 `parsed=False`, `packets=0` 인 빈
-리포트를 돌려주고 **아무 오류도 남기지 않는다.** 이것만 보면 심각한 구멍이다.
+Put in a TS with the leading 3 bytes deleted and `analyze()` returns an empty report with `parsed=False`,
+`packets=0` and **leaves no error.** By this alone it is a grave hole.
 
-그러나 같은 데이터를 `sniff()` 에 넣으면 `unknown` 이 나오고, 호출자가 그것을
-**페이로드 유효성 FAIL** 로 승격시킨다([`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464)). 즉 이 구멍은 상류에서 막힌다.
+But put the same data into `sniff()` and `unknown` comes out, and the caller promotes it to a **payload-validity
+FAIL** ([`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464)). That is, this hole is blocked upstream.
 
-> **검사기 하나의 사각지대를 셀 때는 그 위아래 검사까지 함께 세어야 한다.**
-> 혼자서는 침묵하는 조건이 파이프라인 전체에서는 잡히기도 하고, 반대로 §18.1 처럼
-> 세 검사가 나란히 침묵하기도 한다.
+> **When counting one checker's blind spot, you must count the checks above and below it too.**
+> A condition silent alone is sometimes caught by the whole pipeline, and conversely, as in §18.1, three checks
+> can be silent side by side.
 
 ---
 
-## 18.8 상태를 세그먼트 경계 너머로 잇는다
+## 18.8 Carrying state across segment boundaries
 
-### 18.8.1 설계
+### 18.8.1 The design
 
 ```python
 # tsanalyze.py:71-83
 def analyze(data: bytes, state: dict[int, int] | None = None) -> TSReport:
-    """세그먼트 바이트열을 TS 로 해석해 검사한다.
+    """Interpret a segment byte string as TS and check it.
 
-    state 는 PID→직전 CC 매핑으로, 세그먼트 경계를 넘어 연속성을 이어보기 위해
-    호출자가 같은 dict 를 계속 넘겨준다. None 이면 세그먼트 내부만 검사한다.
+    state is a PID→previous-CC mapping; to view continuity across segment boundaries
+    the caller keeps passing the same dict. If None, only inside the segment is checked.
     """
     rep = TSReport()
     if len(data) < PACKET_SIZE or data[0] != SYNC_BYTE:
-        # fMP4(ftyp/moof 시작) 등 TS 가 아닌 컨테이너 — 분석 대상 아님
+        # a non-TS container like fMP4 (starts with ftyp/moof) — not an analysis target
         return rep
 
     rep.parsed = True
     last_cc = state if state is not None else {}
 ```
 
-호출자는 dict 하나를 만들어 **모든 세그먼트에 같은 것을 넘긴다.**
+The caller makes one dict and **passes the same one to every segment.**
 
 ```python
 # cli.py:437-438
@@ -494,234 +489,232 @@ def analyze(data: bytes, state: dict[int, int] | None = None) -> TSReport:
         ts_total.merge(analyze(data, cc_state))
 ```
 
-`last_cc = state if state is not None else {}` 는 **복사가 아니라 참조**다. 호출자가
-넘긴 dict 를 그대로 갱신하므로 다음 호출에 직전 세그먼트의 마지막 CC 가 살아 있다.
+`last_cc = state if state is not None else {}` is **a reference, not a copy.** It updates the dict the caller
+passed as-is, so on the next call the previous segment's last CC is alive.
 
-![상태를 세그먼트 경계 너머로 잇는가에 따라 같은 결손이 다른 결론을 낳는다](/images/lecture/hls-recon/18-state-across-segments.svg)
+![Whether state is carried across segment boundaries makes the same loss yield a different conclusion](/images/lecture/hls-recon/18-state-across-segments.svg)
 
-*그림 18-3 — 같은 결손, 다른 결론 — 카운터 상태를 경계 너머로 잇는가에 달렸다*
+*Figure 18-3 — the same loss, a different conclusion — it depends on whether the counter state is carried across the boundary*
 
-### 18.8.2 실측 — 12건 대 2건
+### 18.8.2 Measured — 12 vs 2
 
-저장소의 결함 주입본(패킷 12개 제거 · seg001 404 · seg003 오류 페이지 · seg004 중복)을
-그대로 재현하고, `state` 공유 여부만 바꿔 측정했다.
+I reproduced the repository's defect-injected copy (12 packets removed · seg001 404 · seg003 error page · seg004
+duplicate) as-is and measured, changing only whether `state` is shared.
 
-| 설계 | `cc_discontinuities` | 잡히는 것 |
+| Design | `cc_discontinuities` | What is caught |
 |---|---|---|
-| **같은 dict 공유** (현재 코드) | **12건** | 세그먼트 내부 결손 + 경계를 넘은 결손 |
-| 세그먼트마다 `state=None` | **2건** | seg002 내부 결손만 |
+| **share the same dict** (current code) | **12** | inside-segment loss + boundary-crossing loss |
+| `state=None` per segment | **2** | only seg002's inside-segment loss |
 
-**여섯 배 차이다.** 그리고 놓친 10건은 전부 "세그먼트 하나가 통째로 없어졌다"와 "세그먼트
-순서가 어긋났다"에 해당한다 — HLS 에서 가장 흔한 실패다.
+**A sixfold difference.** And the 10 missed are all "a whole segment vanished" and "segment order went off" —
+the most common failures in HLS.
 
-### 18.8.3 세그먼트 하나가 통째로 사라지면
+### 18.8.3 If a whole segment vanishes
 
-정상 스트림에서 `seg001.ts` 하나만 빼고 CC 를 이어 본 결과다.
+The result of carrying CC through with only `seg001.ts` removed from a normal stream.
 
 ```
-CC 불연속 5건 — (17, 1, 2) (0, 2, 4) (4096, 2, 4) (256, 9, 10) (257, 8, 11)
+5 CC discontinuities — (17, 1, 2) (0, 2, 4) (4096, 2, 4) (256, 9, 10) (257, 8, 11)
 ```
 
-**PID 5종이 각각 1건씩, 정확히 5건.** 그 세그먼트가 담고 있던 PID 별 패킷 수는
-영상 1,137 · 오디오 99 · PAT 2 · PMT 2 · SDT 1 이고, 16으로 나눈 나머지는 각각
-1 · 3 · 2 · 2 · 1 — **어느 것도 잉여류 {0, 15} 에 들어가지 않았다.**
+**5 PIDs, 1 each, exactly 5.** The per-PID packet counts that segment held were video 1,137 · audio 99 · PAT 2 ·
+PMT 2 · SDT 1, and their remainders mod 16 are 1 · 3 · 2 · 2 · 1 respectively — **none fell into the residue
+classes {0, 15}.**
 
-여기서 §18.6.1 의 우연한 방어가 가장 강하게 작동한다. PID 5종이 **모두** 동시에
-잉여류에 떨어져야 미탐이므로, 세그먼트 통째 유실은 사실상 언제나 잡힌다. 다만
-**"사실상"이지 "언제나"는 아니다** — 세그먼트마다 PID 별 패킷 수가 16의 배수가 되도록
-정렬된 송출이라면 이 검사는 세그먼트 유실에 **구조적으로** 눈이 먼다. 그런 송출을
-실제로 관측하지는 못했다(§18.11).
+Here §18.6.1's incidental defense works most strongly. Since a miss requires **all** 5 PIDs to fall
+simultaneously into the residue classes, a whole-segment loss is virtually always caught. Only, it is
+**"virtually," not "always"** — for a delivery aligned so each segment's per-PID packet counts are multiples of
+16, this check is **structurally** blind to segment loss. Such a delivery was not actually observed (§18.11).
 
 ---
 
-## 18.9 판정 — 왜 FAIL 이 아니라 WARN 인가
+## 18.9 The verdict — why WARN and not FAIL
 
 ```python
 # report.py:243-249
         rep.add(
-            "TS 무결성",
+            "TS integrity",
             FAIL if (ts.sync_errors or ts.scrambled_packets) else (WARN if problems else PASS),
             ", ".join(problems)
             if problems
-            else f"{ts.packets:,} 패킷 / PID {len(ts.pids)}종, 손실 0",
+            else f"{ts.packets:,} packets / {len(ts.pids)} PIDs, 0 loss",
         )
 ```
 
-| 관측 | 판정 | 근거 |
+| Observation | Verdict | Basis |
 |---|---|---|
-| `sync_errors > 0` | **FAIL** | 스트림 정렬이 깨졌다 — 정상 송출에서 나올 수 없다 |
-| `scrambled_packets > 0` | **FAIL** | 복호화되지 않았다 — 키가 틀렸거나 SAMPLE-AES |
-| `cc_discontinuities > 0` | **WARN** | 유실일 가능성이 높지만 **의도된 이음매일 수도 있다** |
-| `transport_errors > 0` | **WARN** | TEI 는 상류 전송 계층이 붙인 표시다 |
+| `sync_errors > 0` | **FAIL** | the stream alignment broke — cannot come from a normal delivery |
+| `scrambled_packets > 0` | **FAIL** | not decrypted — wrong key or SAMPLE-AES |
+| `cc_discontinuities > 0` | **WARN** | likely loss but **could be an intended seam** |
+| `transport_errors > 0` | **WARN** | TEI is a marker the upstream transport layer attached |
 
-CC 불연속이 WARN 인 이유는 **정당한 불연속이 존재하기 때문**이다. HLS 플레이리스트가
-`#EXT-X-DISCONTINUITY` 를 선언한 지점에서는 인코더가 새로 시작하므로 CC 도 임의 값에서
-다시 출발한다. 이때의 점프는 결함이 아니다.
+The reason a CC discontinuity is WARN is **because a legitimate discontinuity exists.** At the point where the
+HLS playlist declared `#EXT-X-DISCONTINUITY`, the encoder restarts so CC also restarts from an arbitrary value.
+The jump then is not a defect.
 
-그런데 §18.8 의 설계가 여기서 대가를 만든다. **`cc_state` 는 `EXT-X-DISCONTINUITY` 를
-보지 않는다.** 파서는 그 태그를 읽고 있고([`playlist.py:331`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L331), `Segment.discontinuity` —
-[`playlist.py:145`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L145)), 타임라인 검사는 그것을 참작한다.
+But §18.8's design makes a price here. **`cc_state` does not look at `EXT-X-DISCONTINUITY`.** The parser is
+reading that tag ([`playlist.py:331`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L331), `Segment.discontinuity` — [`playlist.py:145`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L145)), and the timeline check
+takes it into account.
 
 ```python
 # report.py:309-310
-            # 플레이리스트가 EXT-X-DISCONTINUITY 로 예고한 불연속이면 의도된 이음매일 수 있다.
+            # if it is a discontinuity the playlist announced with EXT-X-DISCONTINUITY, it may be an intended seam.
             intended = discontinuities >= len(gaps.gaps)
 ```
 
-**그러나 TS 무결성 검사에는 같은 참작이 없다.** [`cli.py:465`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L465) 는 세그먼트의
-`discontinuity` 플래그와 무관하게 언제나 같은 `cc_state` 를 넘긴다. 광고가 삽입된
-플레이리스트를 검사하면 이음매마다 CC 불연속이 잡히고, WARN 문구는 그것을
-`패킷 유실` 이라고 부를 것이다. 등급이 WARN 이라 판정 자체가 뒤집히지는 않지만,
-**문구는 틀린 문구다.** 이 저장소에서 확인한 미해결 지점이다(§18.11).
+**But the TS-integrity check has no such consideration.** [`cli.py:465`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L465) always passes the same `cc_state`
+regardless of the segment's `discontinuity` flag. Check an ad-inserted playlist and a CC discontinuity is caught
+at every seam, and the WARN wording will call it `packet loss`. Since the grade is WARN the verdict itself does
+not flip, but **the wording is the wrong wording.** It is an open point confirmed in this repository (§18.11).
 
 ---
 
-## 18.10 일반화 — 유한 상태로 무한 사건을 관측할 때
+## 18.10 Generalization — observing infinite events with finite state
 
-이 장의 구조는 스트리밍에 한정되지 않는다. 일반형은 이렇다.
+This chapter's structure is not limited to streaming. The general form is this.
 
-> **관측 공간이 `N` 개 상태로 유한하고 관측 대상이 그보다 많은 값을 가지면,
-> 관측은 필연적으로 `mod N` 연산이 되고, 정확히 `N` 의 배수만큼의 사건은 관측되지 않는다.**
+> **If the observation space is finite with `N` states and the observation target takes more values than that,
+> the observation necessarily becomes a `mod N` operation, and events that are exactly multiples of `N` go
+> unobserved.**
 
-| 영역 | 유한 카운터 | 되돌아오면 생기는 일 | 대응 |
+| Domain | Finite counter | What happens when it wraps | Response |
 |---|---|---|---|
-| **MPEG-TS CC** | 4비트 / PID | 16의 배수 유실이 무손실로 보인다 | 상위 계층 검사(디코드·PTS) |
-| **TCP 시퀀스 번호** | 32비트 | 고속 회선에서 랩어라운드 시 옛 세그먼트가 유효해 보인다 | PAWS — 타임스탬프 옵션으로 판정 |
-| **IPv4 식별자(IP ID)** | 16비트 | 재조립 시 다른 데이터그램의 조각이 섞인다 | 조각 재조립 타임아웃 |
-| **CBC·CTR 논스** | 블록/카운터 폭 | **논스 재사용 — 기밀성이 붕괴한다** | 키 교체 전 총량 상한 강제 |
-| **로그 순번** | 파일별 카운터 | 회전 후 순번이 겹쳐 누락이 감춰진다 | 단조 증가 ULID·UUIDv7 |
-| **PTS (제21장)** | 33비트 90kHz | 약 26.5시간마다 랩 — 시각이 과거로 점프 | 랩 검출 로직 |
+| **MPEG-TS CC** | 4 bits / PID | a multiple-of-16 loss looks lossless | upper-layer checks (decode·PTS) |
+| **TCP sequence number** | 32 bits | on a fast line, at wraparound an old segment looks valid | PAWS — verdict via the timestamp option |
+| **IPv4 identifier (IP ID)** | 16 bits | on reassembly a fragment of another datagram mixes in | fragment reassembly timeout |
+| **CBC·CTR nonce** | block/counter width | **nonce reuse — confidentiality collapses** | enforce a total cap before key rotation |
+| **log sequence number** | per-file counter | after rotation the numbers overlap and drops are hidden | monotonically increasing ULID·UUIDv7 |
+| **PTS (Chapter 21)** | 33 bits 90kHz | wraps about every 26.5 hours — time jumps to the past | wrap-detection logic |
 
-각 행이 같은 처방을 요구한다.
+Each row demands the same prescription.
 
-> **유한 카운터로 만든 검사에는 반드시 "이 카운터가 한 바퀴 도는 사건"의 크기와
-> 그 사건이 일어날 조건을 함께 적어야 한다.**
+> **For a check made with a finite counter you must always write the size of "the event where this counter goes
+> full circle" and the condition under which that event occurs.**
 
-그리고 여기에 이 장 고유의 단서가 붙는다. CC 의 랩어라운드는 확률적 사고로 다뤄서는
-안 된다. 생일 문제처럼 "언젠가 우연히 겹친다"가 아니라, **유실 개수가 특정 잉여류에
-들어가면 결정적으로 언제나 보이지 않는다.** 그래서 유실을 만드는 계층의 단위 크기가
-카운터 폭과 정렬되면 미탐률이 12.5% 가 아니라 **100%** 가 된다.
+And here a clue peculiar to this chapter attaches. CC's wraparound must not be handled with probabilistic
+thinking. Unlike the birthday problem's "someday it coincides by chance," **if the loss count falls into a
+specific residue class it is deterministically invisible, always.** So if the unit size of the loss-producing
+layer aligns with the counter width, the miss rate becomes not 12.5% but **100%.**
 
 ---
 
-## 18.11 보안 — 이 검사는 무엇을 지키는가
+## 18.11 Security — what does this check protect
 
-### 18.11.1 위협 모형을 먼저 적는다
+### 18.11.1 Write the threat model first
 
-CC 검사가 무엇을 막는지 묻기 전에, 이 검사가 **누구로부터 무엇을 지키도록 설계됐는지**를
-적어야 한다. 제25장에서 다룰 원칙이 여기서도 그대로 적용된다 — 위협 모형을 정하지 않은
-보호는 보호가 아니다.
+Before asking what the CC check blocks, you must write **from whom, what it was designed to protect.** The
+principle Chapter 25 will cover applies here as-is — protection with no threat model set is not protection.
 
-| 항목 | 답 |
+| Item | Answer |
 |---|---|
-| **적(adversary)** | 없음. 상대는 **잡음과 고장**이다 — 전송 오류, 잘린 응답, CDN 캐시 이상 |
-| **보호 대상** | 검증 결론의 정확성 — "받은 것이 보낸 것과 같은가" |
-| **가정** | 스트림 생성자는 정직하다. 중간자는 내용을 고치지 않는다 |
-| **비용** | 패킷당 4비트 = 0.27% |
+| **adversary** | none. the opponent is **noise and breakage** — transport errors, truncated responses, CDN cache anomalies |
+| **protection target** | the accuracy of the verification conclusion — "is what was received the same as what was sent" |
+| **assumption** | the stream creator is honest. the man-in-the-middle does not alter content |
+| **cost** | 4 bits per packet = 0.27% |
 
-이 표의 첫 줄이 결정적이다. **CC 는 오류 검출 장치이지 무결성 보증 장치가 아니다.**
+The first row of this table is decisive. **CC is an error-detection device, not an integrity-guarantee device.**
 
-### 18.11.2 적이 있다면 미탐률은 100% 다
+### 18.11.2 With an adversary the miss rate is 100%
 
-스트림 바이트를 고칠 수 있는 상대를 가정하면 §18.4 의 12.5% 는 의미가 없다. 패킷을
-지운 뒤 뒤따르는 패킷들의 CC 필드를 **1씩 다시 매기면** 되기 때문이다. 패킷당 반 바이트,
-188바이트 중 4비트를 고치는 일이다.
+Assume an opponent who can alter the stream bytes and §18.4's 12.5% is meaningless. Because after deleting
+packets you just **renumber the CC fields of the following packets by 1.** It is altering half a byte per
+packet, 4 bits of 188 bytes.
 
-| 상대 | 이 검사의 미탐률 |
+| Opponent | This check's miss rate |
 |---|---|
-| 무작위 전송 오류 | 표 §18.5.1 (0.4% – 83%, 평균 10.76%) |
-| 16패킷 단위로 일하는 고장난 중계 계층 | **100%** (구조적 정렬) |
-| 스트림을 고칠 수 있는 적 | **100%** (CC 를 다시 매기면 된다) |
+| random transport error | table §18.5.1 (0.4% – 83%, average 10.76%) |
+| a broken relay layer working in 16-packet units | **100%** (structural alignment) |
+| an adversary who can alter the stream | **100%** (just renumber CC) |
 
-> **키 없는 검사는 적을 막지 못한다.** CRC 가 MAC 이 아닌 것과 같은 이유다.
-> 무작위 오류에 대한 검출률과 적대적 변조에 대한 검출률은 **다른 수**이며,
-> 전자를 근거로 후자를 주장하는 것이 이 영역의 대표적 오류다.
+> **A keyless check cannot stop an adversary.** The same reason a CRC is not a MAC.
+> The detection rate against random error and the detection rate against adversarial tampering are **different
+> numbers**, and claiming the latter on the basis of the former is this domain's representative error.
 
-적대적 변조를 막는 것은 CC 가 아니라 **전송 계층의 암호학적 무결성**이다. HTTPS 의
-AEAD(인증 암호)가 전송 중 변조를 막고, 그 위에서 CC 는 "그럼에도 빠진 것이 있는가"를
-본다. 두 계층은 대체재가 아니라 보완재다.
+What stops adversarial tampering is not CC but **the transport layer's cryptographic integrity.** HTTPS's AEAD
+(authenticated encryption) stops in-transit tampering, and above that CC views "and even so, is anything
+missing." The two layers are not substitutes but complements.
 
-한 가지 더 정직하게 적어 둔다. 이 저장소의 **세그먼트 고유성** 검사는 SHA-256 을
-쓰지만, 그것은 세그먼트끼리의 **중복 판정**이지 원본과의 대조가 아니다. 원본 해시를
-받아 오는 경로가 없으므로, 이 도구는 어떤 검사로도 "원본과 같다"를 증명하지 않는다.
+One more thing written honestly. This repository's **segment-uniqueness** check uses SHA-256, but that is a
+**duplicate determination** between segments, not a comparison against the original. Since there is no path to
+obtain the original hash, this tool proves "same as the original" by no check.
 
-### 18.11.3 방어자 관점 — 역할별로 무엇을 해야 하는가
+### 18.11.3 The defender's view — what to do by role
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **검증 도구 구현자** | 미탐률을 **수로 적는다.** "CC 로 유실을 검출한다"가 아니라 "16의 배수 유실과 PID 경계 유실은 검출하지 못한다"까지 적는다. 그리고 실패 모형이 겹치지 않는 **독립 검사**를 최소 하나 더 둔다 — §18.1 에서 결함을 잡은 것은 CC 가 아니라 디코드 검사였다 |
-| **결함 주입 테스트 작성자** | 주입 값이 검사기의 사각지대를 피하는지 확인하고, **왜 그 값인지 주석에 남긴다.** 값의 근거가 없으면 다음 사람이 사각지대로 옮긴다 |
-| **송출 사업자 · CDN 운영자** | CC 는 자사 송출 품질의 **하한 지표**다. "CC 불연속 0"을 무결의 증거로 쓰지 않는다. 세그먼트 다이제스트를 매니페스트 옆에 공개하면 수신자가 진짜 무결성 검사를 할 수 있다 |
-| **플레이어 구현자** | CC 점프에서 조용히 복구하되 **횟수를 계측해 노출**한다. 조용한 복구는 사용자 경험을 지키지만, 계측 없이 조용하기만 하면 품질 저하가 영원히 관측되지 않는다 |
-| **SRE · 감사자** | "검사 통과"를 보고받으면 **그 검사의 미탐률을 묻는다.** 답이 없으면 그 PASS 는 정보가 아니다. 대시보드의 초록 불은 "결함 없음"이 아니라 "이 검사로는 못 잡음"으로 읽는다 |
-| **규격 설계자** | 카운터 폭은 검출 가능한 유실 크기의 상한을 정한다. 폭을 정할 때 **예상 유실 단위와 정렬되지 않도록** 고른다. 4비트와 16패킷 정렬은 정확히 그 사고다 |
+| **verification-tool implementer** | write the miss rate **as a number.** not "CC detects loss" but down to "a multiple-of-16 loss and a PID-boundary loss are not detected." and place at least one more **independent check** whose failure model does not overlap — in §18.1 what caught the defect was not CC but the decode check |
+| **defect-injection test author** | confirm the injected value avoids the checker's blind spot, and **leave in a comment why that value.** with no basis for the value the next person moves it into the blind spot |
+| **delivery operator · CDN operator** | CC is a **lower-bound metric** of your delivery quality. do not use "0 CC discontinuities" as proof of integrity. publish segment digests next to the manifest and the receiver can do a real integrity check |
+| **player implementer** | recover quietly from a CC jump but **measure and expose the count.** quiet recovery protects the user experience, but quiet without measurement means quality degradation is forever unobserved |
+| **SRE · auditor** | when reported "check passed," **ask that check's miss rate.** with no answer, that PASS is not information. read the dashboard's green light as "not caught by this check," not "no defect" |
+| **spec designer** | the counter width sets the upper bound of detectable loss size. when choosing the width, pick it **not to align with the expected loss unit.** 4 bits and 16-packet alignment is exactly that accident |
 
-### 18.11.4 이 장이 다루지 않는 것
+### 18.11.4 What this chapter does not cover
 
-검출을 피하도록 유실을 정렬하는 구체적 절차, 특정 서비스의 검증 우회 방법, 보호된
-콘텐츠의 취득은 이 교재의 범위 밖이다(§0.1). 위에서 "적이 CC 를 다시 매기면 된다"고
-쓴 것은 **키 없는 검사의 원리적 한계**를 설명하기 위한 것이며, 그 한계가 바로 암호학적
-무결성 기법이 존재하는 이유다.
-
----
-
-## 18.12 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **`EXT-X-DISCONTINUITY` 를 CC 검사가 참작하지 않는다.** 파서는 그 태그를 읽고
-  ([`playlist.py:331`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L331)) 타임라인 검사는 참작하지만([`report.py:309-310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L309-L310)),
-  [`cli.py:465`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L465) 는 세그먼트의 `discontinuity` 플래그와 무관하게 같은 `cc_state` 를
-  넘긴다. 광고 삽입 등 의도된 이음매가 있는 플레이리스트에서 **의도된 불연속이
-  `패킷 유실` 로 보고될 것**이다. 다만 **그런 플레이리스트로 실행해 확인하지는
-  못했다** — 코드 읽기에서 도출한 예측이다.
-- **잃은 패킷 수를 보고하지 않는다.** `cc_detail` 에 `(pid, expected, actual)` 이
-  남으므로 `(actual − expected) mod 16` 으로 **유실 개수의 하한**을 계산할 수 있는데,
-  현재 코드는 이 값을 산출하지 않는다. 하한일 뿐이라는 한계는 있지만 "몇 건"보다는
-  많은 정보다.
-- **미탐률 표는 스트림 한 개에서 나온 수다.** §18.5.1 의 값은 특정 인코딩 설정
-  (`libx264 ultrafast`, `g=30`, 320x180, 2초 세그먼트)에서 측정했다. PID 별 비율과
-  연속 구간 길이가 다르면 표의 값도 달라진다. **잉여류 {0, 15} 는 스트림과 무관한
-  성질**이지만, 82% 같은 구체적 수는 이 스트림의 성질이다.
-- **16패킷 단위로 유실을 만드는 실제 계층을 확인하지 못했다.** §18.5.2 에서 "구조적
-  유실이 위험하다"고 했지만, 3,008바이트 단위로 절단하는 전송·저장 계층을 실제로
-  관측한 것은 아니다. 위험의 **형태**는 실측했고 그 형태를 만드는 **원인**은 추론이다.
-- **`cc_detail` 이 20건에서 잘린다**([`tsanalyze.py:117`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L117), [`tsanalyze.py:68`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L68)). 대량 유실
-  스트림에서는 상세가 앞 20건으로만 남는다. 총계는 정확하므로 판정에는 영향이 없지만,
-  사후 분석에서 뒤쪽 유실의 PID 분포는 알 수 없다.
-- **fMP4 세그먼트에는 이 검사가 없다.** `analyze()` 는 선두가 `0x47` 이 아니면 즉시
-  돌아온다([`tsanalyze.py:78-80`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L78-L80)). ISO-BMFF 세그먼트의 전송 무결성은 다른 방법으로
-  봐야 하며(제20장), 현재 이 저장소는 구조적 완결성 검사만 가진다.
+The concrete procedure to align loss to evade detection, a particular service's verification-bypass method, and
+the acquisition of protected content are outside this course's scope (§0.1). Writing above "an adversary just
+renumbers CC" was to explain **the principled limit of a keyless check**, and that limit is precisely why
+cryptographic-integrity techniques exist.
 
 ---
 
-## 18.13 요약
+## 18.12 Limits and open questions
 
-1. **CC 는 유실 개수 `k` 를 관측하지 않는다. `k mod 16` 을 관측한다.** 4비트 예산의
-   직접적 귀결이며 구현으로 개선할 수 없다.
-2. 이 코드의 규칙에서 빠져나가는 잉여류는 **정확히 둘**이다 — `k ≡ 0`(카운터가 한 바퀴)과
-   `k ≡ 15`(허용된 중복 패킷으로 오인). 유실 길이가 균등 난수라면 미탐률
-   **2/16 = 12.5%** 이고, 실측 평균은 10.76% 로 이론과 맞았다.
-3. **오탐을 줄이려고 둔 예외가 미탐률을 두 배로 만들었다.** 그 예외가 없으면 정상
-   스트림에서 오탐 10건·200건이 실측된다. 설계는 옳고 대가는 실재하며, 대가를 적어
-   두지 않는 것만이 잘못이다.
-4. **미탐률은 하나의 수가 아니다.** 같은 검사기가 유실 길이에 따라 0.4% 에서 83% 까지
-   갈린다. 위험한 것은 무작위 유실이 아니라 **카운터 폭과 정렬된 구조적 유실**이다.
-5. **다중화는 우연한 방어를 만든다** — 여러 PID 가 동시에 잉여류에 떨어져야 미탐이다.
-   그러나 한 PID 가 대역의 90% 를 차지하고 연속 구간이 171패킷까지 이어지는 실제
-   영상 스트림에서는, 길이 16의 절단이 82% 확률로 단일 PID 안에 갇혀 그 방어가 사라진다.
-6. **카운터 상태를 세그먼트 경계 너머로 잇는 설계가 검출력을 여섯 배로 만든다**
-   (12건 대 2건). `state=None` 이면 세그먼트 통째 유실은 전부 보이지 않는다.
-7. **CC 는 오류 검출 장치이지 무결성 보증 장치가 아니다.** 스트림을 고칠 수 있는
-   상대에게는 미탐률이 100% 다 — 패킷당 4비트를 다시 매기면 된다. 키 없는 검사의
-   검출률을 적대적 변조에 대한 보증으로 옮겨 적는 것이 이 영역의 대표적 오류다.
-8. 그러므로 이 장의 명제는 하나로 모인다.
-   **PASS 는 무결이 아니라 "이 검사로는 못 잡았다"는 뜻이고, 검사기의 미탐률을 모르면
-   그 검사기의 PASS 는 정보가 아니다.**
+Written honestly.
+
+- **The CC check does not take `EXT-X-DISCONTINUITY` into account.** The parser reads that tag
+  ([`playlist.py:331`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L331)) and the timeline check takes it into account ([`report.py:309-310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L309-L310)), but
+  [`cli.py:465`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L465) always passes the same `cc_state` regardless of the segment's `discontinuity` flag. In a
+  playlist with intended seams such as ad insertion, **an intended discontinuity will be reported as `packet
+  loss`.** Only, **I could not confirm by running with such a playlist** — it is a prediction derived from
+  reading the code.
+- **It does not report the number of lost packets.** Since `cc_detail` keeps `(pid, expected, actual)`, you
+  could compute a **lower bound on the loss count** as `(actual − expected) mod 16`, but the current code does
+  not produce this value. It has the limit of being only a lower bound, but it is more information than "how many
+  events."
+- **The miss-rate table is a number from a single stream.** §18.5.1's values were measured under a particular
+  encoding setting (`libx264 ultrafast`, `g=30`, 320x180, 2-second segments). Change the per-PID ratios and
+  continuous-run lengths and the table's values change too. **The residue classes {0, 15} are a property
+  independent of the stream**, but a concrete number like 82% is a property of this stream.
+- **Could not confirm a real layer that produces loss in 16-packet units.** §18.5.2 said "structural loss is
+  dangerous," but I did not actually observe a transport·storage layer that cuts in 3,008-byte units. The
+  **shape** of the danger was measured and the **cause** producing that shape is inference.
+- **`cc_detail` is cut off at 20** ([`tsanalyze.py:117`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L117), [`tsanalyze.py:68`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L68)). In a mass-loss stream the detail
+  is left as only the first 20. The total is accurate so the verdict is unaffected, but in post-hoc analysis the
+  PID distribution of the later losses cannot be known.
+- **An fMP4 segment has no such check.** `analyze()` returns immediately if the head is not `0x47`
+  ([`tsanalyze.py:78-80`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L78-L80)). An ISO-BMFF segment's transport integrity must be viewed by another method (Chapter
+  20), and currently this repository has only a structural-completeness check.
 
 ---
 
-**다음 장** — 이 장은 세그먼트 안에서 패킷을 세었다. 그런데 세그먼트를 **이어 붙이는**
-일 자체는 왜 바이트 연결만으로 되는가. MPEG-TS 가 자기동기(self-synchronizing) 포맷이라
-188바이트 격자만 유지되면 연결에 대해 닫혀 있기 때문이다. 제19장은 그 대수적 성질과,
-fMP4 에서 같은 성질이 성립하려면 무엇이 앞에 와야 하는지를 다룬다.
+## 18.13 Summary
+
+1. **CC does not observe the loss count `k`. It observes `k mod 16`.** It is a direct consequence of the 4-bit
+   budget and cannot be improved by implementation.
+2. The residue classes escaping this code's rules are **exactly two** — `k ≡ 0` (the counter goes full circle)
+   and `k ≡ 15` (misread as a permitted duplicate packet). If the loss length is a uniform random the miss rate
+   is **2/16 = 12.5%**, and the measured average was 10.76%, matching the theory.
+3. **An exception placed to reduce false positives doubled the miss rate.** Without that exception, 10·200 false
+   positives are measured on a normal stream. The design is right and the price is real, and only not writing
+   down the price is the fault.
+4. **The miss rate is not a single number.** The same checker splits from 0.4% to 83% by loss length. What is
+   dangerous is not random loss but **structural loss aligned with the counter width.**
+5. **Multiplexing makes an incidental defense** — a miss requires several PIDs to fall into the residue classes
+   simultaneously. But in an actual video stream where one PID takes 90% of the band and runs up to 171 packets
+   continuously, a length-16 cut is trapped inside a single PID with 82% probability and that defense vanishes.
+6. **The design of carrying the counter state across segment boundaries multiplies detection power sixfold** (12
+   vs 2). With `state=None` a whole-segment loss is entirely invisible.
+7. **CC is an error-detection device, not an integrity-guarantee device.** To an opponent who can alter the
+   stream the miss rate is 100% — just renumber 4 bits per packet. Transcribing a keyless check's detection rate
+   as a guarantee against adversarial tampering is this domain's representative error.
+8. So this chapter's proposition gathers into one.
+   **PASS means not intact but "this check could not catch it," and without knowing the checker's miss rate that
+   checker's PASS is not information.**
+
+---
+
+**Next chapter** — this chapter counted packets inside a segment. But why does the act of **joining** segments
+work by byte concatenation alone? Because MPEG-TS is a self-synchronizing format, so as long as the 188-byte
+grid is maintained it is closed under concatenation. Chapter 19 covers that algebraic property, and what must
+come in front for the same property to hold in fMP4.

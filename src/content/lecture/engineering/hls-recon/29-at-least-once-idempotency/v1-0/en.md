@@ -1,31 +1,29 @@
 ---
-untranslated: ko
-title: "at-least-once 와 멱등성"
-description: "경계 중복 큐, 그리고 정규화와 비교의 순서"
-date: 2026-08-19
+title: "At-Least-Once and Idempotency"
+description: "Boundary-duplicate cues, and the order of normalization and comparison"
+date: 2026-07-25
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-29-at-least-once-idempotency.svg
 ---
-## 29.0 이 장에서 답할 것
+## 29.0 What this chapter answers
 
-1. 왜 같은 자막이 두 번 오는가 — 그리고 왜 그것이 송출자의 버그가 아닌가
-2. 중복 제거 키를 무엇으로 잡아야 하는가. 시각만으로는, 본문만으로는 왜 안 되는가
-3. **왜 정제를 판정보다 먼저 해야 하는가** — 순서를 뒤집으면 무엇이 깨지는가
-4. exactly-once 전달은 왜 일반적으로 불가능에 가까운가
+1. Why does the same subtitle come twice — and why is that not the deliverer's bug?
+2. What should the deduplication key be set as. Why can it be neither time alone nor body alone?
+3. **Why must the cleaning be done before the verdict** — what breaks if you reverse the order?
+4. Why is exactly-once delivery generally close to impossible?
 
-셋째가 이 장의 핵심이다. 앞의 둘은 준비이고, 넷째는 앞의 셋이 왜 이 도메인에만
-있는 문제가 아닌지를 말한다.
+The third is this chapter's core. The first two are preparation, and the fourth says why the first three are not
+a problem only in this domain.
 
 ---
 
-## 29.1 문제 — 6큐가 9큐가 된다
+## 29.1 The problem — 6 cues become 9
 
-### 29.1.1 실측
+### 29.1.1 Measured
 
-이 저장소의 회귀 테스트는 자막 트랙을 **직접 만든다.** ffmpeg 의 HLS muxer 가
-WebVTT 를 세그먼트로 쪼개지 못하기 때문인데(`tests/run.sh:69-71`), 그 덕에 무엇을
-넣었는지가 코드에 그대로 남아 있다.
+This repository's regression test **makes the subtitle track itself.** Because ffmpeg's HLS muxer cannot chop
+WebVTT into segments (`tests/run.sh:69-71`), and thanks to that what was put in remains in the code as-is.
 
 ```python
 # tests/run.sh:99-108
@@ -33,7 +31,7 @@ WebVTT 를 세그먼트로 쪼개지 못하기 때문인데(`tests/run.sh:69-71`
         lo, hi = i * SEG, (i + 1) * SEG
         body = ["WEBVTT", f"X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:{base + OFFSET[name]}", ""]
         for s, e, text in cues:
-            if e > lo and s < hi:                      # 경계에 걸치면 양쪽에 넣는다
+            if e > lo and s < hi:                      # if it straddles the boundary, put it on both sides
                 body += [f"{ts(s)} --> {ts(e)}", text, ""]
         (d / f"seg{i:03d}.vtt").write_text("\n".join(body), encoding="utf-8")
         pl += [f"#EXTINF:{SEG:.5f},", f"seg{i:03d}.vtt"]
@@ -41,39 +39,37 @@ WebVTT 를 세그먼트로 쪼개지 못하기 때문인데(`tests/run.sh:69-71`
     (d / "index.m3u8").write_text("\n".join(pl) + "\n", encoding="utf-8")
 ```
 
-입력은 **큐 6개**다 — `(0, 4)` `(5, 9)` `(10, 14)` `(15, 19)` `(20, 24)` `(25, 29)`
-(초). 조각은 6초짜리 5개다. 같은 절차를 손으로 돌려 조각별 큐 수를 세면 이렇다.
+The input is **6 cues** — `(0, 4)` `(5, 9)` `(10, 14)` `(15, 19)` `(20, 24)` `(25, 29)` (seconds). The pieces are
+five 6-second ones. Run the same procedure by hand and count cues per piece and it is this.
 
 ```
-$ python3 (tests/run.sh 의 자막 생성 절차와 동일)
-seg000: 2큐
-seg001: 2큐
-seg002: 2큐
-seg003: 2큐
-seg004: 1큐
-총 조각 큐 수: 9
+$ python3 (identical to tests/run.sh's subtitle-generation procedure)
+seg000: 2 cues
+seg001: 2 cues
+seg002: 2 cues
+seg003: 2 cues
+seg004: 1 cue
+total piece cues: 9
 ```
 
-**고유한 큐는 6개인데 조각에 실린 큐는 9개다.**
+**The unique cues are 6 but the cues carried in the pieces are 9.**
 
-![자막 조각 다섯 개와 원본 큐 여섯 개를 같은 시간축에 놓은 그림](/images/lecture/hls-recon/29-boundary-cues.svg)
+![Five subtitle pieces and six original cues placed on the same time axis](/images/lecture/hls-recon/29-boundary-cues.svg)
 
-*그림 29-1 — 경계에 걸친 큐는 인접한 두 조각 양쪽에 실린다*
+*Figure 29-1 — a boundary-straddling cue is carried on both of the two adjacent pieces*
 
-그림에서 눈여겨볼 것이 하나 있다. **큐 5(20–24초)는 끝이 조각 경계(24초)와 정확히
-일치하는데도 다음 조각에 실리지 않는다.** 판정 조건이 `e > lo and s < hi` 라는
-**반개구간(half-open interval)** 비교이기 때문이다. `e > lo` 이므로 `24 > 24` 는
-거짓이다.
+There is one thing to note in the figure. **Cue 5 (20–24 seconds), even though its end exactly matches the piece
+boundary (24 seconds), is not carried in the next piece.** Because the verdict condition `e > lo and s < hi` is a
+**half-open interval** comparison. Since `e > lo`, `24 > 24` is false.
 
-> **용어** — **반개구간(half-open interval)**: 한쪽 끝만 포함하는 구간. 여기서는
-> 조각 *i* 가 `[lo, hi)` 를 덮는다. 경계 시각이 정확히 한 조각에만 속하도록 만드는
-> 표준적 방법이며, 닫힌 구간으로 잡으면 경계에서 끝나는 큐가 양쪽에 들어가 중복이
-> 하나 더 늘어난다.
+> **Term** — **half-open interval**: an interval including only one end. Here piece *i* covers `[lo, hi)`. It is
+> the standard way of making a boundary time belong to exactly one piece, and take it as a closed interval and a
+> cue ending at the boundary enters both sides, adding one more duplicate.
 
-### 29.1.2 이어붙이면 두 번째 오염이 겹친다
+### 29.1.2 On concatenation a second contamination overlaps
 
-조각을 받아 이어붙이는 일은 ffmpeg 에 맡긴다([`subtitles.py:142-150`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L142-L150)). 그 결과를
-그대로 열어 본 실측이다(ffmpeg 8.1.1, 로컬 HTTP, `-c:s webvtt`).
+Receiving and concatenating pieces is left to ffmpeg ([`subtitles.py:142-150`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L142-L150)). The measurement of opening that result
+as-is (ffmpeg 8.1.1, local HTTP, `-c:s webvtt`).
 
 ```
 WEBVTT
@@ -96,298 +92,289 @@ X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:126000
       ⋮
 ```
 
-(MPEGTS 값은 픽스처에서 고정한 것이다. 실제 송출에서는 조각마다 다른 값이 온다.)
+(The MPEGTS value is fixed in the fixture. In an actual delivery a different value comes per piece.)
 
-두 가지가 한꺼번에 보인다.
+Two things are seen at once.
 
-| 관찰 | 무엇인가 |
+| Observation | What it is |
 |---|---|
-| `00:05.000 --> 00:09.000` 이 두 번 | **경계 중복 큐** — §29.1.1 이 예고한 것 |
-| 큐 2의 본문 아래에 `WEBVTT` · `X-TIMESTAMP-MAP=…` | **조각 헤더가 앞 큐의 본문으로 흡수** |
+| `00:05.000 --> 00:09.000` twice | a **boundary-duplicate cue** — what §29.1.1 foretold |
+| `WEBVTT` · `X-TIMESTAMP-MAP=…` below cue 2's body | a **fragment header absorbed into the previous cue's body** |
 
-두 번째가 왜 생기는지는 WebVTT 의 블록 구분 규칙을 보면 바로 나온다. WebVTT 에서
-큐는 **빈 줄로 끝난다.** 조각 파일의 마지막 큐 뒤에는 빈 줄이 없고, 다음 조각의
-`WEBVTT` 줄이 곧바로 이어 붙으므로, 파서 입장에서는 그것이 여전히 앞 큐의 본문이다.
-그대로 두면 **`WEBVTT` 라는 글자가 자막으로 화면에 뜬다.**
+Why the second arises is seen at once from WebVTT's block-separation rule. In WebVTT a cue **ends with a blank
+line.** There is no blank line after a piece file's last cue, and the next piece's `WEBVTT` line joins right
+after, so from the parser's view that is still the previous cue's body. Leave it and **the text `WEBVTT` appears
+on screen as a subtitle.**
 
-이 설명이 맞는지는 따로 확인할 수 있다. 조각 5개를 **`cat` 으로 바이트만 이어붙인**
-파일을 만들어 그 경계를 들여다보면 이렇다.
+Whether this explanation is right can be confirmed separately. Make a file that **joins only the bytes of five
+pieces with `cat`** and look into the boundary and it is this.
 
 ```
 … --> 00:00:09.000\n한국어 자막 2번\nWEBVTT\nX-TIMESTAMP-MAP=…\n\n00:00:05.000 --> …
-                                  ↑ 빈 줄이 없다 — 여기서 큐가 끝나지 않는다
+                                  ↑ there is no blank line — the cue does not end here
 ```
 
-그리고 이 파일을 ffmpeg 에 그대로 먹이면 **HLS 플레이리스트를 통해 받은 것과 같은
-결과**가 나온다. 즉 흡수는 HLS 처리의 특수한 동작이 아니라 **"빈 줄 없이 이어붙인
-WebVTT 를 규칙대로 파싱한 결과"** 다.
+And feed this file to ffmpeg as-is and **the same result as received via the HLS playlist** comes out. That is,
+the absorption is not a special behavior of HLS handling but **"the result of parsing WebVTT joined without a
+blank line by the rules."**
 
-코드 주석이 이 사실을 그대로 적어 두었다.
+The code comment wrote this fact as-is.
 
 ```python
 # subtitles.py:168-181
-# 조각마다 붙는 WebVTT 파일 헤더. 조각을 이어붙이면 앞 큐의 본문으로 흡수된다.
+# The WebVTT file header attached to each piece. Concatenate pieces and it is absorbed into the previous cue's body.
 _SEG_HEADER_RE = re.compile(r"^[ \t]*(?:WEBVTT.*|X-TIMESTAMP-MAP=.*)$", re.MULTILINE)
 
 
 def _clean_body(body: str) -> str:
-    """큐 본문에 섞여 들어온 조각 헤더를 걷어낸다.
+    """Strip fragment headers that got mixed into a cue body.
 
-    ffmpeg 가 자막 조각을 이어붙일 때 각 조각 선두의 `WEBVTT` 와
-    `X-TIMESTAMP-MAP=` 줄을 직전 큐의 본문으로 흡수한다. 그대로 두면 그 문자열이
-    자막으로 화면에 표시되므로 제거한다.
+    When ffmpeg concatenates subtitle pieces, it absorbs each piece's leading `WEBVTT` and
+    `X-TIMESTAMP-MAP=` lines into the previous cue's body. Leave them and those strings are
+    displayed on screen as subtitles, so remove them.
     """
     return "\n".join(
         ln for ln in _SEG_HEADER_RE.sub("", body).split("\n") if ln.strip()
     ).strip()
 ```
 
-### 29.1.3 두 오염은 겹치되 일치하지 않는다
+### 29.1.3 The two contaminations overlap but do not coincide
 
-여기서 이 장 전체를 결정하는 사실이 나온다. 실측 결과를 정리하면 이렇다.
+Here comes the fact deciding this whole chapter. Organize the measurement result and it is this.
 
-| 큐 | 사본 수 | 헤더 오염 |
+| Cue | Copies | Header contamination |
 |---|---|---|
-| 큐 1 (0–4) | 1 | 없음 — 첫 조각의 헤더는 파일 헤더가 되므로 |
-| 큐 2 (5–9) | 2 | **한쪽만** (seg000 이 실은 사본) |
-| 큐 3 (10–14) | 2 | **한쪽만** (seg001 이 실은 사본) |
-| 큐 4 (15–19) | 2 | **한쪽만** (seg002 이 실은 사본) |
-| 큐 5 (20–24) | 1 | **있음** (seg003 의 마지막 큐라 seg004 의 헤더를 먹었다) |
-| 큐 6 (25–29) | 1 | 없음 |
+| cue 1 (0–4) | 1 | none — the first piece's header becomes the file header |
+| cue 2 (5–9) | 2 | **only one side** (the copy seg000 carried) |
+| cue 3 (10–14) | 2 | **only one side** (the copy seg001 carried) |
+| cue 4 (15–19) | 2 | **only one side** (the copy seg002 carried) |
+| cue 5 (20–24) | 1 | **present** (being seg003's last cue it ate seg004's header) |
+| cue 6 (25–29) | 1 | none |
 
-- 중복된 큐는 3개, 오염된 큐는 4개다. **집합이 다르다.**
-- 큐 5는 오염됐지만 중복이 아니다 → 중복 제거만 해서는 화면에 `WEBVTT` 가 뜬다.
-- 큐 2·3·4는 **한쪽 사본만** 오염됐다 → 정제 없이 본문을 비교하면 같은 큐인데도
-  본문이 달라 보인다.
+- The duplicated cues are 3, the contaminated cues are 4. **The sets differ.**
+- Cue 5 is contaminated but not a duplicate → deduplication alone and `WEBVTT` appears on screen.
+- Cues 2·3·4 have **only one copy** contaminated → compare the body without cleaning and, being the same cue, the
+  bodies look different.
 
-마지막 줄이 §29.3.4 의 순서 문제로 직결된다. 먼저 이 중복이 어디에서 오는지를
-정리한다.
+The last line leads directly to §29.3.4's order problem. First, organize where this duplication comes from.
 
 ---
 
-## 29.2 원리 — 이것은 버그가 아니라 규격이다
+## 29.2 The principle — this is not a bug but the spec
 
-### 29.2.1 조각은 자족적이어야 한다
+### 29.2.1 A piece must be self-contained
 
-HLS 의 세그먼트는 **어느 것부터 재생을 시작해도 성립해야 한다.** 이유는 셋이다.
+An HLS segment **must hold up whichever one you start playback from.** The reasons are three.
 
-| 상황 | 왜 중간부터 시작하는가 |
+| Situation | Why it starts from the middle |
 |---|---|
-| **탐색(seek)** | 사용자가 진행 막대를 12분으로 옮기면 그 시각의 조각부터 받는다 |
-| **비트레이트 전환** | ABR 이 화질을 바꾸면 다른 렌디션의 중간 조각부터 이어 붙인다(제2장) |
-| **LIVE 합류** | 라이브 스트림에 지금 들어온 시청자는 플레이리스트의 뒤쪽 조각부터 받는다 |
+| **seek** | the user moves the progress bar to 12 minutes and receives from the piece at that time |
+| **bitrate switch** | ABR changes the quality and joins from another rendition's middle piece (Chapter 2) |
+| **LIVE join** | a viewer entering the live stream now receives from the back pieces of the playlist |
 
-> **용어** — **자족적 세그먼트(self-contained segment)**: 앞선 세그먼트를 받지 않아도
-> 단독으로 복호·표시할 수 있는 조각. 영상 쪽에서는 각 세그먼트를 키프레임으로
-> 시작하게 만드는 것이 이 성질에 해당한다(`tests/run.sh:40` 의 `-g 60 -keyint_min 60
-> -sc_threshold 0` 가 그것을 강제한다).
+> **Term** — **self-contained segment**: a piece that can be decoded·displayed on its own without receiving prior
+> segments. On the video side, making each segment start with a keyframe corresponds to this property
+> (`tests/run.sh:40`'s `-g 60 -keyint_min 60 -sc_threshold 0` enforces it).
 
-자막에도 같은 요구가 걸린다. 12분 지점부터 재생을 시작했는데 그 순간 화면에 떠
-있어야 할 자막이 **11분 58초에 시작한 큐**라면, 그 큐는 12분대 조각 안에 들어 있어야
-한다. 들어 있지 않으면 사용자는 자막이 없는 상태로 그 대사를 지나친다.
+The same demand applies to subtitles. If playback started from the 12-minute point and the subtitle that should
+be on screen at that instant is **a cue that started at 11 minutes 58 seconds**, that cue must be inside the
+12-minute piece. If not, the user passes that line with no subtitle.
 
-RFC 8216 §3.5 는 각 WebVTT 미디어 세그먼트가 그 세그먼트의 시간 구간에 표시되어야
-할 큐를 담을 것을 요구하며, 경계에 걸친 큐는 두 구간 모두에 표시되어야 하므로
-**결과적으로 양쪽에 실린다.** 이 저장소의 코드는 이를 "허용"이라고 적었다.
+RFC 8216 §3.5 requires each WebVTT media segment to hold the cues that should be displayed in that segment's time
+interval, and a boundary-straddling cue must be displayed in both intervals so **as a result it is carried on
+both sides.** This repository's code wrote this as "permits."
 
 ```python
 # subtitles.py:259-268
 def dedupe(path: Path, fmt: str) -> tuple[int, int]:
-    """이어붙인 자막을 정리한다 — 조각 헤더 제거 + 경계 중복 큐 제거.
+    """Tidy the concatenated subtitle — remove fragment headers + remove boundary-duplicate cues.
 
-    HLS 규격은 구간에 걸치는 큐를 인접 세그먼트 양쪽에 넣는 것을 허용하고,
-    실제 송출도 그렇게 나간다. ffmpeg 는 조각을 이어붙이기만 하므로 그대로 두면
-    같은 자막이 두 번 실리고, 조각 헤더까지 본문에 섞인다.
-    병합은 위임하되 이 후처리는 여기서 책임진다.
+    The HLS spec permits putting an interval-straddling cue on both adjacent segments,
+    and actual deliveries go out that way. ffmpeg only concatenates the pieces, so leave it
+    and the same subtitle is carried twice and even the fragment header mixes into the body.
+    Delegate the merge but take responsibility for this post-processing here.
 
-    반환: (제거한 중복 큐 수, 헤더가 섞여 있던 큐 수)
+    Returns: (removed duplicate-cue count, count of cues that had a header mixed in)
     """
 ```
 
-"허용"과 "요구"의 차이는 실무에서 크다 — 허용이면 그렇게 하지 않는 송출도 있다는
-뜻이고, 요구면 모든 송출이 그렇다는 뜻이다. **그러나 받는 쪽 코드는 어느 쪽이든
-똑같이 짜야 한다.** 중복이 올 수 있다고 가정하고, 오지 않으면 아무 일도 하지 않으면
-된다. 반대로 "안 온다"를 가정한 코드는 오는 순간 틀린 결과를 낸다. (규격 원문 대조를
-하지 못한 점은 §29.8 에 적어 둔다.)
+The difference of "permits" and "requires" is large in practice — permits means there are deliveries that do not
+do it, requires means all deliveries do. **But the receiving code must be written the same either way.** Assume a
+duplicate may come, and if it does not come do nothing. Conversely, code assuming "it does not come" gives a wrong
+result the moment it comes. (That the spec's own text could not be cross-checked is written in §29.8.)
 
-### 29.2.2 왜 송출자가 지우지 못하는가
+### 29.2.2 Why can the deliverer not remove it
 
-자연스러운 질문이 하나 있다 — 중복이 문제라면 송출자가 지우면 되지 않는가.
+There is a natural question — if the duplicate is a problem, can the deliverer not remove it.
 
-**지울 수 없다.** 송출자는 시청자가 어느 조각부터 재생을 시작할지 모르기 때문이다.
-조각 001 에서 큐를 빼면 "조각 001 부터 시작한 시청자"가 그 자막을 못 보고, 조각
-000 에서 빼면 "처음부터 본 시청자"가 못 본다. 어느 쪽을 빼든 어떤 시청자에게는
-틀린다.
+**It cannot remove it.** Because the deliverer does not know from which piece the viewer will start playback.
+Remove the cue from piece 001 and "a viewer who started from piece 001" does not see that subtitle, and remove it
+from piece 000 and "a viewer who watched from the start" does not see it. Whichever you remove, it is wrong for
+some viewer.
 
-여기서 구조가 드러난다.
+Here the structure is revealed.
 
-> **중복을 제거할 수 있는 쪽은 전체를 가진 쪽뿐이고, 전체를 가지는 쪽은
-> 수신자뿐이다.**
+> **The side that can remove the duplicate is only the side that has the whole, and the side that has the whole is
+> only the receiver.**
 
-송출자는 각 조각을 **독립적으로** 만들어야 하고, 그 대가로 경계에서 중복이 생긴다.
-전체를 받아 파일 하나로 되돌리는 이 저장소의 도구만이 "이 큐는 아까 본 것"이라고
-말할 수 있는 위치에 있다.
+The deliverer must make each piece **independently**, and at the price a duplicate arises at the boundary. Only
+this repository's tool, which receives the whole and returns it to one file, is in a position to say "this cue is
+the one seen earlier."
 
-### 29.2.3 이것은 at-least-once 전달이다
+### 29.2.3 This is at-least-once delivery
 
-같은 구조가 분산 시스템의 메시지 전달에 정확히 있다.
+The same structure is exactly in distributed systems' message delivery.
 
-> **용어** — **at-most-once(최대 1회) 전달**: 메시지가 0회 또는 1회 전달된다.
-> 중복은 없지만 유실될 수 있다. 보내고 잊는(fire-and-forget) 방식이 여기 속한다.
+> **Term** — **at-most-once delivery**: a message is delivered 0 or 1 times. No duplicate but it can be lost. The
+> fire-and-forget way belongs here.
 >
-> **용어** — **at-least-once(최소 1회) 전달**: 메시지가 1회 이상 전달된다.
-> 유실은 없지만 중복이 생길 수 있다. 확인 응답(ack)이 오지 않으면 재전송하는 방식이다.
+> **Term** — **at-least-once delivery**: a message is delivered 1 or more times. No loss but a duplicate can
+> arise. It is the way of resending if no acknowledgment (ack) comes.
 >
-> **용어** — **exactly-once(정확히 1회) 전달**: 메시지가 정확히 1회 전달된다.
-> 유실도 중복도 없다.
+> **Term** — **exactly-once delivery**: a message is delivered exactly 1 time. Neither loss nor duplicate.
 >
-> **용어** — **멱등성(idempotency)**: 같은 연산을 두 번 이상 수행해도 결과가 한 번
-> 수행한 것과 같은 성질. 제7장 §7.2.4 의 `f(f(x)) = f(x)` 와 같은 개념을 상태
-> 변경에 적용한 것이다.
+> **Term** — **idempotency**: the property that performing the same operation two or more times gives the same
+> result as performing it once. It applies to state change the same concept as Chapter 7 §7.2.4's `f(f(x)) =
+> f(x)`.
 
-대응은 우연이 아니다.
+The correspondence is no coincidence.
 
-| 분산 시스템 | 이 장의 자막 | 근거 |
+| Distributed system | This chapter's subtitle | Basis |
 |---|---|---|
-| 생산자(producer) | 자막 패키저 | 메시지를 만들어 내보낸다 |
-| 메시지 | 큐 하나 | 전달 단위 |
-| 전달 채널 | 세그먼트 · HTTP | 중복을 허용한다 |
-| 소비자(consumer) | `dedupe` | 중복을 스스로 걸러야 한다 |
-| 멱등성 키 | `(시작, 끝, 정제된 본문)` | 같은 것을 같다고 판정하는 근거 |
-| "이미 본 키" 저장소 | `seen: set[...]` | [`subtitles.py:276`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L276) |
+| producer | subtitle packager | makes and emits messages |
+| message | one cue | the delivery unit |
+| delivery channel | segment · HTTP | permits duplicates |
+| consumer | `dedupe` | must filter duplicates itself |
+| idempotency key | `(start, end, cleaned body)` | the basis for judging the same as the same |
+| the "already-seen key" store | `seen: set[...]` | [`subtitles.py:276`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L276) |
 
-핵심 명제도 같다.
+The core proposition is the same too.
 
-> **at-least-once 전달에서는 전달자가 중복을 허용하고, 수신자가 멱등성을 스스로
-> 확보한다.**
+> **In at-least-once delivery the deliverer permits duplicates and the receiver secures idempotency itself.**
 
-### 29.2.4 exactly-once 는 왜 일반적으로 불가능에 가까운가
+### 29.2.4 Why is exactly-once generally close to impossible
 
-"중복이 문제면 정확히 한 번만 보내면 되지 않는가"라는 물음에는 잘 알려진 답이 있다.
+The question "if the duplicate is a problem, can you not send exactly once" has a well-known answer.
 
-> **용어** — **두 장군 문제(Two Generals' Problem)**: 신뢰할 수 없는 채널로만
-> 소통하는 두 참여자가 어떤 사실에 대한 **공통 지식(common knowledge)** 에 도달할 수
-> 없다는 불가능성 결과. 메시지를 보내면 상대가 받았는지 알기 위해 확인 응답이
-> 필요하고, 그 확인 응답이 도착했는지 알기 위해 또 확인 응답이 필요하며, 이 사슬은
-> 끝나지 않는다.
+> **Term** — **Two Generals' Problem**: the impossibility result that two participants communicating only over an
+> unreliable channel cannot reach **common knowledge** about some fact. Send a message and you need an ack to know
+> the other received it, and to know that ack arrived you need another ack, and this chain does not end.
 
-송신자가 응답을 못 받았을 때 마주하는 선택은 둘뿐이다.
+When the sender does not get a response, the choice it faces is only two.
 
-| 선택 | 실제로 일어난 일이 "메시지 유실"이면 | 실제로 일어난 일이 "응답 유실"이면 |
+| Choice | If what actually happened is "message loss" | If what actually happened is "response loss" |
 |---|---|---|
-| 재전송한다 | 옳다 — 유실을 메웠다 | **중복이 생긴다** |
-| 재전송하지 않는다 | **유실된 채 끝난다** | 옳다 |
+| resend | right — it filled the loss | **a duplicate arises** |
+| do not resend | **it ends lost** | right |
 
-**송신자는 두 상황을 구별할 수 없다.** 관측되는 것은 "응답이 없다" 하나뿐이고,
-그것은 두 원인 모두와 양립한다. 그래서 유실과 중복 중 하나를 고르는 문제가 되고,
-`at-most-once` 와 `at-least-once` 라는 두 이름이 정확히 그 선택이다.
+**The sender cannot distinguish the two situations.** What is observed is only "there is no response," and that is
+compatible with both causes. So it becomes a problem of choosing one of loss and duplicate, and the two names
+`at-most-once` and `at-least-once` are exactly that choice.
 
-실무에서 "exactly-once 를 지원한다"고 쓰인 시스템들이 실제로 제공하는 것은
-**exactly-once 전달이 아니라 exactly-once 처리 효과**다. 구성은 언제나 같다.
+What systems written as "supports exactly-once" in practice actually provide is **not exactly-once delivery but an
+exactly-once processing effect.** The composition is always the same.
 
 ```
-at-least-once 전달  +  수신 측의 멱등성  =  exactly-once 처리 효과
+at-least-once delivery  +  idempotency on the receiving side  =  exactly-once processing effect
 ```
 
-전달 자체는 여전히 중복을 낸다. 중복이 **결과에 영향을 주지 않게** 만드는 쪽이
-수신자다. 메시지에 고유 ID 를 붙이고 수신자가 이미 처리한 ID 를 기억하는 것,
-그것이 `dedupe` 의 `seen` 집합과 정확히 같은 장치다.
+The delivery itself still gives duplicates. The side that makes the duplicate **not affect the result** is the
+receiver. Attaching a unique ID to a message and the receiver remembering the already-processed ID, that is
+exactly the same device as `dedupe`'s `seen` set.
 
-### 29.2.5 HLS 는 at-least-once 의 어떤 형태인가
+### 29.2.5 What form of at-least-once is HLS
 
-정밀하게 구분해 둘 것이 하나 있다. 메시지 큐의 중복은 **사후적**이다 — ack 가 오지
-않아서 재전송한 결과다. HLS 자막의 중복은 **선제적**이다 — 아무 실패가 없어도 처음부터
-양쪽에 넣는다.
+There is one thing to distinguish precisely. A message queue's duplicate is **after the fact** — the result of
+resending because no ack came. An HLS subtitle's duplicate is **preemptive** — it is put on both sides from the
+start even with no failure.
 
-| | 메시지 큐 | HLS 자막 조각 |
+| | Message queue | HLS subtitle piece |
 |---|---|---|
-| 중복이 생기는 시점 | 실패(ack 유실) 후 | 패키징 시점에 무조건 |
-| 중복 배수 | 재시도 횟수에 따라 가변 | 큐가 걸치는 조각 수 = 결정적 |
-| 왜 중복하는가 | 유실을 막으려고 | **어느 조각부터 시작할지 모르므로** |
-| 수신자 요구사항 | 멱등성 | **멱등성 — 동일** |
+| When the duplicate arises | after a failure (ack loss) | unconditionally at packaging time |
+| Duplicate multiplier | variable by retry count | number of pieces the cue straddles = deterministic |
+| Why it duplicates | to prevent loss | **because it does not know from which piece to start** |
+| Receiver requirement | idempotency | **idempotency — identical** |
 
-메커니즘은 다르고 **수신자에게 부과되는 요구는 같다.** 그래서 이 장은 자막 처리를
-다루면서 분산 시스템의 원리를 그대로 쓴다.
+The mechanism differs and **the demand imposed on the receiver is the same.** So this chapter uses distributed-
+system principles as-is while covering subtitle handling.
 
-중복 배수는 조각 길이가 짧을수록 커진다. 큐 길이 *L*, 조각 길이 *S* 일 때 조각
-경계가 큐와 무관하게 놓인다고 보면 **큐 하나가 가로지르는 경계 수의 기댓값은 대략
-*L/S*** 이고, 큐가 실리는 조각 수는 그보다 하나 많다. *L* 이 *2S* 를 넘으면 한 큐가
-**반드시** 세 조각 이상에 실린다. LIVE 송출이 조각을 2초로 잡고 자막 큐가 4초라면
-같은 큐가 **두세 벌** 온다.
+The duplicate multiplier grows the shorter the piece. With cue length *L*, piece length *S*, viewing the piece
+boundary as placed independently of the cue, **the expected number of boundaries one cue crosses is about *L/S***,
+and the number of pieces a cue is carried in is one more than that. If *L* exceeds *2S* one cue is **necessarily**
+carried in three or more pieces. If a LIVE delivery sets pieces to 2 seconds and a subtitle cue is 4 seconds, the
+same cue comes in **two or three copies.**
 
-이 코드는 그 경우도 처리한다 — 같은 키가 세 번 나오면 두 번을 지운다. 사본 3개를
-넣고 돌린 실측이다.
+This code handles that case too — if the same key appears three times it removes two. The measurement of putting
+in 3 copies and running.
 
 ```
-3사본 → dedupe 반환 (removed=2, leaked=0),  남은 큐 1개
+3 copies → dedupe returns (removed=2, leaked=0),  1 cue left
 ```
 
-(위 *L/S* 는 경계가 균등하게 놓인다는 가정 아래의 추정이다. 이 저장소의 픽스처는
-큐 간격이 5초로 고정된 결정적 배치라 실제로는 6큐 중 3큐가 걸쳤다.)
+(The *L/S* above is an estimate under the assumption that boundaries are placed uniformly. This repository's
+fixture is a deterministic layout with cue interval fixed at 5 seconds, so in fact 3 of the 6 cues straddled.)
 
 ---
 
-## 29.3 코드 — 중복 제거 키의 설계
+## 29.3 The code — the design of the deduplication key
 
-### 29.3.1 3중키
+### 29.3.1 The triple key
 
-판정의 전부는 한 줄이다.
+The whole verdict is one line.
 
 ```python
 # subtitles.py:301
         key = (round(bounds[0], 3), round(bounds[1], 3), body)
 ```
 
-`(시작 시각, 끝 시각, 정제된 본문)` 3중키다. 이 세 가지를 고른 근거를 하나씩
-확인한다.
+A `(start time, end time, cleaned body)` triple key. Confirm the basis for choosing these three one by one.
 
-### 29.3.2 왜 시각만도, 본문만도 안 되는가
+### 29.3.2 Why can it be neither time alone nor body alone
 
-중복 판정은 분류기이므로 두 방향의 오류가 있다.
+Duplicate judgment is a classifier so there are two directions of error.
 
-> **용어** — **위양성(false positive)**: 서로 다른 두 큐를 같다고 판정하는 것.
-> 결과는 **자막이 사라진다.**
+> **Term** — **false positive**: judging two different cues as the same. The result is **the subtitle vanishes.**
 >
-> **용어** — **위음성(false negative)**: 같은 큐를 다르다고 판정하는 것.
-> 결과는 **자막이 두 번 나온다.**
+> **Term** — **false negative**: judging the same cue as different. The result is **the subtitle appears twice.**
 
-제22장의 임계값 설계와 같은 균형 문제이며, 여기서는 두 오류의 비용이 비대칭이다 —
-사라진 자막은 복구할 수 없고, 두 번 나오는 자막은 보기 싫을 뿐이다. 그러므로
-**위양성을 더 무겁게 본다.**
+It is the same balance problem as Chapter 22's threshold design, and here the two errors' costs are asymmetric —
+a vanished subtitle cannot be recovered, and a subtitle appearing twice is just unsightly. So **the false positive
+is weighed more heavily.**
 
-키 후보별로 두 오류를 따지면 채택 이유가 나온다. 표의 **위양성 열은 실제 입력으로
-확인한 것**이다 — 아래 두 실측이 근거다(대체 키를 구현한 것이 아니라, 그 키였다면
-합쳐졌을 큐 쌍을 현재 코드에 넣어 **합쳐지지 않음**을 확인했다).
+Weigh the two errors per key candidate and the reason for adoption comes out. The table's **false-positive column
+is confirmed with actual input** — the two measurements below are the basis (not implementing an alternative key,
+but putting into the current code the cue pairs that would have merged had it been that key and confirming they
+**do not merge**).
 
-| 키 후보 | 위양성 (자막이 사라진다) | 위음성 (두 번 나온다) |
+| Key candidate | False positive (the subtitle vanishes) | False negative (appears twice) |
 |---|---|---|
-| 시작 시각만 | **발생** — 같은 시각에 뜨는 화자 두 줄이 하나로 합쳐진다 | 없음 |
-| 본문만 | **발생** — 반복되는 짧은 대사(`네.`, `…`)가 전부 한 줄로 | 없음 |
-| (시작, 끝) | **발생** — 같은 구간의 서로 다른 두 큐가 합쳐진다 | 없음 |
-| **(시작, 끝, 본문)** ← 채택 | 시각과 본문이 **모두** 같은 서로 다른 큐에 한해 | 시각이 1ms 라도 어긋나면 놓친다 |
+| start time only | **occurs** — two speaker lines appearing at the same time merge into one | none |
+| body only | **occurs** — repeated short lines (`네.`, `…`) all into one line | none |
+| (start, end) | **occurs** — two different cues of the same interval merge | none |
+| **(start, end, body)** ← adopted | only for different cues where the time and body are **both** the same | misses if the time is off even by 1ms |
 
-실측 두 건이다.
+Two measurements.
 
 ```
-동시 두 줄  00:00:01.000 --> 00:00:04.000 「— 안녕」
-            00:00:01.000 --> 00:00:04.000 「— 그래」
-            → dedupe (removed=0),  큐 2개 유지        ← 시각만으로 잡았다면 하나가 사라진다
+two simultaneous lines  00:00:01.000 --> 00:00:04.000 「— 안녕」
+                        00:00:01.000 --> 00:00:04.000 「— 그래」
+                        → dedupe (removed=0),  2 cues kept        ← had it been caught by time only, one vanishes
 
-반복 대사    00:00:01.000 --> 00:00:02.000 「네.」
-            00:00:09.000 --> 00:00:10.000 「네.」
-            → dedupe (removed=0),  큐 2개 유지        ← 본문만으로 잡았다면 하나가 사라진다
+repeated line           00:00:01.000 --> 00:00:02.000 「네.」
+                        00:00:09.000 --> 00:00:10.000 「네.」
+                        → dedupe (removed=0),  2 cues kept        ← had it been caught by body only, one vanishes
 ```
 
-세 필드가 **모두** 필요하다. 하나라도 빼면 위양성이 생기고, 위양성은 자막의 소실이다.
+All three fields are needed. Remove even one and a false positive arises, and a false positive is the subtitle's
+loss.
 
-### 29.3.3 왜 3자리로 반올림하는가 — 그리고 그 이득을 측정하지 못했다
+### 29.3.3 Why round to 3 places — and the benefit could not be measured
 
-`round(bounds[0], 3)` 의 3은 **밀리초**다. WebVTT 와 SubRip 이 표현하는 시간
-해상도가 정확히 밀리초이므로, 키의 정밀도를 원본의 정밀도에 맞춘 것이다.
+The 3 in `round(bounds[0], 3)` is **milliseconds.** Since the time resolution WebVTT and SubRip express is exactly
+milliseconds, it matched the key's precision to the original's precision.
 
-의도는 분명하다 — 같은 큐가 조각마다 미세하게 다른 시각으로 나올 수 있고, 부동소수
-값을 그대로 키로 쓰면 그 차이가 그대로 키의 차이가 된다. 시각을 파싱하는 코드는
-이렇다.
+The intent is clear — the same cue can come out with a subtly different time per piece, and use the floating-point
+value as the key as-is and that difference becomes the key's difference as-is. The code parsing the time is this.
 
 ```python
 # subtitles.py:248-256
@@ -402,48 +389,49 @@ def _cue_bounds(line: str) -> tuple[float, float] | None:
     )
 ```
 
-여기서 정직하게 적을 것이 있다. **이 반올림이 실제로 무언가를 구해 낸 사례를 이
-저장소에서 측정하지 못했다.**
+Here there is something to write honestly. **A case where this rounding actually rescued something could not be
+measured in this repository.**
 
-- `_CUE_RE` 는 시간 필드를 `(\d{3})` 로 받으므로 **밀리초보다 정밀한 값은 애초에
-  들어올 수 없다.** 파싱은 결정적이므로 같은 문자열은 같은 부동소수 값이 된다.
-- 표기가 다른 경우 — `hh:mm:ss.mmm` 와 `mm:ss.mmm` 는 둘 다 유효하고 ffmpeg 의
-  webvtt muxer 는 실제로 뒤쪽을 쓴다(§29.1.2 의 `00:05.000`). 두 표기가 같은 시각을
-  가리킬 때 파싱 결과가 비트 단위로 같은지 20만 건을 대조했다 — **불일치 0건**이다.
-- 반올림이 값을 바꾸는 경우 자체는 있다. `00:00:07.137` 은 `7.1370000000000005` 로
-  파싱된다(32.4만 건 중 78건에서 `round(v, 3) != v`). 그러나 **양쪽 사본이 같은
-  문자열이면 양쪽 모두 같은 값**이 되므로 판정 결과는 바뀌지 않는다.
+- `_CUE_RE` takes the time field as `(\d{3})` so **a value more precise than milliseconds cannot come in in the
+  first place.** Parsing is deterministic so the same string becomes the same floating-point value.
+- The case of different notation — `hh:mm:ss.mmm` and `mm:ss.mmm` are both valid and ffmpeg's webvtt muxer
+  actually uses the latter (§29.1.2's `00:05.000`). Whether the parse result is bit-for-bit the same when the two
+  notations point at the same time was cross-checked on 200,000 cases — **0 mismatches.**
+- The case where the rounding changes the value does exist. `00:00:07.137` parses as `7.1370000000000005` (78 of
+  324,000 cases have `round(v, 3) != v`). But **if both copies are the same string, both become the same value**
+  so the verdict result does not change.
 
-그렇다면 왜 남기는가. 근거는 제15장 §15.7 과 같은 형태다.
+Then why keep it. The basis is of the same form as Chapter 15 §15.7.
 
-1. **키의 정밀도를 원본의 정밀도에 맞춘다.** 부동소수는 원본에 없던 15자리 유효숫자를
-   들고 다닌다. 그 정밀도로 비교하는 것은 **원본에 없는 정보로 비교하는 것**이다.
-2. **미래의 변환에 대한 방어다.** 실제 송출은 조각마다 다른 `X-TIMESTAMP-MAP` 값을
-   싣는다(§29.1.2 의 픽스처는 같은 값으로 고정했다). 패키저가 큐 시각을 조각별
-   기준으로 다시 계산해 내보내면 같은 큐가 밀리초 단위로 어긋난 두 값이 될 수 있다.
-   그 경우 3자리 반올림은 **여전히 부족하지만**(§29.8), 부동소수 잔차만은 제거한다.
+1. **Match the key's precision to the original's precision.** A floating-point number carries 15 significant
+   digits the original did not have. Comparing at that precision is **comparing with information the original
+   does not have.**
+2. **It is a defense against a future transform.** An actual delivery carries a different `X-TIMESTAMP-MAP` value
+   per piece (§29.1.2's fixture fixed it to the same value). If the packager re-computes the cue time per-piece and
+   emits, the same cue can become two values off by a millisecond. In that case the 3-place rounding is **still
+   insufficient** (§29.8) but removes only the floating-point residue.
 
-**반올림은 관용(tolerance)을 만들지 않는다.** 이 구분이 중요하다. 실측이다.
+**Rounding does not make a tolerance.** This distinction matters. Measured.
 
 ```
-00:00:05.000 --> 00:00:09.000  「같은 자막」
-00:00:05.001 --> 00:00:09.000  「같은 자막」
-→ dedupe (removed=0),  큐 2개 유지
+00:00:05.000 --> 00:00:09.000  「same subtitle」
+00:00:05.001 --> 00:00:09.000  「same subtitle」
+→ dedupe (removed=0),  2 cues kept
 ```
 
-**1ms 어긋나면 중복 제거는 실패한다.** 반올림은 정밀도를 고정할 뿐 근사 비교를 하지
-않는다. 근사 비교로 바꾸면 위양성이 늘어난다 — 그것은 이 코드가 선택하지 않은
-설계이며, 왜 그런지는 §29.6.2 에서 일반화한다.
+**Off by 1ms and deduplication fails.** Rounding only fixes the precision and does not do an approximate
+comparison. Change it to an approximate comparison and false positives rise — that is a design this code did not
+choose, and why is generalized in §29.6.2.
 
-### 29.3.4 순서 — 이 장의 핵심
+### 29.3.4 The order — this chapter's core
 
-이제 본론이다. `dedupe` 의 루프 안쪽은 이렇다.
+Now the main argument. The inside of `dedupe`'s loop is this.
 
 ```python
 # subtitles.py:282-306
     for block in blocks:
         lines = block.split("\n")
-        # SubRip 은 블록 첫 줄이 일련번호다 — 재작성 때 새로 매기므로 버린다.
+        # SubRip has a serial number as the block's first line — discard it since we renumber on rewrite.
         if fmt == "srt" and lines and lines[0].strip().isdigit():
             lines = lines[1:]
         idx = next((i for i, ln in enumerate(lines) if "-->" in ln), None)
@@ -455,8 +443,8 @@ def _cue_bounds(line: str) -> tuple[float, float] | None:
             preserved.append(block)
             continue
         raw_body = "\n".join(lines[idx + 1 :]).strip()
-        # 헤더 정제를 중복 판정보다 먼저 한다. 오염된 쪽과 깨끗한 쪽의 본문이
-        # 달라 보이면 같은 큐인데도 중복으로 잡히지 않는다.
+        # Clean the header before the duplicate judgment. If the contaminated side and the clean side's bodies
+        # look different, the same cue is not caught as a duplicate.
         body = _clean_body(raw_body)
         if body != raw_body:
             leaked += 1
@@ -468,49 +456,48 @@ def _cue_bounds(line: str) -> tuple[float, float] | None:
         kept.append((bounds[0], bounds[1], lines[idx].strip(), body))
 ```
 
-주석 두 줄([`subtitles.py:296-297`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L296-L297))이 이 장의 명제를 코드 안에 이미 적어 두었다.
-**정제가 판정보다 먼저다.**
+The two comment lines ([`subtitles.py:296-297`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L296-L297)) already wrote this chapter's proposition into the code. **The cleaning is
+before the verdict.**
 
-§29.1.3 의 표가 이유를 준다. 큐 2의 두 사본은 **한쪽만** 오염돼 있다. 정제 없이
-본문을 비교하면 이렇다.
+§29.1.3's table gives the reason. Cue 2's two copies are contaminated **on only one side.** Compare the body
+without cleaning and it is this.
 
 ```
-사본 A(seg000)  본문 = "한국어 자막 2번\nWEBVTT\nX-TIMESTAMP-MAP=LOCAL:…"
-사본 B(seg001)  본문 = "한국어 자막 2번"
-                       ↑ 문자열이 다르다 → 다른 키 → 중복이 아니다
+copy A (seg000)  body = "한국어 자막 2번\nWEBVTT\nX-TIMESTAMP-MAP=LOCAL:…"
+copy B (seg001)  body = "한국어 자막 2번"
+                        ↑ the strings differ → a different key → not a duplicate
 ```
 
-순서만 뒤집은 판본을 만들어 같은 입력에 돌렸다. 나머지는 한 글자도 바꾸지 않고,
-키를 `raw_body` 로 잡은 뒤 정제를 나중에 하도록만 옮겼다.
+I made a version with only the order reversed and ran it on the same input. Nothing else was changed by a
+character, only the key was set with `raw_body` and the cleaning moved to later.
 
-| 판본 | `removed` | `leaked` | 결과 파일의 큐 수 | 결과 파일에 헤더가 남는가 |
+| Version | `removed` | `leaked` | Result-file cue count | Does a header remain in the result file |
 |---|---|---|---|---|
-| **정제 → 판정** (현재 코드) | **3** | 4 | **6** | 남지 않는다 |
-| 판정 → 정제 (뒤집은 판본) | **0** | 4 | **9** | 남지 않는다 |
+| **clean → judge** (current code) | **3** | 4 | **6** | none remains |
+| judge → clean (reversed version) | **0** | 4 | **9** | none remains |
 
-![같은 큐의 두 사본을 두고 처리 순서를 비교한 그림](/images/lecture/hls-recon/29-order-dependency.svg)
+![A figure comparing the processing order with two copies of the same cue](/images/lecture/hls-recon/29-order-dependency.svg)
 
-*그림 29-2 — 정제와 판정의 순서를 뒤집으면 같은 큐가 다른 키를 갖는다*
+*Figure 29-2 — reverse the order of cleaning and judgment and the same cue gets a different key*
 
-마지막 열이 이 실패의 성질을 말해 준다. **뒤집은 판본도 헤더는 깨끗하게 지운다.**
-정제를 나중에 할 뿐 하기는 하기 때문이다. 그래서 결과 파일을 열어 보면 멀쩡해
-보이고, 오직 **큐가 9개라는 사실**만이 틀렸다는 신호다.
+The last column tells this failure's nature. **The reversed version too cleans the header cleanly.** It just does
+the cleaning later but does it. So open the result file and it looks fine, and only **the fact that there are 9
+cues** is the signal that it is wrong.
 
-> **정규화와 비교의 순서가 뒤집힌 실패는 결과물의 겉모습을 바꾸지 않는다.
-> 그래서 눈으로는 잡히지 않고, 세는 검사로만 잡힌다.**
+> **A failure of the reversed order of normalization and comparison does not change the result's appearance.
+> So it is not caught by the eye and caught only by a counting check.**
 
-정제된 본문이 **키로도 쓰이고 저장 값으로도 쓰인다**(`kept.append(... , body)`)는
-점도 함께 봐 둘 만하다. 한 번의 정제가 두 역할을 겸하므로, 남는 사본이 오염된
-쪽이든 깨끗한 쪽이든 저장되는 본문은 같다. 순서를 지키면 "어느 사본이 살아남는가"를
-따질 필요조차 없어진다.
+It is also worth noting that the cleaned body **is used both as the key and as the stored value**
+(`kept.append(... , body)`). Since one cleaning serves both roles, whether the surviving copy is the contaminated
+side or the clean side, the stored body is the same. Keep the order and there is not even a need to weigh "which
+copy survives."
 
-### 29.3.5 큐가 아닌 블록의 보존
+### 29.3.5 The preservation of non-cue blocks
 
-`-->` 가 없거나 시각 파싱에 실패한 블록은 버리지 않고 `preserved` 로 옮긴다
-([`subtitles.py:288-294`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L288-L294)). WebVTT 의 `NOTE`(주석)·`STYLE`(스타일 규칙)·`REGION`(영역
-정의) 블록이 여기 해당한다.
+A block with no `-->` or that fails time parsing is not discarded but moved to `preserved` ([`subtitles.py:288-294`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L288-L294)).
+WebVTT's `NOTE` (comment)·`STYLE` (style rule)·`REGION` (region definition) blocks fall here.
 
-재작성할 때 이 블록들은 **헤더 바로 뒤, 첫 큐 앞**에 놓인다.
+On rewrite these blocks are placed **right after the header, before the first cue.**
 
 ```python
 # subtitles.py:311-321
@@ -527,21 +514,20 @@ def _cue_bounds(line: str) -> tuple[float, float] | None:
     path.write_text("\n\n".join(out) + "\n", encoding="utf-8")
 ```
 
-위치가 우연이 아니다. WebVTT 규격은 `STYLE` 과 `REGION` 블록이 **첫 큐보다 앞에**
-와야 한다고 요구한다. 원래 위치를 그대로 보존하려 했다면 오히려 규격을 어길 수
-있었다. 실측이다.
+The position is no coincidence. The WebVTT spec requires `STYLE` and `REGION` blocks to come **before the first
+cue.** Had it tried to preserve the original position as-is, it could rather have violated the spec. Measured.
 
 ```
-입력:  WEBVTT / NOTE 블록 / STYLE 블록 / (id 가 붙은 큐) / 중복된 큐 두 개
-출력:  WEBVTT / NOTE 블록 / STYLE 블록 / 큐들          ← NOTE·STYLE 보존, 중복 1건 제거
+input:  WEBVTT / NOTE block / STYLE block / (a cue with an id) / two duplicate cues
+output: WEBVTT / NOTE block / STYLE block / cues              ← NOTE·STYLE preserved, 1 duplicate removed
 ```
 
-같은 실측에서 **잃는 것도 확인됐다.** 큐 식별자(cue identifier — 타이밍 줄 바로
-앞에 놓이는 이름표)는 사라진다. `lines[idx]` 앞의 줄을 아무것도 쓰지 않기
-때문이다. 반면 타이밍 줄에 붙는 큐 설정(`line:90%` 등)은 줄 전체를 그대로 옮기므로
-보존된다. `sort` 도 `(시작, 끝)` 만 보므로 안정 정렬로 원래 순서를 유지한다.
+The same measurement also confirmed **what is lost.** The cue identifier (a name tag placed right before the
+timing line) vanishes. Because it writes nothing of the line before `lines[idx]`. On the other hand, cue settings
+attached to the timing line (`line:90%`, etc.) are preserved since the whole line is moved as-is. `sort` too looks
+at only `(start, end)` so it is a stable sort keeping the original order.
 
-### 29.3.6 바꿀 것이 없으면 파일을 쓰지 않는다
+### 29.3.6 If there is nothing to change, do not write the file
 
 ```python
 # subtitles.py:308-309
@@ -549,422 +535,406 @@ def _cue_bounds(line: str) -> tuple[float, float] | None:
         return 0, 0
 ```
 
-중복도 오염도 없으면 **파일을 다시 쓰지 않고 돌아간다.** 무해해 보이는 재작성이
-실제로는 파일을 바꾸기 때문이다 — 블록이 정렬되고, SubRip 번호가 새로 매겨지고,
-`preserved` 블록이 앞으로 이동하고, 줄 끝이 정규화된다.
+If there is neither duplicate nor contamination it **returns without rewriting the file.** Because a
+harmless-looking rewrite actually changes the file — the blocks are sorted, the SubRip numbers are renumbered, the
+`preserved` blocks move to the front, and the line endings are normalized.
 
-이것은 §29.3.4 와 같은 계열의 결정이다. **손댈 이유가 없을 때 손대지 않으면, 손댄
-파일은 언제나 손댈 이유가 있었던 파일이다.** 그러면 리포트에 찍힌 "경계 중복 3큐
-제거"([`report.py:401-404`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L401-L404))가 실제로 일어난 일과 일대일로 대응한다.
+This is a decision of the same lineage as §29.3.4. **Do not touch when there is no reason to touch, and a touched
+file is always a file there was a reason to touch.** Then the "3 boundary-duplicate cues removed" printed in the
+report ([`report.py:401-404`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L401-L404)) corresponds one-to-one with what actually happened.
 
-### 29.3.7 완성 파일에는 걸지 않는다
+### 29.3.7 Do not apply it to a finished file
 
-같은 원칙이 사이드카 경로에도 있다.
+The same principle is on the sidecar path too.
 
 ```python
 # subtitles.py:453-455
-    받은 파일은 완성본이므로 dedupe/shift 를 걸지 않는다 — 그 둘은 조각을 이어붙인
-    산물에서만 생기는 문제다. 원본 바이트를 그대로 두어야 같은 URL 을 손으로 받은
-    결과와 대조할 수 있다. 요청 형식이 원본과 다를 때만 변환본을 따로 만든다.
+    A received file is a finished copy so dedupe/shift are not applied — those two are problems that arise
+    only in a product concatenated from pieces. The original bytes must be left as-is to compare with the result
+    of fetching the same URL by hand. A converted copy is made separately only when the request format differs from the original.
 ```
 
-경계 중복은 **조각화의 산물**이지 자막의 성질이 아니다. 완성된 `.srt` 파일 하나를
-받아 온 경우에는 중복이 있을 이유가 없고, 있다면 그것은 원본이 그런 것이므로 지우면
-원본과 달라진다. 회귀 테스트가 이 성질을 바이트 비교로 고정한다
-(`tests/run.sh:272-274`, BOM 과 CRLF 까지 포함).
+A boundary duplicate is a **product of chopping**, not a property of the subtitle. When one finished `.srt` file
+was received, there is no reason for a duplicate, and if there is one it is because the original is so, so removing
+it makes it differ from the original. The regression test fixes this property by byte comparison
+(`tests/run.sh:272-274`, including even the BOM and CRLF).
 
-> **멱등성 확보는 중복이 생기는 경로에만 건다. 생기지 않는 경로에 걸면 그것은
-> 정규화가 아니라 변조다.**
+> **Idempotency-securing is applied only to a path where duplicates arise. Apply it to a path where they do not
+> arise and it is not normalization but tampering.**
 
 ---
 
-## 29.4 이렇게 하지 않으면 무엇이 깨지는가
+## 29.4 What breaks if you do not do this
 
-지금까지의 결정을 하나씩 되돌려 보면 각각이 무엇을 막고 있었는지가 보인다.
+Reverse each decision so far and you see what each was blocking.
 
-| 되돌리면 | 무엇이 깨지는가 | 어떻게 드러나는가 |
+| If you reverse | What breaks | How it surfaces |
 |---|---|---|
-| **정제를 판정 뒤로 옮긴다** | 한쪽만 오염된 사본이 다른 키를 갖는다 → 중복이 하나도 안 지워진다 | 파일은 깨끗해 보이고 **큐 수만 9** (실측) |
-| **정제를 아예 안 한다** | `WEBVTT` · `X-TIMESTAMP-MAP=…` 이 자막으로 화면에 뜬다 | 재생하면 바로 보인다 — 큐 5는 중복도 아니라 중복 제거로도 안 잡힌다 |
-| **중복 제거를 안 한다** | 같은 자막이 두 번 표시된다 | 큐 수 9, 겹치는 구간에서 두 줄 |
-| **키에서 본문을 뺀다** | 같은 구간의 화자 두 줄이 하나로 합쳐진다 | **자막이 사라진다** — 되돌릴 수 없다 |
-| **키에서 시각을 뺀다** | 반복되는 짧은 대사가 전부 한 줄로 합쳐진다 | 같음 |
-| **반올림을 뺀다** | 현재 관측 범위에서는 차이 없음 | §29.3.3 — 이 저장소에서는 **측정되지 않는다** |
-| **반개구간을 닫힌 구간으로** | 경계에서 끝나는 큐가 양쪽에 실린다 | 중복이 하나 늘어난다(큐 5) — 제거는 되지만 조각이 커진다 |
-| **바꿀 것이 없어도 다시 쓴다** | 손대지 않아도 될 파일이 정규화된다 | 원본 대조가 불가능해진다 |
-| **완성 파일에도 건다** | 원본 바이트가 바뀐다 | 손으로 받은 결과와 대조 불가 (`tests/run.sh:272-274`) |
+| **move the cleaning after the verdict** | a one-sided-contaminated copy gets a different key → not a single duplicate is removed | the file looks clean and **only the cue count is 9** (measured) |
+| **do not clean at all** | `WEBVTT` · `X-TIMESTAMP-MAP=…` appears on screen as subtitles | visible right away on playback — cue 5 is not even a duplicate so deduplication does not catch it |
+| **do not deduplicate** | the same subtitle is displayed twice | cue count 9, two lines in the overlapping interval |
+| **remove the body from the key** | two speaker lines of the same interval merge into one | **the subtitle vanishes** — unrecoverable |
+| **remove the time from the key** | repeated short lines all merge into one line | same |
+| **remove the rounding** | no difference in the current observed range | §29.3.3 — **not measured** in this repository |
+| **half-open → closed interval** | a cue ending at the boundary is carried on both sides | one more duplicate (cue 5) — it is removed but the piece grows |
+| **rewrite even with nothing to change** | a file that need not be touched is normalized | comparison with the original becomes impossible |
+| **apply it to a finished file too** | the original bytes change | cannot compare with a hand-fetched result (`tests/run.sh:272-274`) |
 
-가장 위험한 것은 **키에서 필드를 빼는 두 행**이다. 나머지는 보기 싫거나 시끄러운
-실패이고 — 자막이 두 번 나오거나 `WEBVTT` 라는 글자가 화면에 뜬다 — 보면 바로 안다.
-반면 저 둘은 **자막이 조용히 사라지고, 사라진 자막은 원본 없이는 복구되지 않는다.**
+The most dangerous is the **two rows removing a field from the key.** The rest are unsightly or noisy failures —
+the subtitle appears twice or the text `WEBVTT` appears on screen — and you know right away on seeing. Those two,
+by contrast, make **the subtitle quietly vanish, and a vanished subtitle is not recovered without the original.**
 
 ---
 
-## 29.5 검증 — 테스트가 고정하는 것
+## 29.5 Verification — what the test fixes
 
-### 29.5.1 두 개의 독립된 검사
+### 29.5.1 Two independent checks
 
 ```bash
 # tests/run.sh:225-229
-# 원본은 트랙당 6큐. 경계 중복이 남아 있으면 9큐가 된다.
+# The original is 6 cues per track. If boundary duplicates remain it becomes 9 cues.
 kocues=$(grep -c -- '-->' "$WORK/out/subs.ko.vtt" || true)
-[[ "$kocues" -eq 6 ]] && ok "경계 중복 제거 (6큐)" || bad "큐 수가 6이 아님: $kocues"
+[[ "$kocues" -eq 6 ]] && ok "boundary duplicates removed (6 cues)" || bad "cue count is not 6: $kocues"
 grep -q 'WEBVTT' <(tail -n +2 "$WORK/out/subs.ko.vtt") \
-  && bad "본문에 조각 헤더가 남음" || ok "조각 헤더 정제"
+  && bad "fragment header remains in the body" || ok "fragment header cleaned"
 ```
 
-두 줄이 서로 다른 것을 본다.
+Two lines look at different things.
 
-| 검사 | 무엇을 보는가 | 순서를 뒤집은 판본에서 |
+| Check | What it looks at | In the order-reversed version |
 |---|---|---|
-| 큐 수 `== 6` | 중복이 지워졌는가 | **실패 (9)** |
-| 2행 이후에 `WEBVTT` 가 없는가 | 헤더가 정제됐는가 | 통과 |
+| cue count `== 6` | were the duplicates removed | **fail (9)** |
+| no `WEBVTT` after line 2 | was the header cleaned | pass |
 
-**뒤집은 판본은 두 검사 중 하나만 깨뜨린다.** 헤더 검사만 두었다면 순서 오류를
-영원히 잡지 못했을 것이고, 큐 수 검사만 두었다면 큐 5의 오염(중복이 아니어서 중복
-제거로 안 잡히는 오염)을 놓쳤을 것이다. 두 검사는 **한쪽이 다른 쪽의 대리 지표가
-되지 못한다.**
+**The reversed version breaks only one of the two checks.** Had there been only the header check, it would forever
+have failed to catch the order error, and had there been only the cue-count check, it would have missed cue 5's
+contamination (a contamination not caught by deduplication since it is not a duplicate). The two checks **cannot
+be a proxy metric for each other.**
 
-`tail -n +2` 로 첫 줄을 건너뛰는 것도 필수다. 정상 파일의 1행은 파일 헤더인 `WEBVTT`
-이므로, 건너뛰지 않으면 이 검사는 **항상 실패한다.**
+Skipping the first line with `tail -n +2` is essential too. A normal file's line 1 is the file header `WEBVTT`, so
+without skipping this check **always fails.**
 
-### 29.5.2 결함이 실제로 주입되는지부터 고정한다
+### 29.5.2 First fix whether the defect is actually injected
 
-제34장의 오라클 문제가 여기에도 그대로 걸린다 — 중복이 애초에 만들어지지 않았다면
-"6큐"는 아무것도 증명하지 않는다. 그래서 픽스처 생성 코드에 주석이 붙어 있다.
+Chapter 34's oracle problem catches here too — if the duplicate was not made in the first place, "6 cues" proves
+nothing. So a comment is attached to the fixture-generation code.
 
 ```bash
 # tests/run.sh:69-71
-# 자막 트랙. ffmpeg 의 HLS muxer 는 WebVTT 를 세그먼트화하지 못하므로,
-# 실제 CDN 이 내보내는 형태 그대로 직접 만든다. 걸치는 큐를 양쪽 조각에 넣는
-# 것까지 재현해야 경계 중복 제거가 실제로 검증된다.
+# The subtitle track. Since ffmpeg's HLS muxer cannot segment WebVTT,
+# make it directly in the exact form an actual CDN emits. You must reproduce even putting a straddling cue
+# on both pieces for boundary-duplicate removal to actually be verified.
 ```
 
-"걸치는 큐를 양쪽 조각에 넣는 것까지 재현해야"가 핵심이다. 조각화만 하고 경계
-중복을 넣지 않았다면 `dedupe` 의 `removed` 는 언제나 0이고, `if key in seen` 아래가
-**한 번도 실행되지 않는다.** 그런데도 큐 수 검사는 통과하므로, 그 통과는 중복
-제거에 대해 아무것도 증명하지 않는다.
+"You must reproduce even putting a straddling cue on both pieces" is the core. Had it only chopped and not put in
+boundary duplicates, `dedupe`'s `removed` is always 0 and the code under `if key in seen` is **never executed.**
+And yet the cue-count check passes, so that pass proves nothing about deduplication.
 
-### 29.5.3 두 경로가 같은 함수를 타는지도 고정한다
+### 29.5.3 Also fix whether the two paths ride the same function
 
-자막은 두 경로로 만들어진다 — 영상과 함께 받는 정상 경로와, 영상은 놔두고 자막만
-메우는 `--refill-subs` 경로다. 둘 다 `cli._extract_subs` 를 거쳐
-`subtitles.extract` → `dedupe` 로 들어간다([`cli.py:611`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L611), [`cli.py:765`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L765)).
+Subtitles are made by two paths — the normal path receiving with the video, and the `--refill-subs` path leaving
+the video and filling only subtitles. Both go through `cli._extract_subs` into `subtitles.extract` → `dedupe`
+([`cli.py:611`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L611), [`cli.py:765`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L765)).
 
-테스트는 메우기 경로에서도 같은 값을 고정한다.
+The test fixes the same value on the filling path too.
 
 ```bash
 # tests/run.sh:464-466
 fillcues=$(grep -c -- '-->' "$FILL/메움03.ko.vtt" 2>/dev/null || true)
 [[ "$fillcues" -eq 6 ]] \
-  && ok "메운 자막도 경계 중복이 정리된다 (6큐)" || bad "메운 자막 큐 수가 6이 아님: $fillcues"
+  && ok "filled subtitle also has boundary duplicates cleaned (6 cues)" || bad "filled subtitle cue count is not 6: $fillcues"
 ```
 
-같은 숫자를 두 곳에서 고정하는 것은 중복이 아니다. **경로가 갈라지면 후처리도
-갈라지기 쉽고, 갈라진 순간 한쪽 자막만 조용히 중복이 남는다.** README 가 같은
-이유를 적어 두었다 — "받는 경로와 메우는 경로가 같은 추출 함수를 쓰므로, 나중에 메운
-자막만 미묘하게 어긋나는 일이 없다"(`README.md:135-136`).
+Fixing the same number in two places is not duplication. **When a path diverges the post-processing tends to
+diverge, and the moment it diverges only one side's subtitle quietly keeps duplicates.** The README wrote the same
+reason — "the receiving path and the filling path use the same extraction function so the subtitle filled later is
+never subtly off" (`README.md:135-136`).
 
-### 29.5.4 리포트가 숫자를 밖으로 내보낸다
+### 29.5.4 The report emits the number outward
 
 ```python
 # report.py:400-404
                 fixes = []
                 if (dups := sum(r.duplicates for r in good)):
-                    fixes.append(f"경계 중복 {dups}큐 제거")
+                    fixes.append(f"{dups} boundary-duplicate cues removed")
                 if (leaks := sum(r.header_leaks for r in good)):
-                    fixes.append(f"본문에 섞인 조각 헤더 {leaks}건 정제")
+                    fixes.append(f"{leaks} body-mixed fragment headers cleaned")
 ```
 
-`dedupe` 가 `(removed, leaked)` 두 값을 반환하는 이유가 여기 있다. **후처리가 몇 건을
-고쳤는지가 관측 가능해야** 한다. 0이 아닌 값이 계속 나오면 그 송출이 어떤 형태인지
-알 수 있고, 갑자기 0이 되면 파이프라인 어딘가가 바뀐 것이다. 조용히 고치고 조용히
-넘어가는 후처리는 **다음에 그것이 멈춰도 아무도 모른다.**
+The reason `dedupe` returns two values `(removed, leaked)` is here. **How many the post-processing fixed must be
+observable.** If a nonzero value keeps coming you can know what form that delivery has, and if it suddenly becomes
+0, something in the pipeline changed. Post-processing that fixes quietly and passes quietly means **no one knows
+even when it stops next time.**
 
 ---
 
-## 29.6 일반화 — 멱등성 키의 설계가 정확도를 결정한다
+## 29.6 Generalization — the design of the idempotency key determines the accuracy
 
-### 29.6.1 같은 구조가 나타나는 곳
+### 29.6.1 Where the same structure appears
 
-중복이 생기고 수신자가 그것을 걸러야 하는 자리는 도처에 있다. 각 행에서 결정적인
-것은 **키에 무엇이 들어가는가** 하나다.
+Spots where a duplicate arises and the receiver must filter it are everywhere. What is decisive in each row is one
+thing — **what goes into the key.**
 
-> **용어** — **멱등성 키(idempotency key)**: 같은 작업의 재시도를 하나로 묶기 위해
-> 요청에 붙이는 식별자. 수신자는 같은 키를 이미 처리했으면 다시 수행하지 않고 앞선
-> 결과를 돌려준다.
+> **Term** — **idempotency key**: an identifier attached to a request to tie the retries of the same operation
+> into one. If the receiver already processed the same key it does not perform it again and returns the earlier
+> result.
 
-| 영역 | 중복이 생기는 이유 | 키 | 키에 든 것이 **모자라면** (위양성) | 키에 든 것이 **넘치면** (위음성) |
+| Domain | Why a duplicate arises | Key | If what is in the key is **too little** (false positive) | If it is **too much** (false negative) |
 |---|---|---|---|---|
-| 메시지 큐 | ack 유실 후 재전달 | 메시지 ID · 시퀀스 번호 | 다른 메시지를 삼킨다 | 같은 메시지를 두 번 처리 |
-| 결제 API | 클라이언트 재시도 | `Idempotency-Key` 헤더 | 다른 결제가 무시된다 | **이중 결제** |
-| HTTP 캐시 | — | 정규화된 요청 URI + `Vary` | **캐시 오염** | 캐시 미스(제7장) |
-| 패키지 설치 | 재실행 | (이름, 버전, 해시) | 다른 산출물을 같다고 본다 | 매번 다시 받는다 |
-| 재고 조사 | 재실행 | (작품 줄기, 화수) | 남의 회차를 건너뛴다 | 27화를 매번 다시 받는다(제37장) |
-| 인증 nonce | 재전송 공격 | nonce · JWT `jti` | 정상 요청이 거부된다 | **재생 공격 성립**(§29.7) |
-| **자막 큐 (이 장)** | 규격이 경계 중복을 허용(사실상 요구) | (시작, 끝, 정제된 본문) | **자막이 사라진다** | 자막이 두 번 나온다 |
+| message queue | redelivery after ack loss | message ID · sequence number | swallows a different message | processes the same message twice |
+| payment API | client retry | `Idempotency-Key` header | a different payment is ignored | **double payment** |
+| HTTP cache | — | normalized request URI + `Vary` | **cache poisoning** | cache miss (Chapter 7) |
+| package install | re-run | (name, version, hash) | sees a different output as the same | re-fetches every time |
+| inventory | re-run | (work title, episode) | skips someone else's episode | re-fetches 27 episodes every time (Chapter 37) |
+| authentication nonce | replay attack | nonce · JWT `jti` | a normal request is rejected | **the replay attack holds** (§29.7) |
+| **subtitle cue (this chapter)** | the spec permits (effectively requires) boundary duplicates | (start, end, cleaned body) | **the subtitle vanishes** | the subtitle appears twice |
 
-두 오류의 비용이 도메인마다 반대로 뒤집힌다는 점이 중요하다. 결제에서는 위음성(이중
-결제)이 치명적이고, 자막에서는 위양성(소실)이 치명적이다. **어느 쪽으로 기울일지는
-키 설계 이전에 결정해야 하는 도메인 판단**이지 기술적 최적화가 아니다.
+That the two errors' costs flip oppositely per domain matters. In payment the false negative (double payment) is
+fatal, and in subtitles the false positive (loss) is fatal. **Which way to lean is a domain judgment to make
+before the key design**, not a technical optimization.
 
-### 29.6.2 정규화의 강도는 두 방향으로 틀린다
+### 29.6.2 The strength of normalization is wrong in two directions
 
-키를 만들기 전에 값을 **정규화**한다. 그 강도가 오류 방향을 결정한다.
+Before making the key you **normalize** the value. Its strength decides the error direction.
 
-| 정규화 강도 | 예 | 결과 |
+| Normalization strength | Example | Result |
 |---|---|---|
-| 없음 | 원본 바이트 그대로 | 사소한 차이도 다른 키 → 중복이 남는다 |
-| 알맞음 | 조각 헤더 제거, 밀리초 고정 | 이 코드의 선택 |
-| 과함 | 공백·구두점 제거, 근사 시각 비교 | 서로 다른 큐가 합쳐진다 → 소실 |
+| none | the original bytes as-is | even a trivial difference is a different key → duplicates remain |
+| just right | remove fragment headers, fix milliseconds | this code's choice |
+| excessive | remove whitespace·punctuation, approximate time comparison | different cues merge → loss |
 
-제31장 §31.7 이 같은 축을 유니코드에서 보여 준다 — NFC 는 알맞고 NFKC 는 과하다.
-NFKC 는 전각 솔리더스 `／` 를 ASCII `/` 로 펴서 **없던 경로 구분자를 만들어낸다.**
-정규화를 세게 걸수록 "같다"고 판정되는 범위가 넓어지고, 넓어진 만큼 원래 달랐던
-것들이 섞인다.
+Chapter 31 §31.7 shows the same axis in Unicode — NFC is just right and NFKC is excessive. NFKC flattens the
+fullwidth solidus `／` to ASCII `/` and **makes a path separator that was not there.** The more strongly you
+normalize, the wider the range judged "the same," and the wider it is, the more things that were originally
+different get mixed.
 
-이 코드의 정규화는 **딱 한 가지 오염원**(조각 헤더)만 겨냥한다. `_SEG_HEADER_RE` 가
-`WEBVTT` 로 시작하는 줄과 `X-TIMESTAMP-MAP=` 로 시작하는 줄만 지우고, 그 외에는
-공백 정리(`strip`)만 한다. 자막 본문에 정말로 `WEBVTT` 라고 쓰인 대사가 있다면
-지워지겠지만, 그것은 §29.8 에 적어 둔다.
+This code's normalization targets **exactly one contamination source** (the fragment header). `_SEG_HEADER_RE`
+deletes only lines starting with `WEBVTT` and lines starting with `X-TIMESTAMP-MAP=`, and otherwise does only
+whitespace tidying (`strip`). If there is a line really written `WEBVTT` in the subtitle body it will be deleted,
+but that is written in §29.8.
 
-### 29.6.3 세 번째 사례 — 제7장·제31장과 같은 명제
+### 29.6.3 The third case — the same proposition as Chapters 7·31
 
-이 장의 순서 의존성은 이 교재에서 세 번째로 나타나는 같은 형태다.
+This chapter's order dependency is the third appearance of the same form in this course.
 
-| 장 | 변환(정규화) | 비교(판정) | 순서를 뒤집으면 |
+| Chapter | Transform (normalization) | Comparison (verdict) | If you reverse the order |
 |---|---|---|---|
-| **제7장** | 퍼센트 인코딩·디코딩 | 경로 검증 · 캐시 키 대조 | 검증을 통과한 값이 변환 뒤 금지된 값이 된다 → **CWE-180** |
-| **제31장** | 유니코드 정규화(NFC/NFKC) | 파일 식별 · 이름 대조 | 눈에 같은 두 이름이 다른 항목이 되거나, 다른 이름이 같은 항목이 된다 |
-| **제29장** (이 장) | 조각 헤더 정제 | 중복 큐 판정 | 같은 큐가 다른 키를 얻어 중복이 안 지워진다 |
+| **Chapter 7** | percent encoding·decoding | path verification · cache-key comparison | a value that passed verification becomes a forbidden value after the transform → **CWE-180** |
+| **Chapter 31** | Unicode normalization (NFC/NFKC) | file identification · name comparison | two names that look the same become different items, or different names the same item |
+| **Chapter 29** (this chapter) | fragment-header cleaning | duplicate-cue judgment | the same cue gets a different key and the duplicate is not removed |
 
-세 장이 공유하는 명제를 한 문장으로 쓰면 이렇다.
+Write the proposition the three chapters share in one sentence and it is this.
 
-> **비교의 대상이 되는 값은 비교 이전에 정규화되어야 한다.
-> 정규화와 비교의 순서가 어긋나면, 정규화 자체는 정확히 수행되더라도 비교가 틀린다.**
+> **A value that is the object of comparison must be normalized before comparison.
+> If the order of normalization and comparison is off, even if the normalization itself is performed exactly, the
+> comparison is wrong.**
 
-뒷문장이 핵심이다. §29.3.4 의 뒤집은 판본은 **정제를 정확히 수행한다.** 결과 파일에
-헤더는 하나도 남지 않는다. 틀린 것은 정제가 아니라 **정제가 비교보다 늦었다는 사실**
-하나뿐이고, 그 하나로 판정 전체가 무너진다.
+The latter sentence is the core. §29.3.4's reversed version **performs the cleaning exactly.** Not a single header
+remains in the result file. What is wrong is not the cleaning but the one fact **that the cleaning was later than
+the comparison**, and that one thing collapses the whole verdict.
 
-제7장이 이것을 CWE 의 이름으로 부른다.
+Chapter 7 calls this by the CWE name.
 
-> **용어** — **CWE-180(Incorrect Behavior Order: Validate Before Canonicalize)**:
-> 정준화보다 먼저 검증을 수행하는 잘못된 순서. 검증이 통과시킨 값이 정준화를 거쳐
-> 금지된 값이 되는 부류의 결함을 가리킨다.
+> **Term** — **CWE-180 (Incorrect Behavior Order: Validate Before Canonicalize)**: the wrong order performing
+> validation before canonicalization. It points at the class of defects where a value validation passed becomes a
+> forbidden value after canonicalization.
 
-이 장의 사례는 CWE-180 의 **비보안 판형**이다. 판정이 접근 허용이 아니라 중복 여부일
-뿐, 구조는 완전히 같다. 그리고 판정 대상이 접근 허용으로 바뀌는 순간 같은 코드가
-취약점이 된다 — 그것이 다음 절이다.
+This chapter's case is a **non-security edition** of CWE-180. The verdict is duplicate-or-not, not access-allow,
+but the structure is completely the same. And the moment the verdict target changes to access-allow, the same code
+becomes a vulnerability — that is the next section.
 
-제7장 §7.5.5 의 처방도 그대로 옮겨진다.
+Chapter 7 §7.5.5's prescription transfers as-is too.
 
-> **순서를 지키라고 요구하는 것보다 순서를 틀릴 수 없게 만드는 것이 낫다.**
+> **Better to make the order impossible to get wrong than to require the order be kept.**
 
-이 코드가 `dedupe` 한 함수 안에서 정제와 판정을 연속된 네 줄로 붙여 놓은 것
-([`subtitles.py:298-301`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L298-L301))이 그 형태다. 정제를 별도 단계로 떼어 호출자에게 맡겼다면,
-호출자 중 하나는 반드시 순서를 틀린다.
+That this code sticks the cleaning and judgment together as four consecutive lines inside one function, `dedupe`
+([`subtitles.py:298-301`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L298-L301)), is that form. Had the cleaning been split as a separate step and left to the caller, one of
+the callers necessarily gets the order wrong.
 
 ---
 
-## 29.7 보안 — 중복 판정이 보안 판정일 때
+## 29.7 Security — when the duplicate judgment is a security judgment
 
-### 29.7.1 재생 공격 — 같은 구조, 다른 판정
+### 29.7.1 Replay attack — same structure, different verdict
 
-이 장의 `seen` 집합은 "이미 본 것인가"를 판정하는 장치다. 같은 판정이 인증에
-쓰이면 이름이 바뀐다.
+This chapter's `seen` set is a device judging "have I seen this before." When the same judgment is used in
+authentication the name changes.
 
-> **용어** — **재생 공격(replay attack)**: 공격자가 정상적으로 오간 메시지를 가로채
-> 그대로 다시 보내는 공격. 메시지의 내용을 위조할 필요가 없고 서명도 유효하므로,
-> 방어는 "이 메시지를 전에 본 적이 있는가"의 판정에 전적으로 의존한다.
+> **Term** — **replay attack**: an attack where the attacker intercepts a normally-exchanged message and resends
+> it as-is. There is no need to forge the message content and the signature is valid too, so the defense depends
+> entirely on the judgment "have I seen this message before."
 
-> **용어** — **nonce(number used once)**: 한 번만 쓰이도록 정해진 값. 수신자가 이미
-> 본 nonce 를 기억해 두고 재사용을 거부하는 방식으로 재생 공격을 막는다.
+> **Term** — **nonce (number used once)**: a value set to be used only once. It blocks a replay attack by the
+> receiver remembering the already-seen nonce and refusing reuse.
 
-대응을 놓고 보면 놀라울 만큼 같다.
+Set the correspondence side by side and it is astonishingly the same.
 
-| | 이 장 (`dedupe`) | 재생 공격 방어 |
+| | This chapter (`dedupe`) | Replay-attack defense |
 |---|---|---|
-| 판정 | 이 큐를 이미 봤는가 | 이 메시지를 이미 봤는가 |
-| 키 | (시작, 끝, 정제된 본문) | nonce · JWT `jti` · (타임스탬프, 서명) |
-| 저장소 | `seen: set[...]` | nonce 저장소 · 사용된 토큰 목록 |
-| 위양성 | 자막이 사라진다 | **정상 사용자가 거부된다** |
-| 위음성 | 자막이 두 번 나온다 | **공격이 성립한다** |
+| Judgment | have I already seen this cue | have I already seen this message |
+| Key | (start, end, cleaned body) | nonce · JWT `jti` · (timestamp, signature) |
+| Store | `seen: set[...]` | nonce store · used-token list |
+| False positive | the subtitle vanishes | **a normal user is rejected** |
+| False negative | the subtitle appears twice | **the attack holds** |
 
-마지막 두 행에서 비용이 뒤집힌다. 자막에서는 위양성이 치명적이고, 재생 방어에서는
-위음성이 치명적이다. 그래서 nonce 저장소는 **좁게 정규화하고 넓게 거부하는** 쪽으로
-설계된다 — 조금이라도 의심스러우면 거부한다.
+On the last two rows the cost flips. In subtitles the false positive is fatal, and in replay defense the false
+negative is fatal. So a nonce store is designed to **normalize narrowly and reject widely** — reject if even
+slightly suspicious.
 
-**그리고 §29.6.3 의 순서 명제가 여기에 그대로 걸린다.** nonce 를 저장할 때와 조회할
-때의 정규화가 다르면 재생 방어가 무력화된다. 저장은 소문자로 하고 조회는 원본으로
-하면, 대문자가 섞인 nonce 는 저장소에서 영원히 찾아지지 않는다. 같은 nonce 를 무한히
-재사용할 수 있다는 뜻이다. 이것은 가상의 시나리오가 아니라 **정규화-비교 순서 결함이
-인증 경로에 놓였을 때의 표준적 귀결**이며, 제7장이 다룬 이중 인코딩 우회와 같은
-가족이다.
+**And §29.6.3's order proposition catches here as-is.** If the normalization when storing the nonce and when
+looking it up differs, the replay defense is disabled. Store lowercased and look up with the original, and a nonce
+with an uppercase mixed in is forever not found in the store. It means the same nonce can be reused infinitely.
+This is not a hypothetical scenario but **the standard consequence when a normalization-comparison order defect is
+placed on the authentication path**, of the same family as the double-encoding bypass Chapter 7 covered.
 
-### 29.7.2 반대 방향 — 키가 너무 넓을 때
+### 29.7.2 The reverse direction — when the key is too wide
 
-키를 과하게 정규화하면 서로 다른 것이 하나로 합쳐진다. 자막에서는 큐 하나가 사라지는
-정도지만, 같은 구조가 식별자에 놓이면 결과가 다르다.
+Over-normalize the key and different things merge into one. In subtitles it is only one cue vanishing, but put the
+same structure on an identifier and the result differs.
 
-| 자리 | 과한 정규화 | 결과 |
+| Spot | Excessive normalization | Result |
 |---|---|---|
-| 계정 식별자 | 유니코드 호환 정규화 · 대소문자 접기 | 다른 사용자가 같은 계정으로 판정된다(제31장 §31.7) |
-| 파일 경로 | 경로 정준화 후 검증 누락 | 다른 파일이 같은 파일로 판정된다(제7장 §7.5) |
-| 중복 요청 판정 | 본문 해시에서 필드를 뺌 | 서로 다른 요청이 "재시도"로 삼켜진다 |
+| account identifier | Unicode compatibility normalization · case folding | a different user is judged the same account (Chapter 31 §31.7) |
+| file path | verification omitted after path canonicalization | a different file is judged the same file (Chapter 7 §7.5) |
+| duplicate-request judgment | field removed from the body hash | different requests are swallowed as a "retry" |
 
-**넓은 키는 데이터를 지운다.** 이 장의 코드가 근사 시각 비교를 하지 않는 이유가
-여기 있다 — 1ms 관용을 주면 "1ms 차이로 시작하는 서로 다른 두 큐"를 지우게 된다.
-그런 큐가 실재하는지는 이 저장소에서 확인하지 못했고, **확인하지 못한 것을 근거로
-데이터를 지우는 쪽을 고르지 않는다**는 것이 여기서의 판단이다.
+**A wide key erases data.** The reason this chapter's code does not do an approximate time comparison is here —
+give a 1ms tolerance and you erase "two different cues starting 1ms apart." Whether such cues exist in reality
+could not be confirmed in this repository, and the judgment here is **not to choose the data-erasing side on the
+basis of the unconfirmed.**
 
-### 29.7.3 이 코드의 미방어 지점
+### 29.7.3 This code's undefended spots
 
-정직하게 적는다.
+Written honestly.
 
-**① 크기 상한이 없다.** `dedupe` 는 파일 전체를 메모리에 올리고
-([`subtitles.py:269`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L269)), 블록 전부를 리스트로 만들고, `seen` 집합에 **모든 고유 큐의
-본문 문자열**을 담는다. 상한이 어디에도 없다. 악의적으로 만든 자막 트랙(고유한 큐
-수백만 개)은 메모리를 그만큼 먹는다. 제6장에서 본 `gzip.decompress` 의 무제한
-해제와 같은 부류이며, 같은 이유로 미방어 상태다 — 위협 모델이 "사용자가 지정한
-URL" 을 신뢰하는 쪽에 서 있다. 다만 **"사용자가 지정했다"가 "그 서버를 신뢰한다"는
-아니다.** 자동화 파이프라인에서 URL 목록을 돌리는 용도로 쓰인다면 이 가정은 성립하지
-않는다.
+**① There is no size cap.** `dedupe` loads the whole file into memory ([`subtitles.py:269`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L269)), makes all blocks a
+list, and puts **every unique cue's body string** into the `seen` set. There is no cap anywhere. A maliciously
+made subtitle track (millions of unique cues) eats that much memory. It is of the same class as Chapter 6's
+unlimited `gzip.decompress`, and undefended for the same reason — the threat model stands on trusting "the URL the
+user specified." Only, **"the user specified" is not "trusts that server."** If used to run a URL list in an
+automation pipeline, this assumption does not hold.
 
-**② 원격에서 온 `STYLE` 블록을 검사 없이 옮긴다.** §29.3.5 에서 확인했듯
-`preserved` 블록은 내용을 보지 않고 그대로 출력 파일에 들어간다. `STYLE` 블록은
-CSS 이고, 그 CSS 는 **송출자가 정한 것**이다. 이 저장소의 위협 모델은 로컬 재생기
-(ffmpeg · mpv · VLC)를 상정하므로 이를 문제로 보지 않았다. 그러나 출력된 `.vtt` 를
-웹 플레이어에 그대로 먹이는 용도라면 **원격 CSS 를 신뢰 경계 안으로 들이는 것**이며,
-그 판단은 이 코드가 하지 않았다. 제13장이 packed JS 에 세운 원칙 — "원격 코드를
-파싱은 하되 실행하지 않는다" — 과 견주면 여기서는 파싱도 실행도 하지 않고 **그대로
-옮긴다.** 이 도구 자신은 자막을 실행하지 않으므로 도구 안에서는 안전하지만,
-**옮긴 것이 다음 소비자에게 그대로 간다**는 성질은 남는다.
+**② It moves a remote `STYLE` block without checking.** As confirmed in §29.3.5, a `preserved` block enters the
+output file as-is without looking at the content. A `STYLE` block is CSS, and that CSS is **set by the
+deliverer.** This repository's threat model presupposes a local player (ffmpeg · mpv · VLC) so it did not view
+this as a problem. But if the use is to feed the output `.vtt` to a web player as-is, it is **bringing remote CSS
+inside the trust boundary**, and that judgment this code did not make. Compared with the principle Chapter 13 set
+for packed JS — "parse but do not execute remote code" — here it neither parses nor executes and **moves it
+as-is.** The tool itself does not execute the subtitle so it is safe within the tool, but the property that **what
+was moved goes to the next consumer as-is** remains.
 
-**③ 본문의 어느 줄이 `WEBVTT` 로 시작하면 그 줄이 통째로 지워진다.**
-`_SEG_HEADER_RE` 는 `^[ \t]*(?:WEBVTT.*|X-TIMESTAMP-MAP=.*)$` 이므로 **줄 머리**만
-본다. 실측이다.
+**③ If any line of the body starts with `WEBVTT` that line is deleted whole.** `_SEG_HEADER_RE` is
+`^[ \t]*(?:WEBVTT.*|X-TIMESTAMP-MAP=.*)$` so it looks at only the **line head.** Measured.
 
 ```
-'WEBVTT 규격이 뭐죠?'      → ''                    ← 대사가 통째로 사라진다
-'아니 WEBVTT 말이야'       → '아니 WEBVTT 말이야'   ← 줄 머리가 아니면 남는다
+'WEBVTT 규격이 뭐죠?'      → ''                    ← the line vanishes whole
+'아니 WEBVTT 말이야'       → '아니 WEBVTT 말이야'   ← if not at the line head it remains
 ```
 
-확률이 낮을 뿐 원리적으로 막혀 있지 않다. 이는 **필터가 내용이 아니라 형태만으로
-판정할 때 언제나 남는 잔여 오탐**이며, 이 저장소가 감수한 비용이다. 없애려면 "직전
-큐의 마지막에 붙어 있고 바로 뒤에 `X-TIMESTAMP-MAP=` 줄이 따라오는 경우"처럼 문맥을
-보는 판정이 필요한데, 그러면 규칙이 ffmpeg 의 출력 형태에 더 강하게 묶인다.
+The probability is just low, not blocked in principle. This is a **residual false positive that always remains
+when a filter judges by form and not content**, a cost this repository accepted. To remove it you would need a
+context-seeing judgment like "attached to the end of the previous cue and immediately followed by an
+`X-TIMESTAMP-MAP=` line," and then the rule is more strongly tied to ffmpeg's output form.
 
-### 29.7.4 방어자 관점
+### 29.7.4 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **API 설계자** | 멱등성 키를 클라이언트가 정하게 하고(`Idempotency-Key`), 서버는 **정규화한 뒤** 저장·조회한다. 정규화 규칙을 문서에 명시한다 — 적지 않으면 클라이언트마다 다르게 정규화한다 |
-| **메시지 시스템 운영자** | at-least-once 를 기본 가정으로 두고 컨슈머에 멱등성을 요구한다. "브로커가 exactly-once 를 준다"는 문장은 **무엇의 exactly-once 인지**(전달인가 처리인가)를 확인하기 전까지 근거가 아니다 |
-| **인증 구현자** | nonce · `jti` 는 **저장 시점과 조회 시점의 변환이 같은 함수**를 타게 한다. 두 자리에 각각 정규화 코드를 두면 언젠가 갈라진다 — 함수 하나로 모으고, 갈라졌을 때 깨지는 테스트를 둔다 |
-| **감사자** | 중복 제거가 있는 자리에서 **키의 필드 목록**을 묻는다. 키에 없는 필드는 곧 "그 필드가 달라도 같은 것으로 취급하겠다"는 선언이다. 그 선언이 의도된 것인지 확인한다 |
-| **라이브러리 사용자** | 정규화를 라이브러리에 맡겼다면 **그 라이브러리가 언제 정규화하는지**를 확인한다. 비교 함수가 내부에서 정규화하는지, 호출자가 미리 해야 하는지가 문서에 없으면 그것부터 실험으로 확정한다 |
-| **이 도구 구현자** | 정규화와 판정의 순서를 **코드 주석에 남기고**([`subtitles.py:296-297`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L296-L297)), 순서가 뒤집혔을 때만 깨지는 검사를 회귀 테스트에 둔다. 주석만 있고 테스트가 없으면 다음 리팩터링에서 순서가 바뀐다 |
+| **API designer** | let the client set the idempotency key (`Idempotency-Key`), and the server stores·looks up **after normalizing.** state the normalization rule in the doc — do not and each client normalizes differently |
+| **message-system operator** | put at-least-once as the default assumption and require idempotency of the consumer. the sentence "the broker gives exactly-once" is not a basis until you confirm **exactly-once of what** (delivery or processing) |
+| **authentication implementer** | make the nonce · `jti` ride **the same function for the store-time and look-up-time transform.** put a normalization code at each of the two spots and one day they diverge — gather into one function and put a test that breaks when it diverges |
+| **auditor** | at a spot where there is deduplication, ask the **key's field list.** a field not in the key is a declaration "I will treat it the same even if that field differs." confirm that declaration is intended |
+| **library user** | if you left normalization to a library, confirm **when that library normalizes.** if it is not in the doc whether the comparison function normalizes internally or the caller must do it in advance, settle that first by experiment |
+| **this tool's implementer** | leave the order of normalization and judgment **in a code comment** ([`subtitles.py:296-297`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L296-L297)), and put a check that breaks only when the order is reversed in the regression test. with only a comment and no test, the next refactoring changes the order |
 
-마지막 행이 이 장의 실무 결론이다. **순서 의존성은 주석으로 지킬 수 없다.** 순서를
-뒤집어도 겉보기 결과가 같기 때문에 코드 리뷰에서도 잡히지 않는다. 잡는 것은
-**세는 검사**뿐이다.
-
----
-
-## 29.8 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **규격 원문을 대조하지 못했다.** §29.2.1 의 RFC 8216 §3.5 서술과 §29.3.5 의
-  "`STYLE`·`REGION` 은 첫 큐보다 앞에 와야 한다"는 WebVTT 규격 서술은 모두 조항의
-  요지를 옮긴 것이고, 문면 대조는 하지 않았다(이 저장소에 규격 원문이 없다). 코드
-  주석이 "허용"이라고 적은 것과 규격이 "요구"에 가까울 수 있다는 점 사이의 차이도
-  확정하지 못했다. **받는 쪽 구현이 달라지지 않는다는 점**만이 이 불확실성의
-  완충이다.
-
-- **3자리 반올림의 이득을 측정하지 못했다.** §29.3.3 의 세 실험 모두에서 반올림은
-  판정 결과를 바꾸지 않았다. 조각마다 다른 `X-TIMESTAMP-MAP` 을 싣는 실제 송출에서
-  같은 큐가 밀리초 단위로 어긋나는지는 **확인하지 못했다** — 이 저장소의 픽스처는
-  모든 조각에 같은 `MPEGTS` 값을 넣는다(`tests/run.sh:101`). 제15장이 "우연한
-  방어"라고 부른 상태와 같은 형태이며, 그렇더라도 유지하는 근거는 §29.3.3 에 적었다.
-
-- **1ms 어긋나면 중복 제거가 실패한다(실측).** 위 항목의 시나리오가 실재한다면 이
-  코드는 그 중복을 못 잡는다. 반올림은 정밀도를 고정할 뿐 관용을 주지 않으므로,
-  진짜 대응은 근사 비교이고 그것은 위양성 비용을 낳는다. **어느 쪽도 공짜가 아니며
-  현재는 위음성 쪽을 택하고 있다.**
-
-- **큐 식별자가 사라진다(실측).** 타이밍 줄 앞의 이름표는 재작성에서 버려진다.
-  WebVTT 의 `::cue(#id)` 선택자로 개별 큐를 스타일링하는 자막은 그 연결이 끊긴다.
-  타이밍 줄의 큐 설정은 보존되므로 실무 영향은 제한적이라고 **판단했을 뿐 측정하지는
-  않았다.**
-
-- **SubRip 에서는 큐가 아닌 블록이 버려진다(실측).** `fmt == "srt"` 재작성 분기는
-  `preserved` 를 내보내지 않는다([`subtitles.py:318-320`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L318-L320)). SubRip 에 `NOTE` 개념이
-  없으므로 대체로 옳지만, 원본에 있던 비큐 블록은 조용히 사라진다.
-
-- **`NOTE` 블록의 원래 위치가 사라진다.** 모든 `preserved` 블록이 첫 큐 앞으로
-  모인다. `STYLE`·`REGION` 에는 규격상 맞는 위치지만 `NOTE` 는 원래 어디에나 올 수
-  있으므로, 특정 큐 옆에 달아 둔 주석은 문맥을 잃는다.
-
-- **시각과 본문이 모두 같은 서로 다른 큐는 하나로 합쳐진다.** 큐 설정만 다른 두 큐
-  (같은 대사를 두 영역에 동시에 띄우는 경우 등)가 그렇다. 실제 송출에서 이런 구성을
-  마주친 적이 없으나, **"본 적이 없다"는 "없다"가 아니다.**
-
-- **ffmpeg 한 판본에서만 관찰했다.** §29.1.2 의 이어붙임 결과는 ffmpeg 8.1.1 의
-  동작이다. 다른 판본이 조각 헤더를 다르게 처리하면(예: 스스로 걸러내면) `leaked` 가
-  0이 되고, 그러면 §29.3.4 의 순서 문제 자체가 관측되지 않는다. **관측되지 않는 것과
-  존재하지 않는 것은 다르다** — 순서를 지키는 코드는 어느 쪽이든 옳다.
-
-- **§29.2.5 의 *L/S* 는 추정이다.** 조각 경계가 큐와 무관하게 균등 분포한다는 가정
-  아래의 값이며, 실제 자막 트랙에서 측정한 것이 아니다. 픽스처는 결정적 배치라
-  6큐 중 3큐가 걸쳤다.
+The last row is this chapter's practical conclusion. **An order dependency cannot be kept by a comment.** Because
+reversing the order makes the same-looking result, it is not caught in code review either. What catches it is
+**only a counting check.**
 
 ---
 
-## 29.9 요약
+## 29.8 Limits and open questions
 
-1. HLS 자막에서 **경계에 걸친 큐는 인접한 두 조각 양쪽에 실린다.** 어느 조각부터
-   재생을 시작해도 그 큐가 보여야 하기 때문이며, 송출자의 버그가 아니라 조각의
-   자족성이 요구하는 결과다. 실측: **고유 6큐가 조각 합계 9큐**가 된다.
+Written honestly.
 
-2. **중복을 지울 수 있는 쪽은 전체를 가진 수신자뿐이다.** 송출자는 시청자가 어느
-   조각부터 시작할지 모르므로 지울 수 없다. 이것이 **at-least-once 전달**의 구조이며,
-   전달자가 중복을 허용하고 수신자가 **멱등성**을 확보한다.
-
-3. **exactly-once 전달은 일반적으로 불가능에 가깝다.** 응답이 오지 않았을 때
-   송신자는 "메시지 유실"과 "응답 유실"을 구별할 수 없다(두 장군 문제). 실무의
-   "exactly-once" 는 `at-least-once 전달 + 수신 측 멱등성 = exactly-once 처리 효과`의
-   합성이다.
-
-4. 중복 제거 키는 **(시작, 끝, 정제된 본문) 3중키**다. 셋 중 하나라도 빼면 위양성이
-   생기고, 이 도메인에서 위양성은 **자막의 소실**이다. 시각만 쓰면 동시에 뜨는 화자
-   두 줄이, 본문만 쓰면 반복되는 짧은 대사가 합쳐진다(둘 다 실측).
-
-5. **조각 헤더 정제를 중복 판정보다 먼저 해야 한다.** 한쪽 사본만 오염돼 있으므로,
-   순서를 뒤집으면 같은 큐가 다른 키를 얻는다. 순서만 뒤집은 판본의 실측:
-   **제거 0건, 큐 9개.** 그런데 헤더는 나중에 정제되므로 **결과 파일은 깨끗해
-   보인다** — 눈으로는 잡히지 않고 세는 검사로만 잡힌다.
-
-6. 회귀 테스트가 **두 검사를 따로** 둔다(`tests/run.sh:225-229`). 순서를 뒤집은
-   판본은 큐 수 검사만 깨뜨리고 헤더 검사는 통과한다. 한쪽이 다른 쪽의 대리 지표가
-   되지 못한다.
-
-7. 일반화하면 이렇다 — **멱등성 키의 설계가 정확도를 결정하고, 정규화와 비교의
-   순서가 결과를 바꾼다.** 제7장(URL 정규화)·제31장(유니코드 정규화)과 같은 명제의
-   세 번째 사례이며, 판정 대상이 접근 허용으로 바뀌면 그대로 CWE-180 이 된다.
-
-8. 같은 판정이 인증에 놓이면 **재생 공격 방어**가 된다. 다만 오류 비용이 뒤집힌다 —
-   자막에서는 위양성(소실)이, 재생 방어에서는 위음성(공격 성립)이 치명적이다.
-   **어느 쪽으로 기울일지는 키 설계 이전의 도메인 판단이다.**
-
-9. 이 코드의 미방어 지점은 셋이다 — 입력 크기 상한 없음, 원격 `STYLE` 블록을 검사
-   없이 옮김, 본문 대사가 `WEBVTT` 로 시작하면 지워짐. 모두 §29.7.3 에 적었다.
+- **The spec's own text could not be cross-checked.** §29.2.1's RFC 8216 §3.5 narrative and §29.3.5's "`STYLE`·
+  `REGION` must come before the first cue" WebVTT-spec narrative are both a transcription of the clause's gist, and
+  the literal text was not cross-checked (this repository has no spec text). The difference between the code
+  comment writing "permits" and the spec possibly being closer to "requires" could not be settled either. Only the
+  point **that the receiving implementation does not change** is the buffer for this uncertainty.
+- **The benefit of the 3-place rounding could not be measured.** In all three experiments of §29.3.3 the rounding
+  did not change the verdict result. Whether the same cue goes off by a millisecond in an actual delivery carrying
+  a different `X-TIMESTAMP-MAP` per piece **could not be confirmed** — this repository's fixture puts the same
+  `MPEGTS` value in every piece (`tests/run.sh:101`). It is the same form as the state Chapter 15 calls "incidental
+  defense," and the basis for keeping it nonetheless is written in §29.3.3.
+- **Off by 1ms and deduplication fails (measured).** If the above item's scenario is real, this code does not
+  catch that duplicate. Rounding only fixes the precision and gives no tolerance, so the real response is an
+  approximate comparison and that births a false-positive cost. **Neither is free and currently the false-negative
+  side is chosen.**
+- **The cue identifier vanishes (measured).** The name tag before the timing line is discarded on rewrite. A
+  subtitle styling an individual cue with WebVTT's `::cue(#id)` selector loses that link. Cue settings on the
+  timing line are preserved so the practical impact is limited — **it was judged so but not measured.**
+- **In SubRip non-cue blocks are discarded (measured).** The `fmt == "srt"` rewrite branch does not emit
+  `preserved` ([`subtitles.py:318-320`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L318-L320)). SubRip has no `NOTE` concept so it is mostly right, but a non-cue block that was
+  in the original quietly vanishes.
+- **The `NOTE` block's original position vanishes.** All `preserved` blocks gather before the first cue. For
+  `STYLE`·`REGION` it is a spec-correct position, but `NOTE` can originally come anywhere, so a comment placed
+  beside a specific cue loses its context.
+- **Different cues where both the time and body are the same merge into one.** Two cues differing only in the cue
+  setting (like showing the same line in two regions at once) are so. I have never met such a configuration in an
+  actual delivery, but **"never seen" is not "does not exist."**
+- **Observed on one ffmpeg version.** §29.1.2's concatenation result is ffmpeg 8.1.1's behavior. If another version
+  handles fragment headers differently (e.g. filters them itself), `leaked` becomes 0, and then §29.3.4's order
+  problem itself is not observed. **The unobserved and the nonexistent are different** — code that keeps the order
+  is right either way.
+- **§29.2.5's *L/S* is an estimate.** It is a value under the assumption that piece boundaries are uniformly
+  distributed independently of the cue, not measured on an actual subtitle track. The fixture is a deterministic
+  layout so 3 of the 6 cues straddled.
 
 ---
 
-**다음 장** — 이 장의 후처리는 "ffmpeg 이 하지 않는 일"을 메우는 코드였다. 병합은
-맡기고 중복 제거는 직접 한다는 분업이 어디에서 왔는지, 그리고 같은 분업이
-`X-TIMESTAMP-MAP` 정렬에서 어떻게 반복되는지 — ffmpeg 은 자막 플레이리스트를 단독
-입력으로 열 때 그 매핑을 적용하지 않는다. 제30장은 **위임한 쪽이 무엇을 하지 않는지를
-아는 것**이 왜 위임 자체보다 어려운 문제인지를 다룬다.
+## 29.9 Summary
+
+1. In HLS subtitles **a boundary-straddling cue is carried on both of the two adjacent pieces.** Because that cue
+   must be visible whichever piece you start playback from, it is not the deliverer's bug but a result the piece's
+   self-containment requires. Measured: **6 unique cues become 9 cues in the piece total.**
+
+2. **The side that can remove the duplicate is only the receiver that has the whole.** The deliverer cannot remove
+   it since it does not know from which piece the viewer starts. This is the structure of **at-least-once
+   delivery**, where the deliverer permits duplicates and the receiver secures **idempotency.**
+
+3. **Exactly-once delivery is generally close to impossible.** When no response comes the sender cannot
+   distinguish "message loss" from "response loss" (the Two Generals' Problem). Practical "exactly-once" is the
+   composition `at-least-once delivery + receiver-side idempotency = exactly-once processing effect`.
+
+4. The deduplication key is a **(start, end, cleaned body) triple key.** Remove even one of the three and a false
+   positive arises, and in this domain a false positive is the **subtitle's loss.** Use time only and two speaker
+   lines appearing at once merge, use body only and repeated short lines merge (both measured).
+
+5. **The fragment-header cleaning must be done before the duplicate judgment.** Since only one copy is
+   contaminated, reverse the order and the same cue gets a different key. Measured on a version with only the order
+   reversed: **0 removed, 9 cues.** And yet the header is cleaned later so **the result file looks clean** — not
+   caught by the eye, caught only by a counting check.
+
+6. The regression test puts **two checks separately** (`tests/run.sh:225-229`). The order-reversed version breaks
+   only the cue-count check and passes the header check. One cannot be a proxy metric for the other.
+
+7. Generalized it is this — **the idempotency key's design determines the accuracy, and the order of normalization
+   and comparison changes the result.** It is the third case of the same proposition as Chapter 7 (URL
+   normalization)·Chapter 31 (Unicode normalization), and the moment the verdict target changes to access-allow it
+   becomes CWE-180 as-is.
+
+8. Put the same judgment on authentication and it becomes **replay-attack defense.** Only the error costs flip —
+   in subtitles the false positive (loss) is fatal, and in replay defense the false negative (attack holds) is
+   fatal. **Which way to lean is a domain judgment before the key design.**
+
+9. This code has three undefended spots — no input size cap, moving a remote `STYLE` block without checking, and a
+   body line starting with `WEBVTT` being deleted. All are written in §29.7.3.
+
+---
+
+**Next chapter** — this chapter's post-processing was code filling "what ffmpeg does not do." Where the division
+of labor of delegating the merge and doing the deduplication itself came from, and how the same division repeats
+in `X-TIMESTAMP-MAP` alignment — ffmpeg does not apply that mapping when opening a subtitle playlist as a
+standalone input. Chapter 30 covers why **knowing what the delegated side does not do** is a harder problem than
+the delegation itself.

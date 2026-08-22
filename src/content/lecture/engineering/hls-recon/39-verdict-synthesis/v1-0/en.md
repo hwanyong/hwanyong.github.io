@@ -1,68 +1,67 @@
 ---
-untranslated: ko
-title: "판정의 종합"
-description: "임계값에서 종료 코드까지"
-date: 2026-08-20
+title: "Verdict Synthesis"
+description: "From threshold to exit code"
+date: 2026-08-18
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-39-verdict-synthesis.svg
 ---
-## 39.0 이 장에서 답할 것
+## 39.0 What this chapter answers
 
-1. 서로 단위가 다른 계측치들이 어떻게 **하나의 판정**이 되는가
-2. 어떤 항목이 FAIL 이고 어떤 것이 WARN 인가 — 그 배정에 원칙이 있는가
-3. 판정은 어떻게 **한 바이트의 종료 코드**가 되고, 그 매핑은 무엇을 의도한 것인가
-4. 수행되지 않은 검사는 리포트에서 어떻게 보이는가 — **없는 항목은 통과인가**
-5. 그리고 마지막으로: **종료 코드 0 은 무엇을 보증하고 무엇을 보증하지 않는가**
+1. How do measured values of different units become **one verdict?**
+2. Which item is FAIL and which is WARN — is there a principle to that assignment?
+3. How does a verdict become **one byte of exit code**, and what did that mapping intend?
+4. How does a check that was not performed look in the report — **is an absent item a pass?**
+5. And finally: **what does exit code 0 guarantee and what does it not?**
 
-앞의 38개 장은 각각 하나의 관측을 다뤘다. 이 장은 그 관측들이 합쳐지는 층을 다룬다.
-교재의 마지막 장이므로 제1장의 질문으로 되돌아가 닫는다.
+The preceding 38 chapters each treated one observation. This chapter treats the layer where those observations
+merge. As the last chapter of the course, it returns to Chapter 1's question and closes.
 
 ---
 
-## 39.1 문제 — 일곱 갈래의 계측과 한 바이트의 답
+## 39.1 The problem — seven branches of measurement and one byte of answer
 
-이 도구가 한 번 실행되는 동안 모으는 계측치는 종류가 다르고 단위도 다르다.
+The measured values this tool gathers over one run are of different kinds and different units.
 
-| 계측 원천 | 자료형 | 단위 |
+| Measurement source | Data type | Unit |
 |---|---|---|
-| 세그먼트 수신 | `list[FetchResult]` | 개수 · 밀리초 · 바이트 · SHA-256 |
-| 페이로드 판별 실패 | `list[tuple[int, str, str]]` | 개수 · MIME 문자열 · 16진 바이트 |
-| MPEG-TS 헤더 | `TSReport` | 패킷 수 · PID 집합 · 불연속 건수 |
-| 산출물 실측 | `MediaInfo` | 초 · 바이트 · 코덱 이름 |
-| 타임라인 | `GapScan` | 초 단위 구간 목록 |
-| 자막 | `SubtitleReport` | 트랙 · 큐 수 · 초 단위 오프셋 |
-| 전체 디코드 | `tuple[int, list[str]]` | 오류 줄 수 |
+| segment receive | `list[FetchResult]` | count · millisecond · byte · SHA-256 |
+| payload discrimination failure | `list[tuple[int, str, str]]` | count · MIME string · hex byte |
+| MPEG-TS header | `TSReport` | packet count · PID set · discontinuity count |
+| artifact measurement | `MediaInfo` | second · byte · codec name |
+| timeline | `GapScan` | list of second-unit intervals |
+| subtitle | `SubtitleReport` | track · cue count · second-unit offset |
+| full decode | `tuple[int, list[str]]` | error line count |
 
-그런데 이 도구를 CI 파이프라인에 물리는 사람이 원하는 것은 **하나**다.
-
-```
-이 산출물을 다음 단계로 넘겨도 되는가 — 예 / 아니오
-```
-
-밀리초와 SHA-256 과 코덱 이름을 **예/아니오 한 비트**로 접는 과정이 이 장의 주제다.
-그 접는 과정에는 세 번의 축약이 있다.
+But what the person wiring this tool into a CI pipeline wants is **one thing.**
 
 ```
-계측치 여러 종류  →①→  Check 항목 여러 개  →②→  verdict 하나  →③→  종료 코드
+May this artifact be passed to the next stage — yes / no
 ```
 
-①은 **항목화**다. 각 계측치를 "이름·판정·설명" 세 필드로 바꾼다.
-②는 **집계**다. 항목들의 판정 중 최악값 하나를 고른다.
-③은 **매핑**이다. 세 값의 판정을 두 값의 종료 코드로 접는다.
+The process of folding milliseconds and SHA-256 and codec names into **one bit of yes/no** is this chapter's
+subject. That fold has three reductions.
 
-![계측치가 하나의 종료 코드로 수렴한다](/images/lecture/hls-recon/39-convergence.svg)
+```
+many kinds of measured values  →①→  many Check items  →②→  one verdict  →③→  exit code
+```
 
-*그림 39-1 — 계측치가 하나의 종료 코드로 수렴한다*
+① is **itemization**. It turns each measured value into three fields — "name·verdict·detail."
+② is **aggregation**. It picks the single worst of the items' verdicts.
+③ is **mapping**. It folds the three-value verdict into the two-value exit code.
 
-축약은 정보를 버리는 연산이므로, **무엇을 버리기로 했는지**가 곧 설계다. 이 장은 세
-단계 각각에서 무엇이 버려지고 무엇이 남는지를 본다.
+![Measured values converge into one exit code](/images/lecture/hls-recon/39-convergence.svg)
+
+*Figure 39-1 — measured values converge into one exit code*
+
+A reduction is an operation that discards information, so **what you decided to discard** is the design. This
+chapter looks, at each of the three stages, at what is discarded and what remains.
 
 ---
 
-## 39.2 원리 ① — `Check`: 판정의 최소 단위
+## 39.2 Principle ① — `Check`: the smallest unit of verdict
 
-### 39.2.1 세 필드
+### 39.2.1 Three fields
 
 ```python
 # report.py:64-72
@@ -77,49 +76,48 @@ class Check:
         return f"  {mark} {_pad(self.name, 18)} {self.detail}"
 ```
 
-> **용어** — **판정(verdict)**: 관측치에 대해 검사기가 내리는 등급. 이 코드에서는
-> `PASS`·`WARN`·`FAIL` 세 값의 문자열 상수다([`report.py:15`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L15)).
+> **Term** — **verdict**: the grade the checker gives to an observed value. In this code it is a string constant
+> of three values `PASS`·`WARN`·`FAIL` ([`report.py:15`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L15)).
 
-세 필드의 역할이 각각 다르다.
+The three fields' roles differ.
 
-| 필드 | 역할 | 소비자 |
+| Field | Role | Consumer |
 |---|---|---|
-| `name` | 어떤 검사인가 — 리포트에서 이 항목을 지목하는 이름 | 사람, 회귀 테스트의 `grep` |
-| `verdict` | 집계에 들어가는 **유일한** 값 | `Report.verdict` |
-| `detail` | 왜 그렇게 판정했는가 — 관측치와 임계값 | 사람만 |
+| `name` | which check it is — the name that points at this item in the report | people, the regression test's `grep` |
+| `verdict` | the **only** value that enters aggregation | `Report.verdict` |
+| `detail` | why it was judged so — the observed value and the threshold | people only |
 
-여기서 이미 첫 번째 축약이 일어난다. **집계는 `verdict` 만 본다.** `detail` 에 실린
-"드리프트 `+0.03s` / `0.10%`"는 판정에 기여하지 않는다. 계측치의 크기 정보는 이
-경계에서 버려지고, 남는 것은 세 값 중 하나뿐이다.
+Here the first reduction already happens. **Aggregation looks only at `verdict`.** The "drift `+0.03s` / `0.10%`"
+carried in `detail` does not contribute to the verdict. The magnitude information of the measured value is
+discarded at this boundary, and what remains is only one of three values.
 
-### 39.2.2 `detail` 은 장식이 아니다
+### 39.2.2 `detail` is not decoration
 
-버려지는 정보를 그래도 **인쇄는 한다**는 것이 이 설계의 핵심이다. 제22장 §22.3.6 이
-"임계값을 판정과 함께 인쇄한다"를 다뤘고, 이 장은 그것이 `Check` 의 세 번째 필드로
-제도화돼 있다는 점을 본다.
+That the discarded information is nonetheless **printed** is the core of this design. Chapter 22 §22.3.6 treated
+"print the threshold together with the verdict," and this chapter sees that it is institutionalized as `Check`'s
+third field.
 
 ```python
-# report.py:319-324 — 결손이 없을 때의 detail
+# report.py:319-324 — the detail when there is no loss
             rep.add(
-                "타임라인 연속성",
+                "timeline continuity",
                 PASS,
-                f"영상 프레임 {gaps.frames:,}개 연속, 결손 0 "
-                f"(간격 중앙값 {gaps.frame_interval * 1000:.1f}ms, 임계 {gaps.threshold * 1000:.0f}ms)",
+                f"{gaps.frames:,} video frames continuous, 0 loss "
+                f"(interval median {gaps.frame_interval * 1000:.1f}ms, threshold {gaps.threshold * 1000:.0f}ms)",
             )
 ```
 
-PASS 인데도 프레임 수·중앙값·임계값을 적는다. **PASS 의 사정거리를 계산할 수 있게
-하려는 것**이다. 임계가 400ms 였다는 사실을 모르면 이 PASS 가 무엇을 배제했는지 알 수
-없다(제18장·제22장).
+Even on PASS it writes the frame count·median·threshold. **It is to make the reach of the PASS computable.** Not
+knowing the threshold was 400 ms, you cannot know what this PASS excluded (Chapter 18·Chapter 22).
 
-`_pad(self.name, 18)` 은 표시 폭 기준 정렬이다 — 한글은 터미널에서 두 칸을 차지하므로
-문자 수로 채우면 항목 이름이 어긋난다([`report.py:27-30`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L27-L30)).
+`_pad(self.name, 18)` is display-width alignment — Hangul takes two cells in the terminal, so filling by character
+count misaligns the item names ([`report.py:27-30`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L27-L30)).
 
 ---
 
-## 39.3 원리 ② — 집계는 최대값 하나다
+## 39.3 Principle ② — aggregation is one maximum
 
-### 39.3.1 코드는 여섯 줄이다
+### 39.3.1 The code is six lines
 
 ```python
 # report.py:84-90
@@ -132,37 +130,37 @@ PASS 인데도 프레임 수·중앙값·임계값을 적는다. **PASS 의 사�
         return PASS
 ```
 
-말로 옮기면 이렇다.
+Put in words, it is this.
 
-> **FAIL 이 하나라도 있으면 FAIL. 없고 WARN 이 하나라도 있으면 WARN. 아니면 PASS.**
+> **If there is even one FAIL, FAIL. If none and there is even one WARN, WARN. Otherwise PASS.**
 
-`Report.verdict` 가 저장 필드가 아니라 `@property` 라는 점도 의도가 있다. 판정은
-**보관하는 값이 아니라 항목 목록에서 그때그때 계산되는 값**이다. 항목을 추가한 뒤
-판정을 갱신하는 것을 잊는 경로가 존재할 수 없다 — 두 상태가 어긋날 자리가 아예 없다.
+That `Report.verdict` is a `@property` and not a stored field also has intent. The verdict is **not a value kept
+but a value computed on the spot from the item list.** There can be no path that forgets to update the verdict
+after adding an item — there is no place at all for the two states to diverge.
 
-### 39.3.2 대수적 성질 넷
+### 39.3.2 Four algebraic properties
 
-이 여섯 줄은 다음 구조와 같다.
+These six lines are the same as the following structure.
 
-> 판정값에 전순서 `PASS < WARN < FAIL` 을 주고, 집계를 `max` 로 정의한다.
+> Give the verdict values a total order `PASS < WARN < FAIL` and define aggregation as `max`.
 
-이 관점에서 성질 넷이 따라 나온다.
+From this view four properties follow.
 
-| 성질 | 뜻 | 실무적 귀결 |
+| Property | Meaning | Practical corollary |
 |---|---|---|
-| **결합·교환법칙** | `max` 는 순서와 묶는 방식에 무관 | 검사를 어느 순서로 추가하든 판정이 같다 |
-| **항등원 `PASS`** | `max(x, PASS) = x` | PASS 항목은 몇 개를 더해도 판정을 바꾸지 않는다 |
-| **흡수원 `FAIL`** | `max(x, FAIL) = FAIL` | FAIL 하나가 나머지 전부를 무효화한다 |
-| **단조성** | 항목을 더하면 판정은 같거나 나빠진다 | 검사를 추가하는 변경은 판정을 **완화하는 방향으로 회귀할 수 없다** |
+| **associativity·commutativity** | `max` is independent of order and grouping | the verdict is the same in whatever order you add checks |
+| **identity `PASS`** | `max(x, PASS) = x` | a PASS item, however many you add, does not change the verdict |
+| **absorbing `FAIL`** | `max(x, FAIL) = FAIL` | one FAIL nullifies all the rest |
+| **monotonicity** | add an item and the verdict is the same or worse | a change that adds a check **cannot regress the verdict toward leniency** |
 
-> **용어** — **항등원(identity element)**: 어떤 이항 연산에서, 무엇과 결합해도 상대를
-> 그대로 두는 원소. 덧셈의 `0` 이 그 예다(`x + 0 = x`). 여기서는 `PASS` 가 그 자리에 있다.
+> **Term** — **identity element**: in a binary operation, the element that leaves the other unchanged whatever it
+> combines with. Addition's `0` is an example (`x + 0 = x`). Here `PASS` is in that place.
 >
-> **흡수원(absorbing element)**: 반대로, 무엇과 결합해도 **자기 자신**이 되는 원소.
-> 곱셈의 `0` 이 그 예다(`x × 0 = 0`). 여기서는 `FAIL` 이 그 자리에 있다.
+> **absorbing element**: conversely, the element that becomes **itself** whatever it combines with. Multiplication's
+> `0` is an example (`x × 0 = 0`). Here `FAIL` is in that place.
 
-성질을 실제로 확인해 두었다. 계측 없이 `Report` 에 판정만 다른 항목을 채워 넣고
-판정과 종료 코드를 읽는다 — 집계 층만 떼어 낸 측정이다.
+I confirmed the properties in practice. Without measurement, fill a `Report` with items differing only in verdict
+and read the verdict and exit code — a measurement with only the aggregation layer peeled off.
 
 ```python
 from hlsrecon import report
@@ -171,279 +169,278 @@ from hlsrecon.cli import _exit_code
 def mk(*verdicts):
     r = report.Report()
     for i, v in enumerate(verdicts):
-        r.add(f"검사{i}", v, "")
+        r.add(f"check{i}", v, "")
     return r
 
 r = mk("WARN", "FAIL")
 print(r.verdict, _exit_code(r.verdict))     # → FAIL 2
 ```
 
-| 넣은 항목 | `verdict` | `_exit_code` |
+| Items put in | `verdict` | `_exit_code` |
 |---|---|---|
-| 검사 0개 (빈 리포트) | `PASS` | `0` |
+| 0 checks (empty report) | `PASS` | `0` |
 | `PASS` | `PASS` | `0` |
 | `PASS`, `WARN` | `WARN` | `0` |
 | `WARN`, `FAIL` | `FAIL` | `2` |
-| `FAIL`, `PASS` (순서 반대) | `FAIL` | `2` |
+| `FAIL`, `PASS` (reversed order) | `FAIL` | `2` |
 | `PASS` × 12 | `PASS` | `0` |
 | `PASS` × 11 + `FAIL` | `FAIL` | `2` |
 
-길이 1–3 인 모든 판정 배열(3 + 9 + 27 = 39가지)에 대해 **순서를 뒤집어도 판정이
-동일**함을 확인했다. 교환법칙이 코드 수준에서 성립한다.
+I confirmed that for every verdict array of length 1–3 (3 + 9 + 27 = 39 cases) **the verdict is identical even
+reversing the order.** Commutativity holds at the code level.
 
-첫 행에 주의할 것이 있다. **검사가 0개인 리포트의 판정은 `PASS` 다.** 항등원의 정의상
-당연한 결과이고, `verdict` 에 별도의 방어 코드는 없다. 이 사실이 §39.5 의 출발점이 된다.
+Note the first row. **The verdict of a report with 0 checks is `PASS`.** A natural result by the identity's
+definition, and there is no separate guard code in `verdict`. This fact becomes §39.5's starting point.
 
-### 39.3.3 단조성이 왜 중요한가
+### 39.3.3 Why monotonicity matters
 
-단조성은 검사기를 **확장할 때** 제값을 한다. 새 검사를 추가하는 변경은 다음을 보장한다.
+Monotonicity earns its keep when you **extend** the checker. A change that adds a new check guarantees the
+following.
 
-- 이전에 `FAIL` 이던 실행이 새 검사 때문에 `PASS` 가 되는 일은 **없다**
-- 이전에 `PASS` 이던 실행이 `WARN`·`FAIL` 로 바뀔 수는 **있다**
+- A run that was previously `FAIL` **never** becomes `PASS` because of the new check
+- A run that was previously `PASS` **can** turn to `WARN`·`FAIL`
 
-즉 확장의 위험은 **오탐이 늘어나는 쪽으로만** 열려 있고, 미탐이 늘어나는 쪽으로는
-닫혀 있다. 제37장의 양방향 고정이 필요한 이유가 여기서 다시 보인다 — 이 구조에서
-회귀 테스트가 지켜야 할 것은 "정상 스트림이 여전히 PASS 인가"이지 "결함이 여전히
-FAIL 인가"만이 아니다. 후자는 구조가 어느 정도 지켜 주지만 전자는 지켜 주지 않는다.
+That is, the risk of extension is open **only toward more false positives** and closed toward more false
+negatives. Why Chapter 37's bidirectional fixing is needed shows again here — in this structure what the
+regression test must guard is "is the normal stream still PASS," not only "is the defect still FAIL." The latter
+the structure guards to a degree, but the former it does not.
 
-만약 집계가 `max` 가 아니라 **다수결**이거나 **가중 평균**이었다면 이 성질이 전부
-깨진다. 검사를 하나 더하면 기존 FAIL 이 희석돼 PASS 로 뒤집힐 수 있다. 판정 대수를
-`max` 로 고르는 것은 취향이 아니라 **회귀 방향을 한쪽으로 고정하는 선택**이다.
+Had aggregation been **majority vote** or **weighted average** rather than `max`, all these properties break. Add
+one check and an existing FAIL can be diluted and flip to PASS. Choosing the verdict algebra as `max` is not taste
+but **a choice that locks the regression direction to one side.**
 
-### 39.3.4 항상 `PASS` 인 항목이 있다
+### 39.3.4 There is an item that is always `PASS`
 
-첫 번째 항목은 조건 없이 `PASS` 로 추가된다.
+The first item is added as `PASS` with no condition.
 
 ```python
 # report.py:151-157
-    # 1) 플레이리스트 구조
+    # 1) playlist structure
     rep.add(
-        "플레이리스트",
+        "playlist",
         PASS,
-        f"세그먼트 {segment_count}개, 선언 길이 {declared_duration:.2f}s, "
-        f"TARGETDURATION {target_duration:g}s, 암호화 {'AES-128' if encrypted else '없음'}",
+        f"{segment_count} segments, declared length {declared_duration:.2f}s, "
+        f"TARGETDURATION {target_duration:g}s, encryption {'AES-128' if encrypted else 'none'}",
     )
 ```
 
-README 의 검증 항목표도 이 행의 판정 열에 "정보"라고 적어 두었다(`README.md:338`).
-이것은 검사가 아니라 **맥락 기록**이다 — 뒤따르는 모든 판정을 읽으려면 세그먼트가
-몇 개고 선언 길이가 얼마인지 알아야 한다.
+The README's verification-item table also writes "info" in this row's verdict column (`README.md:338`). This is
+not a check but a **context record** — to read all the following verdicts you must know how many segments there
+are and what the declared length is.
 
-판정 채널에 정보 채널을 실어도 아무 대가가 없는 이유가 §39.3.2 의 항등원이다.
-`PASS` 는 집계에 기여하지 않으므로 정보 항목은 판정을 오염시키지 않는다. **대수적
-성질이 설계의 자유도를 만든 사례**다.
+The reason there is no cost to loading an info channel onto the verdict channel is §39.3.2's identity. `PASS` does
+not contribute to aggregation, so an info item does not contaminate the verdict. **A case where an algebraic
+property created design freedom.**
 
 ---
 
-## 39.4 코드 — FAIL 과 WARN 은 무엇으로 갈리는가
+## 39.4 The code — by what are FAIL and WARN divided
 
-### 39.4.1 전수표
+### 39.4.1 The exhaustive table
 
-`build()` 안의 모든 `rep.add` 호출을 그대로 옮긴 것이다([`report.py:123-511`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L123-L511)).
+This transcribes every `rep.add` call inside `build()` as-is ([`report.py:123-511`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L123-L511)).
 
-| # | 항목 | 앵커 | `FAIL` 조건 | `WARN` 조건 | 그 외 |
+| # | Item | Anchor | `FAIL` condition | `WARN` condition | Otherwise |
 |---|---|---|---|---|---|
-| 1 | 플레이리스트 | 152-157 | — | — | 항상 `PASS` |
-| 2 | 세그먼트 수신 | 167-181 | 수신 실패 1건 이상 | 전량 수신했으나 재시도 발생 | `PASS` |
-| 3 | 응답 지연 | 185-196 | — | TTFB p95 > 3000ms | `PASS` |
-| 4 | 페이로드 유효성 | 199-211 | 미디어가 아닌 응답 1건 이상 | — | `PASS` |
-| 5 | 세그먼트 고유성 | 213-218 | — | SHA-256 중복 존재 | `PASS` |
-| 6 | TS 무결성 | 243-249 | 동기 이탈 또는 미복호 패킷 | CC 불연속 또는 TEI | `PASS` |
-| 7 | 길이 정합 | 266-278 | `abs(드리프트) ≥ TARGETDURATION` | 드리프트 > 0.5% | `PASS` |
-| 8 | 스트림 구성 | 287-291 | — | 영상 트랙 없음 | `PASS` |
-| 9 | 자막 내장 | 349-356 | 내장된 트랙 수 ≠ 요청한 수 | — | `PASS` |
-| 10 | 자막 타임라인(내장) | 358-366 | 자막 구간이 영상 범위 밖 | — | `PASS` |
-| 11 | 내장 캡션 | 383-388 | — | — | 항상 `PASS` |
-| 12 | 자막 추출 | 389-419 | 실패한 트랙 1개 이상 | — | `PASS` |
-| 13 | 자막 타임라인 | 424-460 | 영상 범위를 벗어난 트랙 존재 | 최소 커버리지 < 20% | `PASS` (표본 실행은 판정 보류) |
-| 14 | 자막 일괄 수집 | 462-469 | — | 확보 0건 | `PASS` |
-| 15 | 전체 디코드 | 502-509 | 디코드 오류 1건 이상 | — | `PASS` |
+| 1 | playlist | 152-157 | — | — | always `PASS` |
+| 2 | segment receive | 167-181 | 1+ receive failures | received all but a retry occurred | `PASS` |
+| 3 | response latency | 185-196 | — | TTFB p95 > 3000ms | `PASS` |
+| 4 | payload validity | 199-211 | 1+ non-media responses | — | `PASS` |
+| 5 | segment uniqueness | 213-218 | — | SHA-256 duplicate present | `PASS` |
+| 6 | TS integrity | 243-249 | sync loss or undecrypted packet | CC discontinuity or TEI | `PASS` |
+| 7 | length consistency | 266-278 | `abs(drift) ≥ TARGETDURATION` | drift > 0.5% | `PASS` |
+| 8 | stream composition | 287-291 | — | no video track | `PASS` |
+| 9 | subtitle embed | 349-356 | embedded track count ≠ requested count | — | `PASS` |
+| 10 | subtitle timeline (embedded) | 358-366 | subtitle interval outside video range | — | `PASS` |
+| 11 | embedded caption | 383-388 | — | — | always `PASS` |
+| 12 | subtitle extract | 389-419 | 1+ failed tracks | — | `PASS` |
+| 13 | subtitle timeline | 424-460 | a track out of video range exists | minimum coverage < 20% | `PASS` (sample run withholds the verdict) |
+| 14 | subtitle batch collection | 462-469 | — | 0 secured | `PASS` |
+| 15 | full decode | 502-509 | 1+ decode errors | — | `PASS` |
 
-**`FAIL` 을 낼 수 있는 항목은 9개, `WARN` 을 낼 수 있는 항목은 8개, 둘 다 낼 수 있는
-항목은 4개(2·6·7·13), 어느 쪽도 낼 수 없는 정보 항목은 2개(1·11)** 다.
+**Items that can give `FAIL` are 9, items that can give `WARN` are 8, items that can give both are 4 (2·6·7·13),
+and info items that can give neither are 2 (1·11).**
 
-행이 15개인데 항목 **이름**은 14종이다 — `자막 타임라인` 이 내장 경로(10)와 별도 파일
-경로(13) 두 곳에서 추가되기 때문이며, 실행에 따라 둘 다 생길 수 있다(§39.10).
+There are 15 rows but the item **names** are 14 kinds — because `subtitle timeline` is added at two places, the
+embed path (10) and the separate-file path (13), and depending on the run both can arise (§39.10).
 
-### 39.4.2 배정의 원칙 — 두 축
+### 39.4.2 The principle of assignment — two axes
 
-표를 세로로 읽으면 규칙이 하나 나온다.
+Read the table vertically and one rule comes out.
 
-> **확실한 손상은 `FAIL`, 손상일 수도 있고 정상 이음매일 수도 있는 것은 `WARN`.**
+> **Certain damage is `FAIL`; what could be damage or could be a normal seam is `WARN`.**
 
-이것을 더 정확하게 쓰면 조건이 둘이다. **두 조건을 모두 만족할 때만 `FAIL` 을 준다.**
+Written more precisely, there are two conditions. **Only when both conditions are met is `FAIL` given.**
 
-| 축 | 질문 | 어기면 |
+| Axis | Question | Violate it and |
 |---|---|---|
-| **① 관측의 확정성** | 이 관측에 손상 말고 다른 정상적 설명이 있는가 | 있으면 `WARN` |
-| **② 판정선의 근거** | 판정선이 규격·구조에서 나오는가, 아니면 임의 상수인가 | 임의면 `WARN` |
+| **① certainty of observation** | is there a normal explanation other than damage for this observation | if yes, `WARN` |
+| **② basis of the verdict line** | does the verdict line come from a spec·structure, or is it an arbitrary constant | if arbitrary, `WARN` |
 
-②는 제22장 §22.7.5 가 이미 명시한 규칙이다 — "근거 없는 상수에는 FAIL 을 물리지
-않는다." 이 장은 그 규칙이 판정 배정 **전체**를 관통하는지를 확인한다.
+② is the rule Chapter 22 §22.7.5 already made explicit — "do not put FAIL on a baseless constant." This chapter
+confirms whether that rule runs through the **whole** verdict assignment.
 
-두 축으로 전수표를 다시 읽으면 이렇다.
+Reread the exhaustive table by the two axes and it is this.
 
-| 항목 | ① 다른 정상적 설명 | ② 판정선의 출처 | 결과 |
+| Item | ① other normal explanation | ② origin of the verdict line | Result |
 |---|---|---|---|
-| 세그먼트 수신 실패 | 없음 — HTTP 실패는 결손 확정 | 없음(이산 사건) | `FAIL` |
-| 재시도 후 성공 | 산출물은 온전하다 — 관측 대상이 송출 안정성이지 산출물이 아니다 | 없음 | `WARN` |
-| TTFB p95 > 3s | 산출물은 온전하다 | **임의 상수 3000ms** | `WARN` |
-| 페이로드 무효 | 없음 — 세그먼트 자리에 HTML 이 오는 정상 송출은 없다 | 없음(선두 바이트) | `FAIL` |
-| SHA-256 중복 | **있음** — 같은 URI 를 두 번 가리키는 플레이리스트는 규격상 가능 | 없음 | `WARN` |
-| 동기 이탈·미복호 | 없음 — §39.4.4 | 없음 | `FAIL` |
-| CC 불연속·TEI | **있음** — §39.4.4 | 없음 | `WARN` |
-| 드리프트 ≥ TARGETDURATION | 없음 — 세그먼트 하나 분량이 통째로 어긋났다 | **플레이리스트가 선언한 값** | `FAIL` |
-| 드리프트 > 0.5% | 인코더 반올림·컨테이너 오버헤드로 설명 가능 | **임의 상수 0.5%** | `WARN` |
-| 영상 트랙 없음 | **있음** — 오디오 전용 렌디션 | 없음 | `WARN` |
-| 자막 커버리지 < 20% | **있음** — 오프닝만 있는 forced 트랙 | **임의 상수 20%** | `WARN` |
-| 자막 일괄 수집 실패 | **판정 대상이 아니다** — 이웃 화수는 이번 산출물과 무관 | 없음 | `WARN` |
-| 디코드 오류 | 없음 | 없음(오류 줄 존재 여부) | `FAIL` |
+| segment receive failure | none — an HTTP failure confirms a loss | none (discrete event) | `FAIL` |
+| success after retry | the artifact is intact — the observation target is delivery stability, not the artifact | none | `WARN` |
+| TTFB p95 > 3s | the artifact is intact | **arbitrary constant 3000ms** | `WARN` |
+| payload invalid | none — there is no normal delivery where HTML comes in a segment's place | none (head byte) | `FAIL` |
+| SHA-256 duplicate | **yes** — a playlist pointing at the same URI twice is possible by spec | none | `WARN` |
+| sync loss·undecrypted | none — §39.4.4 | none | `FAIL` |
+| CC discontinuity·TEI | **yes** — §39.4.4 | none | `WARN` |
+| drift ≥ TARGETDURATION | none — a whole segment's worth is off | **the value the playlist declared** | `FAIL` |
+| drift > 0.5% | explainable by encoder rounding·container overhead | **arbitrary constant 0.5%** | `WARN` |
+| no video track | **yes** — an audio-only rendition | none | `WARN` |
+| subtitle coverage < 20% | **yes** — a forced track with only the opening | **arbitrary constant 20%** | `WARN` |
+| subtitle batch collection failure | **not a verdict target** — neighbor episodes are unrelated to this artifact | none | `WARN` |
+| decode error | none | none (whether an error line exists) | `FAIL` |
 
-자막 일괄 수집 한 행만 빼면 두 축으로 전부 설명된다. 원칙이 지켜지지 않은 자리는
-§39.4.6 에서 따로 다룬다.
+Except the one subtitle-batch-collection row, everything is explained by the two axes. The spot where the
+principle is not kept is treated separately in §39.4.6.
 
-세 번째 유형도 눈여겨볼 것이 있다. **자막 일괄 수집**은 ①·② 어느 쪽도 아니고
-"애초에 이번 판정의 대상이 아니다"라는 셋째 이유로 `WARN` 이다. `detail` 문자열이
-그 이유를 직접 적는다.
+The third type is also worth noting. **Subtitle batch collection** is neither ① nor ② but `WARN` for a third
+reason — "it is not the target of this verdict in the first place." The `detail` string writes that reason
+directly.
 
 ```python
 # report.py:462-469
         if subs.extra:
             got = [r for r in subs.extra if r.ok]
             rep.add(
-                "자막 일괄 수집",
+                "subtitle batch collection",
                 PASS if got else WARN,
-                f"이웃 화수 {len(got)}/{len(subs.extra)}개 확보 "
-                f"— 현재 영상과 짝이 아니라 타임라인 검사 대상이 아니다",
+                f"neighbor episodes {len(got)}/{len(subs.extra)} secured "
+                f"— not paired with the current video so not a timeline-check target",
             )
 ```
 
-**부수 작업의 실패를 주 판정에 섞지 않는다.** 섞으면 "이 산출물이 온전한가"라는
-질문의 답이 "덤으로 받으려던 다음 화 자막이 왔는가"에 오염된다.
+**A side task's failure is not mixed into the main verdict.** Mix it and the answer to "is this artifact intact"
+is contaminated by "did the next episode's subtitle you meant to grab as a bonus arrive."
 
-### 39.4.3 대조 ① — 세그먼트 중복은 `WARN`, 페이로드 무효는 `FAIL`
+### 39.4.3 Contrast ① — segment duplicate is `WARN`, payload invalid is `FAIL`
 
-둘 다 세그먼트 단위 관측이고 둘 다 이산 사건이다. 판정이 갈리는 것은 축 ① 때문이다.
+Both are segment-unit observations and both are discrete events. What splits the verdict is axis ①.
 
 ```python
 # report.py:213-218
         dup = len({f.sha256 for f in fetches if f.ok}) != len([f for f in fetches if f.ok])
         rep.add(
-            "세그먼트 고유성",
+            "segment uniqueness",
             WARN if dup else PASS,
-            "중복 해시 존재 — 동일 세그먼트가 반복 송출됨" if dup else "SHA-256 전량 상이",
+            "duplicate hash present — the same segment is sent repeatedly" if dup else "SHA-256 all distinct",
         )
 ```
 
-관측은 **내용 해시의 중복**이다. 이것이 뜻할 수 있는 것을 나열하면 셋이다.
+The observation is a **duplicate of the content hash.** Enumerate what it can mean and there are three.
 
-| 가능한 원인 | 손상인가 |
+| Possible cause | Is it damage |
 |---|---|
-| 세그먼트 URL 조립 버그로 같은 조각을 반복해서 받았다 | **손상** |
-| 송출 측이 같은 조각을 잘못 올렸다 | **손상** |
-| 플레이리스트가 같은 세그먼트를 의도적으로 두 번 가리킨다(정지 구간·반복 슬레이트) | **정상** |
+| a segment-URL assembly bug received the same piece repeatedly | **damage** |
+| the delivery side uploaded the same piece by mistake | **damage** |
+| the playlist intentionally points at the same segment twice (a still interval·repeated slate) | **normal** |
 
-셋째가 존재하는 한 중복 해시는 손상을 **확정하지 못한다.** 게다가 이 검사는 URI 가
-아니라 내용을 보므로 **의도된 반복과 실수를 구분할 수단 자체가 없다.** 그래서 `WARN`
-이다.
+As long as the third exists, a duplicate hash **cannot confirm** damage. Moreover this check looks at content, not
+URI, so it **has no means to distinguish intended repetition from a mistake.** Hence `WARN`.
 
-페이로드 유효성은 다르다.
+Payload validity is different.
 
 ```python
 # report.py:198-206
-        # HTTP 200 이어도 내용이 미디어가 아닐 수 있다 (만료 토큰에 대한 오류 페이지 등).
+        # Even with HTTP 200 the content may not be media (an error page for an expired token, etc.).
         if bogus:
-            types = sorted({ct or "Content-Type 없음" for _, ct, _ in bogus})
+            types = sorted({ct or "no Content-Type" for _, ct, _ in bogus})
             rep.add(
-                "페이로드 유효성",
+                "payload validity",
                 FAIL,
-                f"{len(bogus)}개가 200 응답이나 미디어가 아님 ({', '.join(types)}) "
-                f"— seg#{bogus[0][0]} 선두 {bogus[0][2][:16]}",
+                f"{len(bogus)} were 200 responses but not media ({', '.join(types)}) "
+                f"— seg#{bogus[0][0]} head {bogus[0][2][:16]}",
             )
 ```
 
-관측은 **선두 바이트가 MPEG-TS 도 ISO-BMFF 도 아님**이다(제14·16장의 `sniff()`).
-여기에는 "정상일 수도 있다"는 해석이 없다. 세그먼트 자리에 미디어가 아닌 것이 오는
-정상 송출은 존재하지 않으며, 그 자리에 온 바이트는 재조립본에 그대로 결손이 된다.
-축 ①이 통과하고 축 ②는 임계값 자체가 없으므로 통과한다 → `FAIL`.
+The observation is that **the head byte is neither MPEG-TS nor ISO-BMFF** (Chapter 14·16's `sniff()`). There is
+no interpretation here of "it might be normal." There is no normal delivery where a non-media thing comes in a
+segment's place, and the bytes that came there become a loss in the reassembly as-is. Axis ① passes and axis ②
+passes because there is no threshold at all → `FAIL`.
 
-### 39.4.4 대조 ② — CC 불연속은 `WARN`, 동기 이탈·미복호는 `FAIL`
+### 39.4.4 Contrast ② — CC discontinuity is `WARN`, sync loss·undecrypted is `FAIL`
 
-같은 `TSReport` 안의 네 값이 두 등급으로 갈린다. 한 줄에 그 규칙이 들어 있다.
+Four values inside the same `TSReport` split into two grades. That rule fits on one line.
 
 ```python
 # report.py:243-249
         rep.add(
-            "TS 무결성",
+            "TS integrity",
             FAIL if (ts.sync_errors or ts.scrambled_packets) else (WARN if problems else PASS),
             ", ".join(problems)
             if problems
-            else f"{ts.packets:,} 패킷 / PID {len(ts.pids)}종, 손실 0",
+            else f"{ts.packets:,} packets / {len(ts.pids)} PIDs, 0 loss",
         )
 ```
 
-네 값이 무엇을 관측한 것인지부터 구분해야 한다([`tsanalyze.py:44-47`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L44-L47)).
+First distinguish what the four values observe ([`tsanalyze.py:44-47`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L44-L47)).
 
-| 값 | 관측 | 정상적 설명이 있는가 | 판정 |
+| Value | Observation | Is there a normal explanation | Verdict |
 |---|---|---|---|
-| `cc_discontinuities` | PID 별 4비트 카운터가 기대값에서 벗어났다 | **있다** (아래) | `WARN` |
-| `transport_errors` | TEI 비트가 1인 패킷 | **있다** — 상류 전송 계층의 자기 신고이고 오설정 사례가 있다 | `WARN` |
-| `sync_errors` | 188바이트 격자 위치에 `0x47` 이 없다 | **없다** | `FAIL` |
-| `scrambled_packets` | scrambling control 비트가 0이 아니다 | **없다** | `FAIL` |
+| `cc_discontinuities` | a per-PID 4-bit counter departed from the expected value | **yes** (below) | `WARN` |
+| `transport_errors` | packets with the TEI bit set to 1 | **yes** — a self-report of the upstream transport layer, and there are misconfiguration cases | `WARN` |
+| `sync_errors` | there is no `0x47` at the 188-byte grid position | **none** | `FAIL` |
+| `scrambled_packets` | the scrambling control bit is not 0 | **none** | `FAIL` |
 
-**CC 불연속에 정상적 설명이 있는 이유**는 제18장이 정리한 그대로다. 카운터는 페이로드를
-실은 패킷에서만 증가하고, `cc == prev` 는 규격이 허용한 중복 패킷이며, 상태는 세그먼트
-경계를 넘어 이어진다([`tsanalyze.py:104-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L104-L119)). 여기에 `EXT-X-DISCONTINUITY` 로 예고된
-지점에서는 인코더가 새로 시작하므로 카운터가 임의 값에서 다시 출발한다 — 그리고
-**CC 검사는 그 태그를 참작하지 않는다**(제18장 §18.9). 즉 광고가 삽입된 정상 회차에서
-CC 불연속은 정상적으로 관측된다. 확정 손상이 아니다.
+**The reason a CC discontinuity has a normal explanation** is exactly as Chapter 18 organized. The counter
+increments only on packets carrying a payload, `cc == prev` is a duplicate packet the spec permits, and the state
+continues across segment boundaries ([`tsanalyze.py:104-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L104-L119)). On top of this, at a point announced with
+`EXT-X-DISCONTINUITY` the encoder starts anew so the counter restarts from an arbitrary value — and **the CC check
+does not take that tag into account** (Chapter 18 §18.9). That is, in a normal episode with an ad inserted, a CC
+discontinuity is observed normally. It is not confirmed damage.
 
-**동기 이탈에는 그런 설명이 없다.** MPEG-TS 는 188바이트 주기의 자기동기 포맷이므로
-(제17·19장) 격자 위치에 `0x47` 이 아닌 값이 있다는 것은 바이트 정렬 자체가 깨졌다는
-뜻이다. 파일이 잘렸거나, 중간에 다른 바이트가 섞였거나, 애초에 TS 가 아니다. 어느
-쪽이든 재조립본이 성립하지 않는다.
+**Sync loss has no such explanation.** MPEG-TS is a self-synchronizing format with a 188-byte period (Chapter
+17·19), so a non-`0x47` value at a grid position means the byte alignment itself is broken. The file was cut, or
+other bytes were mixed in the middle, or it was never TS to begin with. Either way the reassembly does not hold.
 
-**미복호 패킷도 마찬가지다.** 이 도구는 AES-128 복호화를 마친 뒤 분석하므로, 스크램블
-비트가 남아 있다는 것은 키가 틀렸거나 SAMPLE-AES(제26장)라는 뜻이다. 어느 쪽이든
-산출물은 재생되지 않는다.
+**An undecrypted packet is the same.** This tool analyzes after finishing AES-128 decryption, so a remaining
+scramble bit means the key was wrong or it is SAMPLE-AES (Chapter 26). Either way the artifact does not play.
 
-정리하면 이렇다.
+Organized, it is this.
 
-> **CC 불연속은 "패킷이 빠졌을 수 있다"이고, 동기 이탈은 "이 바이트열은 TS 가
-> 아니다"이며, 미복호는 "이 바이트열은 아직 암호문이다"이다.** 앞의 하나는 가능성을
-> 말하고 뒤의 둘은 사실을 말한다.
+> **A CC discontinuity is "a packet may have been dropped," a sync loss is "this byte stream is not TS," and
+> undecrypted is "this byte stream is still ciphertext."** The first one speaks of possibility and the latter two
+> speak of fact.
 
-### 39.4.5 맥락이 판정 강도를 바꾸는 유일한 항목
+### 39.4.5 The only item where context changes the verdict strength
 
-타임라인 연속성만은 **같은 관측이 맥락에 따라 두 등급으로 갈린다.**
+Timeline continuity alone has **the same observation splitting into two grades by context.**
 
 ```python
 # report.py:309-317
-            # 플레이리스트가 EXT-X-DISCONTINUITY 로 예고한 불연속이면 의도된 이음매일 수 있다.
+            # If it is a discontinuity the playlist announced with EXT-X-DISCONTINUITY, it may be an intended seam.
             intended = discontinuities >= len(gaps.gaps)
             rep.add(
-                "타임라인 연속성",
+                "timeline continuity",
                 WARN if intended else FAIL,
-                f"결손 {len(gaps.gaps)}건 / 합계 {gaps.lost:.2f}s (최대 {worst.length:.2f}s) "
+                f"{len(gaps.gaps)} losses / total {gaps.lost:.2f}s (max {worst.length:.2f}s) "
                 f"@ {where}{more}"
-                + (" — EXT-X-DISCONTINUITY 선언 구간과 수가 일치(의도된 이음매 가능)" if intended else ""),
+                + (" — count matches the EXT-X-DISCONTINUITY declared intervals (intended seam possible)" if intended else ""),
             )
 ```
 
-관측된 구멍은 동일하다. 달라지는 것은 **플레이리스트가 그 구멍을 예고했는가**뿐이다.
-즉 축 ①의 "다른 정상적 설명"이 관측에 내재한 것이 아니라 **외부 선언에서 공급된다.**
+The observed hole is identical. What differs is only **whether the playlist announced that hole.** That is, axis
+①'s "other normal explanation" is not inherent to the observation but **supplied from an external declaration.**
 
-제21장 §21.6 이 이 완화의 필요성(오탐이 쌓이면 검사가 꺼진다)과 거칠기(위치를 대조하지
-않고 개수만 비교한다)를 다뤘다. 이 장에서 덧붙일 것은 하나다 — **판정을 낮춘 근거가
-`detail` 에 남는다.** 마지막 `+ (...)` 가 그것이다. 등급을 완화한 사실과 그 이유가
-리포트에 함께 인쇄되므로, 사람이 읽으면 완화가 타당한지 검토할 수 있다.
+Chapter 21 §21.6 treated the need for this leniency (false positives pile up and the check gets turned off) and
+its coarseness (it does not match the position, only compares counts). What this chapter adds is one thing — **the
+basis for lowering the verdict is left in `detail`.** The trailing `+ (...)` is that. The fact of the grade
+leniency and its reason are printed together in the report, so a person reading can review whether the leniency is
+justified.
 
-> **등급을 완화할 때는 완화했다는 사실 자체를 산출물에 남긴다.** 조용히 낮추면
-> 리포트를 읽는 사람은 그 항목이 원래 `WARN` 짜리인 줄 안다.
+> **When you lower a grade, leave the very fact of lowering it in the artifact.** Lower it quietly and the person
+> reading the report thinks that item was a `WARN`-worthy one to begin with.
 
-### 39.4.6 원칙이 지켜지지 않은 자리
+### 39.4.6 The spot where the principle is not kept
 
-정직하게 적어 둔다. 축 ②를 어기는 `FAIL` 이 하나 있다.
+Written honestly. There is one `FAIL` that violates axis ②.
 
 ```python
 # report.py:431-432
@@ -451,42 +448,41 @@ CC 불연속은 정상적으로 관측된다. 확정 손상이 아니다.
                 strayed = [r for r in good if r.last_cue > video_len + 5.0 or r.first_cue < -0.5]
 ```
 
-`5.0` 과 `-0.5` 는 근거가 코드에 적혀 있지 않은 상수인데, 이 조건은 `WARN` 이 아니라
-`FAIL` 을 낸다([`report.py:441-451`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L441-L451)). 같은 상수 쌍이 내장 경로에도 있다
-([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366)). 제22장의 규칙 — 근거 없는 상수에는 `FAIL` 을 물리지 않는다 —
-과 어긋나는 자리다.
+`5.0` and `-0.5` are constants whose basis is not written in the code, yet this condition gives `FAIL`, not `WARN`
+([`report.py:441-451`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L441-L451)). The same constant pair is on the embed path too
+([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366)). It is a spot that conflicts with Chapter 22's rule — do not put `FAIL` on a
+baseless constant.
 
-완화 요인은 있다. 회귀 테스트가 주입하는 어긋남은 **60초** 규모이고
-(`README.md:372`), 실제 `X-TIMESTAMP-MAP` 정렬 실패는 초 단위가 아니라 분 단위로
-어긋나는 경향이 있다(제27장). 즉 경계 근처 사례가 드물다. 그러나 **드문 것은 완화
-요인이지 근거가 아니다.** 이 저장소가 마주치지 않은 송출에서 자막 끝이 영상 끝보다
-6초 긴 정상 트랙이 있다면 그것은 오탐이 되고, 오탐은 `FAIL` 이므로 곧바로 파이프라인을
-세운다.
+There is a mitigating factor. The mismatch the regression test injects is on the **60-second** scale
+(`README.md:372`), and a real `X-TIMESTAMP-MAP` alignment failure tends to be off by minutes rather than seconds
+(Chapter 27). That is, near-boundary cases are rare. But **rare is a mitigating factor, not a basis.** If in a
+delivery this repository has not met there is a normal track whose subtitle end is 6 seconds longer than the video
+end, it becomes a false positive, and a false positive is `FAIL` so it immediately stops the pipeline.
 
-그리고 이것은 가정이 아니다. 제38장 §38.9.1 이 **결함 없는 스트림에서 종료 코드 2 가
-나오는 조합을 실측했다** — `--limit 1 --sub-embed` 를 걸면 이 상수 쌍이 걸린 `자막
-타임라인` 과 표본 실행 때문에 오염된 `길이 정합` 이 함께 `FAIL` 을 낸다. 내장 경로
-([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366))에는 §39.5.3 의 판정 보류에 해당하는 전제 조건이 없기 때문이다.
-**축 ②를 어긴 대가가 실제 오탐으로 관측된 자리**이며, 회귀 테스트에는 그 조합이 없다.
+And this is not a hypothesis. Chapter 38 §38.9.1 **measured a combination that gives exit code 2 on a defect-free
+stream** — put `--limit 1 --sub-embed` and the `subtitle timeline` caught by this constant pair and the `length
+consistency` contaminated by the sample run give `FAIL` together. It is because the embed path
+([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366)) has no premise condition corresponding to §39.5.3's withheld verdict. **A spot where the
+cost of violating axis ② was observed as a real false positive**, and the regression test has no such combination.
 
 ---
 
-## 39.5 코드 — 조건부 검사: 없는 항목은 통과가 아니다
+## 39.5 The code — conditional checks: an absent item is not a pass
 
-### 39.5.1 어떤 항목이 사라질 수 있는가
+### 39.5.1 Which items can vanish
 
-`build()` 의 항목 추가는 전부 조건 아래에 있다. 조건을 전수하면 이렇다.
+Every item addition in `build()` is under a condition. Enumerate the conditions and it is this.
 
-| 조건절 | 앵커 | 이 조건절이 거짓이면 사라지는 항목 |
+| Conditional | Anchor | The items that vanish if this conditional is false |
 |---|---|---|
-| `if fetches:` | [`report.py:160`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L160) | 세그먼트 수신 · 응답 지연 · 페이로드 유효성 · 세그먼트 고유성 (**4개**) |
-| `if ts and ts.parsed:` | [`report.py:233`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L233) | TS 무결성 |
-| `if media and media.ok:` | [`report.py:263`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L263) | 길이 정합 · 스트림 구성 (**2개**) |
-| `if gaps is not None and gaps.ok:` | [`report.py:304`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L304) | 타임라인 연속성 |
-| `if subs and (...)` | [`report.py:343`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L343) | 자막 관련 전부 (**최대 6개**) |
-| `if decode_errors is not None:` | [`report.py:502`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L502) | 전체 디코드 |
+| `if fetches:` | [`report.py:160`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L160) | segment receive · response latency · payload validity · segment uniqueness (**4**) |
+| `if ts and ts.parsed:` | [`report.py:233`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L233) | TS integrity |
+| `if media and media.ok:` | [`report.py:263`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L263) | length consistency · stream composition (**2**) |
+| `if gaps is not None and gaps.ok:` | [`report.py:304`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L304) | timeline continuity |
+| `if subs and (...)` | [`report.py:343`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L343) | everything subtitle-related (**up to 6**) |
+| `if decode_errors is not None:` | [`report.py:502`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L502) | full decode |
 
-그리고 그 조건절을 거짓으로 만드는 것은 호출자다.
+And what makes that conditional false is the caller.
 
 ```python
 # cli.py:616-617
@@ -501,125 +497,124 @@ CC 불연속은 정상적으로 관측된다. 확정 손상이 아니다.
         ts=run.ts if mode == "segments" else None,
 ```
 
-`fetches=run.fetches or None` 의 `or None` 에 주의할 것. 빈 목록은 `None` 이 되므로,
-`remux` 모드처럼 세그먼트를 직접 받지 않는 경로에서는 전송 계층 항목 4개가 통째로
-사라진다. `ts` 도 명시적으로 `segments` 모드에서만 넘어가고, `fMP4` 세그먼트는
-`TSReport.parsed` 가 `False` 이므로([`tsanalyze.py:78-82`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L78-L82)) 두 번째 조건절에서 다시 걸린다.
+Note the `or None` in `fetches=run.fetches or None`. An empty list becomes `None`, so on a path that does not
+receive segments directly like `remux` mode, the four transport-layer items vanish wholesale. `ts` is also passed
+explicitly only in `segments` mode, and for an fMP4 segment `TSReport.parsed` is `False`
+([`tsanalyze.py:78-82`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L78-L82)) so it is caught again by the second conditional.
 
-원인을 성격별로 갈라 두면 다음과 같다.
+Split the cause by nature and it is the following.
 
-| 사라지는 이유 | 예 | 사용자가 아는가 |
+| Reason it vanishes | Example | Does the user know |
 |---|---|---|
-| **사용자가 껐다** | `--no-gap-scan`, `--no-decode-check`, `--subs none` | 안다 |
-| **모드가 결정했다** | `--mode remux` → 전송 계층·TS 항목 없음 | 대체로 안다 |
-| **입력이 결정했다** | fMP4 세그먼트 → TS 무결성 없음 | 모를 수 있다 |
-| **계측이 실패했다** | `gap_scan` 이 `ok=False` 를 냈다, ffprobe 가 산출물을 못 열었다 | **모른다** |
+| **the user turned it off** | `--no-gap-scan`, `--no-decode-check`, `--subs none` | knows |
+| **the mode decided** | `--mode remux` → no transport-layer·TS items | mostly knows |
+| **the input decided** | fMP4 segment → no TS integrity | may not know |
+| **the measurement failed** | `gap_scan` gave `ok=False`, ffprobe could not open the artifact | **does not know** |
 
-마지막 행이 가장 나쁘다. 이 경우 도구는 **실패했다는 사실을 알고 있으면서 그것을
-버린다.** `MediaInfo.error` 와 `GapScan.error` 는 값이 채워지지만
-([`probe.py:131-137`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L131-L137), [`probe.py:210-220`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L210-L220)) `report.py` 어디에서도 읽히지 않는다 — 정상
-실행 경로에서는 콘솔에도 찍히지 않는다([`cli.py:545`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L545) 의 출력은 `--probe-only` 전용이다).
-코드 독해로 확인한 사실이며, 실행으로 재현하지는 않았다.
+The last row is the worst. In this case the tool **knows the fact that it failed and discards it.** `MediaInfo.error`
+and `GapScan.error` are filled with a value ([`probe.py:131-137`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L131-L137), [`probe.py:210-220`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L210-L220)) but are read nowhere in
+`report.py` — on the normal execution path they are not even printed to the console
+([`cli.py:545`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L545)'s output is `--probe-only` only). A fact confirmed by reading the code, not reproduced by running.
 
-### 39.5.2 최악의 조합
+### 39.5.2 The worst combination
 
-조건절을 전부 거짓으로 만들면 무엇이 남는지 직접 확인했다. `report.build()` 를 선택
-인자 없이 호출한 결과다.
+I confirmed directly what remains when you make every conditional false. This is the result of calling
+`report.build()` with no optional argument.
 
 ```
-검사 항목 수: 1
-    PASS | 플레이리스트 | 세그먼트 300개, 선언 길이 1800.00s, TARGETDURATION 6s, 암호화 없음
+check item count: 1
+    PASS | playlist | 300 segments, declared length 1800.00s, TARGETDURATION 6s, no encryption
 verdict = PASS / exit = 0
 ```
 
 ```
 ==================================================================
-  검증 결과: PASS — 송출 데이터 정상
+  verification result: PASS — delivery data normal
 ==================================================================
 
-  ✓ 플레이리스트       세그먼트 300개, 선언 길이 1800.00s, TARGETDURATION 6s, 암호화 없음
+  ✓ playlist            300 segments, declared length 1800.00s, TARGETDURATION 6s, no encryption
 ```
 
-**"송출 데이터 정상"이라고 인쇄하고 종료 코드 0 을 낸다.** 그런데 이 실행은 산출물을
-단 한 바이트도 검사하지 않았다. 남은 유일한 항목은 §39.3.4 의 정보 항목이며 그것은
-정의상 언제나 `PASS` 다.
+**It prints "delivery data normal" and gives exit code 0.** Yet this run did not check a single byte of the
+artifact. The only remaining item is §39.3.4's info item, and that is by definition always `PASS`.
 
-CLI 를 통한 실제 실행에서 이 상태에 정확히 도달하려면 `--mode remux
---no-gap-scan --no-decode-check --subs none` 에 더해 **ffprobe 가 산출물을 열지 못해야**
-한다. ffprobe 가 정상이면 길이 정합·스트림 구성 2개가 남아 총 3개가 되고, 그중 길이
-정합은 `FAIL` 을 낼 수 있다. 다시 말해 옵션만으로는 완전한 침묵에 이르지 못하지만,
-**전송·패킷·타임라인·디코드 네 계층이 통째로 사라지는 데에는 옵션 두 개면 충분하다.**
+To reach exactly this state in a real run through the CLI, on top of `--mode remux --no-gap-scan --no-decode-check
+--subs none` you need **ffprobe to fail to open the artifact.** If ffprobe is fine, length consistency·stream
+composition (2) remain for a total of 3, of which length consistency can give `FAIL`. In other words options alone
+do not reach complete silence, but **for the four layers of transport·packet·timeline·decode to vanish wholesale,
+two options suffice.**
 
-![없는 항목은 통과가 아니다](/images/lecture/hls-recon/39-absent-is-not-pass.svg)
+![An absent item is not a pass](/images/lecture/hls-recon/39-absent-is-not-pass.svg)
 
-*그림 39-2 — 없는 항목은 통과가 아니다*
+*Figure 39-2 — an absent item is not a pass*
 
-제38장 §38.6 이 이 문제의 절반을 이미 다뤘다.
+Chapter 38 §38.6 already treated half of this problem.
 
-> **알 수 없음(unknown)과 통과(pass)를 구별하지 못하는 결과 어휘는, 그 구별을 지키려는
-> 코드가 있어도 결국 구별을 잃는다.** (제38장 §38.6.3)
+> **A result vocabulary that cannot distinguish unknown from pass loses the distinction in the end even if there
+> is code trying to keep it.** (Chapter 38 §38.6.3)
 
-제38장이 다룬 것은 **보류가 `PASS` 로 실려 나가는** 문제였다 — 항목은 있는데 판정값에
-"판정하지 않음"이 없다는 것. 이 장이 덧붙이는 것은 나머지 절반이다. **항목 자체가 없는
-경우는 `detail` 문자열조차 없다.** 보류는 사람이 읽는 채널에서라도 구별되지만, 침묵은
-어느 채널에서도 구별되지 않는다.
+What Chapter 38 treated was the problem of **a withholding shipping out as `PASS`** — the item exists but there is
+no "did not judge" in the verdict value. What this chapter adds is the other half. **The case where the item
+itself is absent has not even a `detail` string.** A withholding is distinguished at least on the human-read
+channel, but silence is distinguished on no channel.
 
-### 39.5.3 이 저장소는 두 방식을 함께 쓴다
+### 39.5.3 This repository uses both ways together
 
-그런데 같은 문제를 **다르게 처리한 자리**가 하나 있다. 제38장이 다룬 판정 보류다.
+Yet there is one spot that **handled the same problem differently.** It is the withheld verdict Chapter 38
+treated.
 
 ```python
 # report.py:424-430
             if good and sampled:
                 rep.add(
-                    "자막 타임라인",
+                    "subtitle timeline",
                     PASS,
-                    f"판정 보류 — 영상이 앞 {video_len:.1f}s 만 받아진 표본이라 "
-                    f"자막 전체 길이({max(r.last_cue for r in good):.1f}s)와 견줄 기준선이 없다",
+                    f"verdict withheld — the video is a sample with only the first {video_len:.1f}s received "
+                    f"so there is no baseline to compare against the subtitle's whole length ({max(r.last_cue for r in good):.1f}s)",
                 )
 ```
 
-기준선이 없으면 검사할 수 없다는 점은 §39.5.1 의 마지막 행과 같다. 그런데 여기서는
-**항목을 없애지 않고 만든다.** 판정값은 `PASS` 라서 집계 결과는 항목을 없앤 것과
-동일하지만, `detail` 에 "판정 보류"와 그 이유가 남는다.
+That there is no baseline so it cannot check is the same as §39.5.1's last row. But here it **makes the item
+rather than removing it.** The verdict value is `PASS` so the aggregation result is identical to removing the
+item, but the "verdict withheld" and its reason remain in `detail`.
 
-두 방식을 나란히 놓으면 차이가 분명하다.
+Put the two ways side by side and the difference is clear.
 
-| 방식 | 집계에 대한 효과 | 리포트에 남는 것 | 쓰인 곳 |
+| Way | Effect on aggregation | What is left in the report | Where used |
 |---|---|---|---|
-| **침묵** — 항목을 만들지 않는다 | 없음 | **없음** | `--no-gap-scan`, `remux` 모드, 계측 실패 |
-| **보류** — `PASS` 항목에 이유를 적는다 | 없음 | 항목 이름 + 사유 | `--limit` 표본 실행의 자막 타임라인 |
+| **silence** — do not make the item | none | **none** | `--no-gap-scan`, `remux` mode, measurement failure |
+| **withholding** — write the reason in a `PASS` item | none | item name + reason | the subtitle timeline of a `--limit` sample run |
 
-**보류가 낫다.** 종료 코드는 어차피 같지만, 최소한 리포트를 읽는 사람은 "이 검사는
-수행되지 않았다"를 알 수 있다. 침묵은 그 정보를 **아무 채널에도** 만들지 않는다.
-제38장 §38.6.3 의 표에서 "사람 (터미널)" 행조차 구별하지 못하는 상태가 침묵이다.
+**Withholding is better.** The exit code is the same anyway, but at least the person reading the report can know
+"this check was not performed." Silence makes that information on **no channel.** It is the state where even the
+"person (terminal)" row of Chapter 38 §38.6.3's table cannot distinguish.
 
-동시에 보류에도 한계가 있다는 것이 제38장의 결론이었다 — 판정값이 `PASS` 라서
-`verdict` 만 읽는 소비자에게는 통과와 같다. 두 문제를 겹쳐 놓으면 표는 이렇게 된다.
+At the same time, that withholding too has a limit was Chapter 38's conclusion — the verdict value is `PASS` so to
+a consumer reading only `verdict` it is the same as a pass. Overlay the two problems and the table becomes this.
 
-| | 사람이 읽는 채널 | `verdict` 필드 | 항목 존재 여부 |
+| | Human-read channel | `verdict` field | Item existence |
 |---|---|---|---|
-| 통과 | `✓` | `PASS` | 있음 |
-| **보류** | 구별됨 (`판정 보류 — …`) | **구별 안 됨** | 있음 |
-| **침묵** | **구별 안 됨** | **구별 안 됨** | **없음** |
+| pass | `✓` | `PASS` | present |
+| **withholding** | distinguished (`verdict withheld — …`) | **not distinguished** | present |
+| **silence** | **not distinguished** | **not distinguished** | **absent** |
 
-미구현 개선 방향을 적어 둔다(**이 저장소에 구현되어 있지 않다**).
+Let me write the unimplemented improvement direction (**it is not implemented in this repository**).
 
-1. `Check.verdict` 에 `SKIP` 을 추가하고 집계에서 항등원으로 둔다 — 종료 코드는 그대로
-   (제38장 §38.6 이 제안한 방향)
-2. **침묵하던 자리도 항목을 만들게 한다** — 끈 검사·모드가 배제한 검사·계측이 실패한
-   검사를 각각 `SKIP` 항목으로 남긴다. 그래야 위 표의 마지막 행이 없어진다
-3. `render()` 와 `to_json()` 이 **"수행 n / 정의 N"** 을 함께 낸다
-4. CI 는 종료 코드와 함께 그 커버리지 수치에도 하한을 건다
+1. Add `SKIP` to `Check.verdict` and place it as the identity in aggregation — the exit code stays the same
+   (the direction Chapter 38 §38.6 proposed)
+2. **Make the silent spots make items too** — leave a turned-off check·a mode-excluded check·a measurement-failed
+   check each as a `SKIP` item. Only then does the table's last row disappear
+3. Have `render()` and `to_json()` give **"performed n / defined N"** together
+4. Have CI put a lower bound on that coverage figure along with the exit code
 
-4번이 핵심이다. 종료 코드 하나로는 커버리지를 표현할 수 없다는 것이 이 설계의 구조적
-한계이므로, 그 정보는 **종료 코드 밖의 채널**로 나가야 한다.
+#4 is the core. That coverage cannot be expressed by one exit code is this design's structural limit, so that
+information must go out on a **channel outside the exit code.**
 
 ---
 
-## 39.6 코드 — 종료 코드
+## 39.6 The code — the exit code
 
-### 39.6.1 매핑은 한 줄이다
+### 39.6.1 The mapping is one line
 
 ```python
 # cli.py:651-652
@@ -627,102 +622,97 @@ def _exit_code(verdict: str) -> int:
     return {report.PASS: 0, report.WARN: 0, report.FAIL: 2}[verdict]
 ```
 
-세 값이 두 값으로 접힌다. 여기서 **`WARN` 과 `PASS` 의 구별이 사라진다** — 세 번째이자
-마지막 축약이다.
+Three values fold into two. Here **the distinction of `WARN` and `PASS` vanishes** — the third and last reduction.
 
-이 한 줄에는 작지만 중요한 성질이 하나 더 있다. **기본값이 없는 사전 조회**라는 점이다.
-`dict.get(verdict, 0)` 이 아니므로, 등록되지 않은 판정값이 들어오면 조용히 0 을 내지
-않고 예외로 죽는다. 확인해 두었다.
-
-```
-미등록 판정값 → KeyError: 'SKIP'
-```
-
-§39.5.3 의 `SKIP` 을 도입하려면 이 줄을 함께 고쳐야 한다는 뜻이고, **고치는 것을 잊으면
-빌드가 깨져서 알려 준다.** 새 등급이 조용히 통과로 흡수되는 실패 모드가 구조적으로
-막혀 있다.
-
-> **모르는 값을 만나면 안전한 쪽으로 기본값을 주는 것이 언제나 옳지는 않다.** 판정
-> 매핑에서 "안전한 기본값"은 곧 "새 등급을 통과로 취급"이므로, 여기서는 죽는 편이 낫다.
-
-### 39.6.2 왜 `2` 인가 — `1` 은 이미 임자가 있다
-
-`FAIL` 을 `1` 이 아니라 `2` 에 매핑한 이유는 코드에 적혀 있지 않다. 다만 이 도구가
-실제로 내는 종료 코드를 전수하면 답이 하나로 좁혀진다.
-
-`cli.py` 의 실패 경로는 전부 `raise SystemExit(문자열)` 이다([`cli.py:135`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L135) `:140`
-`:143` `:187` `:191` `:193` `:445` `:471` `:506` `:675` 등). Python 에서
-`SystemExit` 에 문자열을 담아 던지면 그 문자열을 stderr 로 찍고 **종료 코드 1** 로
-끝난다. 확인해 두었다.
+This one line has one more small but important property. It is a **default-less dictionary lookup.** It is not
+`dict.get(verdict, 0)`, so if an unregistered verdict value comes in it does not quietly give 0 but dies with an
+exception. I confirmed it.
 
 ```
-$ python3 -c "raise SystemExit('테스트 메시지')"
-테스트 메시지
+unregistered verdict value → KeyError: 'SKIP'
+```
+
+It means that to introduce §39.5.3's `SKIP` you must fix this line together, and **forget to fix it and the build
+breaks and tells you.** The failure mode where a new grade is quietly absorbed as a pass is structurally blocked.
+
+> **Giving a safe default when you meet an unknown value is not always right.** In a verdict mapping a "safe
+> default" is exactly "treat a new grade as a pass," so here dying is better.
+
+### 39.6.2 Why `2` — `1` is already taken
+
+The reason `FAIL` maps to `2` and not `1` is not written in the code. But enumerate the exit codes this tool
+actually gives and the answer narrows to one.
+
+`cli.py`'s failure paths are all `raise SystemExit(string)` ([`cli.py:135`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L135) `:140` `:143` `:187` `:191` `:193`
+`:445` `:471` `:506` `:675` etc.). In Python, throw a `SystemExit` carrying a string and it prints that string to
+stderr and ends with **exit code 1.** I confirmed it.
+
+```
+$ python3 -c "raise SystemExit('test message')"
+test message
 exit=1
 ```
 
-그러므로 실제 종료 코드 공간은 두 값이 아니라 **셋**이다.
+Therefore the actual exit-code space is not two values but **three.**
 
-| 코드 | 뜻 | 나오는 경로 | CI 가 해야 할 일 |
+| Code | Meaning | The path it comes from | What CI should do |
 |---|---|---|---|
-| `0` | **판정이 성립했고 결함 없음** (`PASS`·`WARN`) | `_exit_code` | 다음 단계로 |
-| `1` | **판정 자체가 성립하지 않음** — 도구·환경·입력의 문제 | `SystemExit(...)` | 재시도 또는 환경 점검. 산출물 판단 보류 |
-| `2` | **판정이 성립했고 결함 검출** | `_exit_code` | 산출물 폐기 |
+| `0` | **the verdict held and there is no defect** (`PASS`·`WARN`) | `_exit_code` | to the next stage |
+| `1` | **the verdict itself did not hold** — a problem of tool·environment·input | `SystemExit(...)` | retry or check the environment. Withhold artifact judgment |
+| `2` | **the verdict held and a defect was detected** | `_exit_code` | discard the artifact |
 
-`1` 과 `2` 를 가르는 것은 결함의 유무가 아니라 **판정이 존재하는가**다. 플레이리스트를
-못 받아 죽은 실행과 결손을 검출한 실행은 CI 에서 대응이 다르다 — 앞의 것은 다시 시도할
-값이 있고 뒤의 것은 없다. 두 경우가 같은 값을 내면 재시도 로직이 결함 있는 산출물을
-계속 다시 만든다.
+What divides `1` and `2` is not the presence of a defect but **whether a verdict exists.** A run that died unable
+to receive the playlist and a run that detected a loss are handled differently in CI — the former is worth
+retrying and the latter is not. If the two give the same value, the retry logic keeps remaking a defective
+artifact.
 
-> **이 배정의 근거가 코드에 명시돼 있지 않다는 점은 밝혀 둔다.** 위 설명은 관측된
-> 동작에서 역으로 세운 추론이다. 관습적으로도 `1` 은 "일반 오류"의 자리이므로 `2` 를
-> 고른 것이 자연스럽지만, 저자의 의도가 그것이었다는 증거는 없다.
+> **I note that the basis for this assignment is not made explicit in the code.** The above explanation is an
+> inference built backward from observed behavior. Conventionally too `1` is the place for "general error," so
+> choosing `2` is natural, but there is no evidence that was the author's intent.
 
-같은 자리에 있는 다른 도구들의 관습과 대조해 두면 이 선택의 위치가 보인다.
+Contrasting with the conventions of other tools in the same place shows where this choice sits.
 
-| 도구 | `0` | `1` | `2` |
+| Tool | `0` | `1` | `2` |
 |---|---|---|---|
-| `diff` | 같음 | 다름 | 오류 |
-| `grep` | 찾음 | 못 찾음 | 오류 |
-| **`hls-recon`** | **결함 없음** | **판정 불가(오류)** | **결함 검출** |
+| `diff` | same | different | error |
+| `grep` | found | not found | error |
+| **`hls-recon`** | **no defect** | **cannot judge (error)** | **defect detected** |
 
-`diff`·`grep` 은 `1` 을 "정상적인 부정 결과"에 쓰고 `2` 를 오류에 쓴다. 이 도구는 그
-둘을 바꿔 놓았다. **어느 쪽도 표준이 아니므로, 어느 쪽이든 문서화되어야 한다** —
-README 가 `README.md:351` 한 줄로 그 일을 한다.
+`diff`·`grep` use `1` for a "normal negative result" and `2` for an error. This tool swapped the two. **Neither is
+the standard, so either way it must be documented** — the README does that job in one line at `README.md:351`.
 
-### 39.6.3 `WARN` 이 `0` 인 이유
+### 39.6.3 Why `WARN` is `0`
 
-`WARN` 을 `0` 에 매핑한 것은 이 설계에서 가장 논쟁적인 선택이고, 근거는 §39.4.2 의 축
-①에서 곧바로 나온다.
+Mapping `WARN` to `0` is the most contested choice in this design, and the basis comes straight from §39.4.2's
+axis ①.
 
-> **용어** — **품질 게이트(quality gate)**: 파이프라인의 한 단계에서 정해진 조건을
-> 만족하지 못하면 다음 단계로 진행하지 못하게 막는 관문. CI 에서는 대개 명령의 종료
-> 코드가 0 이 아니면 작업(job)을 멈추는 형태로 구현된다. 이하 "게이트"는 이 뜻이다.
+> **Term** — **quality gate**: a gate that, at one stage of a pipeline, blocks progress to the next stage if a set
+> condition is not met. In CI it is usually implemented as stopping the job if a command's exit code is not 0.
+> Hereafter "gate" means this.
 
-`WARN` 항목의 정의는 **"손상일 수도 있고 정상일 수도 있다"** 였다. 그런 관측으로
-파이프라인을 세우면 어떻게 되는지는 이미 제21장과 제22장이 각각 다른 각도에서 다뤘다.
+A `WARN` item's definition was **"it could be damage or could be normal."** What happens if you stop a pipeline on
+such an observation, Chapter 21 and Chapter 22 already treated from different angles.
 
-- 광고가 두 번 들어간 정상 회차에서 CC 불연속은 정상적으로 관측된다 → 매 회차 빨간불
-- 정지 구간이 있는 정상 회차에서 세그먼트 중복은 정상적으로 관측된다 → 매 회차 빨간불
-- 회선이 붐비는 시간대에 TTFB p95 는 3초를 넘는다 → 시간대에 따라 빨간불
+- In a normal episode with an ad inserted twice, a CC discontinuity is observed normally → red light every episode
+- In a normal episode with a still interval, a segment duplicate is observed normally → red light every episode
+- In a busy-line time slot, TTFB p95 exceeds 3 seconds → red light depending on the time slot
 
-그리고 정상 실행에서 반복적으로 빨간불이 나오는 파이프라인의 운명은 정해져 있다.
+And the fate of a pipeline that repeatedly gives a red light on normal runs is decided.
 
-> **오탐은 결국 미탐이 된다.** 항상 빨간불인 게이트는 무시되고, 무시되기 시작하면
-> `FAIL` 도 함께 무시된다(제22장 §22.2.3).
+> **A false positive becomes a false negative in the end.** A gate that is always red is ignored, and once it
+> begins to be ignored, `FAIL` is ignored along with it (Chapter 22 §22.2.3).
 
-`WARN` 을 `0` 으로 두는 것은 **`FAIL` 의 신호 가치를 지키기 위한 선택**이다. 게이트는
-확정된 것에만 걸고, 확정되지 않은 것은 사람이 읽는 채널로 보낸다.
+Putting `WARN` at `0` is **a choice to preserve the signal value of `FAIL`.** The gate is hung only on the
+confirmed, and the unconfirmed is sent to the human-read channel.
 
-다만 이 선택에는 대가가 있고, 그 대가를 줄이는 표준적 방법이 이 도구에는 **없다** —
-`WARN` 을 `FAIL` 로 승격하는 스위치다. C 컴파일러의 `-Werror`, ESLint 의
-`--max-warnings 0` 이 그 자리에 있는 기능이고, 엄격한 파이프라인은 그것으로 게이트를
-조인다. 이 도구에는 해당 옵션이 없으므로, 엄격하게 운영하려면 리포트 JSON 을 직접
-파싱해야 한다.
+But this choice has a cost, and the standard way to reduce that cost this tool **lacks** — a switch to promote
+`WARN` to `FAIL`. C compilers' `-Werror`, ESLint's `--max-warnings 0` are the feature in that place, and a strict
+pipeline tightens the gate with it. This tool has no such option, so to operate strictly you must parse the report
+JSON directly.
 
-### 39.6.4 시리즈 층 — 같은 대수가 한 층 위에서 반복된다
+### 39.6.4 The series layer — the same algebra repeats one layer up
 
-회차 하나가 아니라 27화를 한 번에 받는 경로에서도 같은 형태가 나타난다.
+On the path that receives 27 episodes at once rather than one, the same form appears.
 
 ```python
 # cli.py:926-928
@@ -736,28 +726,28 @@ README 가 `README.md:351` 한 줄로 그 일을 한다.
     return 2 if failed or refill_failed else 0
 ```
 
-**한 회차라도 `FAIL` 이면 전체가 `2`.** §39.3.2 의 흡수원 성질이 회차 집합 위에서 그대로
-되풀이된다. 그리고 여기서도 `WARN` 은 종료 코드에 기여하지 않는다 — `rep.verdict` 가
-`WARN` 인 회차는 요약 목록에 `WARN` 으로 인쇄되지만([`cli.py:938-939`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L938-L939)) `failed` 를
-올리지 않는다. 두 층의 정책이 일관된다.
+**If even one episode is `FAIL`, the whole is `2`.** §39.3.2's absorbing property repeats as-is over the episode
+set. And here too `WARN` does not contribute to the exit code — an episode whose `rep.verdict` is `WARN` is
+printed as `WARN` in the summary list ([`cli.py:938-939`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L938-L939)) but does not raise `failed`. The two layers' policies
+are consistent.
 
-한편 회차 층은 `FAIL` 말고도 두 가지를 실패로 센다 — 재생 소스 해석 실패
-([`cli.py:888`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L888))와 회차 처리 중의 `SystemExit`([`cli.py:921`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L921))다. 즉 **단일 실행에서는
-`1` 로 나가던 "판정 불가"가 시리즈 실행에서는 `2` 에 흡수된다.** 27화 중 한 화의
-주소 발급이 실패한 것과 한 화에서 결손이 검출된 것이 같은 종료 코드가 된다.
-회차별 판정은 요약 목록과 회차별 리포트 JSON 에 남으므로 정보가 사라지지는 않지만,
-**종료 코드만으로는 두 경우가 구별되지 않는다.**
+Meanwhile the episode layer counts two more things besides `FAIL` as failures — a playback-source resolution
+failure ([`cli.py:888`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L888)) and a `SystemExit` during episode processing ([`cli.py:921`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L921)). That is, **"cannot
+judge," which went out as `1` in a single run, is absorbed into `2` in a series run.** That the address issuance
+for one of 27 episodes failed and that a loss was detected in one episode become the same exit code. The per-episode
+verdicts remain in the summary list and the per-episode report JSON so information does not vanish, but **by exit
+code alone the two cases are not distinguished.**
 
-### 39.6.5 회귀 테스트가 종료 코드를 고정한다
+### 39.6.5 The regression test fixes the exit code
 
-종료 코드는 이 도구의 **공개 계약(contract)** 이다. 계약이므로 테스트로 못박혀 있다.
+The exit code is this tool's **public contract.** Being a contract, it is nailed down by tests.
 
 ```bash
 # tests/run.sh:481
-[[ $code -eq 2 ]] && ok "종료 코드 2 (FAIL)" || bad "종료 코드가 2가 아님: $code"
+[[ $code -eq 2 ]] && ok "exit code 2 (FAIL)" || bad "exit code is not 2: $code"
 ```
 
-정상 스트림 쪽은 종료 코드와 리포트 내용을 **함께** 본다.
+The normal-stream side looks at the exit code and the report content **together.**
 
 ```bash
 # tests/run.sh:162-170
@@ -767,403 +757,395 @@ expect_pass() {
   if "$RECON" "$@" >"$log" 2>&1 && ! grep -q '✗' "$log"; then
     ok "$name"
   else
-    bad "$name — $(grep -m1 '✗' "$log" || echo '종료 코드 비정상')"
+    bad "$name — $(grep -m1 '✗' "$log" || echo 'exit code abnormal')"
   fi
 }
 ```
 
-`&& ! grep -q '✗'` 가 중요하다. **종료 코드 0 만으로는 부족하다**고 판단한 것이다.
-`WARN` 이 섞여도 종료 코드는 0 이므로, 정상 스트림이 조용히 `WARN` 을 내기 시작해도
-종료 코드만 보는 테스트는 통과한다. `✗` 부재까지 함께 확인해야 "결함 없음"이 고정된다.
+`&& ! grep -q '✗'` matters. It judged that **exit code 0 alone is not enough.** Since the exit code is 0 even with
+a `WARN` mixed in, a test looking only at the exit code passes even if the normal stream quietly begins giving
+`WARN`. Only by confirming the absence of `✗` together is "no defect" fixed.
 
-같은 이유로 결함 쪽도 종료 코드만 보지 않는다 — `tests/run.sh:482-487` 이 항목 이름과
-`detail` 문자열까지 `grep` 한다. **"exit 2 를 냈다"와 "옳은 이유로 exit 2 를 냈다"는
-다른 명제**이고, 후자를 고정하지 않으면 아무 항목이나 FAIL 을 내는 구현이 통과한다
-(제34·37장).
+For the same reason the defect side does not look at the exit code alone — `tests/run.sh:482-487` `grep`s the item
+name and the `detail` string too. **"It gave exit 2" and "it gave exit 2 for the right reason" are different
+propositions**, and not fixing the latter lets an implementation that gives FAIL on any item pass (Chapter
+34·37).
 
-그리고 실패 경로의 종료 코드도 따로 고정돼 있다.
+And the failure-path exit code is fixed separately too.
 
 ```bash
 # tests/run.sh:206
-[[ $dcode -ne 0 ]] && ok "실패 시 0 이 아닌 종료 코드" || bad "실패인데 종료 코드 0"
+[[ $dcode -ne 0 ]] && ok "nonzero exit code on failure" || bad "failure but exit code 0"
 ```
 
-`-ne 0` 이라는 느슨한 조건인 점에 주의할 것. `1` 인지 `2` 인지는 고정하지 않는다.
-§39.6.2 의 세 값 구분은 **문서화돼 있지만 테스트로 고정돼 있지는 않다.**
+Note the loose condition `-ne 0`. It does not fix whether it is `1` or `2`. §39.6.2's three-value distinction is
+**documented but not fixed by a test.**
 
 ---
 
-## 39.7 리포트 JSON — 재현성과 자격증명
+## 39.7 The report JSON — reproducibility and credentials
 
-판정이 종료 코드로 접히는 것과 별개로, 접히기 전의 계측치는 JSON 으로 남는다
-([`report.py:95-108`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L95-L108), [`cli.py:643-646`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L643-L646)). 여기에 제12장의 주제가 다시 나타난다.
+Apart from the verdict folding into the exit code, the measured values before folding remain as JSON
+([`report.py:95-108`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L95-L108), [`cli.py:643-646`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L643-L646)). Here Chapter 12's subject reappears.
 
 ```python
 # report.py:146-149
-    # 리포트만 보고 같은 산출물을 다시 만들 수 있도록 실제 실행된 먹싱 명령을 남긴다.
-    # 단 쿠키·인증 헤더는 가린다 — 재현성보다 자격증명 유출 방지가 앞선다.
+    # Leave the actually-run muxing command so the same artifact can be remade from the report alone.
+    # But mask cookie·auth headers — preventing credential leakage comes before reproducibility.
     if mux_cmd:
         rep.stats["mux_command"] = _redact_headers(mux_cmd)
 ```
 
-주석 두 줄이 상충하는 두 요구를 나란히 놓고 순위를 매긴다.
+The two-line comment puts two conflicting demands side by side and ranks them.
 
-| 요구 | 근거 | 순위 |
+| Demand | Basis | Rank |
 |---|---|---|
-| **재현성** — 리포트만 보고 같은 산출물을 다시 만들 수 있어야 한다 | 판정을 검증하려면 판정 대상을 재현할 수 있어야 한다 | 2 |
-| **유출 방지** — 세션 쿠키가 평문으로 실리면 파일 하나가 곧 계정 접근권이다 | 리포트 JSON 은 CI 아티팩트로 남고 그대로 첨부돼 오간다 | **1** |
+| **reproducibility** — the same artifact must be remakeable from the report alone | to verify a verdict you must be able to reproduce its target | 2 |
+| **leak prevention** — if a session cookie is loaded in plaintext, one file is account access | the report JSON stays as a CI artifact and is attached and passed around as-is | **1** |
 
-편집 대상은 네 개의 헤더 이름이다([`report.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L33)). 제12장 §12.6 이 이 목록의 사정거리를
-다뤘으므로 되풀이하지 않고, **판정 층에서 새로 보이는 것**만 적는다.
+The redaction targets are four header names ([`report.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L33)). Chapter 12 §12.6 treated this list's reach, so
+without repeating it I write only **what is newly seen at the verdict layer.**
 
-`_redact_headers` 는 `-headers` 다음 토큰만 손댄다([`report.py:42-46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L42-L46)). 그런데
-`mux_cmd` 에는 헤더 말고도 **미디어 URL 이 그대로 들어간다.** 제11장에서 본 서명 URL
-(`?md5=<서명>&expires=<unix>`)은 그 자체가 시한부 자격증명이므로, 만료 전에 이 JSON 이
-유출되면 그대로 재사용된다. 같은 성질의 값이 다른 자리에도 남는다.
+`_redact_headers` touches only the token after `-headers` ([`report.py:42-46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L42-L46)). But `mux_cmd` contains, besides the
+headers, **the media URL as-is.** The signed URL seen in Chapter 11 (`?md5=<signature>&expires=<unix>`) is itself
+a time-limited credential, so if this JSON leaks before expiry it is reused as-is. A value of the same nature
+remains elsewhere too.
 
-| JSON 키 | 앵커 | 남는 값 | 편집되는가 |
+| JSON key | Anchor | The value left | Is it redacted |
 |---|---|---|---|
-| `stats.mux_command` 의 `-headers` | [`report.py:45`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L45) | 요청 헤더 | **가려짐** (4종) |
-| `stats.mux_command` 의 입력 URL | [`report.py:149`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L149) | 서명·토큰이 붙은 미디어 URL | 그대로 |
-| `stats.subtitles.tracks[].url` | [`report.py:486`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L486) | 자막 트랙 URL | 그대로 |
-| `stats.subtitles.extra[].url` | [`report.py:475`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L475) | 이웃 화수 자막 URL | 그대로 |
-| `stats.bogus_payloads[].head_hex` | [`report.py:207-209`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L207-L209) | 오류 응답의 선두 16바이트 | 그대로 |
+| `stats.mux_command`'s `-headers` | [`report.py:45`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L45) | request headers | **masked** (4 kinds) |
+| `stats.mux_command`'s input URL | [`report.py:149`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L149) | a media URL with a signature·token | as-is |
+| `stats.subtitles.tracks[].url` | [`report.py:486`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L486) | subtitle track URL | as-is |
+| `stats.subtitles.extra[].url` | [`report.py:475`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L475) | neighbor-episode subtitle URL | as-is |
+| `stats.bogus_payloads[].head_hex` | [`report.py:207-209`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L207-L209) | the first 16 bytes of an error response | as-is |
 
-마지막 행은 유출 위험이 낮지만(HTML 오류 페이지의 선두 바이트), 나머지 셋은 **편집의
-사정거리 밖**이다. 헤더에 실린 자격증명은 가리고 URL 에 실린 자격증명은 가리지 않는
-비대칭이며, 그 비대칭은 편집 함수가 **토큰 위치**로 대상을 고르기 때문에 생긴다 —
-자격증명의 **의미**가 아니라.
+The last row has low leak risk (the head bytes of an HTML error page), but the other three are **outside the
+redaction's reach.** It is an asymmetry that masks the credential carried in a header and does not mask the
+credential carried in a URL, and that asymmetry arises because the redaction function picks its target by **token
+position** — not by the credential's **meaning.**
 
-> **편집 대상을 위치로 고르면, 같은 비밀이 다른 자리에 나타났을 때 놓친다.**
-> 제12장의 결론이 판정 산출물에서 다시 확인되는 지점이다.
+> **Pick the redaction target by position and you miss the same secret when it appears in a different place.**
+> The point where Chapter 12's conclusion is confirmed again in a verdict artifact.
 
 ---
 
-## 39.8 일반화 — 등급 체계와 게이트
+## 39.8 Generalization — grade systems and gates
 
-이 장의 구조는 스트리밍과 무관하다. 형태만 남기면 이렇다.
+This chapter's structure is unrelated to streaming. Leave only the form and it is this.
 
-> **여러 관측을 등급으로 환산하고, 등급을 순서 집합 위에서 집계하고, 집계값을 게이트가
-> 읽는 한 값으로 매핑한다.**
+> **Convert several observations into grades, aggregate the grades over an ordered set, and map the aggregate to
+> one value the gate reads.**
 
-같은 구조를 쓰는 시스템을 나란히 놓으면 각 설계가 어디에서 갈리는지가 보인다.
+Put systems using the same structure side by side and where each design diverges shows.
 
-| 시스템 | 등급 | 게이트를 세우는 값 | 세우지 않는 값 | 승격 스위치 |
+| System | Grades | The value that raises the gate | The value that does not | Promotion switch |
 |---|---|---|---|---|
-| C 컴파일러 | error / warning / note | error | warning | `-Werror` |
+| C compiler | error / warning / note | error | warning | `-Werror` |
 | ESLint | error / warn / off | error → exit 1 | warn → exit 0 | `--max-warnings 0` |
 | pytest | failed / passed / skipped / xfail | failed | skipped, xfail | `-W error`, `--strict-markers` |
-| SAST 스캐너 | critical / high / medium / low | 대개 high 이상 | medium 이하 | 심각도 임계 옵션 |
-| HTTP 클라이언트(`curl`) | 상태 코드 | `--fail` 을 줬을 때만 4xx·5xx | 기본은 404도 exit 0 | `--fail` |
-| **`hls-recon`** | PASS / WARN / FAIL | FAIL → exit 2 | WARN → exit 0 | **없음** |
+| SAST scanner | critical / high / medium / low | usually high and above | medium and below | severity threshold option |
+| HTTP client (`curl`) | status code | 4xx·5xx only when given `--fail` | default: even 404 is exit 0 | `--fail` |
+| **`hls-recon`** | PASS / WARN / FAIL | FAIL → exit 2 | WARN → exit 0 | **none** |
 
-> **용어** — **SAST(Static Application Security Testing, 정적 애플리케이션 보안 시험)**:
-> 프로그램을 실행하지 않고 소스 코드를 분석해 취약점 후보를 찾아내는 도구 부류.
-> 찾은 것마다 심각도 등급을 매기고, 어느 등급부터 빌드를 세울지는 이용자가 정한다.
+> **Term** — **SAST (Static Application Security Testing)**: a class of tools that analyze source code without
+> running the program to find vulnerability candidates. It grades each find by severity, and from which grade to
+> stop the build is set by the user.
 
-여기서 규칙 넷이 나온다.
+Here four rules come out.
 
-**규칙 1 — 등급만 있고 게이트가 없으면 등급은 색깔일 뿐이다.**
-`curl` 의 기본 동작이 그 예다. 404 를 받아도 종료 코드는 0 이므로, 상태 코드를 등급으로
-쓰려면 `--fail` 을 명시해야 한다. 등급을 정의하는 것과 그 등급이 무엇을 결정하는지를
-정의하는 것은 별개의 일이다.
+**Rule 1 — a grade with no gate is just a color.**
+`curl`'s default behavior is the example. Even on receiving a 404 the exit code is 0, so to use the status code as
+a grade you must specify `--fail`. Defining a grade and defining what that grade decides are separate jobs.
 
-**규칙 2 — 게이트를 세우는 등급은 오탐률이 낮아야 한다.**
-게이트에 걸리는 등급의 오탐은 곧 파이프라인 정지이고, 정지가 반복되면 게이트가 꺼진다.
-그러므로 **확정적인 것만 게이트에 건다.** 이 도구의 `FAIL`/`WARN` 배정 원칙(§39.4.2)이
-이 규칙의 구체적 형태다.
+**Rule 2 — the grade that raises the gate must have a low false-positive rate.**
+A false positive of the grade caught by the gate is a pipeline stop, and a repeated stop turns the gate off. So
+**hang only the confirmed on the gate.** This tool's `FAIL`/`WARN` assignment principle (§39.4.2) is the concrete
+form of this rule.
 
-**규칙 3 — 그럼에도 승격 스위치를 둔다.**
-게이트에 걸지 않는 등급이 영원히 무해하다는 보장은 없다. 릴리스 빌드에서만 조이고
-싶은 요구는 어디에나 있고, 그래서 `-Werror` 계열이 존재한다. **기본은 느슨하게, 조일
-수단은 제공한다** — 이 도구에 없는 부분이다.
+**Rule 3 — provide a promotion switch nonetheless.**
+There is no guarantee that a grade not hung on the gate is forever harmless. The demand to tighten only in release
+builds is everywhere, and so the `-Werror` family exists. **Loose by default, provide a means to tighten** — the
+part this tool lacks.
 
-**규칙 4 — 집계 연산을 `max` 로 고정하면 회귀 방향이 한쪽으로 잠긴다.**
-다수결이나 평균은 검사를 추가하는 것만으로 기존 판정을 뒤집을 수 있다. §39.3.3 에서
-본 단조성이 없으면 "검사를 늘렸더니 결함이 통과하기 시작했다"가 가능해진다.
+**Rule 4 — fix the aggregation operation as `max` and the regression direction locks to one side.**
+Majority vote or average can flip an existing verdict just by adding a check. Without the monotonicity seen in
+§39.3.3, "I added more checks and defects began to pass" becomes possible.
 
-그리고 이 장에서 얻은 다섯 번째 규칙이 하나 더 있다. 앞의 넷보다 실무에서 자주
-어긋난다.
+And there is one more, a fifth rule obtained in this chapter. It is violated in practice more often than the
+first four.
 
-**규칙 5 — 게이트 값은 "무엇을 검사했는가"를 표현할 수 없다.**
-종료 코드는 판정을 나르지 커버리지를 나르지 않는다. 커버리지는 반드시 **다른
-채널**(리포트 본문, 아티팩트, 별도 수치)로 나가야 하고, 게이트를 운영하는 쪽은
-**그 채널에도 조건을 걸어야 한다.** 걸지 않으면 §39.5.2 의 실행 — 아무것도 검사하지
-않고 0 을 내는 실행 — 이 정상 통과와 구별되지 않는다.
+**Rule 5 — the gate value cannot express "what was checked."**
+The exit code carries the verdict, not the coverage. Coverage must go out on **another channel** (the report body,
+an artifact, a separate figure), and the side operating the gate **must put a condition on that channel too.** Do
+not and §39.5.2's run — a run that checks nothing and gives 0 — is not distinguished from a normal pass.
 
 ---
 
-## 39.9 보안 — 판정을 겨냥한 위협 모델
+## 39.9 Security — a threat model aimed at the verdict
 
-### 39.9.1 위협 모델부터
+### 39.9.1 Start from the threat model
 
-제22장 §22.7.1 이 세운 것과 같은 모델이다. 적대적 주체는 **결손이 있는 전달을 정상으로
-통과시키고 싶은 쪽**이다. 다만 이 장의 대상은 계측이 아니라 **판정**이므로, 공격면이
-하나 늘어난다.
+The same model Chapter 22 §22.7.1 set. The adversarial actor is **the side that wants to pass a delivery with a
+loss as normal.** But since this chapter's target is not measurement but **verdict**, the attack surface grows by
+one.
 
-> 계측을 속이는 것이 아니라 **판정 파이프라인을 우회하는 것**이 더 싸다.
+> Not deceiving the measurement but **bypassing the verdict pipeline** is cheaper.
 
-계측을 속이려면 §22.7.2 처럼 임계값 아래로 결손을 잘게 나눠야 한다. 판정을 우회하려면
-플래그 하나면 된다.
+To deceive the measurement you must, as in §22.7.2, split the loss finely under the threshold. To bypass the
+verdict, one flag suffices.
 
-### 39.9.2 침묵 유도 — 가장 값싼 공격
+### 39.9.2 Inducing silence — the cheapest attack
 
-CI 설정 파일의 한 줄이면 검증 계층 하나가 통째로 사라진다.
+One line in a CI config file makes a whole verification layer vanish.
 
 ```
 hls-recon "$URL" -o out.mp4 --no-gap-scan --no-decode-check
 ```
 
-그리고 **리포트에는 아무 흔적도 남지 않는다**(§39.5.1). 종료 코드는 0 이고, 콘솔에는
-"PASS — 송출 데이터 정상"이 찍힌다. 이것을 공격이라 부를지 사고라 부를지는 의도의
-문제일 뿐, 결과는 같다.
+And **no trace is left in the report** (§39.5.1). The exit code is 0, and the console prints "PASS — delivery data
+normal." Whether to call this an attack or an accident is only a matter of intent; the result is the same.
 
-현실적으로 이 플래그는 악의보다 **정당한 이유**로 켜진다 — 가변 프레임률 소스에서
-갭 스캔이 오탐을 내거나(제22장 §22.5.4), 긴 영상에서 전체 디코드가 너무 오래 걸리거나.
-그리고 정당한 이유로 켠 플래그는 **끄는 것을 잊는다.**
+Realistically this flag is turned on for a **legitimate reason** more than malice — the gap scan gives false
+positives on a variable-frame-rate source (Chapter 22 §22.5.4), or the full decode takes too long on a long video.
+And a flag turned on for a legitimate reason **is forgotten turned on.**
 
-| 방어 | 누가 | 어떻게 |
+| Defense | Who | How |
 |---|---|---|
-| 커버리지를 판정과 함께 낸다 | 도구 구현자 | §39.5.3 의 `SKIP` + "수행 n / 정의 N" |
-| 끈 검사를 리포트에 남긴다 | 도구 구현자 | 침묵 대신 보류 항목 |
-| 항목 수에도 하한을 건다 | CI 운영자 | `jq '.checks \| length'` 에 조건 |
-| 끈 이유를 주석으로 남기고 재검토한다 | CI 운영자 | 제22장 §22.7.5 |
+| give coverage together with the verdict | tool implementer | §39.5.3's `SKIP` + "performed n / defined N" |
+| leave a turned-off check in the report | tool implementer | a withheld item instead of silence |
+| put a lower bound on the item count too | CI operator | a condition on `jq '.checks \| length'` |
+| leave the reason for turning it off as a comment and re-review | CI operator | Chapter 22 §22.7.5 |
 
-### 39.9.3 등급 하향 유도 — 자기 신고가 판정을 낮춘다
+### 39.9.3 Inducing grade lowering — a self-report lowers the verdict
 
-§39.4.5 의 완화 규칙에는 성질이 하나 더 있다. **완화의 근거를 송출 측이 공급한다.**
+§39.4.5's leniency rule has one more property. **The delivery side supplies the basis for the leniency.**
 
 ```python
 intended = discontinuities >= len(gaps.gaps)
 ```
 
-`discontinuities` 는 플레이리스트의 `EXT-X-DISCONTINUITY` 태그 수를 센 값이다
-([`cli.py:635`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L635)). 즉 **플레이리스트에 그 태그를 갭 수 이상 적어 넣으면 타임라인 연속성
-항목의 판정이 `FAIL` 에서 `WARN` 으로 내려가고, 종료 코드는 2 에서 0 이 된다.**
-비교는 개수만 보므로 태그의 위치가 실제 구멍과 전혀 달라도 성립한다.
+`discontinuities` is the count of the playlist's `EXT-X-DISCONTINUITY` tags ([`cli.py:635`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L635)). That is, **write
+that tag into the playlist at least as many times as the gap count and the timeline-continuity item's verdict
+drops from `FAIL` to `WARN`, and the exit code goes from 2 to 0.** The comparison looks at count only, so it holds
+even if the tag positions are utterly different from the real holes.
 
-제5·14장이 세운 원칙이 판정 층에서 되풀이되는 지점이다.
+The point where the principle Chapters 5·14 set repeats at the verdict layer.
 
-> **자기 신고 메타데이터는 편의를 위한 것이지 판단의 근거가 아니다.**
+> **Self-reported metadata is for convenience, not a basis for judgment.**
 
-그런데 §39.4.5 에서 본 대로 이 완화에는 정당한 이유가 있다 — 없으면 광고가 들어간
-정상 회차가 매번 FAIL 이 되고, 오탐이 쌓이면 검사가 꺼진다. 즉 **자기 신고를 참작하지
-않으면 오탐, 참작하면 하향 유도**라는 교환 관계에 놓여 있다.
+But as seen in §39.4.5 this leniency has a legitimate reason — without it a normal episode with ads becomes FAIL
+every time, and false positives pile up and the check gets turned off. That is, it sits in a trade-off — **not
+take the self-report into account and it is a false positive, take it into account and it is grade-lowering
+induction.**
 
-여기서 이 장의 결론 하나가 나온다.
+Here comes one of this chapter's conclusions.
 
-> **자기 신고를 참작해야 한다면, 참작했다는 사실을 산출물에 남긴다.**
+> **If you must take a self-report into account, leave the fact that you took it into account in the artifact.**
 
-코드가 실제로 하는 일이 그것이다. 판정을 낮추는 동시에 낮춘 이유를 `detail` 에 적는다
-([`report.py:316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L316)). 완화 자체를 없앨 수 없다면, 최소한 **완화가 눈에 보이게** 만든다.
-자동 게이트는 속지만 사람이 리포트를 읽으면 "선언 수가 갭 수와 일치"라는 문장이 보인다.
+What the code actually does is that. It lowers the verdict and at the same time writes the reason for lowering it
+in `detail` ([`report.py:316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L316)). If the leniency itself cannot be removed, at least **make the leniency
+visible.** The automatic gate is fooled, but a person reading the report sees the sentence "declared count matches
+the gap count."
 
-정확도를 높이는 방향도 명확하다 — **위치까지 대조하는 것**이다. `Gap` 은 `start`·`end`
-를 갖고 있고 세그먼트도 자기 자리를 알고 있으므로(제21장 §21.6.2) 정보는 이미 있다.
-현재 구현이 쓰지 않을 뿐이다. 다만 이 저장소에는 **선언을 조작한 결함 주입 테스트가
-없으므로**(`tests/run.sh` 의 결함 8종에 해당 항목이 없다), 위 하향 경로는 코드 독해로
-확인한 것이지 실측한 것이 아니다.
+The direction to raise accuracy is also clear — **match the position too.** `Gap` has `start`·`end` and a segment
+knows its own place (Chapter 21 §21.6.2), so the information is already there. The current implementation just does
+not use it. But this repository has **no fault-injection test that manipulates the declaration** (the 8 defects in
+`tests/run.sh` have no such item), so the above lowering path is confirmed by reading the code, not measured.
 
-### 39.9.4 아티팩트 누출
+### 39.9.4 Artifact leakage
 
-§39.7 의 내용이 그대로 위협이다. 판정 파이프라인은 리포트 JSON 을 만들고, CI 는 그것을
-아티팩트로 보관하며, 아티팩트의 접근 권한은 대개 소스 코드보다 느슨하다. 서명 URL 은
-만료가 짧아 위험이 시한부이지만(제11장), **쿠키는 그렇지 않다** — 그래서 편집 대상에
-가장 먼저 올라가 있다.
+§39.7's content is a threat as-is. The verdict pipeline makes the report JSON, CI keeps it as an artifact, and an
+artifact's access permission is usually looser than the source code's. A signed URL has a short expiry so its risk
+is time-limited (Chapter 11), but **a cookie is not** — which is why it is at the top of the redaction list.
 
-### 39.9.5 오탐이 만드는 자멸
+### 39.9.5 The self-destruction a false positive makes
 
-마지막 위협은 외부에서 오지 않는다. 등급 배정을 조이면 — 예컨대 세그먼트 중복이나 CC
-불연속을 `FAIL` 로 올리면 — 정상 스트림에서 종료 코드 2 가 반복해서 나온다. 그
-파이프라인의 다음 단계는 정해져 있다.
+The last threat does not come from outside. Tighten the grade assignment — say, raise a segment duplicate or a CC
+discontinuity to `FAIL` — and exit code 2 comes out repeatedly on a normal stream. That pipeline's next stage is
+decided.
 
 ```
-빨간불 반복  →  게이트 무시  →  게이트 제거 또는 --no-* 플래그 상시화  →  검사 없음
+repeated red light  →  gate ignored  →  gate removed or --no-* flags made permanent  →  no checks
 ```
 
-**미탐은 결함 하나를 놓치고, 오탐은 검사기 전체를 잃는다.** 제22장 §22.2.3 이 임계값
-수준에서 말한 것이 판정 배정 수준에서도 성립한다. 이 도구가 `WARN` 을 `0` 에 매핑한
-것은 이 자멸 경로를 막기 위한 선택이다(§39.6.3).
+**A false negative misses one defect; a false positive loses the entire checker.** What Chapter 22 §22.2.3 said at
+the threshold level holds at the grade-assignment level too. This tool mapping `WARN` to `0` is a choice to block
+this self-destruction path (§39.6.3).
 
-그런데 이 도구에도 이미 그 경로가 하나 열려 있다. 제38장 §38.9.1 의 실측 —
-`--limit 1 --sub-embed` 조합에서 **결함 없는 스트림이 종료 코드 2 를 낸다**(§39.4.6).
-공격자가 만든 것이 아니라 이 저장소의 등급 배정이 스스로 만든 오탐이며, 회귀 테스트에
-그 조합이 없어 눈에 띄지 않는다. **자멸 경로는 대개 이렇게 시작한다 — 테스트하지 않은
-옵션 조합에서.**
+But this tool already has one such path open. Chapter 38 §38.9.1's measurement — in the `--limit 1 --sub-embed`
+combination **a defect-free stream gives exit code 2** (§39.4.6). Not something an attacker made but a false
+positive this repository's own grade assignment made, and the regression test has no such combination so it goes
+unnoticed. **A self-destruction path usually starts like this — in an untested option combination.**
 
-### 39.9.6 방어자 관점
+### 39.9.6 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **CI 운영자** | 종료 코드만 보지 않는다. 리포트의 **항목 수**와 **어떤 항목이 있는가**에도 조건을 건다. 검사를 끄는 플래그는 켠 이유와 재검토 시점을 함께 기록한다. `1`(판정 불가)과 `2`(결함 검출)를 다르게 처리한다 — 앞의 것만 재시도한다 |
-| **검증 도구 구현자** | 게이트에 거는 등급은 확정적인 것으로 제한한다. 수행하지 않은 검사는 **침묵시키지 말고 보류 항목으로 남긴다**. 등급을 완화했으면 완화 사실과 근거를 산출물에 적는다. `WARN` 승격 스위치를 제공한다. 판정 매핑에 기본값을 두지 않는다 |
-| **송출 사업자** | 의도된 이음매에는 반드시 `EXT-X-DISCONTINUITY` 를 선언한다(제21장). 동시에 **그 선언이 검증 도구의 판정을 낮춘다**는 사실을 안다 — 선언을 남발하면 자사 송출의 결손도 함께 가려지고, 그것을 먼저 손해 보는 쪽은 자기 자신이다 |
-| **감사자** | `PASS` 를 볼 때 **어떤 검사가 수행되었는지**를 함께 요구한다. 항목 목록 없는 종료 코드 0 은 근거가 아니다. 리포트에서 등급이 완화된 항목을 찾아 그 근거를 검토한다 |
-| **보안 담당** | 리포트 JSON 을 자격증명 취급한다. 편집 목록은 헤더 이름 기준이므로 **URL 에 실린 토큰은 걸리지 않는다**(§39.7) |
+| **CI operator** | do not look at the exit code alone. Put conditions on the report's **item count** and **which items exist** too. For a flag that turns off a check, record the reason it was turned on and the re-review point together. Handle `1` (cannot judge) and `2` (defect detected) differently — retry only the former |
+| **verification-tool implementer** | limit the grade hung on the gate to the confirmed. Do not **silence** a check that was not performed — leave it as a withheld item. If you lowered a grade, write the leniency fact and basis in the artifact. Provide a `WARN` promotion switch. Do not put a default in the verdict mapping |
+| **delivery provider** | always declare `EXT-X-DISCONTINUITY` at intended seams (Chapter 21). At the same time, know that **that declaration lowers the verification tool's verdict** — overuse the declaration and your own delivery's losses are hidden too, and the first to lose from it is yourself |
+| **auditor** | when you see `PASS`, require **which checks were performed** together. An exit code 0 with no item list is not a basis. Find items whose grade was lowered in the report and review their basis |
+| **security staff** | treat the report JSON as a credential. The redaction list is by header name, so **a token carried in a URL is not caught** (§39.7) |
 
 ---
 
-## 39.10 한계와 미해결
+## 39.10 Limits and open questions
 
-이 장의 주장 중 확인하지 못한 것과 코드 자체의 미해결을 나눠 적는다.
+I separate what I could not confirm among this chapter's claims from the open questions of the code itself.
 
-### 확인하지 못한 것
+### What I could not confirm
 
-- **종료 코드 `2` 선택의 근거는 추론이다.** `SystemExit` 이 `1` 을 쓴다는 것은 실측으로
-  확인했지만, 저자가 그 이유로 `2` 를 골랐다는 증거는 코드·주석·README 어디에도 없다.
-- **`EXT-X-DISCONTINUITY` 를 이용한 등급 하향(§39.9.3)은 코드 독해로 확인했고 재현하지
-  않았다.** 선언 수를 조작한 결함 주입은 `tests/run.sh` 에 없다.
-- **오디오 전용 렌디션이 `스트림 구성` WARN 의 근거라는 설명은 추론이다.** 코드에
-  근거 주석이 없고, 이 저장소가 오디오 전용 variant 를 실제로 다루는지 확인하지 않았다.
-- **`TEI` 를 `WARN` 으로 둔 근거도 코드에 없다.** "상류 전송 계층의 자기 신고이고
-  오설정 사례가 있다"는 설명은 이 장이 붙인 해석이다.
-- **§39.5.2 의 "검사 1개" 리포트는 `report.build()` 직접 호출로 만든 것**이며, CLI 를
-  통한 실행으로 재현하지 않았다. CLI 경로에서 그 상태에 도달하려면 ffprobe 실패가
-  겹쳐야 한다.
+- **The basis for choosing exit code `2` is inference.** That `SystemExit` uses `1` I confirmed by measurement,
+  but there is no evidence anywhere in code·comment·README that the author chose `2` for that reason.
+- **The grade lowering using `EXT-X-DISCONTINUITY` (§39.9.3) was confirmed by reading the code, not reproduced.**
+  A fault injection manipulating the declaration count is not in `tests/run.sh`.
+- **The explanation that an audio-only rendition is the basis for the `stream composition` WARN is inference.**
+  There is no basis comment in the code, and I did not confirm whether this repository actually handles audio-only
+  variants.
+- **The basis for putting `TEI` at `WARN` is also not in the code.** The explanation "a self-report of the
+  upstream transport layer, and there are misconfiguration cases" is an interpretation this chapter attached.
+- **The "1 check" report of §39.5.2 was made by calling `report.build()` directly**, not reproduced by a run
+  through the CLI. To reach that state on the CLI path an ffprobe failure must overlap.
 
-### 코드의 미해결
+### Open questions of the code
 
-- **계측 실패가 판정에 반영되지 않는다.** `MediaInfo.error` 와 `GapScan.error` 는 값이
-  채워지지만 `report.py` 에서 읽히지 않는다. 산출물을 열지 못한 실행과 열어서 정상인
-  실행이 리포트에서 구별되지 않는다 — §39.5.1 의 네 번째 행 중 가장 나쁜 형태다.
-- **`SKIP` 판정값이 없다.** 수행하지 않은 검사를 표현할 자리가 없어, 침묵과 통과가
-  같은 모양이 된다(§39.5.3).
-- **`WARN` 승격 스위치가 없다.** `-Werror` 상당의 기능이 없어 엄격한 운영이 어렵다.
-- **`target_duration` 이 0 이면 길이 정합에 `FAIL` 분기가 성립하지 않는다.**
-  `if target_duration and abs(drift) >= target_duration`([`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267))의 첫 조건
-  때문이며, 그 경우 아무리 큰 드리프트도 최대 `WARN` 이다.
-- **자막 타임라인 `FAIL` 의 상수 `5.0`·`-0.5` 에 근거가 없다**(§39.4.6). 근거 없는
-  상수에 `FAIL` 을 물린 유일한 자리이고, 그 대가가 제38장 §38.9.1 에서 **결함 없는
-  스트림의 종료 코드 2** 로 실측됐다. 회귀 테스트에 그 옵션 조합이 없다.
-- **같은 이름의 `Check` 가 둘 생길 수 있다.** 사이드카 자막을 내장하는 실행에서는
-  [`report.py:361`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L361) 과 [`report.py:441`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L441)(또는 `:455`)이 모두 `자막 타임라인` 항목을
-  추가한다. 집계는 이름을 보지 않으므로 판정은 옳지만, 항목 이름으로 리포트를 조회하는
-  소비자는 어느 쪽을 얻을지 알 수 없다.
-- **리포트 JSON 의 자막 통계 일부가 항상 덮어써진다.** [`report.py:367-381`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L367-L381) 이 내장
-  전용 통계(`mode`·`streams_in_output`·`span`)를 `rep.stats["subtitles"]` 에 넣지만,
-  같은 키가 [`report.py:471-499`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L471-L499) 에서 무조건 다시 대입된다. `--sub-embed` 만 쓴 실행은
-  `subs.results` 가 비어 있으므로([`cli.py:610`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L610)) 최종 JSON 의 `tracks` 가 빈 배열이
-  되고, 내장 트랙 정보는 남지 않는다. **판정은 옳고 기록이 틀린 경우**이며, 코드
-  독해로 확인했고 실행으로 재현하지는 않았다. 고치려면 대입 대신 갱신하거나 키를
-  나눠야 한다.
-- **`stats` 는 판정에 참여하지 않는다.** 계측치의 크기 정보는 전부 `stats` 에 남지만
-  종료 코드에는 아무 영향이 없다. 의도된 설계지만, 그 결과 **리포트를 파싱하지 않는
-  소비자는 판정의 근거에 접근할 수 없다.**
+- **A measurement failure is not reflected in the verdict.** `MediaInfo.error` and `GapScan.error` are filled with
+  a value but are not read in `report.py`. A run that could not open the artifact and a run that opened it and is
+  normal are not distinguished in the report — the worst form among §39.5.1's fourth row.
+- **There is no `SKIP` verdict value.** There is no place to express a check that was not performed, so silence and
+  pass take the same shape (§39.5.3).
+- **There is no `WARN` promotion switch.** With no `-Werror` equivalent, strict operation is hard.
+- **If `target_duration` is 0 the `FAIL` branch of length consistency does not hold.** It is because of the first
+  condition of `if target_duration and abs(drift) >= target_duration` ([`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267)), and in that case
+  however large the drift it is at most `WARN`.
+- **The subtitle-timeline `FAIL` constants `5.0`·`-0.5` have no basis** (§39.4.6). It is the only spot that puts
+  `FAIL` on a baseless constant, and its cost was measured in Chapter 38 §38.9.1 as **exit code 2 on a defect-free
+  stream.** The regression test has no such option combination.
+- **Two `Check`s of the same name can arise.** In a run that embeds a sidecar subtitle, both
+  [`report.py:361`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L361) and [`report.py:441`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L441) (or `:455`) add a `subtitle timeline` item. Aggregation does not
+  look at the name so the verdict is correct, but a consumer querying the report by item name cannot know which it
+  gets.
+- **Part of the subtitle statistics in the report JSON is always overwritten.** [`report.py:367-381`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L367-L381) puts
+  embed-only statistics (`mode`·`streams_in_output`·`span`) into `rep.stats["subtitles"]`, but the same key is
+  unconditionally reassigned at [`report.py:471-499`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L471-L499). A run using only `--sub-embed` has an empty `subs.results`
+  ([`cli.py:610`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L610)) so the final JSON's `tracks` becomes an empty array and the embedded-track info does not
+  remain. **A case where the verdict is right and the record is wrong**, confirmed by reading the code, not
+  reproduced by running. To fix it you must update rather than assign, or split the key.
+- **`stats` does not participate in the verdict.** All the magnitude information of the measured values remains in
+  `stats` but has no effect on the exit code. It is intended design, but as a result **a consumer that does not
+  parse the report cannot access the basis of the verdict.**
 
 ---
 
-## 39.11 교재를 닫으며 — 총 길이가 맞는데 중간이 비어 있다
+## 39.11 Closing the course — the total length is right but the middle is empty
 
-제1장은 명령 한 줄에서 출발했다.
+Chapter 1 set out from one command line.
 
 ```bash
 # README.md:18
-ffmpeg -i master.m3u8 -c copy out.mp4     # 받아진다. 그러나 —
+ffmpeg -i master.m3u8 -c copy out.mp4     # it downloads. But —
 ```
 
-그 실행의 결과는 이랬다.
+The result of that run was this.
 
 ```
 # README.md:28-29
-6초 세그먼트 1개 결손 → ffmpeg 종료 코드 0, 출력 길이 30.03s (정상과 동일)
-                     → 실제로는 5.99s ~ 12.02s 구간이 통째로 비어 있음
+1 six-second segment lost → ffmpeg exit code 0, output length 30.03s (same as normal)
+                          → actually the 5.99s ~ 12.02s interval is entirely empty
 ```
 
-38개 장을 지나 같은 스트림이 이 도구에 들어가면 종료 코드가 `2` 로 바뀐다
-(`tests/run.sh:481`). **두 종료 코드의 차이는 도구의 능력이 아니라 관측의 범위다.**
+Pass through 38 chapters and put the same stream into this tool and the exit code changes to `2`
+(`tests/run.sh:481`). **The difference of the two exit codes is not the tool's ability but the scope of
+observation.**
 
-ffmpeg 은 거짓말을 하지 않았다. 자기가 관측한 것 — "요청한 입력을 열었고, 얻은 패킷을
-복사했고, 파일을 닫았다" — 에 대해서는 정확히 참인 답을 냈다. 결손이 그 관측 범위 밖에
-있었을 뿐이다. 결손은 총량이 아니라 **타임라인의 구멍**으로 나타나고, 총량만 보는
-관측에는 구멍이 보이지 않는다(제21장).
+ffmpeg did not lie. About what it observed — "I opened the requested input, copied the packets I obtained, closed
+the file" — it gave an exactly true answer. The loss was simply outside that observation scope. A loss appears not
+as a total but as **a hole in the timeline**, and an observation that looks only at the total does not see the
+hole (Chapter 21).
 
-교재 전체가 한 일을 한 문장으로 줄이면 이렇다.
+Reduce what the whole course did to one sentence and it is this.
 
-> **관측의 범위를 늘리고, 늘어난 관측 하나하나가 무엇을 볼 수 있고 무엇을 볼 수 없는지
-> 밝히고, 그것들을 하나의 판정으로 접는 규칙을 정했다.**
+> **We widened the scope of observation, clarified what each added observation can and cannot see, and set the
+> rule that folds them into one verdict.**
 
-그래서 마지막 한 바이트가 무엇을 뜻하는지 정확히 쓸 수 있다.
+So we can write exactly what the last one byte means.
 
-**종료 코드 `2` 가 보증하는 것**
+**What exit code `2` guarantees**
 
-- 이 실행에서 **수행된** 검사 중 적어도 하나가 **확정적 손상**을 지목했다
-- 어떤 항목이 왜 그렇게 판정했는지가 콘솔과 리포트에 남아 있다
+- At least one of the checks **performed** in this run pointed at **confirmed damage**
+- Which item judged so and why remains in the console and the report
 
-**종료 코드 `2` 가 보증하지 않는 것**
+**What exit code `2` does not guarantee**
 
-- 손상이 **하나뿐**이라는 것 — 집계는 최악값 하나만 남기고 나머지 개수를 버린다
-- 손상의 **크기** — `Check.verdict` 는 등급이고 크기는 `detail` 과 `stats` 에만 있다
+- That the damage is **only one** — aggregation leaves only the single worst and discards the rest of the count
+- The **size** of the damage — `Check.verdict` is a grade and the size is only in `detail` and `stats`
 
-**종료 코드 `0` 이 보증하는 것**
+**What exit code `0` guarantees**
 
-- 이 실행에서 **수행된** 검사가 확정적 손상을 지목하지 않았다
+- The checks **performed** in this run did not point at confirmed damage
 
-**종료 코드 `0` 이 보증하지 않는 것**
+**What exit code `0` does not guarantee**
 
-- 산출물이 무결하다는 것 — 어떤 검사도 자기 사각지대를 스스로 보지 못한다
-  (유실 패킷 수가 16의 배수이거나 그보다 하나 적으면 CC 검사에 보이지 않고(제18장
-  §18.4), 임계 아래로 잘게 나뉜 결손은 갭 스캔에 보이지 않는다(제22장 §22.7.2))
-- **검사가 수행되었다는 것** — 플래그·모드·계측 실패로 항목이 통째로 사라져도 0 이다
-  (§39.5)
-- `WARN` 이 없었다는 것 — `WARN` 도 0 이다
+- That the artifact is intact — no check sees its own blind spot (if the lost-packet count is a multiple of 16 or
+  one less it is invisible to the CC check (Chapter 18 §18.4), and a loss split finely under the threshold is
+  invisible to the gap scan (Chapter 22 §22.7.2))
+- **That a check was performed** — even if items vanish wholesale by flag·mode·measurement failure it is 0 (§39.5)
+- That there was no `WARN` — `WARN` too is 0
 
-가장 중요한 것은 마지막 목록의 뒤 두 줄이다. 정리하면 이렇다.
+The most important are the last two lines of the last list. Organized, it is this.
 
-> **종료 코드는 무결성에 대한 절대적 진술이 아니라, 그 실행이 수행한 검사 집합에 대한
-> 상대적 진술이다.**
+> **The exit code is not an absolute statement about integrity but a relative statement about the set of checks
+> that run performed.**
 
-제18장이 하나의 검사에 대해 말한 것 — **"PASS 는 무결이 아니라 이 검사로는 못
-잡음이다"** — 이 판정 전체 수준에서 그대로 되풀이된다. 다른 점은 하나다. 개별 검사의
-사각지대는 그 검사의 성질에서 나오고 바꿀 수 없지만, **판정 전체의 사각지대는 어떤
-검사를 수행했는가에서 나오고 바꿀 수 있다.** 그래서 종료 코드를 읽는 사람이 반드시
-함께 물어야 하는 질문이 하나 남는다.
+What Chapter 18 said about one check — **"PASS is not integrity but not-caught-by-this-check"** — repeats as-is at
+the whole-verdict level. One thing differs. An individual check's blind spot comes from that check's nature and
+cannot be changed, but **the whole verdict's blind spot comes from which checks were performed and can be
+changed.** So there remains one question the person reading the exit code must always ask together.
 
-> **이 0 은 무엇을 검사한 뒤의 0 인가.**
+> **This 0 — after checking what is it a 0?**
 
-이 질문에 답할 수 있으면 종료 코드는 신뢰할 만한 계약이 된다. 답할 수 없으면 그것은
-제1장의 `exit 0` 과 같은 것이다 — 정직하지만 아무것도 말하지 않는 한 바이트.
-
----
-
-## 39.12 요약
-
-1. 계측치는 세 번 축약된다 — **항목화**(계측 → `Check`), **집계**(`Check` 목록 →
-   `verdict`), **매핑**(`verdict` → 종료 코드). 각 단계에서 무엇을 버리는지가 설계다.
-2. `Check` 는 이름·판정·설명 셋이다. **집계는 판정만 보고** 설명은 사람에게만 간다.
-   그럼에도 설명에 관측치와 임계값을 함께 적는 것이 `PASS` 의 사정거리를 계산 가능하게
-   만든다.
-3. 집계는 `max` 다 — `PASS < WARN < FAIL` 위의 최대값. **`PASS` 는 항등원, `FAIL` 은
-   흡수원**이므로 순서와 개수가 판정을 바꾸지 않고, **검사를 추가하는 변경은 판정을
-   완화하는 방향으로 회귀할 수 없다.**
-4. `FAIL` 은 두 조건을 모두 만족할 때만 준다 — **관측에 다른 정상적 설명이 없고,
-   판정선이 임의 상수가 아닐 때.** 그래서 세그먼트 중복·CC 불연속·TTFB 초과는 `WARN`
-   이고 페이로드 무효·동기 이탈·미복호·디코드 오류는 `FAIL` 이다.
-5. 타임라인 연속성만 **맥락으로 등급이 움직인다.** `EXT-X-DISCONTINUITY` 선언이 갭 수
-   이상이면 `FAIL` 이 `WARN` 으로 내려간다. 완화의 근거를 송출 측이 공급하므로 하향
-   유도가 가능하고, 그래서 **완화 사실을 리포트에 남기는 것**이 최소 방어다.
-6. `PASS`·`WARN` → `0`, `FAIL` → `2`. `1` 은 `SystemExit` 의 자리이므로 실제 종료 코드
-   공간은 셋이며, **`1`(판정 불가)과 `2`(결함 검출)는 CI 에서 대응이 다르다.**
-   `WARN` 을 `0` 에 둔 것은 **`FAIL` 의 신호 가치를 지키기 위한 선택**이다 — 오탐은
-   결국 미탐이 된다.
-7. **없는 항목은 통과가 아니다.** 옵션·모드·입력·계측 실패로 검사 항목이 통째로
-   사라질 수 있고, 사라진 항목은 아무 흔적을 남기지 않는다. 조건절을 전부 거짓으로
-   만들면 **항상 `PASS` 인 정보 항목 하나만 남아 "송출 데이터 정상"을 인쇄한다.**
-8. 제38장이 "보류가 `PASS` 로 실려 나간다"를 다뤘다면, 이 장이 덧붙이는 것은 **침묵은
-   어느 채널에서도 구별되지 않는다**는 나머지 절반이다. 보류는 최소한 사람이 읽는
-   문장에 남는다 — 그래서 **침묵보다 보류가 낫고, 둘 다 `SKIP` 값이 없어서 생긴다.**
-9. 리포트 JSON 은 재현성을 위해 먹싱 명령을 남기되 **자격증명 유출 방지를 재현성보다
-   앞세운다.** 다만 편집은 헤더 이름 기준이라 **URL 에 실린 서명·토큰은 걸리지
-   않는다.**
-10. **종료 코드는 무결성의 증명이 아니라 수행된 검사 집합에 대한 상대적 진술이다.**
-    `0` 을 읽는 사람은 반드시 함께 물어야 한다 — **이 0 은 무엇을 검사한 뒤의 0 인가.**
+Answer this question and the exit code becomes a trustworthy contract. Cannot answer it and it is the same as
+Chapter 1's `exit 0` — one byte that is honest but says nothing.
 
 ---
 
-**교재를 닫으며** — 이 교재는 명령 한 줄이 `exit 0` 을 내는 장면에서 시작했다. 그
-`0` 이 틀린 것은 아니었다. 그것은 자기가 관측한 범위에 대해 정직했고, 다만 그 범위가
-무엇인지 말하지 않았을 뿐이다. 39개 장을 지나 도착한 곳은 더 나은 도구가 아니라
-**더 정확한 문장**이다 — 무엇을 관측했고, 그 관측이 무엇을 볼 수 있으며, 무엇은 끝내
-볼 수 없는지. 스트림을 파일로 되돌리는 일은 결국 그 문장을 한 바이트로 접는 일이었고,
-접힌 뒤에도 펼칠 수 있도록 근거를 남기는 일이었다. 다음에 어떤 검증 도구를 만들든,
-그것이 내는 종료 코드 옆에 그 문장을 적어 두기 바란다. **판정은 관측 없이 성립하지
-않고, 관측은 그 한계를 밝히지 않으면 판정이 되지 못한다.**
+## 39.12 Summary
+
+1. A measured value is reduced three times — **itemization** (measurement → `Check`), **aggregation** (`Check`
+   list → `verdict`), **mapping** (`verdict` → exit code). What is discarded at each stage is the design.
+2. A `Check` is three — name·verdict·detail. **Aggregation looks only at the verdict** and the detail goes to the
+   human only. Nonetheless writing the observed value and the threshold in the detail makes the reach of `PASS`
+   computable.
+3. Aggregation is `max` — the maximum over `PASS < WARN < FAIL`. **`PASS` is the identity, `FAIL` the absorbing
+   element**, so order and count do not change the verdict, and **a change that adds a check cannot regress the
+   verdict toward leniency.**
+4. `FAIL` is given only when both conditions are met — **the observation has no other normal explanation, and the
+   verdict line is not an arbitrary constant.** So segment duplicate·CC discontinuity·TTFB exceedance are `WARN`
+   and payload invalid·sync loss·undecrypted·decode error are `FAIL`.
+5. Timeline continuity alone **has its grade move by context.** If the `EXT-X-DISCONTINUITY` declarations are at
+   least the gap count, `FAIL` drops to `WARN`. Since the delivery side supplies the basis for the leniency,
+   lowering induction is possible, and so **leaving the leniency fact in the report** is the minimum defense.
+6. `PASS`·`WARN` → `0`, `FAIL` → `2`. `1` is `SystemExit`'s place so the actual exit-code space is three, and
+   **`1` (cannot judge) and `2` (defect detected) are handled differently in CI.** Putting `WARN` at `0` is **a
+   choice to preserve the signal value of `FAIL`** — a false positive becomes a false negative in the end.
+7. **An absent item is not a pass.** A check item can vanish wholesale by option·mode·input·measurement failure,
+   and a vanished item leaves no trace. Make every conditional false and **only one info item that is always
+   `PASS` remains, printing "delivery data normal."**
+8. If Chapter 38 treated "a withholding ships out as `PASS`," what this chapter adds is the other half — **silence
+   is distinguished on no channel.** A withholding at least remains in a human-read sentence — so **withholding is
+   better than silence, and both arise from the lack of a `SKIP` value.**
+9. The report JSON leaves the muxing command for reproducibility but **puts credential-leak prevention before
+   reproducibility.** Only, the redaction is by header name so **a signature·token carried in a URL is not
+   caught.**
+10. **The exit code is not proof of integrity but a relative statement about the set of checks performed.** The
+    person reading a `0` must always ask together — **this 0, after checking what is it a 0?**
+
+---
+
+**Closing the course** — this course began at the scene where one command line gives `exit 0`. That `0` was not
+wrong. It was honest about the scope it observed, and simply did not say what that scope was. Where we arrived
+after 39 chapters is not a better tool but **a more precise sentence** — what was observed, what that observation
+can see, and what it can never see. Turning a stream back into a file was in the end the work of folding that
+sentence into one byte, and of leaving the basis behind so it can be unfolded again after folding. Whatever
+verification tool you build next, please write that sentence beside the exit code it gives. **A verdict does not
+hold without observation, and an observation does not become a verdict unless it states its limit.**

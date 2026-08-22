@@ -1,460 +1,460 @@
 ---
-untranslated: ko
-title: "서명 URL"
-description: "시간 제한 능력의 설계"
-date: 2026-08-16
+title: "Signed URLs"
+description: "The design of a time-limited capability"
+date: 2026-06-13
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-11-signed-url.svg
 ---
-## 11.0 이 장에서 답할 것
+## 11.0 What this chapter answers
 
-제10장은 "Referer 를 인가로 쓰는 것"을 고쳐야 한다는 말로 끝났다. 그 자리를 대신하는
-것이 이 장의 주제다.
+Chapter 10 ended by saying "using Referer as authorization" must be fixed. What replaces that place is this
+chapter's subject.
 
-1. `?md5=<서명>&expires=<unix>` 는 무엇인가 — 이것은 **어떤 종류의 접근 통제**인가
-2. 만료 시각이 URL 에 박히는 순간 **클라이언트 구현에 어떤 제약**이 생기는가
-3. 만료 시간은 무엇과 무엇을 맞바꾸는가
-4. **서명은 무엇을 덮어야 하는가** — 넣으면 좋은 것과, 넣으면 정상 사용자를 끊는 것
-5. MD5 를 쓰면 무엇이 무너지고, 왜 "키를 붙인 해시"가 아니라 **HMAC** 이어야 하는가
-6. **만료는 재생 공격을 막는가.** 막지 못한다면 방어자는 무엇을 더 해야 하는가
+1. What is `?md5=<signature>&expires=<unix>` — what **kind of access control** is this?
+2. The moment the expiry time is embedded in the URL, **what constraint arises in the client implementation?**
+3. What does the expiry time trade off against what?
+4. **What must the signature cover** — what is good to include, and what cuts off normal users if included?
+5. If you use MD5, what collapses, and why must it be **HMAC** rather than "a hash with the key attached"?
+6. **Does expiry block replay?** If it cannot, what more must the defender do?
 
-여섯째가 이 장의 정점이다. 결론을 미리 적어 둔다 — **만료는 재생을 막지 않는다.
-재생이 가능한 창을 좁힐 뿐이다.** 그리고 그 창을 실제로 닫는 수단은 전부, 서명 URL 을
-고른 바로 그 이유와 정면으로 충돌한다.
+The sixth is this chapter's peak. Write the conclusion in advance — **expiry does not block replay. It only
+narrows the window in which replay is possible.** And every means that actually closes that window collides
+head-on with the very reason signed URLs were chosen.
 
 ---
 
-## 11.1 문제 — 27화를 미리 모아 두면 뒤쪽이 반드시 깨진다
+## 11.1 The problem — gather 27 episodes in advance and the later ones necessarily break
 
-한 편짜리 다운로드는 사람이 개발자도구에서 `.m3u8` 주소를 떠와 넘기면 끝난다.
-시리즈 전체에서는 그 방식이 성립하지 않는다. 이 저장소의 모듈 독스트링이 그 이유를
-두 가지로 나눠 적어 두었다.
+A single-episode download is done when a person fetches the `.m3u8` address from devtools and hands it over.
+For a whole series that way does not hold. This repository's module docstring wrote the reason down in two
+parts.
 
 ```python
 # series.py:1-11
-"""시리즈 페이지 해석 — 회차 목록 발견과 회차별 재생 소스 해석.
+"""Series-page resolution — episode-list discovery and per-episode playback-source resolution.
 
-한 편짜리 다운로드는 재생 소스(m3u8)를 사람이 개발자도구에서 떠와 넘기면 된다.
-시리즈 전체는 그 방식이 성립하지 않는다. 회차마다 CDN 경로가 불투명 해시라
-1화 주소에서 2화를 유도할 수 없고, 발급된 링크에는 만료 시각이 박혀 있다.
+A single-episode download is done when a person fetches the playback source (m3u8) from devtools and
+hands it over. A whole series does not hold that way. The CDN path per episode is an opaque hash so you
+cannot derive episode 2's address from episode 1's, and an issued link has an expiry time embedded.
 
-    …/cdn/hls/<회차별 해시>/master.m3u8?md5=<서명>&expires=<unix>
+    …/cdn/hls/<per-episode hash>/master.m3u8?md5=<signature>&expires=<unix>
 
-그래서 27화를 미리 모아두고 순서대로 받는 방식은 뒤쪽 회차에서 반드시 깨진다.
-이 모듈은 **회차 목록만 먼저 확보하고, 재생 소스는 그 회차를 받기 직전에**
-해석한다(late resolution). `resolve()` 가 매번 새 링크를 받아오는 이유다.
+So gathering 27 episodes' addresses in advance and receiving them in order necessarily breaks on the later
+episodes. This module secures **only the episode list first, and resolves the playback source just before
+receiving that episode** (late resolution). That is why `resolve()` fetches a fresh link each time.
 ```
 
-두 이유는 성격이 다르다. 섞어 읽으면 안 된다.
+The two reasons differ in nature. You must not read them mixed.
 
-| 이유 | 성질 | 무엇을 막는가 |
+| Reason | Nature | What it blocks |
 |---|---|---|
-| 회차별 CDN 경로가 **불투명 해시** | 구조의 문제 — 예측 불가능성 | 1화 주소에서 2화 주소를 **유도**하는 것 |
-| 발급된 링크에 **만료 시각**이 박혀 있음 | 시간의 문제 — 유효 기간 | 주소를 **미리 모아 두는** 것 |
+| the per-episode CDN path is an **opaque hash** | a structural problem — unpredictability | **deriving** episode 2's address from episode 1's |
+| an issued link has an **expiry time** embedded | a time problem — validity period | **gathering** addresses in advance |
 
-앞쪽은 "주소를 계산할 수 없다"이고, 뒤쪽은 "계산해서 손에 넣어도 시간이 지나면
-죽는다"이다. 앞쪽만 있으면 "27번 요청해서 목록을 만들고 순서대로 받자"가 해답이 된다.
-뒤쪽이 있으므로 그 해답이 무너진다.
+The former is "the address cannot be computed," and the latter is "even if you compute and get it in hand it
+dies as time passes." With only the former, "request 27 times to make a list and receive in order" is the
+answer. Because the latter exists, that answer collapses.
 
-사용자 문서에도 같은 결정이 같은 근거로 적혀 있다 — 이 제약이 내부 구현 세부가 아니라
-**도구의 동작을 설명해야 하는 수준의 사실**이라는 뜻이다.
+The same decision is written in the user docs on the same basis too — meaning this constraint is not an
+internal implementation detail but **a fact at the level that must explain the tool's behavior.**
 
 > `README.md:142-150`
 >
-> ### 왜 미리 모아두지 않는가
+> ### Why not gather in advance
 >
-> 회차별 재생 주소는 **받기 직전에** 발급받는다. 두 가지 이유가 겹친다.
+> The per-episode playback address is issued **just before receiving.** Two reasons overlap.
 >
-> - 회차마다 CDN 경로가 불투명 해시라 1화 주소에서 2화를 유도할 수 없다.
-> - 발급된 주소에는 만료 시각이 박혀 있다(`…/master.m3u8?md5=…&expires=…`).
+> - The per-episode CDN path is an opaque hash so you cannot derive episode 2 from episode 1.
+> - An issued address has an expiry time embedded (`…/master.m3u8?md5=…&expires=…`).
 >
-> 그래서 27화치 주소를 먼저 모아두고 순서대로 받는 방식은 뒤쪽 회차에서 반드시
-> 만료로 깨진다. 목록만 먼저 확보하고 재생 주소는 그때그때 푼다.
+> So gathering 27 episodes' addresses first and receiving in order necessarily breaks by expiry on the later
+> episodes. Secure only the list first and resolve the playback address on the fly.
 
-### 11.1.1 언제 깨지는가 — 산술
+### 11.1.1 When it breaks — arithmetic
 
-회차 `k` 의 URL 을 시각 0 에 전부 발급받았다고 하자. 한 회차를 받는 데 `T` 가 걸리면
-`k` 번째 회차의 URL 이 **처음 쓰이는 시각**은 `(k−1)·T` 다. 발급된 증표의 수명을 `E`
-라 하면, 27화 전부가 성공할 조건은 하나다.
+Suppose episode `k`'s URLs were all issued at time 0. If receiving one episode takes `T`, the time episode
+`k`'s URL is **first used** is `(k−1)·T`. If the issued token's lifetime is `E`, the condition for all 27
+episodes to succeed is one.
 
 ```
 26 · T  <  E
 ```
 
-수치를 넣으면 이렇게 된다.
+Plug in numbers and it becomes this.
 
-| 한 회차 소요 `T` | 마지막 회차가 쓰이는 시각 `26T` | 그때 필요한 만료 `E` |
+| Time per episode `T` | Time the last episode is used `26T` | Expiry `E` needed then |
 |---|---|---|
-| 2분 | 52분 | 1시간 이상 |
-| 5분 | 2시간 10분 | 2.5시간 이상 |
-| 10분 | 4시간 20분 | 5시간 이상 |
-| 30분 | 13시간 | 13시간 이상 |
+| 2 min | 52 min | 1 hour or more |
+| 5 min | 2 hr 10 min | 2.5 hours or more |
+| 10 min | 4 hr 20 min | 5 hours or more |
+| 30 min | 13 hr | 13 hours or more |
 
-> **이 표는 산술이지 실측이 아니다.** `T` 는 회선·해상도에 따라, `E` 는 송출자의
-> 정책에 따라 달라진다. 이 저장소는 `expires` 값을 파싱조차 하지 않으므로 실제
-> `E` 를 모른다(§11.10). 표가 보이려는 것은 특정 수치가 아니라 **`E` 가 작업 전체의
-> 소요보다 작으면 반드시 깨진다**는 구조다.
+> **This table is arithmetic, not a measurement.** `T` varies by line·resolution, and `E` by the deliverer's
+> policy. This repository does not even parse the `expires` value so it does not know the actual `E` (§11.10).
+> What the table means to show is not specific numbers but the structure that **if `E` is smaller than the
+> whole job's duration, it necessarily breaks.**
 
-### 11.1.2 깨졌을 때 무엇이 보이는가
+### 11.1.2 What you see when it breaks
 
-이 실패의 고약한 점은 **증상이 원인을 가리키지 않는다**는 것이다. 1화부터 11화까지는
-멀쩡히 받아지고 12화부터 갑자기 실패한다. 화면에 뜨는 것은 `403` 이거나 `404`,
-혹은 `200` 과 함께 온 HTML 오류 페이지다. 그 어느 것도 "만료"라고 말하지 않는다.
+The nasty part of this failure is that **the symptom does not point at the cause.** Episodes 1 through 11 are
+received fine and it suddenly fails from episode 12. What appears on screen is `403` or `404`, or a `200` with
+an HTML error page. None of them says "expiry."
 
-그래서 처음 이 현상을 만나면 IP 차단·요청 속도 제한·Referer 검증을 먼저 의심하게
-된다. 전부 시각이 지날수록 나빠지는 요인이라 증상과 모양이 같기 때문이다.
-만료를 의심하려면 **URL 안에 만료 시각이 적혀 있다는 것을 이미 알고 있어야 한다.**
+So on first meeting this phenomenon you come to suspect IP blocking·request-rate limiting·Referer verification
+first. All are factors that worsen as time passes, so the symptom looks the same. To suspect expiry you must
+**already know that an expiry time is written inside the URL.**
 
 ---
 
-## 11.2 원리 — URL 이 곧 권한증표다
+## 11.2 The principle — the URL is itself the authorization token
 
-`?md5=<서명>&expires=<unix>` 를 "인증 파라미터"라고 부르면 절반만 맞다. 정확한 이름이
-따로 있다.
+Call `?md5=<signature>&expires=<unix>` an "authentication parameter" and it is half right. There is a precise
+name.
 
-> **용어** — **능력 기반 접근 통제(capability-based access control)**: 접근 권한을
-> "요청한 주체가 누구인가"가 아니라 "그 요청이 어떤 증표를 들고 왔는가"로 판정하는
-> 방식. 증표(capability)는 대상 자원과 허용 조건을 **스스로 서술**하며,
-> 소지하는 것만으로 행사할 수 있다.
+> **Term** — **capability-based access control**: a way of judging access permission not by "who is the
+> requesting subject" but by "what token the request brought." A capability **describes itself** — the target
+> resource and the allowed conditions — and can be exercised by mere possession.
 
-> **용어** — **소지자 증표(bearer token)**: 소지 사실 외에 아무 자격도 요구하지 않는
-> 증표. 훔친 사람과 원래 소지자를 서버가 구별하지 못한다. 서명 URL 은 URL 문자열
-> 전체가 소지자 증표다.
+> **Term** — **bearer token**: a token that requires no qualification other than the fact of possession. The
+> server cannot distinguish a thief from the original holder. A signed URL's whole URL string is a bearer
+> token.
 
-### 11.2.1 신원 기반과의 대비
+### 11.2.1 Contrast with identity-based
 
-![신원 기반 접근 통제와 능력 기반 접근 통제의 대비](/images/lecture/hls-recon/11-capability-vs-identity.svg)
+![The contrast between identity-based access control and capability-based access control](/images/lecture/hls-recon/11-capability-vs-identity.svg)
 
-*그림 11-1 — 권한을 어디에 두는가 — 주체를 가리키는 증표와, 권한 그 자체인 증표*
+*Figure 11-1 — where to put the permission — a token that points at a subject, and a token that is the
+permission itself*
 
-쿠키는 **주체를 가리킨다.** 서버는 그 값으로 세션 저장소를 조회해 "이 사람에게 이
-자원의 권한이 있는가"를 판정한다. 판정 근거가 서버 안에 있으므로 서버가 마음을 바꾸면
-즉시 반영된다 — 세션을 지우면 그 순간부터 거부다.
+A cookie **points at a subject.** The server looks up the session store with that value to judge "does this
+person have permission to this resource." Since the basis for judgment is inside the server, if the server
+changes its mind it is reflected immediately — delete the session and it is a refusal from that moment.
 
-서명 URL 은 **권한 그 자체다.** 서버가 조회할 것이 없다. 비밀 키로 서명을 다시 계산해
-같은지 보면 끝이다. 그리고 그 판정은 되돌릴 수 없다 — **이미 나간 URL 을 서버가
-회수할 방법이 없다.**
+A signed URL **is the permission itself.** There is nothing for the server to look up. Recompute the signature
+with the secret key, see if it matches, and it is done. And that judgment cannot be undone — **the server has
+no way to recall a URL that already went out.**
 
-### 11.2.2 능력의 네 성질
+### 11.2.2 The four properties of a capability
 
-| 성질 | 내용 | 귀결 |
+| Property | Content | Consequence |
 |---|---|---|
-| **자기 서술** | 대상 경로와 유효 기간이 증표 안에 적혀 있다 | 서버가 조회할 것이 없다 |
-| **무상태 검증** | 비밀 키로 서명을 재계산해 대조하면 끝 | CDN 엣지 수천 대가 중앙 조회 없이 판정한다 |
-| **전달 가능** | 그냥 문자열이므로 복사·공유가 자유롭다 | 링크를 붙여 넣으면 권한도 함께 간다 |
-| **회수 불가** | 발급 후 서버가 되돌릴 수단이 없다 | **유일한 회수 수단이 만료다** |
+| **self-describing** | the target path and validity period are written in the token | there is nothing for the server to look up |
+| **stateless verification** | recompute the signature with the secret key and compare, done | thousands of CDN edges judge with no central lookup |
+| **transferable** | being just a string, it is freely copied·shared | paste the link and the permission goes along |
+| **irrevocable** | after issuance the server has no means to undo it | **the only means of recall is expiry** |
 
-넷째 행이 이 장 전체의 축이다. 만료는 편의 기능이 아니라 **회수 불가라는 성질을
-견디게 하는 구성 요소**다. 만료 없는 서명 URL 은 "영구히 유효한 무기명 열쇠"이고,
-한 번 유출되면 대응 수단이 **비밀 키 교체 — 즉 발급된 모든 URL 의 동시 무효화**밖에
-남지 않는다.
+The fourth row is the axis of this whole chapter. Expiry is not a convenience feature but **a component that
+lets the irrevocable property be endured.** A signed URL with no expiry is "a permanently valid bearer key,"
+and once leaked the only response left is secret-key rotation — that is, simultaneous invalidation of all
+issued URLs.
 
-### 11.2.3 왜 CDN 은 이 방식을 고르는가
+### 11.2.3 Why does a CDN choose this way
 
-제4장에서 본 HTTP 의 무상태성이 여기서 설계 요구로 되돌아온다. CDN 엣지 노드는
-사용자와 가까운 곳에서 응답해야 의미가 있다. 요청마다 원본 서버의 세션 저장소에
-물어보면 그 왕복이 지연을 지배하고, **CDN 을 둔 이유 자체가 사라진다.**
+HTTP's statelessness seen in Chapter 4 returns here as a design requirement. A CDN edge node is meaningful
+only when it responds close to the user. Ask the origin server's session store per request and that round trip
+dominates the latency, and **the very reason to have a CDN disappears.**
 
-그래서 엣지는 "비밀 키 하나"만 들고 자기 자리에서 판정할 수 있어야 한다. 그 요구를
-만족시키는 것이 능력 기반이고, **회수 불가는 그 요구를 만족시키기 위해 치른 값**이다.
-설계 실수가 아니라 요구사항의 귀결이다.
+So the edge must be able to judge in place with only "one secret key." What satisfies that requirement is
+capability-based, and **irrevocability is the price paid to satisfy that requirement.** Not a design mistake
+but a consequence of the requirement.
 
-동시에 능력 기반에는 신원 기반이 갖지 못한 미덕이 있다. 증표 하나가 **한 자원, 한
-기간**만 연다 — 최소 권한 원칙에 잘 맞는다. 반면 쿠키는 그 출처로 나가는 **모든**
-요청에 브라우저가 자동으로 붙이므로, 요청이 지목하지 않은 권한까지 딸려 간다. 그
-자동성이 CSRF(교차 사이트 요청 위조)의 전제이며, 자격증명이 어디에 어떻게 남는지는
-제12장의 주제다.
+At the same time capability-based has a virtue identity-based lacks. One token opens **one resource, one
+period** — a good fit for the least-privilege principle. A cookie, by contrast, the browser attaches
+automatically to **every** request going to that origin, so permissions the request did not point at come
+along. That automaticity is the premise of CSRF (cross-site request forgery), and where and how credentials
+remain is Chapter 12's subject.
 
 ---
 
-## 11.3 원리 — 만료 시간은 무엇과 무엇을 맞바꾸는가
+## 11.3 The principle — what does the expiry time trade off against what?
 
-> **용어** — **Unix 시각(Unix time)**: 1970-01-01 00:00:00 UTC 로부터 흐른 초를 정수로
-> 센 값. 시간대 표기가 없어 서로 다른 기계가 같은 순간을 같은 수로 부른다. `expires=`
-> 뒤에 오는 정수가 이것이다.
+> **Term** — **Unix time**: a value counting the seconds elapsed since 1970-01-01 00:00:00 UTC as an integer.
+> With no timezone notation, different machines call the same instant by the same number. The integer after
+> `expires=` is this.
 
-만료 시각은 URL 에 **평문으로** 실린다. 이것은 새는 것이 아니라 설계다 — 클라이언트가
-남은 시간을 알아야 갱신 시점을 정할 수 있다. 서명이 그 값을 덮으므로 읽는 것은 자유이되
-바꾸는 것은 검출된다(§11.4).
+The expiry time is carried in the URL **in plaintext.** This is not a leak but design — the client must know
+the time remaining to decide when to renew. The signature covers that value, so reading is free but changing
+is detected (§11.4).
 
-### 11.3.1 1차 교환 — 유출 창과 가용성
+### 11.3.1 The first-order trade — leak window vs availability
 
-| 만료가 **짧으면** | 만료가 **길면** |
+| If expiry is **short** | If expiry is **long** |
 |---|---|
-| 유출된 URL 의 유효 기간이 짧다 | 유출된 URL 이 오래 산다 |
-| 정상 사용자도 끊긴다 — 일시정지 후 재개, 느린 회선, 긴 다운로드 | 정상 사용자는 끊기지 않는다 |
-| 재발급 요청이 잦아 원본 서버 부하가 는다 | 재발급이 드물다 |
-| 클라이언트에 갱신 로직이 **필수**가 된다 | 클라이언트가 단순하다 |
-| 시계 오차에 민감하다 | 오차가 묻힌다 |
+| a leaked URL's validity is short | a leaked URL lives long |
+| normal users are cut off too — resume after pause, slow line, long download | normal users are not cut off |
+| reissue requests are frequent so origin-server load rises | reissue is rare |
+| renewal logic becomes **mandatory** on the client | the client is simple |
+| sensitive to clock error | error is buried |
 
-여기까지는 흔히 알려진 교환이다. 그런데 만료 시간을 정하는 순간 함께 움직이는 것이
-둘 더 있고, 그것들은 보안 문서에 잘 적히지 않는다.
+Up to here is the commonly known trade. But the moment you set the expiry time, two more things move together,
+and they are not well written in security documents.
 
-### 11.3.2 2차 효과 — 캐시 키
+### 11.3.2 Second-order effect — the cache key
 
-> **용어** — **캐시 키(cache key)**: CDN 이 캐시된 응답을 찾을 때 쓰는 식별자.
-> 기본값은 대개 "호스트 + 경로 + 쿼리 스트링" 이다.
+> **Term** — **cache key**: the identifier a CDN uses to find a cached response. The default is usually "host
+> + path + query string."
 
-서명이 쿼리 스트링에 있고 사용자마다 다르면, 기본 캐시 키 아래에서는 **같은
-세그먼트가 사용자 수만큼 별개의 항목으로 쌓이고 적중률이 0 에 수렴한다.** 그래서 실무
-CDN 구성은 토큰 파라미터를 캐시 키에서 제외한다. 그 구성이 빠져 있으면 만료를 짧게
-잡을수록 원본 서버로 가는 요청이 늘어난다 — **보안 설정 하나가 비용 구조를 바꾼다.**
+If the signature is in the query string and differs per user, under the default cache key **the same segment
+piles up as separate entries by the number of users and the hit rate converges to 0.** So real CDN configs
+exclude token parameters from the cache key. If that config is missing, the shorter you set expiry the more
+requests go to the origin server — **one security setting changes the cost structure.**
 
-그리고 이 제외 구성 자체가 다음 함정을 만든다. 토큰을 캐시 키에서 뺐는데 **응답 내용이
-토큰에 따라 달라지는** 경로가 하나라도 있으면, 한 사용자의 응답이 다른 사용자에게
-간다. 캐시 키 설계는 접근 통제 설계의 일부다.
+And this exclusion config itself makes the next trap. Exclude the token from the cache key and if there is
+even one path where **the response content differs by the token**, one user's response goes to another.
+Cache-key design is part of access-control design.
 
-### 11.3.3 2차 효과 — 클록 스큐
+### 11.3.3 Second-order effect — clock skew
 
-> **용어** — **클록 스큐(clock skew)**: 서로 다른 기계의 시계가 어긋난 양.
+> **Term** — **clock skew**: the amount by which different machines' clocks are misaligned.
 
-만료는 **발급 시점이 아니라 사용 시점에, 검증하는 기계의 시계로** 판정된다. 발급
-서버와 엣지 노드의 시계가 어긋나 있으면 방금 발급한 URL 이 이미 만료로 판정될 수 있다.
-그래서 실무 구현은 몇 초에서 몇 분의 허용치(skew tolerance)를 둔다.
+Expiry is judged **not at issuance time but at use time, by the verifying machine's clock.** If the issuing
+server's and the edge node's clocks are misaligned, a just-issued URL can already be judged expired. So real
+implementations put a tolerance (skew tolerance) of a few seconds to a few minutes.
 
-그 허용치는 그대로 유효 기간의 연장이다. **만료를 60초로 잡고 스큐 허용을 300초로
-두면 실제 수명은 360초다.** 보안 검토서에 "토큰 수명 60초"라고 적혀 있어도 실제 노출
-창은 여섯 배일 수 있고, 그 사실은 대개 다른 팀이 관리하는 다른 설정 파일에 있다.
+That tolerance is directly an extension of the validity period. **Set expiry to 60 seconds and skew tolerance
+to 300 seconds and the actual lifetime is 360 seconds.** Even if the security review says "token lifetime 60
+seconds," the actual exposure window can be sixfold, and that fact is usually in a different config file
+managed by a different team.
 
 ---
 
-## 11.4 원리 — 서명은 무엇을 덮어야 하는가
+## 11.4 The principle — what must the signature cover?
 
-> **용어** — **서명 대상(signed payload)**, 또는 **정규 문자열(canonical string)**:
-> 서명을 계산할 때 해시 입력으로 들어가는 바이트열. 발급자와 검증자가 **같은 규칙으로
-> 같은 문자열**을 만들어야 서명이 맞는다.
+> **Term** — **signed payload**, or **canonical string**: the byte sequence entered as the hash input when
+> computing the signature. The issuer and the verifier must make **the same string by the same rule** for the
+> signature to match.
 
-이 절의 명제는 하나다.
+This section's proposition is one.
 
-> **서명 대상에 들어간 값만 위조가 검출된다. 들어가지 않은 값은 자유롭게 바뀐다.**
+> **Only a value that went into the signed payload has its forgery detected. A value not in it is freely
+> changed.**
 
-즉 서명 대상 설계가 곧 위협 모델의 선언이다. 무엇을 넣었는지 모르면 무엇이 보증되는지도
-모른다.
+That is, signed-payload design is itself a declaration of the threat model. If you do not know what was put
+in, you do not know what is guaranteed.
 
-### 11.4.1 후보별 득실
+### 11.4.1 Gains and losses per candidate
 
-| 서명에 넣는 값 | 얻는 것 | 잃는 것 · 오탐 |
+| Value put in the signature | What is gained | What is lost · false positive |
 |---|---|---|
-| **경로(path)** | 증표를 다른 자원에 돌려 쓰지 못한다 | 없음 — **최소 요건** |
-| **만료(expires)** | 만료 시각 자체가 위조되지 않는다 | 없음 — **최소 요건** |
-| **HTTP 메서드** | GET 용 증표로 PUT·DELETE 를 못 한다 | 없음. 쓰기 API 에서는 필수 |
-| **호스트(Host)** | 다른 도메인에 증표를 재사용 못 한다 | 다중 도메인·CNAME 구성에서 관리 부담 |
-| **쿼리 파라미터 전체** | 파라미터 조작으로 다른 응답을 얻지 못한다 | 클라이언트가 추적 파라미터조차 못 붙인다 |
-| **클라이언트 IP** | 유출된 URL 이 다른 회선에서 열리지 않는다 | ★ 모바일↔Wi-Fi 전환, CGNAT, IPv6 주소 회전에서 **정상 사용자가 끊긴다** |
-| **User-Agent** | 브라우저에서 딴 링크가 도구에서 안 열린다 | ★ 브라우저 자동 업데이트로 UA 가 바뀌면 재생 중 끊긴다. 위조가 쉬워 얻는 것도 작다 |
-| **세션·계정 ID** | 계정 단위 추적·회수가 가능해진다 | 별도 자격증명이 함께 필요 — 무상태성이 일부 깨진다 |
-| **논스(nonce)** | 1회성이 가능해진다 | ★ **서버 측 상태가 필요** — 무상태 검증이 무너진다(§11.9) |
+| **path** | cannot reuse the token on a different resource | none — **minimum requirement** |
+| **expires** | the expiry time itself is not forged | none — **minimum requirement** |
+| **HTTP method** | cannot PUT·DELETE with a GET token | none. mandatory on a write API |
+| **Host** | cannot reuse the token on another domain | management burden on multi-domain·CNAME configs |
+| **all query parameters** | cannot get a different response by parameter tampering | the client cannot attach even a tracking parameter |
+| **client IP** | a leaked URL does not open on a different line | ★ **normal users are cut off** on mobile↔Wi-Fi switch, CGNAT, IPv6 address rotation |
+| **User-Agent** | a link picked in a browser does not open in a tool | ★ if the UA changes on a browser auto-update, it cuts off mid-play. easy to forge so the gain is small too |
+| **session·account ID** | account-level tracking·recall becomes possible | a separate credential is needed too — statelessness is partly broken |
+| **nonce** | one-time-use becomes possible | ★ **server-side state is needed** — stateless verification collapses (§11.9) |
 
-### 11.4.2 IP 바인딩이 실제로 사 오는 것
+### 11.4.2 What IP binding actually buys
 
-IP 를 서명 대상에 넣으면 "URL 만 복사해 다른 곳에서 여는 것"이 막힌다. 여기까지는
-맞다. 그런데 두 방향에서 값이 깎인다.
+Put the IP in the signed payload and "just copying the URL and opening it elsewhere" is blocked. Up to here is
+correct. But the value is cut from two directions.
 
-**오탐 쪽.** 모바일 기기는 Wi-Fi 와 셀룰러 사이를 오가며 공인 IP 가 바뀐다. 재생
-중간에 바뀌면 다음 세그먼트부터 실패한다. 사용자에게는 "영상이 갑자기 멈췄다"로 보이고,
-로그에는 `403` 만 남는다. IPv6 에서는 프라이버시 확장으로 주소가 주기적으로 바뀌므로
-같은 일이 Wi-Fi 안에서도 일어난다 — 그래서 실무 구현은 주소 전체가 아니라 `/64`
-프리픽스 단위로 묶기도 한다.
+**The false-positive side.** A mobile device's public IP changes as it goes between Wi-Fi and cellular. Change
+it mid-play and it fails from the next segment. To the user it looks like "the video suddenly stopped," and
+the log leaves only a `403`. In IPv6 the address changes periodically by privacy extension, so the same thing
+happens even within Wi-Fi — so real implementations sometimes group by the `/64` prefix rather than the whole
+address.
 
-**방어력 쪽.** 캐리어 그레이드 NAT 뒤에서는 수천 명의 가입자가 하나의 공인 IP 를
-공유한다. IP 바인딩은 **그 NAT 뒤의 다른 사용자에게는 아무것도 막지 못한다.**
+**The defense side.** Behind carrier-grade NAT thousands of subscribers share one public IP. IP binding
+**blocks nothing against another user behind that NAT.**
 
-즉 IP 바인딩은 오탐을 만들면서 방어도 부분적이다. 프리픽스로 묶어 오탐을 줄이면
-방어력은 더 내려간다. **정밀도와 오탐률은 같은 손잡이의 양쪽 끝**이고, 어느 쪽으로
-돌려도 다른 쪽이 나빠진다.
+That is, IP binding makes false positives while being partial in defense too. Group by prefix to reduce false
+positives and defense goes down further. **Precision and false-positive rate are the two ends of the same
+knob**, and turn it either way and the other side worsens.
 
-### 11.4.3 User-Agent 바인딩이 막는 것의 정확한 크기
+### 11.4.3 The exact size of what User-Agent binding blocks
 
-UA 는 제9장에서 본 Referer 와 같은 층, 곧 **클라이언트의 자기 신고 값**이다. 위조에
-아무 비용이 들지 않는다. 그러면 왜 넣는가.
+UA is the same layer as the Referer seen in Chapter 9, i.e., **a client self-reported value.** Forging it
+costs nothing. So why put it in?
 
-증표가 새는 경로를 보면 답이 나온다. URL 이 새는 자리(§11.9)에는 대개 UA 도 함께
-남는다 — 액세스 로그, 오류 보고, 프록시 기록. 그러나 **URL 만 복사해 붙이는 경로**
-(채팅에 링크 공유, 주소창 복사)에는 UA 가 딸려 가지 않는다. 따라서 UA 바인딩이
-실제로 막는 것은 "다른 기기로 옮겨 붙이는 것"이 아니라 **"URL 만 대충 복사해 붙이는
-것"** 이다. 값은 있지만 작고, 브라우저 업데이트마다 정상 사용자를 끊는 비용과 견줘야
-한다.
+Look at the paths the token leaks and the answer comes. Where the URL leaks (§11.9), UA usually remains too —
+the access log, error reports, proxy records. But **the path where only the URL is copied and pasted** (a link
+shared in chat, an address-bar copy) does not carry the UA along. Therefore what UA binding actually blocks is
+not "moving it to another device" but **"casually copying and pasting just the URL."** The value is there but
+small, and must be weighed against the cost of cutting off normal users on every browser update.
 
-### 11.4.4 정규화 — 제7장의 문제가 접근 통제 문제가 되는 지점
+### 11.4.4 Normalization — where Chapter 7's problem becomes an access-control problem
 
-서명 대상은 바이트열이므로, 같은 URL 을 두고도 **어떤 문자열을 만들 것인가에 합의가
-필요하다.**
+The signed payload is a byte sequence, so even for the same URL there **must be agreement on which string to
+make.**
 
-| 결정해야 할 것 | 어긋나면 |
+| What must be decided | If it goes off |
 |---|---|
-| 경로를 퍼센트 인코딩한 상태로 서명하는가, 디코딩한 상태로 하는가 | 한글·공백이 든 경로에서 정상 URL 이 거부된다 |
-| 쿼리 파라미터를 정렬하는가, 온 순서대로 두는가 | 파라미터 순서만 바꿔도 서명이 어긋난다 |
-| 호스트 대소문자·기본 포트를 어떻게 다루는가 | 같은 자원인데 서명이 달라진다 |
-| `//`·`.`·`..` 같은 경로 세그먼트를 접는가 | ★ **두 개의 다른 URL 이 같은 문자열로 정규화된다** |
+| sign the path percent-encoded or decoded | a normal URL is rejected on a path with Korean·space |
+| sort the query parameters or leave them in arrival order | the signature goes off just by changing parameter order |
+| how to handle host case·default port | the signature differs on the same resource |
+| fold path segments like `//`·`.`·`..` | ★ **two different URLs normalize to the same string** |
 
-앞의 셋은 가용성 사고를 낸다 — 정상 요청이 거부된다. 마지막 하나는 보안 사고를 낸다.
-서로 다른 자원을 가리키는 두 URL 이 같은 서명 대상으로 접히면, **한 증표가 두 자원을
-연다.** 제7장에서 본 `%20` 과 `%2520` 의 비멱등성이 여기서는 "정규화 시점과 검증
-시점이 어긋나면 그대로 취약점"이라는 형태로 되돌아온다.
+The first three cause availability incidents — a normal request is rejected. The last one causes a security
+incident. Fold two URLs pointing at different resources into the same signed payload and **one token opens two
+resources.** The non-idempotency of `%20` and `%2520` seen in Chapter 7 returns here in the form "when the
+normalization time and the verification time are misaligned, that itself is a vulnerability."
 
-원칙은 제7장과 같다 — **정규화는 경계에서 한 번만, 그리고 서명하는 쪽과 검증하는 쪽이
-같은 코드를 쓴다.**
+The principle is the same as Chapter 7 — **normalize once at the boundary, and the signing side and the
+verifying side use the same code.**
 
 ---
 
-## 11.5 원리 — MD5 를 쓴다는 것, 그리고 HMAC 이어야 하는 이유
+## 11.5 The principle — using MD5, and why it must be HMAC
 
-먼저 이 절의 경계를 분명히 해 둔다.
+First, make this section's boundary clear.
 
-> 이 저장소는 서명을 **만들지도 검증하지도 않는다.** 관측한 것은 파라미터 이름이
-> `md5` 라는 사실뿐이고, 이름이 알고리즘이나 구성을 보증하지는 않는다. 아래 논의는
-> **"만약 이 구성이라면 무엇이 무너지는가"의 설계 논의**이지 특정 서비스에 대한
-> 진단이 아니며, 어떤 서명을 위조하는 절차도 다루지 않는다.
+> This repository **neither makes nor verifies** the signature. What was observed is only the fact that the
+> parameter name is `md5`, and a name does not guarantee the algorithm or the construction. The discussion
+> below is a **design discussion of "if it is this construction, what collapses,"** not a diagnosis of a
+> specific service, and covers no procedure for forging any signature.
 
-### 11.5.1 용어
+### 11.5.1 Terms
 
-> **용어** — **MAC(Message Authentication Code, 메시지 인증 코드)**: 비밀 키를 아는
-> 쪽만 만들 수 있고 같은 키를 아는 쪽이 검증할 수 있는 짧은 태그. 메시지의 **무결성**과
-> **출처**를 함께 보증한다. 서명 URL 의 `md5=` 자리에 들어가야 하는 것이 이것이다.
+> **Term** — **MAC (Message Authentication Code)**: a short tag that only a party knowing the secret key can
+> make and a party knowing the same key can verify. It guarantees the message's **integrity** and **origin**
+> together. It is what must go in the `md5=` slot of a signed URL.
 
-> **용어** — **Merkle–Damgård 구성**: 메시지를 고정 크기 블록으로 나눠 압축 함수를
-> 되풀이 적용하고 **마지막 내부 상태를 그대로 출력**하는 해시 구성. MD5·SHA-1·SHA-2 가
-> 이 구조다. 출력이 곧 내부 상태이므로 **이어서 계산할 수 있다.**
+> **Term** — **Merkle–Damgård construction**: a hash construction that splits the message into fixed-size
+> blocks, applies a compression function repeatedly, and **outputs the last internal state as is.** MD5·SHA-1·
+> SHA-2 are this structure. Since the output is the internal state, **you can continue the computation.**
 
-> **용어** — **길이 확장 공격(length extension attack)**: `H(M)` 과 `len(M)` 만 알면
-> `M` 의 내용을 몰라도 `H(M ‖ pad ‖ M′)` 을 계산할 수 있는 성질을 이용하는 공격.
-> Merkle–Damgård 구성 해시에서 성립한다.
+> **Term** — **length extension attack**: an attack exploiting the property that knowing only `H(M)` and
+> `len(M)` lets you compute `H(M ‖ pad ‖ M′)` without knowing `M`'s content. It holds on Merkle–Damgård-
+> construction hashes.
 
-> **용어** — **충돌 저항성(collision resistance)**: 같은 해시값을 갖는 서로 다른 두
-> 입력을 찾기 어려운 성질. MD5 에서는 2004년 이후 실용적으로 깨져 있다.
+> **Term** — **collision resistance**: the property that it is hard to find two different inputs with the same
+> hash value. It has been practically broken for MD5 since 2004.
 
-### 11.5.2 세 가지 구성
+### 11.5.2 Three constructions
 
-![같은 해시 함수로 만든 세 가지 서명 구성의 비교](/images/lecture/hls-recon/11-mac-constructions.svg)
+![A comparison of three signature constructions made with the same hash function](/images/lecture/hls-recon/11-mac-constructions.svg)
 
-*그림 11-2 — 같은 해시 함수, 세 가지 구성 — 안전성을 무엇에 의존하는가*
+*Figure 11-2 — the same hash function, three constructions — on what does the security depend*
 
-**① 비밀을 앞에 붙인 해시 — `md5(K ‖ 경로 ‖ 만료)`**
+**① a hash with the secret prepended — `md5(K ‖ path ‖ expiry)`**
 
-가장 자연스러워 보이는 구성이고, 가장 나쁘다. 공격자는 `K` 를 모르지만 정상 링크
-하나로 `H(K ‖ M)` 을 손에 넣는다. Merkle–Damgård 에서 그 값은 **해시 내부 상태
-그 자체**이므로, 거기서부터 계산을 이어 `H(K ‖ M ‖ pad ‖ M′)` 을 만들 수 있다.
-**키를 모르는 채로 새 서명이 만들어진다.**
+The most natural-looking construction, and the worst. The attacker does not know `K` but gets `H(K ‖ M)` from
+one normal link. In Merkle–Damgård that value is **the hash internal state itself**, so continuing the
+computation from there you can make `H(K ‖ M ‖ pad ‖ M′)`. **A new signature is made without knowing the key.**
 
-실제로 악용되려면 세 조건이 겹쳐야 한다.
+For this to be actually exploited, three conditions must overlap.
 
-| 조건 | 내용 |
+| Condition | Content |
 |---|---|
-| (a) | 서명 대상의 조립 규칙이 알려져 있고, 키 길이를 추측할 수 있다 |
-| (b) | 덧붙는 패딩 바이트가 URL 로 표현되어 서버의 정규화를 통과한다 |
-| (c) | 덧붙인 꼬리가 서버에게 의미 있는 값이다 (예: 뒤에 온 파라미터가 이긴다) |
+| (a) | the signed-payload assembly rule is known, and the key length can be guessed |
+| (b) | the appended padding bytes are representable as a URL and pass the server's normalization |
+| (c) | the appended tail is a value meaningful to the server (e.g., a later parameter wins) |
 
-조건부다. 그러나 **조건이 맞는지 매번 검토하는 것보다 구성을 바꾸는 편이 훨씬 싸다.**
-그리고 이 구성이 실제 웹 API 에서 뚫린 공개 보고가 존재한다(2009년, API 서명 위조).
-이 교재는 그 보고를 재현하지 않았고 인용에 그친다.
+Conditional. But **changing the construction is much cheaper than reviewing whether the conditions match each
+time.** And a public report of this construction being pierced on a real web API exists (2009, API signature
+forgery). This course did not reproduce that report and only cites it.
 
-**② 비밀을 뒤에 붙인 해시 — `md5(경로 ‖ 만료 ‖ K)`**
+**② a hash with the secret appended — `md5(path ‖ expiry ‖ K)`**
 
-길이 확장은 막힌다 — 끝에 키가 있으니 이어 붙일 수 없다. 대신 안전성이 통째로
-**해시의 충돌 저항성**에 걸린다. `M₁ ≠ M₂` 이면서 `H(M₁) = H(M₂)` 인 쌍을 찾으면
-그 시점의 내부 상태가 같으므로, 뒤에 무엇이 붙든 결과가 같다. 즉
+Length extension is blocked — with the key at the end you cannot append. Instead the security hangs entirely
+on **the hash's collision resistance.** Find a pair with `M₁ ≠ M₂` while `H(M₁) = H(M₂)` and the internal
+state at that point is the same, so whatever is appended, the result is the same. That is,
 
 ```
-H(M₁) = H(M₂)   ⟹   H(M₁ ‖ K) = H(M₂ ‖ K)      (K 를 몰라도)
+H(M₁) = H(M₂)   ⟹   H(M₁ ‖ K) = H(M₂ ‖ K)      (without knowing K)
 ```
 
-MD5 의 충돌은 실용적으로 만들어진다. 따라서 ②는 MD5 위에서는 성립하지 않는 구성이다.
+MD5's collisions are practically producible. Therefore ② is a construction that does not hold on MD5.
 
-여기에 한 겹이 더 있다. 충돌은 **공격자가 두 메시지를 모두 고를 수 있을 때** 쓸모가
-있다. 서명 대상이 순수하게 서버가 정한 경로뿐이라면 이용이 어렵고, 사용자 업로드
-파일 이름이 경로에 들어가는 구성이라면 쉬워진다. 다시 조건부다 — 그리고 제15장에서
-이름 붙인 그 상태다. **조건이 맞지 않아서 안전한 것은 안전이 아니라 우연한 방어**이고,
-조건은 다음 릴리스에 바뀐다.
+There is one more layer. A collision is useful **when the attacker can choose both messages.** If the signed
+payload is purely a server-set path it is hard to exploit, and if it is a construction where a user-uploaded
+filename goes into the path it becomes easy. Conditional again — and that is the state named in Chapter 15.
+**Being safe because the conditions do not match is not safety but an accidental defense**, and the conditions
+change in the next release.
 
 **③ HMAC — `HMAC(K, M) = H( (K ⊕ opad) ‖ H( (K ⊕ ipad) ‖ M ) )`**
 
-표준 구성(RFC 2104)이다. 안쪽 해시의 출력을 다시 키와 함께 해시하므로 길이 확장이
-성립하지 않는다. 더 중요한 것은 안전성이 무엇에 걸려 있는가다.
+The standard construction (RFC 2104). It hashes the inner hash's output again with the key, so length
+extension does not hold. More important is on what the security hangs.
 
-> **용어** — **유사난수함수(PRF, pseudorandom function)**: 키를 모르는 관찰자에게는
-> 완전한 무작위 함수와 구별되지 않는 함수.
+> **Term** — **PRF (pseudorandom function)**: a function indistinguishable from a fully random function to an
+> observer who does not know the key.
 
-HMAC 의 안전성 증명은 **내부 압축 함수가 PRF 라는 가정**에 의존하고, **해시 전체의
-충돌 저항성을 요구하지 않는다.** 그래서 MD5 의 충돌이 실용화된 뒤에도 HMAC-MD5 에
-대한 실용적 위조 공격은 알려지지 않았다. 그렇다고 새 설계에서 MD5 를 고를 이유는
-없다 — HMAC 은 해시를 SHA-256 으로 바꿔도 **구성을 그대로 둔 채** 강해진다.
+HMAC's security proof depends on **the assumption that the inner compression function is a PRF**, and **does
+not require the whole hash's collision resistance.** So even after MD5's collisions were practical, no
+practical forgery attack on HMAC-MD5 is known. That said, there is no reason to choose MD5 in a new design —
+HMAC gets stronger by swapping the hash for SHA-256 **while keeping the construction as is.**
 
-### 11.5.3 이 절의 요점은 알고리즘이 아니다
+### 11.5.3 This section's point is not the algorithm
 
-| 물음 | 답 |
+| Question | Answer |
 |---|---|
-| "MD5 를 쓰면 안 되나?" | 답할 수 없는 질문이다. **어떻게 쓰는가**가 정해지지 않았다 |
-| `md5(K‖M)` | 길이 확장으로 무너진다 — 해시를 SHA-256 으로 바꿔도 **똑같이 무너진다** |
-| `md5(M‖K)` | MD5 의 충돌로 무너진다 — 해시를 바꾸면 나아진다 |
-| `HMAC-MD5` | 실용적 위조가 알려지지 않았다 — 그래도 권하지 않는다 |
-| `HMAC-SHA256` | 현재의 표준 답 |
+| "You shouldn't use MD5?" | an unanswerable question. **how it is used** is not decided |
+| `md5(K‖M)` | collapses by length extension — **collapses the same** even swapping the hash for SHA-256 |
+| `md5(M‖K)` | collapses by MD5's collisions — improves by swapping the hash |
+| `HMAC-MD5` | no practical forgery is known — still not recommended |
+| `HMAC-SHA256` | the current standard answer |
 
-두 번째 행이 이 절의 정점이다. **키를 붙인 해시는 MAC 이 아니다.** 알고리즘을 강한
-것으로 바꿔도 구성이 틀렸으면 그대로 틀려 있다. **구성이 알고리즘보다 먼저다.**
+The second row is this section's peak. **A hash with the key attached is not a MAC.** Swap the algorithm for
+a strong one and if the construction is wrong it stays wrong. **The construction comes before the algorithm.**
 
-### 11.5.4 옳은 구성을 골라도 새어 나가는 자리
+### 11.5.4 The place that leaks even with the right construction chosen
 
-> **용어** — **타이밍 공격(timing attack)**: 연산에 걸린 시간의 차이에서 비밀을
-> 복원하는 부채널 공격.
+> **Term** — **timing attack**: a side-channel attack that recovers a secret from differences in the time an
+> operation took.
 
-서명 검증을 일반 문자열 비교로 하면 대개 **첫 불일치 바이트에서 반환**한다. 그 시간
-차이를 관측하면 한 바이트씩 맞춰 나갈 수 있다. 그래서 MAC 비교는 길이와 무관하게 같은
-시간이 걸리는 **상수 시간 비교**로 해야 한다(파이썬이라면 `hmac.compare_digest`).
+Do the signature verification with an ordinary string comparison and it usually **returns at the first
+mismatching byte.** Observe that time difference and you can match a byte at a time. So a MAC comparison must
+be done as a **constant-time comparison** that takes the same time regardless of length (`hmac.compare_digest`
+in Python).
 
-원격에서 이 차이를 재는 것은 네트워크 잡음 때문에 어렵고, 실제 공격 난이도는 상황에
-크게 의존한다. 그러나 **한 줄로 없앨 수 있는 위험을 남겨 둘 이유가 없다**는 것이
-실무의 판단이다. 알고리즘과 구성을 옳게 고르고 비교 한 줄에서 새는 것은 흔한 실패다.
+Measuring this difference remotely is hard due to network noise, and the actual attack difficulty depends
+greatly on the situation. But **there is no reason to leave a risk removable in one line** is the practical
+judgment. Choosing the algorithm and construction correctly and leaking in one comparison line is a common
+failure.
 
-### 11.5.5 만료는 키 회전의 상한이기도 하다
+### 11.5.5 Expiry is also the upper bound of key rotation
 
-비밀 키는 언젠가 바꿔야 한다. 그런데 키를 바꾸면 그 키로 서명한 URL 이 전부 죽는다.
-서명 URL 시스템은 대개 키 식별자(key ID)를 함께 실어 여러 키를 동시에 유효하게 두고,
-옛 키를 일정 기간 남긴 뒤 폐기한다.
+A secret key must be changed someday. But change the key and all URLs signed with it die. A signed-URL system
+usually carries a key identifier (key ID) to keep several keys valid at once, leaves the old key for a period,
+then discards it.
 
-**그 기간의 하한을 정해 주는 것이 최대 만료 시간이다.** 만료가 1시간이면 옛 키는
-1시간만 남기면 되고, 만료가 7일이면 7일 동안 두 키가 함께 유효하다. 만료를 길게
-잡는 결정은 **유출 창뿐 아니라 키 회전 주기의 하한까지 함께 늘린다.**
+**What sets the lower bound of that period is the maximum expiry time.** If expiry is 1 hour, the old key
+need only be left 1 hour, and if expiry is 7 days, two keys are both valid for 7 days. The decision to set a
+long expiry lengthens **not only the leak window but the lower bound of the key-rotation period too.**
 
 ---
 
-## 11.6 코드 — 지연 해석(late resolution)
+## 11.6 The code — late resolution
 
-만료가 강제하는 구현 제약이 이 저장소에 어떤 형태로 남았는지를 본다.
+We see in what form the implementation constraint expiry forces remained in this repository.
 
-### 11.6.1 데이터 구조가 이미 그 결정을 말한다
+### 11.6.1 The data structure already states that decision
 
 ```python
 # series.py:81-87
 @dataclass
 class Play:
-    """회차 하나의 재생 정보. 서명 링크는 만료되므로 받기 직전에 만든다."""
+    """One episode's playback info. the signed link expires, so make it just before receiving."""
 
     playlist_url: str
-    name: str  # 확장자를 뗀 파일 이름 — 사이트가 정한 정식 이름
+    name: str  # the filename without the extension — the official name the site set
     referer: str
 ```
 
-`Episode`([`series.py:60-66`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L60-L66))와 `Play` 가 **별개의 자료형으로 나뉘어 있다**는 것이
-설계의 핵심이다.
+That `Episode` ([`series.py:60-66`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L60-L66)) and `Play` are **split into separate data types** is the crux of the design.
 
-| 자료형 | 담는 것 | 수명 |
+| Data type | What it holds | Lifetime |
 |---|---|---|
-| `Episode` | 회차 번호·제목·**페이지 주소** | 사실상 무제한 — 사이트가 구조를 바꾸기 전까지 |
-| `Play` | **서명된 재생 주소**·파일 이름·Referer | 만료까지 |
+| `Episode` | episode number·title·**page address** | effectively unlimited — until the site changes its structure |
+| `Play` | **signed playback address**·filename·Referer | until expiry |
 
-이렇게 나누지 않고 하나의 `Episode` 안에 `playlist_url` 을 두었다면, 목록을 만드는
-순간 27개의 서명 URL 이 함께 만들어졌을 것이다. **자료형의 경계가 곧 수명의 경계**이고,
-"오래 사는 것"과 "곧 죽는 것"을 같은 상자에 담지 않는 것이 이 구조가 하는 일이다.
+Had it not been split and `playlist_url` been placed inside one `Episode`, the moment the list is made, 27
+signed URLs would have been made together. **The boundary of the data type is the boundary of the lifetime**,
+and not putting "what lives long" and "what dies soon" in the same box is what this structure does.
 
-### 11.6.2 해석 함수 — 지금 시점에
+### 11.6.2 The resolution function — at the present moment
 
 ```python
 # series.py:266-278
 def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play:
-    """회차 하나의 재생 소스를 지금 시점에 해석한다.
+    """Resolve one episode's playback source at the present moment.
 
-    링크에 만료 시각이 박혀 있으므로 미리 모아두지 않는다 — 받기 직전에 부른다.
+    The link has an expiry time embedded, so do not gather in advance — call it just before receiving.
     """
     page_url = episode.page_url
     page = fetcher.get_text(page_url, _from(_origin(page_url) + "/"))
@@ -462,12 +462,12 @@ def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play
     origin = _origin(player)
     video_hash = _PLAYER_RE.match(player).group("hash")
 
-    # 플레이어 HTML 은 설정만 들고 있다. 실제 재생 주소는 아래 XHR 이 발급한다.
+    # the player HTML holds only settings. the actual playback address is issued by the XHR below.
     settings = unpack(fetcher.get_text(player, _from(page_url)))
 ```
 
-주목할 것은 **비용**이다. `resolve()` 한 번이 최소 세 번의 왕복을 만든다 — 회차
-페이지, 플레이어 페이지, 그리고 발급 XHR.
+What to note is the **cost.** One `resolve()` makes at least three round trips — the episode page, the player
+page, and the issuing XHR.
 
 ```python
 # series.py:280-284
@@ -482,22 +482,22 @@ def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play
 # series.py:296-300
     link = data.get("securedLink") or data.get("videoSource") or ""
     if not link:
-        raise ValueError(f"응답에 재생 주소가 없다: {episode.title}\n  {body[:200]}")
+        raise ValueError(f"no playback address in the response: {episode.title}\n  {body[:200]}")
 
     return Play(playlist_url=link, name=_name_of(settings, episode, fallback_width), referer=origin + "/")
 ```
 
-응답 필드 이름이 `securedLink` 다. 발급하는 쪽도 이것을 "보호된 링크"로 부르고 있다.
+The response field name is `securedLink`. The issuing side too calls it a "secured link."
 
-지연 해석은 공짜가 아니다. 27화면 이 세 왕복이 27번 반복된다. **만료가 요구한 것은
-"늦게 해석하라"이고, 그 대가는 요청 수의 증가**다. 각 단계에 다른 Referer 를 실어야
-한다는 제9장의 제약도 여기서 그대로 반복된다([`series.py:99-109`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L99-L109)).
+Late resolution is not free. For 27 episodes these three round trips repeat 27 times. **What expiry demanded
+was "resolve late," and the price is an increase in the number of requests.** Chapter 9's constraint that each
+stage must carry a different Referer repeats here too ([`series.py:99-109`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L99-L109)).
 
-![미리 모으기와 지연 해석의 시간축 비교](/images/lecture/hls-recon/11-late-resolution.svg)
+![A timeline comparison of gathering in advance and late resolution](/images/lecture/hls-recon/11-late-resolution.svg)
 
-*그림 11-3 — 시간축은 왼쪽에서 오른쪽 — 27화를 순서대로 처리한다*
+*Figure 11-3 — the timeline runs left to right — process 27 episodes in order*
 
-### 11.6.3 호출 지점 — 순서가 만드는 두 번째 이득
+### 11.6.3 The call site — a second gain the order makes
 
 ```python
 # cli.py:868-870
@@ -508,50 +508,50 @@ def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play
 
 ```python
 # cli.py:872-889
-        # 재생 소스를 발급받기 전에 재고부터 본다 — 이미 온전히 받아둔 회차라면
-        # 여기서 끝나고 요청이 한 건도 나가지 않는다.
+        # look at inventory before issuing a playback source — if the episode is already fully received,
+        # it ends here and not a single request goes out.
         have = stock.get(ep.number)
         stale = bool(have and not have.ok)
         if have and have.ok and not args.overwrite:
-            _eprint(f"  · 이미 있다 — 건너뛴다 ({have.video.name}). 다시 받으려면 --overwrite")
-            done.append((ep, "건너뜀"))
+            _eprint(f"  · already have it — skipping ({have.video.name}). to re-receive use --overwrite")
+            done.append((ep, "skipped"))
             continue
         if stale and not args.overwrite:
-            _eprint(f"  · 다시 받는다 — {have.flaw} ({have.video.name})")
+            _eprint(f"  · re-receiving — {have.flaw} ({have.video.name})")
 
         try:
             play = series.resolve(ep, pages, found.width)
         except (ValueError, RuntimeError) as e:
-            _eprint(f"  ✗ 재생 소스 해석 실패 — 건너뛴다\n    {e}")
-            done.append((ep, "해석실패"))
+            _eprint(f"  ✗ playback-source resolution failed — skipping\n    {e}")
+            done.append((ep, "resolve-failed"))
             failed += 1
             continue
 ```
 
-재고 확인(`stock.get`)이 `resolve()` **앞**에 있다. 이미 온전히 받아 둔 회차에는
-발급 요청이 한 건도 나가지 않는다. 미리 모으는 방식이었다면 이 절약이 불가능하다 —
-목록을 만드는 시점에는 아직 재고를 대조하지 않았기 때문이다.
+The inventory check (`stock.get`) is **before** `resolve()`. For an episode already fully received, not a
+single issuing request goes out. With the gather-in-advance way this saving is impossible — at list-making
+time the inventory has not yet been compared.
 
-**만료 때문에 강제된 구조가 부수적으로 요청 수를 줄였다.** 제약이 설계를 개선한
-사례이며, 이 저장소에서 반복해 나타나는 형태다.
+**A structure forced by expiry incidentally reduced the number of requests.** A case where a constraint
+improved the design, a form that appears repeatedly in this repository.
 
-같은 원칙이 `--probe-only` 에도 적혀 있다.
+The same principle is written in `--probe-only` too.
 
 ```python
 # cli.py:846-848
     if args.probe_only:
-        # 시리즈에서는 회차마다 재생 소스를 따로 발급받아야 한다. 조사만 하겠다는
-        # 요청에 27번의 발급 요청을 보내지 않는다 — 목록까지만 보여준다.
+        # in a series each episode must be issued a playback source separately. do not send 27 issuing
+        # requests to a request that only wants to probe — show only up to the list.
 ```
 
-발급이 비싸다는 사실이 기능의 경계를 정하고 있다. "조사"와 "수신"이 나뉘는 이유가
-성능이 아니라 **증표를 필요 없이 만들지 않는다**는 원칙이다.
+The fact that issuing is expensive is deciding the feature's boundary. The reason "probe" and "receive" are
+split is not performance but the principle **do not make a token unnecessarily.**
 
-발급받은 `Play` 는 그 회차의 헤더 구성에 곧바로 쓰인다.
+The issued `Play` is used immediately in that episode's header config.
 
 ```python
 # cli.py:905-908
-        # 플레이어가 알려준 origin 을 Referer 로 쓴다. 사용자 지정이 있으면 그대로 둔다.
+        # use the origin the player told us as the Referer. if the user specified one, leave it.
         ep_headers = dict(given)
         ep_headers.setdefault("Referer", play.referer)
         ep_headers.setdefault("Origin", play.referer.rstrip("/"))
@@ -563,10 +563,10 @@ def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play
             rep = _run_one(ep_args, play.playlist_url, out, ep_headers, report_path)
 ```
 
-즉 서명 URL(능력)과 Referer(제9·10장의 자기 신고 통제)가 **같은 회차 안에서 함께**
-쓰인다. 두 통제는 배타적이지 않고 층으로 쌓인다.
+That is, the signed URL (a capability) and the Referer (Chapters 9·10's self-report control) are used
+**together within the same episode.** The two controls are not exclusive but stacked in layers.
 
-### 11.6.4 대기가 어디에 놓이는가
+### 11.6.4 Where the wait is placed
 
 ```python
 # cli.py:933-934
@@ -580,77 +580,77 @@ def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play
         "--delay",
         type=float,
         default=1.0,
-        help="회차 사이 대기 초 (기본 1.0) — 연속 요청으로 차단되지 않게 한다",
+        help="seconds to wait between episodes (default 1.0) — to avoid being blocked by consecutive requests",
     )
 ```
 
-이 `sleep` 은 반복의 **끝**에 있다. 따라서 회차 `k` 를 처리하는 한 바퀴의 순서는
-다음과 같다.
+This `sleep` is at the **end** of the loop. So the order of one lap processing episode `k` is as follows.
 
-| 순서 | 하는 일 | 증표의 나이 |
+| Order | What it does | The token's age |
 |---|---|---|
-| 1 | `resolve(k)` — 증표 발급 | 0 |
-| 2 | 회차 `k` 수신·검증 | 0 → `T` |
-| 3 | `sleep(delay)` | 회차 `k` 는 이미 끝났다 |
-| 4 | 다음 바퀴로 — `resolve(k+1)` | 다시 0 |
+| 1 | `resolve(k)` — issue the token | 0 |
+| 2 | receive·verify episode `k` | 0 → `T` |
+| 3 | `sleep(delay)` | episode `k` is already done |
+| 4 | to the next lap — `resolve(k+1)` | 0 again |
 
-대기가 `resolve()` **뒤**가 아니라 **다음 바퀴의 앞**에 놓이므로, 발급된 증표가 대기
-시간만큼 늙지 않는다. 순서가 반대였다면(발급 → 대기 → 사용) 대기 초가 그대로 만료
-예산에서 빠진다. **같은 `sleep` 한 줄이 어디에 놓이느냐가 만료 예산을 결정한다** —
-코드 순서를 읽어 확인한 사실이고, 만료 값을 모르므로 그 여유가 실제로 얼마나 되는지는
-이 저장소로는 잴 수 없다(§11.10).
+Because the wait is placed not **after** `resolve()` but **before the next lap**, the issued token does not
+age by the wait time. Had the order been reversed (issue → wait → use), the wait seconds would come straight
+out of the expiry budget. **Where the same one `sleep` line is placed determines the expiry budget** — a fact
+confirmed by reading the code order, and since the expiry value is unknown, how much slack that actually is
+cannot be measured with this repository (§11.10).
 
-### 11.6.5 만료는 전용 상태 코드를 갖지 않는다
+### 11.6.5 Expiry has no dedicated status code
 
-만료가 실패로 나타나는 형태는 하나가 아니다.
+The form expiry appears as a failure is not one.
 
-| 만료가 나타나는 형태 | 코드가 보는 것 | 걸리는 자리 |
+| The form expiry appears | What the code sees | Where it is caught |
 |---|---|---|
-| `403` · `404` | `FetchResult.ok = False`. 4xx 이므로 재시도 없이 중단 | [`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201) |
-| `401` | 위와 같음 | 위와 같음 |
-| `200` + HTML 오류 페이지 | 선두 바이트가 `<!DO…` → `sniff()` 가 `unknown` | [`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37), [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464) |
-| 세그먼트가 하나도 오지 않음 | 종료 메시지가 만료 가능성을 명시 | [`cli.py:471`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L471) |
-| 플레이리스트 자체가 거부 | 진단 문구가 만료를 후보로 안내 | [`cli.py:97-100`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L97-L100) |
+| `403` · `404` | `FetchResult.ok = False`. being 4xx, halt without retry | [`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201) |
+| `401` | as above | as above |
+| `200` + HTML error page | the leading bytes are `<!DO…` → `sniff()` is `unknown` | [`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37), [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464) |
+| not a single segment arrives | the exit message states expiry as a possibility | [`cli.py:471`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L471) |
+| the playlist itself is rejected | the diagnostic message guides expiry as a candidate | [`cli.py:97-100`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L97-L100) |
 
-세 번째 행이 이 교재의 여러 장을 잇는다. [`tsanalyze.py:23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L23) 의 주석은 이 상황을 직접
-지목한다 — "HTTP 200 으로 응답했다고 미디어가 온 것은 아니다. 토큰이 만료된 CDN 이…".
-제14장에서 본 **선두 바이트 판별**이 위장 세그먼트를 정상 처리하는 동시에 **만료 오류
-페이지를 잡는 검사**이기도 하다. 회귀 테스트는 이 상황을 결함 주입 4번으로 고정해
-두었고(`tests/run.sh:141` — "만료 토큰에 오류 페이지를 200 으로 돌려주는 CDN 재현"),
-판정 쪽 주석도 같은 이유를 적어 둔다([`report.py:198`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L198)).
+The third row joins several chapters of this course. [`tsanalyze.py:23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L23)'s comment points at this situation
+directly — "responding with HTTP 200 does not mean media arrived. a CDN with an expired token…". The
+**leading-byte determination** seen in Chapter 14 is at once a check that handles a disguised segment normally
+and **a check that catches an expiry error page.** The regression test fixed this situation as fault-injection
+4 (`tests/run.sh:141` — "reproduce a CDN returning an error page as 200 for an expired token"), and the
+verdict-side comment writes the same reason ([`report.py:198`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L198)).
 
-**하나의 검사가 서로 다른 원인 둘을 함께 잡는다.** 그리고 그 검사가 없으면 만료 오류
-페이지가 세그먼트로 저장되고 "전량 수신 성공"이 보고된다.
+**One check catches two different causes together.** And without that check, an expiry error page is saved as
+a segment and "full receipt success" is reported.
 
-### 11.6.6 재시도는 만료를 고치지 못한다
+### 11.6.6 Retry cannot fix expiry
 
 ```python
 # fetch.py:199-201
-                # 4xx 는 재시도해도 결과가 같다 (401/403/404 = 토큰 만료·핫링크 차단)
+                # 4xx gives the same result on retry (401/403/404 = token expiry·hotlink block)
                 if 400 <= e.code < 500 and e.code not in (408, 429):
                     break
 ```
 
-주석이 만료를 명시적으로 이 분기의 근거로 든다. 제10장에서 세운 원칙이 그대로 적용된다.
+The comment explicitly cites expiry as the basis for this branch. The principle set in Chapter 10 applies as
+is.
 
-> **재시도가 뜻을 가지는 조건은 횟수가 아니라 "요청이 달라졌는가"다.**
+> **The condition under which a retry has meaning is not the count but "did the request change."**
 
-만료된 서명 URL 을 다시 보내는 것은 **같은 요청**이다. 백오프를 아무리 늘려도 나아지지
-않고, 오히려 늘릴수록 나빠진다 — 시간이 갈수록 만료에서 더 멀어지기 때문이다.
-달라지려면 **재해석**해야 한다. 즉 만료에 대한 올바른 대응은 재시도 계층이 아니라
-해석 계층에 있다. 이 저장소는 그 자동 재해석을 구현하지 않았다(§11.10).
+Resending an expired signed URL is **the same request.** However much you increase the backoff it does not
+improve, and rather the more you increase it the worse — because the more time passes the farther from expiry
+it gets. To change, you must **re-resolve.** That is, the correct response to expiry is in the resolution layer,
+not the retry layer. This repository did not implement that auto-re-resolution (§11.10).
 
 ---
 
-## 11.7 코드 — 지연 해석이 남기는 것
+## 11.7 The code — what late resolution leaves
 
-회차 단위로 늦추면 §11.1 의 문제는 사라진다. 그러나 만료 문제 자체가 사라지지는
-않는다. **입자(granularity)** 가 달라졌을 뿐이다.
+Delay per episode and §11.1's problem disappears. But the expiry problem itself does not disappear. Only the
+**granularity** changed.
 
-### 11.7.1 한 회차 안에서는 여전히 스냅숏이다
+### 11.7.1 Within one episode it is still a snapshot
 
-세그먼트 수신 경로를 보면 플레이리스트가 **한 번** 파싱되고, 모든 세그먼트 URI 가 그
-스냅숏에서 나오며, 병렬 수신이 한 번의 호출로 끝난다.
+Look at the segment-receipt path and the playlist is parsed **once**, all segment URIs come from that snapshot,
+and parallel receipt ends in one call.
 
 ```python
 # cli.py:414
@@ -667,234 +667,235 @@ def resolve(episode: Episode, fetcher: Fetcher, fallback_width: int = 2) -> Play
     results = fetcher.get_many(items, jobs=args.jobs, on_done=tick)
 ```
 
-세그먼트 URL 도 서명돼 있고 그 만료가 한 회차 소요보다 짧다면, §11.1 의 실패가
-**회차 규모로 축소돼 그대로 재현된다** — 앞쪽 세그먼트는 오고 뒤쪽은 `403` 이다.
+If the segment URLs are also signed and their expiry is shorter than one episode's duration, §11.1's failure
+**reproduces as is, shrunk to episode scale** — the front segments come and the rear ones are `403`.
 
-### 11.7.2 해석 입자와 만료 내성
+### 11.7.2 Resolution granularity and expiry tolerance
 
-| 해석 입자 | 증표가 늙는 최대 시간 | 요청 수 | 이 저장소 |
+| Resolution granularity | Max time the token ages | Number of requests | This repository |
 |---|---|---|---|
-| 시리즈 전체를 미리 | `(N−1)·T` | 최소 | 하지 않는다 |
-| **회차 직전** | 한 회차 소요 `T` | 회차당 3왕복 | **이것** |
-| 플레이리스트 갱신마다 | 갱신 주기 | 갱신마다 1왕복 | 하지 않는다 |
-| 세그먼트마다 | 한 세그먼트 소요 | 세그먼트마다 | 하지 않는다 |
+| the whole series in advance | `(N−1)·T` | minimal | does not do |
+| **just before each episode** | one episode's duration `T` | 3 round trips per episode | **this** |
+| on each playlist refresh | the refresh period | 1 round trip per refresh | does not do |
+| per segment | one segment's duration | per segment | does not do |
 
-**입자를 잘게 할수록 만료 내성이 오르고 요청 수가 는다.** 이 도구는 회차 단위에서
-멈췄다. 27화 규모에서는 옳은 선택이지만, 만료가 분 단위인 송출에서는 부족할 수 있다.
+**The finer the granularity the higher the expiry tolerance and the more requests.** This tool stopped at
+episode granularity. It is the correct choice at 27-episode scale, but may be insufficient on a delivery with
+minute-level expiry.
 
-라이브 HLS 플레이어는 같은 문제를 다른 자리에서 푼다 — 미디어 플레이리스트를
-주기적으로 다시 받는다(제2장의 ABR 논의). 그러면 세그먼트 URL 도 새로 서명된 것으로
-갱신된다. VOD 를 한 번에 받는 이 도구에는 그 갱신 지점이 구조적으로 없다.
+A live HLS player solves the same problem at a different spot — it re-fetches the media playlist periodically
+(Chapter 2's ABR discussion). Then the segment URLs are refreshed to newly signed ones too. This tool, which
+receives VOD at once, has no such refresh point structurally.
 
-이 실패를 이 저장소가 실제로 겪었다는 기록은 없다. **코드 구조에서 읽히는
-가능성**으로 적어 두고 §11.10 에서 다시 정직하게 표시한다.
+There is no record of this repository actually experiencing this failure. Recorded as a **possibility read from
+the code structure** and marked honestly again in §11.10.
 
 ---
 
-## 11.8 일반화 — 시간 제한 능력이 나타나는 곳
+## 11.8 Generalization — where a time-limited capability appears
 
-### 11.8.1 같은 구조의 목록
+### 11.8.1 The list of the same structure
 
-| 사례 | 증표의 형태 | 대략의 수명 | 재생 방지 |
+| Case | The token's form | Rough lifetime | Replay prevention |
 |---|---|---|---|
-| 객체 저장소 사전 서명 URL | 쿼리 스트링의 서명·만료 | 초 – 일 | **없음** — 만료뿐 |
-| CDN 토큰 인증 | 쿼리 또는 쿠키의 서명·만료 | 분 – 시간 | 없음 (선택적 IP 바인딩) |
-| 비밀번호 재설정 링크 | 경로의 임의 토큰 | 분 – 시간 | **있음** — 1회 사용 후 서버가 폐기 |
-| 매직 링크 로그인 | 같음 | 분 | **있음** |
-| OAuth 2.0 인가 코드 | 리디렉트 쿼리의 코드 | 초 – 분 | **있음** — 1회 교환 |
-| JWT 의 `exp` 클레임 | `Authorization` 헤더 | 분 – 시간 | 없음 — 만료 전 취소가 어렵다 |
-| Kerberos 티켓 | 프로토콜 메시지 | 시간 | 부분 — replay cache |
-| HLS `EXT-X-KEY` 의 키 URI | 플레이리스트 안의 URL | 세션 | 별도 통제 (제25장) |
+| object-storage presigned URL | signature·expiry in the query string | seconds – days | **none** — expiry only |
+| CDN token authentication | signature·expiry in the query or a cookie | minutes – hours | none (optional IP binding) |
+| password-reset link | an arbitrary token in the path | minutes – hours | **yes** — the server discards it after one use |
+| magic-link login | same | minutes | **yes** |
+| OAuth 2.0 authorization code | the code in the redirect query | seconds – minutes | **yes** — one exchange |
+| a JWT's `exp` claim | the `Authorization` header | minutes – hours | none — hard to cancel before expiry |
+| Kerberos ticket | a protocol message | hours | partial — replay cache |
+| the key URI of HLS `EXT-X-KEY` | a URL inside the playlist | session | a separate control (Chapter 25) |
 
-공통 구조는 셋이다.
+The common structure is three.
 
-1. **소지 = 행사.** 증표를 가진 것이 곧 권한이다.
-2. **만료.** 회수할 수 없으므로 스스로 죽어야 한다.
-3. **재생 방지의 유무는 "서버가 상태를 둘 의사가 있는가"로 갈린다.**
+1. **Possession = exercise.** Having the token is the permission.
+2. **Expiry.** Since it cannot be recalled, it must die on its own.
+3. **The presence of replay prevention splits on "does the server intend to keep state."**
 
-네 번째 열을 보면 규칙이 보인다. 재생 방지가 **있는** 것들(재설정 링크, 매직 링크,
-인가 코드)은 전부 **낮은 빈도의 인증 흐름**이다. 서버가 토큰 하나를 기억하는 비용을
-치를 수 있다. 재생 방지가 **없는** 것들(사전 서명 URL, CDN 토큰, JWT)은 전부
-**높은 빈도의 자원 접근**이다. 기억하는 비용을 치를 수 없다.
+Look at the fourth column and a rule appears. The ones that **have** replay prevention (reset link, magic
+link, authorization code) are all **low-frequency authentication flows.** The server can pay the cost of
+remembering one token. The ones that **lack** it (presigned URL, CDN token, JWT) are all **high-frequency
+resource access.** They cannot pay the cost of remembering.
 
-### 11.8.2 지연 해석이 강제되는 일반 조건
+### 11.8.2 The general condition that forces late resolution
 
-> **증표의 수명보다 그 증표를 쓰는 작업이 오래 걸리면, 증표는 쓰기 직전에 얻어야 한다.**
+> **If the job using a token takes longer than the token's lifetime, the token must be obtained just before
+> use.**
 
-이 조건은 스트리밍과 무관하게 어디서나 나타난다.
+This condition appears everywhere, unrelated to streaming.
 
-| 상황 | 미리 얻으면 깨지는 것 |
+| Situation | What breaks if obtained in advance |
 |---|---|
-| 대용량 파일 목록을 사전 서명 URL 로 한꺼번에 받기 | 목록 뒤쪽 |
-| DB 커넥션 풀에 임시 자격증명을 넣어 두기 | 오래 앉아 있던 커넥션 |
-| 긴 배치 작업이 시작 시각에 토큰을 한 번만 받기 | 배치의 후반부 |
-| 재시도 큐에 요청 객체를 헤더까지 통째로 넣기 | 지연 실행된 재시도 |
-| 서명 URL 을 캐시에 저장 | 적중 시점이 늦으면 **전부** |
+| receive a large file list all at once with presigned URLs | the rear of the list |
+| put temporary credentials in a DB connection pool | connections that sat long |
+| a long batch job receives a token only once at start | the batch's latter half |
+| put a request object whole, including headers, into a retry queue | a delayed-execution retry |
+| store a signed URL in a cache | **everything**, if the hit comes late |
 
-마지막 행이 특히 흔한 함정이다. **서명 URL 을 캐시하면 만료가 두 개가 된다** —
-캐시의 TTL 과 증표의 수명. 실효 수명은 둘 중 짧은 쪽인데, **캐시는 대개 자기 TTL 만
-안다.** 캐시 TTL 을 1시간으로, 증표 수명을 10분으로 잡아 두면 50분 동안 죽은 증표를
-성실히 돌려주는 캐시가 만들어진다.
+The last row is an especially common trap. **Cache a signed URL and there are two expiries** — the cache's TTL
+and the token's lifetime. The effective lifetime is the shorter of the two, but **the cache usually knows only
+its own TTL.** Set the cache TTL to 1 hour and the token lifetime to 10 minutes and a cache is made that
+faithfully returns a dead token for 50 minutes.
 
-### 11.8.3 이 원리의 반대 방향 — 증표를 오래 들고 있지 않는다
+### 11.8.3 The reverse of this principle — do not hold the token long
 
-지연 해석은 "늦게 얻는다"이지만, 같은 원리에 **"오래 들고 있지 않는다"** 는 짝이 있다.
-증표를 로그·설정 파일·전역 변수에 넣어 두는 것은 수명을 인위적으로 늘리는 일이다.
-증표의 수명은 발급자가 정하지만, **증표가 살아 있는 자리의 수는 소지자가 정한다.**
-이 저장소가 `Play` 를 회차 반복 안의 지역 변수로만 두는 것은 그 원칙의 최소 구현이다.
-다만 `--report` 를 주면 그 서명 URL 이 리포트 JSON 의 `source` 로 디스크에 남는다
-([`report.py:98`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L98), [`cli.py:645`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L645)).
+Late resolution is "obtain late," but the same principle has a pair, **"do not hold it long."** Putting a token
+in a log·config file·global variable is artificially extending its lifetime. The token's lifetime is set by the
+issuer, but **the number of places the token is alive is set by the holder.** That this repository keeps `Play`
+only as a local variable inside the episode loop is the minimum implementation of that principle. Only, give
+`--report` and that signed URL remains on disk as the report JSON's `source` ([`report.py:98`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L98), [`cli.py:645`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L645)).
 
 ---
 
-## 11.9 보안 — 재생 방지와 방어자 관점
+## 11.9 Security — replay prevention and the defender's view
 
-### 11.9.1 만료는 재생을 막지 않는다
+### 11.9.1 Expiry does not block replay
 
-> **용어** — **재생 공격(replay attack)**: 정당하게 만들어진 요청이나 증표를 가로채
-> **그대로 다시 보내는** 공격. 내용을 위조하지 않으므로 서명 검증을 그대로 통과한다.
+> **Term** — **replay attack**: an attack that intercepts a legitimately made request or token and **sends it
+> again as is.** Since it does not forge the content, it passes signature verification as is.
 
-여기서 서명이 무엇을 보증하고 무엇을 보증하지 않는지를 정확히 갈라야 한다.
+Here you must split precisely what the signature guarantees and does not.
 
-| 서명이 보증하는 것 | 서명이 보증하지 **않는** 것 |
+| What the signature guarantees | What the signature does **not** guarantee |
 |---|---|
-| 이 URL 은 우리가 발급했다 | 이 요청이 **처음**이다 |
-| 서명 대상은 위조되지 않았다 | 요청자가 **발급받은 그 사람**이다 |
-| 만료 시각은 우리가 정했다 | 이 URL 이 **한 번만** 쓰인다 |
+| this URL was issued by us | this request is the **first** |
+| the signed payload is not forged | the requester is **the person it was issued to** |
+| the expiry time was set by us | this URL is used **only once** |
 
-만료창 안에서 그 URL 은 **몇 번이든, 누구에게든** 유효하다. 만료는 그 창의 길이를
-정할 뿐이다. 만료를 60초로 줄이면 위험이 사라지는 것이 아니라 **60초짜리 위험**이
-된다.
+Within the expiry window that URL is valid **any number of times, to anyone.** Expiry only sets the length of
+that window. Reduce expiry to 60 seconds and the risk does not disappear but becomes **a 60-second risk.**
 
-### 11.9.2 재생을 실제로 막으려면
+### 11.9.2 To actually block replay
 
-| 수단 | 원리 | 대가 |
+| Means | Principle | Price |
 |---|---|---|
-| 1회용 논스 + 서버 기록 | 이미 쓴 증표를 기억해 두 번째를 거절 | ★ **무상태성이 무너진다.** 엣지 전체가 공유하는 저장소가 필요 |
-| 사용 횟수 상한 | 카운터를 유지 | 같음. 재시도·범위 요청이 카운트를 먹어 오탐이 난다 |
-| 세션·계정 바인딩 | 서명 대상에 세션 ID 를 넣고 쿠키를 함께 요구 | 별도 자격증명 필요 — 순수 능력 기반이 아니게 된다 |
-| 클라이언트 IP 바인딩 | 서명 대상에 IP | §11.4.2 의 오탐. NAT 뒤에서는 방어도 부분적 |
-| 만료 단축 | 창을 좁힌다 | §11.3 의 비용 전부 |
-| 채널 바인딩 (mTLS 등) | 전송 계층의 신원과 묶는다 | 배포 난이도가 급격히 오른다 |
+| one-time nonce + server record | remember a used token and reject the second | ★ **statelessness collapses.** a store shared by all edges is needed |
+| use-count limit | maintain a counter | same. retries·range requests eat the count and cause false positives |
+| session·account binding | put a session ID in the signed payload and demand a cookie too | a separate credential is needed — it is no longer purely capability-based |
+| client-IP binding | the IP in the signed payload | §11.4.2's false positives. behind NAT defense is partial |
+| shorter expiry | narrow the window | all of §11.3's costs |
+| channel binding (mTLS, etc.) | tie to the transport-layer identity | deployment difficulty rises sharply |
 
-첫 두 행에 별표가 붙은 이유가 이 절의 핵심이다.
+The reason the first two rows have stars is this section's crux.
 
-> **재생 방지의 강한 수단은 전부 서버 측 상태를 요구한다. 그런데 무상태 검증이야말로
-> 능력 기반을 고른 이유였다(§11.2.3). 재생 방지와 무상태 검증은 같은 축의 양 끝이다.**
+> **All the strong means of replay prevention require server-side state. But stateless verification was the
+> very reason capability-based was chosen (§11.2.3). Replay prevention and stateless verification are the two
+> ends of the same axis.**
 
-CDN 이 만료 단축만 고르는 것은 게으름이 아니라 이 축에서 위치를 고른 결과다. 다만 그
-선택으로 **무엇이 남는지는 명시되어야 한다** — "서명 URL 을 쓰니 안전하다"는 문장은
-재생 위험을 감춘다.
+That a CDN chooses only shorter expiry is not laziness but the result of choosing a position on this axis.
+Only, **what remains from that choice must be stated** — the sentence "we use signed URLs so it is safe" hides
+the replay risk.
 
-### 11.9.3 증표가 새는 자리 — URL 은 비밀을 담기에 나쁜 그릇이다
+### 11.9.3 The places the token leaks — a URL is a bad vessel for a secret
 
-능력을 URL 에 담는 순간, URL 이 남는 모든 자리가 자격증명이 남는 자리가 된다.
+The moment you put a capability in a URL, every place the URL remains becomes a place a credential remains.
 
-| 새는 자리 | 어떻게 |
+| Leak place | How |
 |---|---|
-| `Referer` 헤더 | 서명 URL 로 연 페이지가 외부 자원을 부르면 그 URL 이 딸려 나간다 |
-| 서버·프록시 액세스 로그 | 쿼리 스트링을 통째로 남기는 것이 기본값인 구현이 많다 |
-| 브라우저 히스토리·주소창 | 사용자가 그대로 복사해 공유한다 |
-| 채팅·이슈 트래커의 공유 링크 | **소지 = 행사**이므로 링크 공유가 곧 권한 공유다 |
-| 오류 보고·모니터링 | 예외 스택과 요청 기록에 URL 이 실린다 |
-| 중간 캐시 | 캐시 키 구성에 따라 다른 사용자에게 응답이 갈 수 있다(§11.3.2) |
+| the `Referer` header | if a page opened with a signed URL calls an external resource, that URL goes along |
+| server·proxy access log | many implementations default to leaving the whole query string |
+| browser history·address bar | the user copies and shares it as is |
+| a shared link in chat·issue tracker | since **possession = exercise**, sharing the link is sharing the permission |
+| error reports·monitoring | the URL rides on the exception stack and request record |
+| an intermediate cache | depending on the cache-key config, a response can go to another user (§11.3.2) |
 
-**TLS 는 이 중 아무것도 막지 못한다.** TLS 는 전송 구간을 지키고, 새는 곳은 양 끝이다.
-이 목록은 제12장(자격증명의 앰비언트 권한 — 쿠키, 프로세스 목록, 아티팩트)의 주제와
-그대로 이어진다. 이 저장소가 리포트 JSON 에서 자격증명 헤더를 편집하는 것
-([`report.py:36-46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L36-L46))과 같은 문제가, 서명 URL 에서는 **URL 자체**에 대해 제기된다.
+**TLS blocks none of these.** TLS protects the transport span, and the leaks are at both ends. This list
+connects straight to Chapter 12's subject (the ambient privilege of credentials — cookies, process lists,
+artifacts). The same problem as this repository redacting credential headers in the report JSON
+([`report.py:36-46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L36-L46)) is raised, for a signed URL, about **the URL itself.**
 
-### 11.9.4 방어자 관점
+### 11.9.4 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **서명 URL 을 발급하는 서비스** | 구성은 **HMAC**(가능하면 SHA-256 이상). "키를 붙인 해시"를 직접 만들지 않는다. 서명 대상에 **경로·만료·메서드**를 최소로 넣고, 서명 밖의 파라미터가 응답을 바꾸지 않는지 확인한다. 검증은 상수 시간 비교로 한다 |
-| **만료를 정하는 사람** | 만료는 보안값이자 **가용성값**이다. 정상 사용자의 최장 작업 시간을 먼저 재고, 그보다 짧게 잡을 거면 **갱신 경로를 함께 제공**한다. 클록 스큐 허용치가 실효 수명에 더해진다는 것을 계산에 넣는다 |
-| **CDN·플랫폼 운영자** | 토큰 파라미터를 **캐시 키에서 제외**하되, 응답이 토큰에 따라 달라지는 경로가 없는지 확인한다. 액세스 로그에서 서명 파라미터를 편집(redact)한다. **회수가 필요한 위협이라면 능력 기반만으로는 부족하다**는 것을 인정하고 별도 통제를 둔다 |
-| **클라이언트 구현자** | 증표를 **미리 모으지 않는다.** 만료를 파싱해 남은 시간을 알고 있으면 실패를 사후가 아니라 사전에 다룰 수 있다. 만료 실패에는 재시도가 아니라 **재해석**으로 대응한다 |
-| **감사자** | **서명 대상 문자열을 문서와 대조**하고, **서명 밖에 있는 파라미터를 나열하게 한다** — 그 목록이 곧 공격자가 자유롭게 바꿀 수 있는 표면이다. "MD5 를 쓴다"보다 **"어떻게 쓰는가"** 를 먼저 묻는다 |
-| **로그·아티팩트를 다루는 사람** | **서명 URL 은 자격증명이다.** 버그 리포트에 URL 을 붙일 때 쿠키를 붙이는 것과 같은 취급을 한다 |
+| **service issuing signed URLs** | the construction is **HMAC** (SHA-256 or higher if possible). do not make "a hash with the key attached" yourself. put **path·expiry·method** minimally in the signed payload, and confirm that a parameter outside the signature does not change the response. verify with a constant-time comparison |
+| **the person setting expiry** | expiry is a security value and an **availability value.** measure normal users' longest job time first, and if you will set it shorter, **provide a renewal path too.** account for the clock-skew tolerance adding to the effective lifetime |
+| **CDN·platform operator** | **exclude token parameters from the cache key**, but confirm there is no path where the response differs by the token. redact signature parameters in the access log. if the threat requires recall, admit that **capability-based alone is insufficient** and add a separate control |
+| **client implementer** | **do not gather tokens in advance.** parse the expiry and know the time remaining and you can handle failure before rather than after. respond to an expiry failure not with a retry but with **re-resolution** |
+| **auditor** | **compare the signed-payload string against the docs**, and **have the parameters outside the signature listed** — that list is the surface the attacker can change freely. ask "how it is used" before "it uses MD5" |
+| **the person handling logs·artifacts** | **a signed URL is a credential.** when attaching a URL to a bug report, treat it the same as attaching a cookie |
 
-### 11.9.5 이 절이 다루지 않는 것
+### 11.9.5 What this section does not cover
 
-이 장은 **어떤 구성이 어떤 성질에 안전성을 걸고 있는가**를 다룬다. 특정 송출자의 서명
-대상이 무엇인지 알아내는 방법, 서명을 위조하는 절차, 만료를 우회하는 방법은 다루지
-않는다. 그것은 이 저장소에 코드가 없고, 교재의 목적에도 없다.
+This chapter covers **what construction hangs its security on what property.** How to find out what a specific
+deliverer's signed payload is, the procedure to forge a signature, and how to bypass expiry are not covered.
+There is no code for that in this repository and it is not in the course's purpose either.
 
-방어자와 감사자에게 필요한 것은 **자기 시스템의 구성을 진단할 능력**이지 남의 시스템을
-뚫는 절차가 아니다. §11.5 의 세 구성을 알고 있으면 자기 팀의 코드에서 `md5(secret +
-path)` 를 보았을 때 무엇을 물어야 하는지 안다 — 그것이 이 절의 목적 전부다.
-
----
-
-## 11.10 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **서명 알고리즘을 확인하지 못했다.** `md5=` 는 파라미터 이름일 뿐이고, 이름이
-  알고리즘이나 구성을 보증하지 않는다. 실제 구성이 §11.5 의 ①·②·③ 중 무엇인지,
-  혹은 전혀 다른 것인지 이 저장소의 코드로는 알 수 없고 알아내려 시도하지도 않았다.
-  §11.5 전체는 **설계 논의이지 진단이 아니다.**
-- **만료 값을 파싱하지 않는다.** 이 도구는 `expires` 를 읽지 않는다. 읽으면 (a) 남은
-  시간이 예상 소요보다 짧을 때 **미리** 경고할 수 있고 (b) 실패 진단에서 "만료였다"를
-  추정이 아니라 사실로 말할 수 있다. 지금은 [`cli.py:97`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L97) 처럼 **가능성으로만** 안내한다.
-  구현하지 않은 개선이다.
-- **만료 실패 시 자동 재해석이 없다.** `resolve()` 는 회차 시작 시점에 한 번 불린다
-  ([`cli.py:884`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L884)). 회차 도중 만료가 나면 그 회차는 실패로 끝난다. 재해석 후 재시도는
-  구조상 가능하지만(`_run_one` 을 다시 부르면 된다) 무한 루프와 요청 폭주를 막을 상한
-  설계가 필요해 넣지 않았다.
-- **세그먼트 단위 만료는 관측되지 않았다.** §11.7 의 시나리오(한 회차 안에서 세그먼트
-  서명이 만료)는 코드 구조에서 읽히는 **구조적 가능성**이며, 이 저장소의 실측 기록에도
-  회귀 테스트에도 없다. 재현하려면 만료가 짧은 서명 세그먼트를 내는 로컬 서버를
-  만들어야 한다 — 현재 결함 주입 8종에 없는 항목이다.
-- **§11.1.1 의 산술 표는 실측이 아니다.** `T` 와 `E` 는 회선·해상도·송출자에 따라
-  달라진다. 표가 보이려는 것은 특정 수치가 아니라 **어떤 관계에서 깨지는가**의 구조다.
-- **길이 확장 공격의 실제 악용 사례를 재현하지 않았다.** §11.5.2 ①이 실제 웹 API 에서
-  뚫린 공개 보고가 있다는 것은 **인용**이며, 이 교재는 그 재현을 하지 않았다.
-- **`--delay` 와 만료의 상호작용은 코드 순서에서 읽은 것이다.** `sleep` 이 반복의 끝에
-  있다는 사실([`cli.py:933-934`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L933-L934))에서 나온 결론이고, 그 배치로 실제 만료 예산이 얼마나
-  남는지는 `E` 를 모르므로 검증할 수 없다.
-- **캐시 키·클록 스큐 논의는 일반 원리이지 이 코드의 관측이 아니다.** 이 도구는
-  클라이언트이므로 CDN 구성이나 발급 서버의 시계를 볼 수 없다. §11.3.2·§11.3.3 은
-  설계자를 위한 절이고, 이 저장소로 확인된 사실이 아니다.
+What a defender and an auditor need is **the ability to diagnose their own system's configuration**, not the
+procedure to pierce another's. Knowing §11.5's three constructions, when you see `md5(secret + path)` in your
+own team's code you know what to ask — that is the whole purpose of this section.
 
 ---
 
-## 11.11 요약
+## 11.10 Limits and open questions
 
-1. `?md5=<서명>&expires=<unix>` 는 **능력 기반 접근 통제**다. URL 그 자체가
-   권한증표이고, 소지하면 행사할 수 있다([`series.py:1-11`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L1-L11)).
-2. 능력은 **회수할 수 없다.** 서버에 조회할 상태가 없다는 것이 이 방식을 고른 이유
-   (CDN 엣지의 무상태 검증)이고, 회수 불가는 그 대가다. 그래서 **만료는 선택 기능이
-   아니라 구성 요소다.**
-3. 만료가 URL 에 박히면 클라이언트에 **작업 순서 제약**이 생긴다. `증표의 수명 <
-   작업 전체의 소요` 이면 미리 모으기는 반드시 깨진다 → **지연 해석(late resolution)**.
-4. 이 저장소는 회차 단위로 지연 해석한다([`series.py:266-300`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L266-L300), [`cli.py:884`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L884)). 자료형이
-   그 결정을 담고 있고(`Episode` ↔ `Play`, [`series.py:81-87`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L81-L87)), 부수 효과로 재고가 있는
-   회차에는 발급 요청이 한 건도 나가지 않는다([`cli.py:872-874`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L872-L874)).
-5. **만료는 전용 상태 코드를 갖지 않는다.** `403`·`404` 로도, `200` + HTML 오류
-   페이지로도 온다. 그래서 제14장의 **선두 바이트 판별**이 만료 검출의 일부가 된다
-   ([`tsanalyze.py:23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L23), [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464)).
-6. **재시도는 만료를 고치지 못한다.** 같은 요청을 반복하는 것이기 때문이다
-   ([`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)). 필요한 것은 재시도가 아니라 **재해석**이고, 이 저장소는
-   그것을 자동화하지 않았다.
-7. 만료 시간은 **유출 창과 정상 사용자 가용성의 교환**이며, 캐시 키·클록 스큐·재발급
-   부하·키 회전 주기까지 함께 움직인다. 스큐 허용치는 실효 수명에 그대로 더해진다.
-8. **서명 밖의 것은 자유롭게 바뀐다.** 서명 대상 설계가 곧 위협 모델의 선언이다.
-   IP·User-Agent 바인딩은 유출 내성을 올리지만 정상 사용자를 끊고, 정밀도를 낮춰 오탐을
-   줄이면 방어력도 함께 내려간다.
-9. **키를 붙인 해시는 MAC 이 아니다.** `H(K ‖ M)` 은 길이 확장에, `H(M ‖ K)` 는 해시의
-   충돌 저항성에 안전성이 걸린다. 옳은 구성은 **HMAC** 이고, HMAC 의 안전성 증명은
-   **충돌 저항성을 요구하지 않는다.** 알고리즘보다 구성이 먼저다.
-10. **만료는 재생을 막지 않는다.** 재생이 가능한 창을 좁힐 뿐이다. 실제 재생 방지
-    수단은 전부 서버 측 상태를 요구하고, 그것은 능력 기반을 고른 바로 그 이유와
-    정면으로 충돌한다. **이 충돌은 해소되지 않으며, 설계는 축 위에서 위치를 고를
-    뿐이다.**
+Noted honestly.
+
+- **The signature algorithm could not be confirmed.** `md5=` is only a parameter name, and a name does not
+  guarantee the algorithm or the construction. Which of §11.5's ①·②·③ the actual construction is, or something
+  else entirely, cannot be known with this repository's code and was not attempted. All of §11.5 is a **design
+  discussion, not a diagnosis.**
+- **It does not parse the expiry value.** This tool does not read `expires`. Read it and it could (a) warn **in
+  advance** when the remaining time is shorter than the expected duration and (b) say "it was expiry" in the
+  failure diagnosis as a fact, not an inference. Now it guides **only as a possibility** like [`cli.py:97`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L97). An
+  unimplemented improvement.
+- **There is no auto-re-resolution on an expiry failure.** `resolve()` is called once at the episode start
+  ([`cli.py:884`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L884)). If expiry hits mid-episode, that episode ends as a failure. A retry after re-resolution is
+  structurally possible (just call `_run_one` again) but needs an upper-bound design to block an infinite loop
+  and request flood, so it was not added.
+- **Per-segment expiry was not observed.** §11.7's scenario (a segment signature expiring within one episode)
+  is a **structural possibility read from the code structure**, and is in neither this repository's measurement
+  records nor the regression tests. To reproduce it you would make a local server issuing signed segments with
+  short expiry — an item not among the 8 fault injections currently.
+- **§11.1.1's arithmetic table is not a measurement.** `T` and `E` vary by line·resolution·deliverer. What the
+  table means to show is not specific numbers but the structure of **under what relationship it breaks.**
+- **The actual exploitation case of the length-extension attack was not reproduced.** That §11.5.2 ① has a
+  public report of being pierced on a real web API is a **citation**, and this course did not reproduce it.
+- **The interaction of `--delay` and expiry was read from the code order.** It is a conclusion from the fact
+  that `sleep` is at the end of the loop ([`cli.py:933-934`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L933-L934)), and how much expiry budget that placement actually
+  leaves cannot be verified since `E` is unknown.
+- **The cache-key·clock-skew discussion is a general principle, not this code's observation.** This tool is a
+  client so it cannot see the CDN config or the issuing server's clock. §11.3.2·§11.3.3 are sections for the
+  designer, not facts confirmed with this repository.
 
 ---
 
-**다음 장** — 이 장의 마지막 표(§11.9.3)는 증표가 새는 자리를 나열했다. `Referer`,
-액세스 로그, 브라우저 히스토리, 공유 링크, 오류 보고. 그 목록은 서명 URL 만의 문제가
-아니다. 쿠키는 셸 히스토리와 `ps` 출력에 평문으로 남고, 리포트 JSON 은 CI 아티팩트로
-남는다. 제12장은 **자격증명이 실제로 어디에 남는가**를 추적하고, 이 저장소의 편집
-(redaction) 대상 목록이 완전한지를 묻는다.
+## 11.11 Summary
+
+1. `?md5=<signature>&expires=<unix>` is **capability-based access control.** The URL itself is the
+   authorization token, and possessing it lets you exercise it ([`series.py:1-11`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L1-L11)).
+2. A capability is **irrevocable.** That there is no state to look up on the server is the reason this way was
+   chosen (stateless verification at the CDN edge), and irrevocability is its price. So **expiry is not an
+   optional feature but a component.**
+3. When expiry is embedded in the URL, a **work-order constraint** arises on the client. If `token lifetime <
+   the whole job's duration`, gathering in advance necessarily breaks → **late resolution.**
+4. This repository does late resolution per episode ([`series.py:266-300`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L266-L300), [`cli.py:884`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L884)). The data type holds
+   that decision (`Episode` ↔ `Play`, [`series.py:81-87`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L81-L87)), and as a side effect not a single issuing request
+   goes out for an episode already in inventory ([`cli.py:872-874`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L872-L874)).
+5. **Expiry has no dedicated status code.** It comes as `403`·`404`, and as `200` + an HTML error page too. So
+   Chapter 14's **leading-byte determination** becomes part of expiry detection ([`tsanalyze.py:23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L23),
+   [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464)).
+6. **Retry cannot fix expiry.** Because it is repeating the same request ([`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)). What is needed
+   is not a retry but **re-resolution**, and this repository did not automate it.
+7. The expiry time is **a trade of the leak window and normal-user availability**, and the cache key·clock skew·
+   reissue load·key-rotation period all move together. The skew tolerance adds directly to the effective
+   lifetime.
+8. **What is outside the signature changes freely.** Signed-payload design is itself a declaration of the threat
+   model. IP·User-Agent binding raises leak tolerance but cuts off normal users, and lower the precision to
+   reduce false positives and defense goes down together.
+9. **A hash with the key attached is not a MAC.** `H(K ‖ M)` hangs its security on length extension, `H(M ‖ K)`
+   on the hash's collision resistance. The correct construction is **HMAC**, and HMAC's security proof **does
+   not require collision resistance.** The construction comes before the algorithm.
+10. **Expiry does not block replay.** It only narrows the window in which replay is possible. Every actual
+    replay-prevention means requires server-side state, and that collides head-on with the very reason
+    capability-based was chosen. **This collision is not resolved; the design only chooses a position on the
+    axis.**
+
+---
+
+**Next chapter** — this chapter's last table (§11.9.3) listed the places the token leaks. `Referer`, the access
+log, browser history, shared links, error reports. That list is not signed-URLs' problem alone. A cookie
+remains in plaintext in the shell history and `ps` output, and the report JSON remains as a CI artifact.
+Chapter 12 traces **where credentials actually remain**, and asks whether this repository's redaction-target
+list is complete.

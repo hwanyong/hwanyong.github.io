@@ -1,29 +1,28 @@
 ---
-untranslated: ko
-title: "AES-128 은 DRM 이 아니다"
-description: "위협 모델과 Kerckhoffs 원리"
-date: 2026-08-18
+title: "AES-128 Is Not DRM"
+description: "The threat model and Kerckhoffs's principle"
+date: 2026-07-16
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-25-aes128-is-not-drm.svg
 ---
-## 25.0 이 장에서 답할 것
+## 25.0 What this chapter answers
 
-1. AES-128 로 암호화된 HLS 스트림에서 **키는 어디서 오는가**
-2. 재생할 수 있는 클라이언트가 키를 얻지 못하는 구성이 가능한가
-3. 그렇다면 이 암호화는 **무엇을 지키고 무엇을 지키지 못하는가**
-4. DRM 은 왜 다른 종류의 문제인가 — 구조상 무엇이 더 있는가
-5. 보호를 설계할 때 **먼저 정해야 하는 것**은 무엇인가
+1. In an AES-128-encrypted HLS stream, **where does the key come from?**
+2. Is a configuration possible where a client that can play cannot obtain the key?
+3. If not, what does this encryption **protect and fail to protect?**
+4. Why is DRM a different kind of problem — structurally what more is there?
+5. When designing a protection, **what must be set first?**
 
-앞의 셋은 관찰과 코드로 답한다. 뒤의 둘이 이 장의 본론이며, 그 답은 암호학이 아니라
-**위협 모델**에 있다.
+The first three are answered with observation and code. The latter two are this chapter's main argument, and
+their answer is not in cryptography but in the **threat model.**
 
 ---
 
-## 25.1 문제 — 키가 평문으로 온다
+## 25.1 The problem — the key comes in plaintext
 
-암호화된 HLS 스트림 하나를 직접 만들어 보면 전부 드러난다. 이 저장소의 회귀 테스트가
-쓰는 방식 그대로다(`tests/run.sh:46-49`).
+Make one encrypted HLS stream directly and it all shows. Exactly the way this repository's regression test does it
+(`tests/run.sh:46-49`).
 
 ```bash
 head -c 16 /dev/urandom > enc/enc.key
@@ -32,7 +31,7 @@ ffmpeg -v error -y -i source.mp4 -c copy -f hls -hls_time 6 -hls_playlist_type v
   -hls_key_info_file enc/keyinfo -hls_segment_filename "enc/seg%03d.ts" enc/index.m3u8
 ```
 
-같은 절차를 축소해 재현한 결과다(ffmpeg 8.1.1). 만들어진 플레이리스트는 이렇다.
+The result of reproducing the same procedure in miniature (ffmpeg 8.1.1). The playlist made is this.
 
 ```
 #EXTM3U
@@ -48,7 +47,7 @@ seg001.ts
 #EXT-X-ENDLIST
 ```
 
-`URI="enc.key"` 가 이 장 전체의 소재다. 그 주소가 무엇을 반환하는지 보자.
+`URI="enc.key"` is the material of this whole chapter. Let us see what that address returns.
 
 ```
 $ wc -c < enc/enc.key
@@ -57,128 +56,127 @@ $ xxd enc/enc.key
 00000000: 2f5f 7cdf ac65 94b1 914c 5d76 4391 387e  /_|..e...L]vC.8~
 ```
 
-**16바이트다. 그게 전부다.** 봉투도, 서명도, 기기별 포장도 없다. 평문 대칭키가 평범한
-HTTP GET 한 번으로 내려온다.
+**16 bytes. That is all.** No envelope, no signature, no per-device wrapping. A plaintext symmetric key comes down
+over one ordinary HTTP GET.
 
-세그먼트 쪽은 확실히 암호화되어 있다. 선두 바이트를 보면 제14장에서 판별 근거로 삼았던
-MPEG-TS 동기 바이트 `0x47` 이 보이지 않는다.
+The segment side is definitely encrypted. Look at the leading byte and the MPEG-TS sync byte `0x47` that Chapter
+14 used as a determination basis is not there.
 
 ```
 $ xxd -l 16 enc/seg000.ts
 00000000: 723b 5b66 9184 f0b6 9ace c5f9 5bb4 ad5f  r;[f........[.._
 ```
 
-이 바이트열을 이 저장소의 판별 함수에 넣으면 `unknown` 이 나온다(실측). 암호는 제 일을
-하고 있다 — **키가 없는 쪽에서 보면 이것은 난수와 구별되지 않는다.**
+Put this byte string into this repository's determination function and `unknown` comes out (measured). The cipher
+is doing its job — **seen from the side without the key, this is indistinguishable from random.**
 
-그런데 키는 바로 옆에 있다. 위 플레이리스트에서 `enc.key` 는 세그먼트와 같은 디렉터리,
-같은 HTTP 루트에 놓여 있다. 세그먼트를 받을 수 있는 요청자는 키도 받을 수 있다.
+And yet the key is right next to it. In the playlist above, `enc.key` sits in the same directory, the same HTTP
+root, as the segments. Whoever can request the segments can request the key too.
 
-여기서 이 장의 질문이 선다.
+Here this chapter's question stands.
 
-> **키를 얻을 수 있는 사람과 재생할 수 있는 사람이 같은 집합이라면, 이 암호화는
-> 누구를 막고 있는가.**
+> **If the set of people who can obtain the key and the set who can play are the same set, whom is this
+> encryption blocking.**
 
 ---
 
-## 25.2 원리 — Kerckhoffs 원리는 지켜졌다. 문제는 다른 데 있다
+## 25.2 The principle — Kerckhoffs's principle is kept. The problem is elsewhere
 
-### 25.2.1 두 개의 용어
+### 25.2.1 Two terms
 
-> **용어** — **Kerckhoffs 원리(Kerckhoffs's principle)**: 암호 시스템의 안전성은
-> 알고리즘의 비밀에 의존해서는 안 되고 **오직 키의 비밀에만** 의존해야 한다.
-> 1883년 Auguste Kerckhoffs 가 군용 암호의 요건으로 제시한 여섯 항목 중 둘째다.
-> 클로드 섀넌은 같은 요구를 "적이 시스템을 안다고 가정하라"로 다시 적었다
-> (**Shannon's maxim**).
+> **Term** — **Kerckhoffs's principle**: a cryptosystem's security must not depend on the secrecy of the
+> algorithm but **only on the secrecy of the key.** It is the second of six items Auguste Kerckhoffs presented in
+> 1883 as requirements for a military cipher. Claude Shannon restated the same requirement as "assume the enemy
+> knows the system" (**Shannon's maxim**).
 
-> **용어** — **위협 모델(threat model)**: 어떤 보호가 **무엇을**(자산) **누구로부터**
-> (적대자) **어떤 능력의 공격에 대해**(능력) **무엇을 신뢰한다는 가정 아래**
-> (신뢰 가정) 지키는지를 명시한 기술. 네 항목이 채워져야 "보호된다"는 문장이
-> 참·거짓을 가릴 수 있는 주장이 된다.
+> **Term** — **threat model**: a statement specifying **what** (asset) a protection protects, **from whom**
+> (adversary), **against attacks of what capability** (capability), **under what trust assumptions** (trust
+> assumption). Only when the four items are filled does the sentence "it is protected" become a claim that can be
+> judged true or false.
 
-이 장의 결론을 미리 한 줄로 적으면 이렇다. **HLS 의 AES-128 은 Kerckhoffs 원리를 완전히
-지킨다. 그럼에도 콘텐츠를 보호하지 못한다.** 두 문장은 모순이 아니다.
+Write this chapter's conclusion in one line in advance and it is this. **HLS's AES-128 fully keeps Kerckhoffs's
+principle. And yet it does not protect the content.** The two sentences are not a contradiction.
 
-### 25.2.2 알고리즘은 처음부터 공개돼 있다
+### 25.2.2 The algorithm is public from the start
 
-RFC 8216 §4.3.2.4 와 §5.2 는 복호화 절차를 남김없이 적어 둔다 — AES-128-CBC, PKCS#7
-패딩, `IV` 속성이 없으면 media sequence number 를 128비트 big-endian 으로 채운다(마지막
-규칙만 §5.2 에 있다). 이 저장소의 `decrypt.py` 는 그 문장을 옮겨 적은 것에 가깝고,
-모듈 첫 줄이 출처를 밝힌다.
+RFC 8216 §4.3.2.4 and §5.2 write out the decryption procedure without omission — AES-128-CBC, PKCS#7 padding, and
+if the `IV` attribute is absent, fill the media sequence number as 128-bit big-endian (only the last rule is in
+§5.2). This repository's `decrypt.py` is close to a transcription of those sentences, and the module's first line
+states the source.
 
 ```python
 # decrypt.py:1-6
-"""HLS AES-128 세그먼트 복호화 (RFC 8216 §4.3.2.4).
+"""HLS AES-128 segment decryption (RFC 8216 §4.3.2.4).
 
-규격상 AES-128-CBC + PKCS7 패딩이고, IV 는 EXT-X-KEY 의 IV 속성을 쓰되
-없으면 해당 세그먼트의 media sequence number 를 128비트 big-endian 으로 채운다.
-키 자체는 평문 16바이트로 URI 에서 내려받는다 — DRM 이 아니라 링크 보호 수준이다.
+By spec it is AES-128-CBC + PKCS7 padding, and the IV uses the EXT-X-KEY's IV attribute,
+or if absent fills that segment's media sequence number as 128-bit big-endian.
+The key itself is downloaded as plaintext 16 bytes from a URI — link-protection level, not DRM.
 """
 ```
 
-알고리즘이 공개돼 있다는 것은 약점이 아니다. **그것이 Kerckhoffs 원리가 요구하는
-정상 상태다.** 알고리즘을 감추어야 안전한 시스템은 알고리즘이 밝혀지는 순간 전부
-무너지고, 알고리즘은 언제나 밝혀진다. 그래서 안전성의 무게는 전부 키로 옮겨져 있다.
+That the algorithm is public is not a weakness. **It is the normal state Kerckhoffs's principle requires.** A
+system that must hide its algorithm to be safe collapses entirely the moment the algorithm is revealed, and the
+algorithm is always revealed. So the whole weight of security is moved to the key.
 
-문제는 **그 키가 어디로 가는가**다.
+The problem is **where that key goes.**
 
-### 25.2.3 보호가 성립하는 조건
+### 25.2.3 The condition under which protection holds
 
-보호를 집합으로 쓰면 조건은 간단하다.
+Write protection as sets and the condition is simple.
 
-> 어떤 비밀 기반 보호가 성립하려면 **비밀을 받는 집합**과 **막고자 하는 집합**이
-> 겹치지 않아야 한다.
+> For any secret-based protection to hold, **the set receiving the secret** and **the set to be blocked** must not
+> overlap.
 
-HLS AES-128 에서 비밀을 받는 집합은 정의상 이렇다.
+In HLS AES-128 the set receiving the secret is, by definition, this.
 
-- 세그먼트를 복호화해야 재생할 수 있다
-- 복호화하려면 키가 필요하다
-- 키는 `EXT-X-KEY` 의 URI 로 **클라이언트가 직접 가져간다**
+- you must decrypt the segments to play
+- to decrypt you need the key
+- the key **the client fetches itself** via the `EXT-X-KEY` URI
 
-따라서 **재생할 수 있는 클라이언트는 정의상 키를 얻을 수 있다.** 이것은 실측 결과가
-아니라 `KEYFORMAT=identity` 의 정의에서 곧바로 따라 나오는 논리적 귀결이다. 예외가
-있는 구성은 존재하지 않는다 — 있다면 그 클라이언트는 재생할 수 없다.
+So **a client that can play can, by definition, obtain the key.** This is not a measurement result but a logical
+consequence following immediately from the definition of `KEYFORMAT=identity`. There exists no configuration with
+an exception — if there were, that client could not play.
 
-![키 배포 경계 — 무엇이 배제되고 무엇이 배제되지 않는가](/images/lecture/hls-recon/25-key-distribution-boundary.svg)
+![The key-distribution boundary — what is excluded and what is not](/images/lecture/hls-recon/25-key-distribution-boundary.svg)
 
-*그림 25-1 — 키 배포 경계: 적대자가 경계의 어느 쪽에 있는가*
+*Figure 25-1 — the key-distribution boundary: which side of the boundary the adversary is on*
 
-그림의 두 적대자가 이 장의 전부다.
+The diagram's two adversaries are all of this chapter.
 
-| 적대자 | 가진 것 | 결과 | 판정 |
+| Adversary | What they have | Result | Verdict |
 |---|---|---|---|
-| **A** — 세그먼트 URL 만 주운 제3자 | 세그먼트 주소 | 키 요청이 통제에 막힘 → 암호문뿐 | **배제된다** |
-| **B** — 정당하게 재생할 수 있는 사용자 | 재생에 필요한 모든 자격 | 키를 정상 수령 → 복호화 가능 | **배제되지 않는다** |
+| **A** — a third party who only picked up the segment URL | the segment address | the key request is blocked by the control → only ciphertext | **excluded** |
+| **B** — a user who can legitimately play | all credentials needed to play | receives the key normally → can decrypt | **not excluded** |
 
-적대자 A 를 막는 것이 **링크 보호**이고, 적대자 B 를 막는 것이 **콘텐츠 보호**다.
-AES-128 은 앞의 것만 한다. 그리고 이것은 암호가 약해서가 아니다 — AES-128 자체를 깨는
-공격은 알려져 있지 않다. **깰 필요가 없다. 키가 배포되기 때문이다.**
+Blocking adversary A is **link protection**, and blocking adversary B is **content protection.** AES-128 does only
+the former. And this is not because the cipher is weak — no known attack breaks AES-128 itself. **There is no need
+to break it. Because the key is distributed.**
 
-### 25.2.4 그러므로 이것은 암호의 실패가 아니다
+### 25.2.4 So this is not a failure of the cipher
 
-같은 사실을 세 가지 층위로 나눠 적으면 오해가 사라진다.
+Write the same fact split into three layers and the misunderstanding vanishes.
 
-| 층위 | 상태 |
+| Layer | State |
 |---|---|
-| 암호 알고리즘(AES-128-CBC) | 건전하다. 이 장의 논점이 아니다 |
-| 키의 비밀성 | Kerckhoffs 원리대로 안전성 전부가 여기에 걸려 있다 |
-| **키 배포 정책** | **정당한 요청자 전원에게 배포한다** ← 여기가 논점이다 |
+| the crypto algorithm (AES-128-CBC) | sound. not this chapter's point |
+| the key's secrecy | per Kerckhoffs's principle, all of security hangs here |
+| **the key-distribution policy** | **distributes to every legitimate requester** ← here is the point |
 
-세 번째 줄을 바꾸지 않고 첫 번째 줄을 AES-256 으로 올려도 아무것도 달라지지 않는다.
-**보호의 성패는 알고리즘이 아니라 배포 정책에서 결정된다.**
+Without changing the third line, raise the first line to AES-256 and nothing changes. **The success or failure of
+protection is decided not by the algorithm but by the distribution policy.**
 
 ---
 
-## 25.3 코드 — 이 저장소가 그은 선
+## 25.3 The code — the line this repository drew
 
-### 25.3.1 한 줄짜리 경계선
+### 25.3.1 A one-line boundary
 
-이 저장소가 다루는 스트림의 범위는 `Key` 데이터클래스 안에 들어 있다.
+The scope of streams this repository handles is inside the `Key` dataclass.
 
 ```python
 # playlist.py:49-64
 class Key:
-    """#EXT-X-KEY — 이후 세그먼트에 적용되는 복호화 정보."""
+    """#EXT-X-KEY — the decryption info applied to subsequent segments."""
 
     method: str  # NONE | AES-128 | SAMPLE-AES
     uri: str | None = None
@@ -191,21 +189,20 @@ class Key:
 
     @property
     def is_supported(self) -> bool:
-        # SAMPLE-AES 는 프레임 단위 부분 암호화라 세그먼트 통째 복호화가 불가능하다.
+        # SAMPLE-AES is per-frame partial encryption so whole-segment decryption is impossible.
         return self.method in ("NONE", "AES-128") and self.keyformat == "identity"
 ```
 
-마지막 줄의 두 조건은 성격이 다르다.
+The two conditions in the last line differ in nature.
 
-| 조건 | 무엇을 거르는가 | 이유 |
+| Condition | What it filters | Reason |
 |---|---|---|
-| `method in ("NONE", "AES-128")` | SAMPLE-AES | **구현 가능성** — 부분 암호화라 세그먼트 통째 복호화가 성립하지 않는다(제26장) |
-| `keyformat == "identity"` | Widevine · FairPlay · PlayReady | **범위 선언** — 여기부터는 DRM 이며 이 도구가 다루지 않는다 |
+| `method in ("NONE", "AES-128")` | SAMPLE-AES | **implementability** — being partial encryption, whole-segment decryption does not hold (Chapter 26) |
+| `keyformat == "identity"` | Widevine · FairPlay · PlayReady | **scope declaration** — from here on it is DRM and this tool does not handle it |
 
-`KEYFORMAT` 속성은 **URI 가 무엇을 반환하는지**를 말한다. RFC 8216 이 정한 기본값이자
-유일한 표준값이 `identity` 이고, 그 뜻은 "URI 가 키 자체를 반환한다"다. 다른 값이 오면
-그 URI 는 키가 아니라 **특정 DRM 의 라이선스 요청 대상**을 가리킨다. 파서는 규격의
-기본값을 그대로 옮겨 놓았다.
+The `KEYFORMAT` attribute tells **what the URI returns.** RFC 8216's default value and the only standard value is
+`identity`, and its meaning is "the URI returns the key itself." If a different value comes, that URI points not
+at a key but at **a particular DRM's license-request target.** The parser transcribed the spec's default as-is.
 
 ```python
 # playlist.py:311-316
@@ -217,45 +214,44 @@ class Key:
             )
 ```
 
-즉 `keyformat == "identity"` 라는 조건 하나가 **"키가 평문으로 오는 경우만"** 이라는
-문장의 코드 표현이다. 제25장의 주제가 조건식 하나에 압축돼 있는 셈이다.
+That is, the one condition `keyformat == "identity"` is the code expression of the sentence **"only the case where
+the key comes in plaintext."** Chapter 25's subject is compressed into one conditional expression.
 
-### 25.3.2 실측 — 무엇이 통과하고 무엇이 걸리는가
+### 25.3.2 Measured — what passes and what catches
 
-`Key` 를 직접 만들어 두 속성을 확인한 결과다.
+The result of making a `Key` directly and confirming the two properties.
 
-| METHOD | KEYFORMAT | `is_encrypted` | `is_supported` | 이 도구의 처리 |
+| METHOD | KEYFORMAT | `is_encrypted` | `is_supported` | This tool's handling |
 |---|---|---|---|---|
-| `NONE` | `identity` | `False` | `True` | 평문 — 복호화 없음 |
-| `AES-128` | `identity` | `True` | `True` | **복호화한다** |
-| `SAMPLE-AES` | `identity` | `True` | `False` | 거부 → `remux` 로 위임 |
-| `AES-128` | `com.apple.streamingkeydelivery` | `True` | `False` | 거부 |
-| `AES-128` | `urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed` | `True` | `False` | 거부 |
+| `NONE` | `identity` | `False` | `True` | plaintext — no decryption |
+| `AES-128` | `identity` | `True` | `True` | **decrypts** |
+| `SAMPLE-AES` | `identity` | `True` | `False` | reject → delegate to `remux` |
+| `AES-128` | `com.apple.streamingkeydelivery` | `True` | `False` | reject |
+| `AES-128` | `urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed` | `True` | `False` | reject |
 
-마지막 두 행은 METHOD 가 `AES-128` 인데도 거부된다. **암호 알고리즘이 같아도 키가 오는
-방식이 다르면 다른 시스템이다** — `KEYFORMAT` 이 그 차이를 말하는 유일한 필드다.
+The last two rows are rejected even though METHOD is `AES-128`. **Even if the crypto algorithm is the same, if the
+way the key comes differs it is a different system** — `KEYFORMAT` is the only field telling that difference.
 
-거부는 두 지점에서 일어난다. 모드 결정 단계에서 한 번,
+The rejection happens at two spots. Once at the mode-decision stage,
 
 ```python
 # cli.py:395-398
     unsupported = [s for s in pl.segments if s.key and s.key.is_encrypted and not s.key.is_supported]
     if unsupported:
-        _eprint("  · SAMPLE-AES 등 세그먼트 단위 복호화 불가 → remux 모드로 전환")
+        _eprint("  · SAMPLE-AES etc. cannot be decrypted segment-by-segment → switching to remux mode")
         return "remux"
 ```
 
-복호화 진입점에서 한 번 더([`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40)). 두 번째는 첫 번째가 우회됐을 때
-(`--mode segments` 를 사용자가 직접 지정한 경우)를 위한 것이고, `NotImplementedError`
-와 함께 대안을 문장으로 안내한다. **경계를 문서가 아니라 코드로 그으면 다음 커밋에서도
-남는다.**
+and once more at the decryption entry ([`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40)). The second is for when the first was bypassed (when
+the user specified `--mode segments` directly), and it guides the alternative as a sentence together with a
+`NotImplementedError`. **Draw the boundary in code, not a document, and it remains in the next commit too.**
 
-### 25.3.3 키를 가져오는 코드가 곧 위협 모델의 진술이다
+### 25.3.3 The code that fetches the key is itself a statement of the threat model
 
 ```python
 # decrypt.py:14-31
 class KeyCache:
-    """같은 키 URI 를 세그먼트마다 다시 받지 않도록 캐시한다."""
+    """Caches so as not to re-fetch the same key URI per segment."""
 
     def __init__(self, fetcher: Fetcher) -> None:
         self._fetcher = fetcher
@@ -263,48 +259,48 @@ class KeyCache:
 
     def material(self, key: Key) -> bytes:
         if not key.uri:
-            raise ValueError("EXT-X-KEY 에 URI 가 없다")
+            raise ValueError("EXT-X-KEY has no URI")
         if key.uri not in self._cache:
             r = self._fetcher.get(key.uri)
             if not r.ok:
-                raise RuntimeError(f"키 요청 실패: {key.uri}\n  {r.error}")
+                raise RuntimeError(f"key request failed: {key.uri}\n  {r.error}")
             if len(r.body) != 16:
-                raise ValueError(f"AES-128 키 길이가 16바이트가 아니다: {len(r.body)}")
+                raise ValueError(f"the AES-128 key length is not 16 bytes: {len(r.body)}")
             self._cache[key.uri] = r.body
         return self._cache[key.uri]
 ```
 
-이 18줄이 §25.2 의 주장을 코드로 확인해 준다. 읽을 것이 넷이다.
+These 18 lines confirm §25.2's claim in code. There are four things to read.
 
-**① 키 획득은 그냥 HTTP GET 이다.** `self._fetcher.get(key.uri)` — 세그먼트를 받을 때와
-**같은 `Fetcher` 객체**를 쓴다. 같은 헤더, 같은 쿠키, 같은 Referer, 같은 재시도 정책이다
-([`cli.py:436`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L436) 에서 `KeyCache(fetcher)` 로 주입된다). 여기서 구조적 사실 하나가 따라
-나온다 — **키 채널의 접근 통제는 세그먼트 채널의 접근 통제와 같다.** 세그먼트를 받을 수
-있으면 키도 받을 수 있고, 더도 덜도 아니다. 링크 보호 이상이 성립할 자리가 없다.
+**① Getting the key is just an HTTP GET.** `self._fetcher.get(key.uri)` — it uses the **same `Fetcher` object** as
+when receiving segments. Same headers, same cookies, same Referer, same retry policy (injected as
+`KeyCache(fetcher)` at [`cli.py:436`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L436)). One structural fact follows here — **the key channel's access control is the
+same as the segment channel's access control.** If you can receive segments you can receive the key, no more and
+no less. There is no place for more than link protection to hold.
 
-**② 16바이트 검사는 오류를 위로 끌어올린다.** 키 URI 도 다른 URL 과 마찬가지로 토큰
-만료 시 HTML 오류 페이지를 200 으로 돌려줄 수 있다(제5장·제14장에서 본 그
-`200 + text/html`). 그 본문은 16바이트가 아니다. 이 검사가 없으면 어떻게 되는가 —
-**오류 페이지 본문이 그대로 AES 키로 넘어간다.** 그러면 실패는 `KeyCache.decrypt` 안쪽
-암호 라이브러리의 `ValueError: Invalid key size` 로 터진다(실측). 실패의 원인은 키
-요청인데 증상은 복호화 계층에 찍힌다. 길이 검사 한 줄이 그 오진을 막는다.
+**② The 16-byte check pulls the error up.** A key URI too, like any other URL, can return an HTML error page as 200
+on token expiry (that `200 + text/html` seen in Chapters 5·14). That body is not 16 bytes. What happens without
+this check — **the error page's body is passed straight through as the AES key.** Then the failure blows up as
+`ValueError: Invalid key size` from the crypto library inside `KeyCache.decrypt` (measured). The failure's cause is
+the key request but the symptom is stamped at the decryption layer. One line of length check blocks that
+misdiagnosis.
 
-**③ 캐시는 성능이자 위협 모델의 선택이다.** 평문 키가 프로세스 메모리에 실행이 끝날
-때까지 남는다. 이 도구의 위협 모델에서는 문제가 아니다 — 이 프로세스의 메모리를 읽을 수
-있는 주체는 이미 복호화된 세그먼트도 출력 파일도 읽을 수 있다. **같은 결정이 DRM
-클라이언트에서는 곧바로 결함이 된다**(§25.5). 같은 코드의 평가가 위협 모델에 따라
-뒤집히는 지점이며, 제24장에서 본 "역할에 따라 취약점이 되는 코드"와 같은 구조다.
+**③ The cache is both performance and a threat-model choice.** The plaintext key stays in process memory until the
+run ends. In this tool's threat model it is not a problem — an actor who can read this process's memory can already
+read the decrypted segments and the output file too. **The same decision becomes a defect immediately in a DRM
+client** (§25.5). It is the spot where the same code's evaluation inverts by threat model, the same structure as
+"code that becomes a vulnerability depending on the role" seen in Chapter 24.
 
-**④ 키가 없으면 실패로 끝낸다.** `raise` 로 올라간다. 조용히 암호문을 그대로 저장하고
-성공을 보고하는 경로가 없다. 검증 도구가 지켜야 할 최소선이다.
+**④ If there is no key it ends in failure.** It rises via `raise`. There is no path that quietly stores the
+ciphertext as-is and reports success. It is the minimum line a verification tool must keep.
 
-### 25.3.4 복호화가 실제로 되었는지는 무엇으로 아는가
+### 25.3.4 By what do you know decryption actually happened
 
-복호화는 항상 "성공"한다. 틀린 키로 CBC 복호화를 돌려도 예외는 나지 않고 바이트열이
-나온다. 제24장에서 본 대로 패딩이 깨져도 이 저장소는 예외를 던지지 않는다
-([`decrypt.py:50-58`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L50-L58)). 그렇다면 무엇으로 성공을 판정하는가.
+Decryption always "succeeds." Run CBC decryption with a wrong key and no exception arises and a byte string comes
+out. As seen in Chapter 24, this repository does not throw an exception even if the padding is broken
+([`decrypt.py:50-58`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L50-L58)). Then by what do you judge success.
 
-순서에 답이 있다.
+The answer is in the order.
 
 ```python
 # cli.py:457-459
@@ -313,12 +309,12 @@ class KeyCache:
         kind = sniff(data)
 ```
 
-**복호화가 먼저, 판별이 나중이다.** 이 순서가 뒤집히면 암호화된 스트림의 모든 세그먼트가
-`unknown` 으로 떨어져 전부 FAIL 이 난다 — §25.1 에서 암호화된 세그먼트의 `sniff()` 결과가
-`unknown` 이었던 것이 그 증거다. 반대로 순서가 맞으면 `sniff()` 는 곧 **복호화 성공 여부의
-판정**이 된다. 키가 틀렸다면 결과는 `0x47` 로 시작하지 않는다.
+**Decryption first, determination later.** Invert this order and every segment of an encrypted stream falls to
+`unknown` and it all FAILs — that the `sniff()` result of an encrypted segment was `unknown` in §25.1 is the
+evidence. Conversely, with the order right, `sniff()` becomes the **verdict of whether decryption succeeded.** If
+the key was wrong the result does not start with `0x47`.
 
-두 번째 확인은 비트 수준에서 온다. MPEG-TS 헤더의 scrambling control 필드다.
+The second confirmation comes at the bit level. The MPEG-TS header's scrambling-control field.
 
 ```python
 # tsanalyze.py:101-102
@@ -326,315 +322,306 @@ class KeyCache:
             rep.scrambled_packets += 1
 ```
 
-이 값이 0 이 아닌 패킷은 **아직 복호화되지 않은 패킷**이다. 리포트는 이것을 무조건 FAIL
-로 올린다([`report.py:241-245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L241-L245)). 세그먼트 단위 복호화가 끝난 뒤에도 이 카운터가 0 이
-아니면 키가 틀렸거나 SAMPLE-AES 라는 뜻이다.
+A packet with this value nonzero is **a packet not yet decrypted.** The report raises this unconditionally to FAIL
+([`report.py:241-245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L241-L245)). If this counter is nonzero even after segment-unit decryption finishes, it means the key was
+wrong or it is SAMPLE-AES.
 
-> **정리** — 복호화의 성공은 복호화 함수가 알려 주지 않는다. **복호화 결과가 규격에
-> 맞는 컨테이너인지**로만 알 수 있다. 암호 계층은 자기 성공을 스스로 증명하지 못한다.
+> **Summary** — decryption's success is not told by the decryption function. It can be known only by **whether the
+> decryption result is a spec-conforming container.** The crypto layer cannot prove its own success by itself.
 
 ---
 
-## 25.4 그래서 무엇을 지키는가 — 링크 보호는 실재한다
+## 25.4 So what does it protect — link protection is real
 
-여기서 반대 방향으로 정직해야 한다. "DRM 이 아니다"가 "쓸모없다"는 뜻은 아니다.
+Here we must be honest in the opposite direction. "Not DRM" does not mean "useless."
 
-### 25.4.1 링크 보호의 위협 모델
+### 25.4.1 The threat model of link protection
 
-> **용어** — **링크 보호(link protection)**: 전송 경로에 놓인 자원의 **주소만**
-> 획득한 제3자가 그 자원을 사용하지 못하게 하는 보호. 정당한 수신자는 배제 대상이
-> 아니다.
+> **Term** — **link protection**: protection that keeps a third party who obtained **only the address** of a
+> resource on the transport path from using that resource. The legitimate recipient is not a target of exclusion.
 
-네 항목을 채우면 이렇게 된다.
+Fill the four items and it becomes this.
 
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| **자산** | 세그먼트 바이트열 |
-| **적대자** | 세그먼트 URL 을 획득한 제3자 — 핫링크, 로그·Referer 누출, 공개 디렉터리 색인, 중간 캐시 |
-| **적대자의 능력** | 임의의 URL 로 GET 요청을 보낼 수 있다 |
-| **신뢰 가정** | **키 URI 에는 세그먼트와 다른(또는 최소한 유효한) 접근 통제가 걸려 있다** |
-| **성립 조건** | 위 가정이 참이면 적대자는 암호문만 얻는다 |
+| **asset** | the segment byte string |
+| **adversary** | a third party who obtained the segment URL — hotlinking, log·Referer leak, public directory index, intermediate cache |
+| **adversary's capability** | can send a GET request to an arbitrary URL |
+| **trust assumption** | **the key URI has a different (or at least valid) access control from the segments** |
+| **holding condition** | if the above assumption is true, the adversary obtains only ciphertext |
 
-무엇이 유출됐을 때 무엇을 잃는지가 이 보호의 실제 값이다.
+What you lose when what is leaked is this protection's real worth.
 
-| 유출된 것 | 암호화 없음 | AES-128 있음 |
+| What leaked | No encryption | With AES-128 |
 |---|---|---|
-| 세그먼트 URL 1개 | 그 조각을 재생할 수 있다 | 의미 없는 바이트열 |
-| 세그먼트 파일 사본 | 재생할 수 있다 | 키 없이는 불가 |
-| 중간 캐시·프록시에 남은 응답 본문 | 내용이 노출된다 | 암호문만 남는다 |
-| 미디어 플레이리스트 전체 | 전편을 받을 수 있다 | **키 URI 도 함께 유출된다** — 키 경로의 통제가 유일한 방어선 |
+| one segment URL | can play that piece | a meaningless byte string |
+| a segment file copy | can play | impossible without the key |
+| a response body left in an intermediate cache·proxy | the content is exposed | only ciphertext remains |
+| the whole media playlist | can receive the full episode | **the key URI leaks together** — the key path's control is the only defense line |
 
-세 번째 행이 실질적 이득이다. **세그먼트는 캐시 가능하지만 키는 그렇지 않게 설계할 수
-있다.** 세그먼트가 어디에 어떻게 캐시되든 평문은 남지 않고, 통제 지점이 키 URI 하나로
-모인다. 분산된 자원의 접근 통제를 **하나의 지점으로 접는** 구조이며, 이것은 설계상
-실질적인 단순화다.
+The third row is the practical gain. **Segments can be cacheable while the key is designed not to be.** However and
+wherever the segments are cached, no plaintext remains, and the control point gathers into one key URI. It is a
+structure that **folds** distributed resources' access control **into one point**, and this is a practical
+simplification by design.
 
-### 25.4.2 그리고 그 가정이 깨지는 흔한 방식
+### 25.4.2 And the common way that assumption breaks
 
-§25.4.1 의 신뢰 가정 줄을 다시 보자. 그 줄이 거짓이면 남는 것은 CPU 사용량뿐이다.
+Look again at §25.4.1's trust-assumption line. If that line is false, what remains is only CPU usage.
 
-§25.1 에서 만든 스트림이 정확히 그 상태다. `URI="enc.key"` 는 세그먼트와 같은 디렉터리에
-있고, 같은 정적 파일 서버가 같은 조건으로 내려준다. **키를 못 받는 요청자는 세그먼트도
-못 받는다.** 이 구성에서 AES-128 이 배제하는 적대자는 **한 명도 없다.**
+The stream made in §25.1 is exactly that state. `URI="enc.key"` is in the same directory as the segments, and the
+same static file server hands it down under the same conditions. **A requester who cannot get the key cannot get
+the segments either.** In this configuration AES-128 excludes **not a single adversary.**
 
-이것은 테스트용 스트림의 결함이 아니다 — 테스트는 복호화 경로를 검증하는 것이 목적이므로
-이 배치가 옳다(`tests/run.sh:174` 가 이 스트림으로 `AES128-복호화` PASS 를 고정한다).
-문제는 **운영 환경에서 같은 배치가 그대로 나가는 경우**다. `-hls_key_info_file` 의
-기본 사용법이 키를 세그먼트 옆에 두는 형태이므로, 아무것도 더 하지 않으면 그 상태가 된다.
+This is not a defect of the test stream — the test's purpose is to verify the decryption path so this placement is
+right (`tests/run.sh:174` fixes an `AES128-decrypt` PASS with this stream). The problem is **when the same placement
+goes out as-is in an operational environment.** Since the default usage of `-hls_key_info_file` is a form putting
+the key next to the segments, do nothing more and you get that state.
 
-> **이렇게 하지 않으면 무엇이 깨지는가** — 키 URI 에 세그먼트와 **다른** 접근 통제를
-> 걸지 않으면, AES-128 암호화는 적대자를 하나도 배제하지 못한 채 인코딩 비용과 복호화
-> 비용만 발생시킨다. 링크 보호조차 성립하지 않는다.
+> **What breaks if you do not do this** — do not put a **different** access control from the segments on the key
+> URI, and AES-128 encryption excludes not a single adversary while incurring only the encoding cost and the
+> decryption cost. Not even link protection holds.
 
-### 25.4.3 서명 URL 과 겹칠 때
+### 25.4.3 When it overlaps with a signed URL
 
-제11장에서 본 서명 URL(`?md5=…&expires=…`)이 세그먼트에 걸려 있으면 링크 보호는 이미
-그 계층이 하고 있다. 그 위에 AES-128 이 겹치면 두 층이 되는데, **두 층의 수명이 다르다**는
-점을 봐야 한다.
+If the signed URL seen in Chapter 11 (`?md5=…&expires=…`) is on the segments, link protection is already done by
+that layer. Overlay AES-128 on top and there are two layers, and you must see that **the two layers' lifetimes
+differ.**
 
-| 층 | 만료 | 유출 시 영향 범위 |
+| Layer | Expiry | Impact scope on leak |
 |---|---|---|
-| 서명 URL | 명시된 `expires` 시각에 끝난다 | 그 URL 하나, 만료까지 |
-| AES-128 키 | **만료 개념이 없다** — 키가 바뀌지 않는 한 유효 | 그 키가 덮는 모든 세그먼트, 무기한 |
+| signed URL | ends at the stated `expires` time | that one URL, until expiry |
+| AES-128 key | **has no expiry concept** — valid as long as the key does not change | every segment that key covers, indefinitely |
 
-키 회전(`EXT-X-KEY` 를 중간에 다시 선언해 이후 세그먼트의 키를 바꾸는 것)을 하지 않으면
-콘텐츠 한 편에 키 하나가 영구히 대응한다. **서명 URL 은 시간 제한 능력이고 AES-128 키는
-그렇지 않다.** 두 층을 함께 쓸 때 약한 쪽은 대개 뒤쪽이다.
+Do not do key rotation (re-declaring `EXT-X-KEY` mid-stream to change subsequent segments' key) and one key
+corresponds to one whole episode permanently. **A signed URL is a time-limiting capability and an AES-128 key is
+not.** When using the two layers together the weaker side is usually the latter.
 
 ---
 
-## 25.5 DRM 은 왜 다른 종류의 문제인가
+## 25.5 Why DRM is a different kind of problem
 
-여기서는 **구조만** 본다. 실제 DRM 시스템의 키 취급을 우회하는 기법은 이 교재의 범위가
-아니며, 이 저장소에는 그 코드가 없다(§25.7).
+Here we look at **structure only.** Techniques bypassing an actual DRM system's key handling are not this course's
+scope, and this repository has no such code (§25.7).
 
-### 25.5.1 세 가지 구조적 추가
+### 25.5.1 Three structural additions
 
-> **용어** — **신뢰 실행 환경(TEE, Trusted Execution Environment)**: 주 운영체제와
-> 분리된 실행 영역으로, 그 안의 메모리와 코드에 운영체제 권한으로도 접근할 수 없도록
-> 하드웨어가 강제한다.
+> **Term** — **Trusted Execution Environment (TEE)**: an execution region separated from the main OS, where
+> hardware enforces that its memory and code cannot be accessed even with OS privilege.
 
-> **용어** — **라이선스(license)**: 콘텐츠 키와 사용 규칙(기간·동시 재생 수·해상도
-> 상한 등)을 함께 담아 **특정 기기만** 열 수 있도록 암호화한 메시지.
+> **Term** — **license**: a message holding the content key and usage rules (period·concurrent-play count·
+> resolution cap, etc.) together, encrypted so that **only a particular device** can open it.
 
-> **용어** — **출력 보호(output protection)**: 복호화된 신호가 기기 밖으로 나가는
-> 경로에 대한 통제. 디스플레이 연결 규격 수준에서 이루어진다.
+> **Term** — **output protection**: control over the path by which the decrypted signal leaves the device. It is
+> done at the level of the display-connection spec.
 
-이 셋이 AES-128 과 DRM 을 가르는 구조적 차이 전부다.
+These three are the whole structural difference dividing AES-128 and DRM.
 
-![달라지는 것은 암호가 아니라 신뢰 가정의 위치다](/images/lecture/hls-recon/25-trust-boundary-location.svg)
+![What changes is not the cipher but the location of the trust assumption](/images/lecture/hls-recon/25-trust-boundary-location.svg)
 
-*그림 25-2 — 신뢰 가정의 위치: HLS AES-128 과 DRM 일반 구조*
+*Figure 25-2 — the location of the trust assumption: HLS AES-128 and the general DRM structure*
 
-표로 대조하면 다음과 같다.
+Contrast in a table and it is the following.
 
-| 항목 | HLS AES-128 (`KEYFORMAT=identity`) | DRM 일반 구조 |
+| Item | HLS AES-128 (`KEYFORMAT=identity`) | General DRM structure |
 |---|---|---|
-| 키 전달 형식 | 평문 16바이트, 일반 HTTP GET | 기기 개별 키로 암호화된 라이선스 |
-| 키를 볼 수 있는 주체 | 애플리케이션 — 그리고 그 사용자 | TEE 내부만 |
-| 정책 판단 | 없음(키 URI 앞단의 접근 통제가 전부) | 라이선스 서버가 **요청마다** |
-| 복호화 실행 위치 | 범용 CPU, 프로세스 메모리 | 보안 비디오 경로 |
-| 복호화 이후 | 통제 없음 | 출력 보호까지 규칙이 이어진다 |
-| **안전성의 근거** | 서버가 요청자를 인증할 수 있다는 것 | **기기 하드웨어의 무결성** |
+| Key-delivery form | plaintext 16 bytes, ordinary HTTP GET | a license encrypted with a per-device key |
+| Who can see the key | the application — and its user | only inside the TEE |
+| Policy judgment | none (the access control in front of the key URI is all) | the license server, **per request** |
+| Decryption-execution location | general-purpose CPU, process memory | the secure video path |
+| After decryption | no control | rules continue up to output protection |
+| **Basis of security** | that the server can authenticate the requester | **the integrity of the device hardware** |
 
-### 25.5.2 DRM 도 §25.2.3 의 명제를 없애지는 못한다
+### 25.5.2 DRM too does not remove §25.2.3's proposition
 
-중요한 지점이다. DRM 은 "재생할 수 있으면 키를 얻을 수 있다"를 **반증하지 않는다.**
-**키를 얻는 주체를 사용자에서 하드웨어로 옮길 뿐이다.**
+An important point. DRM does **not refute** "if you can play you can obtain the key." **It only moves the actor
+obtaining the key from the user to the hardware.**
 
 | | AES-128 | DRM |
 |---|---|---|
-| 복호화하는 주체 | 사용자가 통제하는 소프트웨어 | 사용자가 통제하지 못하는 하드웨어 |
-| 그 주체를 신뢰하는 근거 | 없음 | 하드웨어 제조·인증 체계 |
-| 신뢰가 깨지면 | — | 그 기기·모델 단위로 보호가 무너진다 |
+| The decrypting actor | software the user controls | hardware the user does not control |
+| The basis for trusting that actor | none | the hardware manufacturing·certification system |
+| If the trust breaks | — | protection collapses per that device·model |
 
-그래서 DRM 의 안전성은 암호학적 명제가 아니라 **하드웨어 신뢰 가정**이고, 가정은
-검증 대상이지 공리가 아니다. 실제로 이 가정이 깨진 사례가 반복적으로 보고돼 왔으며,
-그때마다 대응은 기기 폐기·해지 목록(revocation) 같은 **운영상의 조치**였다 — 암호를
-바꾸는 일이 아니었다. **구체적 기법은 이 교재가 다루지 않는다.**
+So DRM's security is not a cryptographic proposition but a **hardware trust assumption**, and an assumption is a
+verification target, not an axiom. In fact cases of this assumption breaking have been reported repeatedly, and
+each time the response was an **operational measure** like device retirement·a revocation list — not changing the
+cipher. **The concrete techniques are not covered by this course.**
 
-한 문장으로 줄이면 이렇다.
+Reduce it to one sentence and it is this.
 
-> **AES-128 은 신뢰 경계를 서버에서 끝내고, DRM 은 그것을 사용자 기기의 하드웨어까지
-> 늘린다. 늘린 경계의 안쪽을 무엇으로 보증하느냐가 DRM 이라는 분야 전체의 문제다.**
+> **AES-128 ends the trust boundary at the server, and DRM extends it to the user device's hardware. By what the
+> inside of the extended boundary is guaranteed is the whole problem of the field called DRM.**
 
 ---
 
-## 25.6 일반화 — 보호와 마찰
+## 25.6 Generalization — protection and friction
 
-### 25.6.1 정의
+### 25.6.1 Definition
 
-> **용어** — **마찰(friction)**: 공격 비용을 올리지만 적대자 집합 전체를 배제하지는
-> 못하는 조치. 일부만 걸러낸다.
+> **Term** — **friction**: a measure that raises the attack cost but does not exclude the entire adversary set. It
+> filters out only some.
 
-보호와 마찰의 차이는 강도가 아니라 **적대자 집합을 다 덮는가**다.
+The difference between protection and friction is not strength but **whether it covers the whole adversary set.**
 
-| | 보호 | 마찰 |
+| | Protection | Friction |
 |---|---|---|
-| 적대자 집합 | 전부 배제 | 일부만 배제 |
-| 실패 방식 | 뚫리면 그 사실이 사건이 된다 | 뚫려도 정상 동작이다 |
-| 위험 | 없음(가정이 참인 한) | **보호로 회계 처리되는 것** |
+| Adversary set | excludes all | excludes only some |
+| Failure mode | when pierced, that fact becomes an incident | pierced and it is normal operation |
+| Danger | none (as long as the assumption is true) | **being accounted as protection** |
 
-마찰이 무가치하다는 뜻이 아니다. 무가치한 것은 **마찰을 보호라고 부르는 것**이다. 그렇게
-부르는 순간 조직은 그 항목을 통제 목록에 올리고, 그 위에 다른 결정을 쌓는다.
+This does not mean friction is worthless. What is worthless is **calling friction protection.** The moment you
+call it that, the organization puts that item on the control list and stacks other decisions on top of it.
 
-> **누구로부터 무엇을 지키는가를 정하지 않은 보호는 보호가 아니라 마찰이다.**
+> **A protection that does not set from whom it protects what is not a protection but friction.**
 
-### 25.6.2 같은 구조가 나타나는 곳
+### 25.6.2 Where the same structure appears
 
-이 교재가 이미 지나온 장들이 대부분 같은 형태였다.
+Most of the chapters this course has already passed through were of the same form.
 
-| 조치 | 실제로 배제하는 적대자 | 배제하지 못하는 적대자 | 흔히 붙는 이름 | 장 |
+| Measure | Adversary it actually excludes | Adversary it fails to exclude | Commonly attached name | Chapter |
 |---|---|---|---|---|
-| HLS AES-128 | URL 만 주운 제3자 | 재생 가능한 사용자 전원 | "콘텐츠 보호" | 25 |
-| 확장자·MIME 필터 | 문자열만 보는 도구 | 페이로드를 보는 도구 | "차단" | 14 |
-| `Referer` 검사 | 브라우저 경유 핫링크 | 헤더를 직접 쓰는 클라이언트 | "도메인 통제" | 9 |
-| packed JS 난독화 | 훑어보는 사람 | 파서를 붙이는 사람 | "코드 보호" | 13 |
-| 클라이언트 측 입력 검증 | 실수하는 사용자 | 요청을 직접 만드는 자 | "검증" | — |
-| 추측 불가능한 "숨겨진" URL | 목록을 훑는 자 | URL 을 아는 자 전부(로그·Referer·캐시) | "비공개" | — |
+| HLS AES-128 | a third party who only picked up the URL | every user who can play | "content protection" | 25 |
+| extension·MIME filter | a tool seeing only the string | a tool seeing the payload | "blocking" | 14 |
+| `Referer` check | browser-via hotlinking | a client writing headers directly | "domain control" | 9 |
+| packed JS obfuscation | someone skimming | someone attaching a parser | "code protection" | 13 |
+| client-side input validation | a user making a mistake | someone crafting the request directly | "validation" | — |
+| an unguessable "hidden" URL | someone sweeping the listing | everyone who knows the URL (log·Referer·cache) | "private" | — |
 
-각 행의 오른쪽 두 열이 어긋나 있다는 것이 공통점이다. 그리고 어긋남은 언제나 **위협
-모델을 쓰지 않았기 때문에** 드러나지 않았다. 네 항목을 채워 보면 세 번째 열이 자동으로
-드러난다 — 신뢰 가정 칸이 비어 있거나 "적대자가 굳이 그렇게까지 하지는 않을 것"으로
-채워지기 때문이다.
+The commonality is that each row's right two columns are off. And the off-ness always went unrevealed **because
+the threat model was not written.** Fill the four items and the third column reveals itself automatically —
+because the trust-assumption cell is empty or filled with "the adversary would not bother going that far."
 
-### 25.6.3 판별 질문
+### 25.6.3 The discriminating questions
 
-주장 하나를 받았을 때 물어야 할 것은 알고리즘이 아니다.
+When you receive a claim, what to ask is not the algorithm.
 
-| 물을 것 | 답이 없으면 |
+| To ask | If there is no answer |
 |---|---|
-| 무엇이 자산인가 | 성공을 정의할 수 없다 |
-| 적대자는 누구인가 | 어떤 조치든 정당화되고 아무것도 검증되지 않는다 |
-| 적대자가 할 수 있는 것은 무엇인가 | 능력을 과소평가한 채 조치가 설계된다 |
-| **적대자가 할 수 없다고 가정하는 것은 무엇인가** | **여기가 비면 마찰이다** |
-| 그 가정이 깨지면 무엇이 남는가 | 실패가 조용히 지나간다 |
+| what is the asset | success cannot be defined |
+| who is the adversary | any measure is justified and nothing is verified |
+| what can the adversary do | the measure is designed underestimating the capability |
+| **what is assumed the adversary cannot do** | **empty here means it is friction** |
+| what remains if that assumption breaks | failure passes quietly |
 
-네 번째 질문이 판별식이다. HLS AES-128 의 답은 "**키 URI 의 접근 통제를 통과할 수 없다**"
-이고, 그것이 참인 배치에서만 링크 보호가 성립한다(§25.4.2). 답이 "복호화 코드를 찾아
-읽지는 않을 것"이라면 그것은 난독화이고(제13장), 답이 "헤더를 위조하지는 않을 것"이라면
-그것은 `Referer` 검사다(제9장).
+The fourth question is the discriminant. HLS AES-128's answer is "**cannot pass the key URI's access control**",
+and link protection holds only in a placement where that is true (§25.4.2). If the answer is "would not go find and
+read the decryption code," that is obfuscation (Chapter 13), and if the answer is "would not forge the header,"
+that is a `Referer` check (Chapter 9).
 
 ---
 
-## 25.7 보안 — 설계자·방어자 관점
+## 25.7 Security — the designer's·defender's view
 
-### 25.7.1 설계자에게
+### 25.7.1 For the designer
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **송출 설계자** | 키 URI 에 세그먼트와 **다른** 접근 통제를 건다. 같은 경로·같은 조건에 두면 암호화는 아무도 배제하지 못한다. 그리고 이 암호화가 배제하는 적대자를 **한 줄로 문서에 적는다** — 적을 수 없으면 아직 설계가 끝나지 않은 것이다 |
-| **보안 검토자** | "AES-128 로 암호화되어 있습니다"를 통제 항목으로 받지 않는다. 물어야 할 질문은 하나다 — **"키는 누구에게 배포되며, 그 배포를 통제하는 것은 무엇인가"** |
-| **감사자** | 위협 모델 네 항목이 문서화되지 않은 보호는 검증 대상이 아니라 **미완성 설계**로 분류한다. 측정할 수 없는 주장은 통과시킬 수도 없다(제15장 §15.6 과 같은 원칙) |
-| **도구 구현자** | 지원 범위를 코드로 긋는다. `is_supported` 처럼 **파싱 시점에** 거부하면 이후 어느 경로로도 그 스트림이 흘러들지 않는다. 문서에만 적은 경계는 다음 커밋에서 사라진다 |
-| **운영자** | 키 회전 주기를 정한다. 정하지 않으면 키 하나가 콘텐츠 전체에 무기한 대응하고, 유출 시 폐기 수단이 없다(§25.4.3) |
+| **delivery designer** | put a **different** access control on the key URI from the segments. put it on the same path·same conditions and the encryption excludes no one. and write **in one line in the doc** the adversary this encryption excludes — if you cannot write it, the design is not yet done |
+| **security reviewer** | do not accept "it is AES-128 encrypted" as a control item. the one question to ask — **"to whom is the key distributed, and what controls that distribution"** |
+| **auditor** | classify a protection whose four threat-model items are not documented not as a verification target but as an **unfinished design.** a claim that cannot be measured cannot be passed either (the same principle as Chapter 15 §15.6) |
+| **tool implementer** | draw the support scope in code. reject **at parse time**, like `is_supported`, and no path afterward lets that stream flow in. a boundary written only in a doc vanishes in the next commit |
+| **operator** | set a key-rotation period. without setting it, one key corresponds to a whole content indefinitely, and on leak there is no means of retirement (§25.4.3) |
 
-### 25.7.2 이 저장소가 그은 경계
+### 25.7.2 The boundary this repository drew
 
-`README.md` 의 첫 고지가 이 장의 결론을 그대로 담고 있다.
+`README.md`'s first notice holds this chapter's conclusion as-is.
 
 ```
 # README.md:5-13
-> **사용 범위**
+> **Scope of use**
 >
-> 본인이 접근 권한을 가진 스트림에만 사용할 것. 이 도구는 송출 무결성 검증을 위한
-> 것이며, 권한 없는 콘텐츠의 취득·재배포에 쓰는 것은 사용자 책임이다.
+> Use only on streams you have access to. This tool is for delivery-integrity verification,
+> and using it for the acquisition·redistribution of unauthorized content is the user's responsibility.
 >
-> DRM 은 다루지 않는다. Widevine·FairPlay·PlayReady·SAMPLE-AES 로 보호된 스트림은
-> 코드 레벨에서 거부한다 (`playlist.py` — `KEYFORMAT=identity` 인 AES-128 만 처리).
-> RFC 8216 §4.3.2.4 의 AES-128 은 평문 키를 URI 로 내려주는 링크 보호 수준이지 DRM 이
-> 아니다.
+> DRM is not covered. Streams protected by Widevine·FairPlay·PlayReady·SAMPLE-AES are rejected
+> at the code level (`playlist.py` — only AES-128 with KEYFORMAT=identity is processed).
+> RFC 8216 §4.3.2.4's AES-128 is a link-protection level handing down a plaintext key over a URI, not DRM.
 ```
 
-두 문단은 성격이 다르다.
+The two paragraphs differ in nature.
 
-| 문단 | 성격 | 무엇으로 뒷받침되는가 |
+| Paragraph | Nature | Backed by what |
 |---|---|---|
-| 첫째 — "접근 권한을 가진 스트림에만" | **사용 규범** | 코드가 강제할 수 없다. 사용자가 지킨다 |
-| 둘째 — "DRM 은 코드 레벨에서 거부" | **기술적 사실** | [`playlist.py:64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L64) 가 강제한다 |
+| First — "only on streams you have access to" | **usage norm** | code cannot enforce it. the user keeps it |
+| Second — "DRM rejected at the code level" | **technical fact** | [`playlist.py:64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L64) enforces it |
 
-둘째 문단이 검증 가능한 주장이라는 점이 중요하다. 이 고지는 "하지 않겠다"는 선언이
-아니라 **"할 수 없게 만들어 두었다"는 진술**이며, `is_supported` 를 읽으면 확인된다.
-그리고 이 장의 §25.2 는 그 거부가 왜 기능 부족이 아니라 **범위 규정**인지를 설명한다 —
-DRM 을 지원한다는 것은 DRM 클라이언트를 구현한다는 뜻이고, 그것은 이 도구가 하는 일
-(송출 무결성 검증)과 다른 일이다.
+That the second paragraph is a verifiable claim matters. This notice is not a declaration "we will not" but a
+**statement "we made it so we cannot"**, and it is confirmed by reading `is_supported`. And this chapter's §25.2
+explains why that rejection is not a lack of a feature but a **scope definition** — to support DRM means to
+implement a DRM client, and that is a different job from what this tool does (delivery-integrity verification).
 
-교재의 경계도 같은 자리에 있다. 이 장은 **AES-128 이 왜 콘텐츠 보호가 아닌지를 위협
-모델로 설명**하지만, 실제 DRM 의 키 취급을 우회하는 절차나 특정 서비스를 대상으로 한
-기법은 다루지 않는다. 커리큘럼 §0.1 이 같은 선을 그어 두었고, 이 저장소에 그 코드가
-없다는 사실이 그 선을 뒷받침한다.
+The course's boundary is in the same place. This chapter **explains with the threat model why AES-128 is not
+content protection**, but it does not cover procedures bypassing an actual DRM's key handling or techniques
+targeting a particular service. Curriculum §0.1 drew the same line, and the fact that this repository has no such
+code backs that line.
 
-### 25.7.3 방어자가 실제로 얻는 것
+### 25.7.3 What the defender actually gains
 
-이 장의 내용이 방어 측에 주는 것은 셋이다.
+What this chapter's content gives the defense side is three.
 
-1. **주장의 등급화** — "암호화됨"은 통제가 아니라 사실 기술이다. 통제로 세려면 위협
-   모델 네 항목이 따라와야 한다.
-2. **통제 지점의 위치 확인** — AES-128 을 쓰는 순간 실질적 통제 지점은 세그먼트가
-   아니라 **키 URI 하나**로 옮겨 간다. 감시·로깅·차단을 그 지점에 집중하면 된다.
-   반대로 그 지점을 방치하면 나머지 전부가 무의미해진다.
-3. **실패의 관측 가능성** — 키 요청 실패는 세그먼트 실패와 다른 증상으로 나타나야
-   한다. `KeyCache.material` 의 16바이트 검사(§25.3.3 ②)가 클라이언트 쪽에서 그 구분을
-   만든다. 서버 쪽에서도 키 URI 의 4xx 비율은 세그먼트의 그것과 분리해 볼 값이다.
-
----
-
-## 25.8 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **이 장의 핵심 명제는 정의에 의한 것이지 실측이 아니다.** "재생 가능 ⇒ 키 획득 가능"은
-  `KEYFORMAT=identity` 의 정의에서 따라 나오는 논리적 귀결이며, 특정 서비스에서 측정한
-  결과가 아니다. 실측한 것은 §25.1 의 로컬 재현(평문 16바이트 키 파일, 암호화 세그먼트의
-  `sniff()` 결과)과 §25.3.2 의 `is_supported` 판정표뿐이다.
-- **DRM 구조 서술은 공개 명세 수준의 일반화다.** 이 저장소에는 DRM 코드가 없으므로
-  §25.5 는 코드 앵커로 뒷받침되지 않는다. Widevine·FairPlay·PlayReady 각각의 실제 구현
-  차이는 확인하지 않았고, 세 시스템이 §25.5.1 의 세 요소를 모두·같은 방식으로 갖추고
-  있다고 단정할 근거도 이 저장소 안에는 없다.
-- **키 URI 앞단의 접근 통제는 클라이언트에서 관측되지 않는다.** `KeyCache.material` 이
-  아는 것은 "200 이 왔고 본문이 16바이트였다"뿐이다. 그 경로에 세그먼트와 다른 통제가
-  걸려 있었는지, 애초에 통제가 있기는 했는지는 **실패했을 때만**(403 등) 간접적으로
-  드러난다. 따라서 §25.4.2 의 "가정이 깨진 배치"를 이 도구로 진단할 수는 없다.
-- **키 캐시의 메모리 수명은 측정하지 않았다.** `KeyCache._cache` 는 실행이 끝날 때까지
-  평문 키를 들고 있고, 파이썬에서 그 메모리를 확실히 지울 방법은 없다(`bytes` 는
-  불변이고 GC 시점을 제어할 수 없다). 이 도구의 위협 모델에서 문제가 아니라고 **판단**한
-  것이지 측정한 것이 아니다.
-- **재현 플레이리스트의 `IV` 값은 설명하지 않았다.** §25.1 에서 ffmpeg 8.1.1 이 생성한
-  플레이리스트에 `IV=0x000…0` 이 들어갔는데, 2줄짜리 keyinfo 를 준 상황에서 왜 그 값이
-  나왔는지는 확인하지 않았다. IV 유도 규칙 자체는 제23장의 주제이며, 이 장의 논지(키
-  배포)와는 무관하다.
-- **키 회전의 실제 효과는 이 저장소에서 검증되지 않았다.** 파서는 중간의 `EXT-X-KEY`
-  재선언을 처리하지만([`playlist.py:307-316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L307-L316)), 회전이 있는 스트림은 회귀 테스트에 없다.
+1. **Grading claims** — "encrypted" is not a control but a factual description. To count it as a control, the four
+   threat-model items must follow.
+2. **Locating the control point** — the moment you use AES-128, the real control point moves from the segments to
+   **one key URI.** Concentrate monitoring·logging·blocking on that point. Conversely, neglect that point and all
+   the rest is meaningless.
+3. **The observability of failure** — a key-request failure must appear with a different symptom from a segment
+   failure. `KeyCache.material`'s 16-byte check (§25.3.3 ②) makes that distinction on the client side. On the
+   server side too, the key URI's 4xx rate is a value to view separately from the segments'.
 
 ---
 
-## 25.9 요약
+## 25.8 Limits and open questions
 
-1. HLS 의 AES-128(`KEYFORMAT=identity`)은 **평문 16바이트 키를 URI 로 그대로 내려준다.**
-   실측하면 키 파일은 정확히 16바이트이고 봉투도 서명도 없다.
-2. 따라서 **재생할 수 있는 클라이언트는 정의상 키를 얻을 수 있다.** 이것은 암호의 실패가
-   아니라 **키 배포 정책**의 귀결이다. AES-256 으로 바꿔도 달라지지 않는다.
-3. **Kerckhoffs 원리는 완전히 지켜져 있다** — 알고리즘은 RFC 8216 §4.3.2.4 에 공개돼 있고
-   안전성 전부가 키에 걸려 있다. 문제는 그 키가 정당한 요청자 전원에게 배포된다는 것이다.
-4. 그러므로 **링크 보호는 성립하고 콘텐츠 보호는 성립하지 않는다.** 링크 보호에는 실질적
-   가치가 있다 — 세그먼트 URL·사본·캐시 잔여물만으로는 재생할 수 없고, 통제 지점이 키
-   URI 하나로 모인다. 단 **키 URI 를 세그먼트와 같은 조건에 두면 아무도 배제하지 못한다.**
-5. **DRM 은 다른 종류의 문제다.** 암호가 아니라 신뢰 가정의 위치가 다르다 — 키가 TEE
-   안에 머물고, 라이선스 서버가 요청마다 정책을 판단하며, 통제가 출력까지 이어진다.
-   DRM 도 §25.2.3 의 명제를 없애지 못하며, 키를 얻는 주체를 사용자에서 하드웨어로 옮길
-   뿐이다.
-6. 이 저장소는 그 경계를 **코드로** 긋는다 — `is_supported` 의 `keyformat == "identity"`
-   한 조건이 "키가 평문으로 오는 경우만"이라는 문장의 코드 표현이고, 그 밖의 모든 것은
-   파싱 시점에 거부된다([`playlist.py:64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L64), [`cli.py:395-398`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L395-L398), [`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40)).
-7. 일반화하면 이렇다 — **누구로부터 무엇을 지키는가를 정하지 않은 보호는 보호가 아니라
-   마찰이다.** 마찰이 무가치한 것이 아니라, 마찰을 보호로 회계 처리하는 것이 위험하다.
-   판별식은 하나다: **"적대자가 할 수 없다고 가정하는 것은 무엇인가."** 그 칸이 비어
-   있으면 마찰이다.
+Written honestly.
+
+- **This chapter's core proposition is by definition, not measurement.** "playable ⇒ can obtain the key" is a
+  logical consequence following from the definition of `KEYFORMAT=identity`, not a result measured at a particular
+  service. What was measured is only §25.1's local reproduction (a plaintext 16-byte key file, the `sniff()`
+  result of an encrypted segment) and §25.3.2's `is_supported` verdict table.
+- **The DRM structure narrative is a generalization at the public-spec level.** This repository has no DRM code so
+  §25.5 is not backed by code anchors. The actual implementation differences of Widevine·FairPlay·PlayReady each
+  were not confirmed, and there is no basis inside this repository to assert that the three systems all have
+  §25.5.1's three elements in the same way.
+- **The access control in front of the key URI is not observed from the client.** What `KeyCache.material` knows is
+  only "a 200 came and the body was 16 bytes." Whether a different control from the segments was on that path, or
+  whether there was any control at all, is revealed indirectly **only on failure** (403, etc.). So §25.4.2's
+  "configuration where the assumption is broken" cannot be diagnosed with this tool.
+- **The key cache's memory lifetime was not measured.** `KeyCache._cache` holds the plaintext key until the run
+  ends, and in Python there is no sure way to wipe that memory (`bytes` is immutable and the GC timing cannot be
+  controlled). It was **judged** not a problem in this tool's threat model, not measured.
+- **The reproduction playlist's `IV` value was not explained.** In §25.1 ffmpeg 8.1.1 put `IV=0x000…0` into the
+  generated playlist, and why that value came out given a 2-line keyinfo was not confirmed. The IV derivation rule
+  itself is Chapter 23's subject and is unrelated to this chapter's thesis (key distribution).
+- **Key rotation's actual effect was not verified in this repository.** The parser handles a mid-stream `EXT-X-KEY`
+  re-declaration ([`playlist.py:307-316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L307-L316)), but a stream with rotation is not in the regression test.
 
 ---
 
-**다음 장** — 이 장은 `is_supported` 의 두 조건 중 `keyformat` 쪽만 다뤘다. 남은 조건
-`method in ("NONE", "AES-128")` 은 위협 모델이 아니라 **구현 가능성**의 문제다.
-SAMPLE-AES 는 세그먼트 전체가 아니라 프레임 내부의 일부만 암호화하므로, "세그먼트를
-받아서 통째로 복호화한다"는 이 도구의 처리 구조 자체가 성립하지 않는다. 제26장은
-**암호화 입자(granularity)가 어떻게 처리 파이프라인의 형태를 결정하는지**를 다룬다.
+## 25.9 Summary
+
+1. HLS's AES-128 (`KEYFORMAT=identity`) **hands down a plaintext 16-byte key over a URI as-is.** Measured, the key
+   file is exactly 16 bytes with no envelope and no signature.
+2. So **a client that can play can, by definition, obtain the key.** This is not a failure of the cipher but a
+   consequence of the **key-distribution policy.** Switching to AES-256 changes nothing.
+3. **Kerckhoffs's principle is fully kept** — the algorithm is public in RFC 8216 §4.3.2.4 and all of security
+   hangs on the key. The problem is that that key is distributed to every legitimate requester.
+4. So **link protection holds and content protection does not.** Link protection has real worth — you cannot play
+   from a segment URL·copy·cache remnant alone, and the control point gathers into one key URI. But **put the key
+   URI on the same conditions as the segments and it excludes no one.**
+5. **DRM is a different kind of problem.** Not the cipher but the location of the trust assumption differs — the key
+   stays inside the TEE, the license server judges policy per request, and control continues up to output. DRM too
+   does not remove §25.2.3's proposition; it only moves the key-obtaining actor from the user to the hardware.
+6. This repository draws that boundary **in code** — the one condition `keyformat == "identity"` in `is_supported`
+   is the code expression of "only the case where the key comes in plaintext," and everything else is rejected at
+   parse time ([`playlist.py:64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L64), [`cli.py:395-398`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L395-L398), [`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40)).
+7. Generalized it is this — **a protection that does not set from whom it protects what is not a protection but
+   friction.** It is not that friction is worthless but that accounting friction as protection is dangerous. The
+   discriminant is one: **"what is assumed the adversary cannot do."** If that cell is empty, it is friction.
+
+---
+
+**Next chapter** — this chapter covered only the `keyformat` side of `is_supported`'s two conditions. The remaining
+condition `method in ("NONE", "AES-128")` is a problem not of the threat model but of **implementability.**
+SAMPLE-AES encrypts only part of the inside of a frame, not the whole segment, so this tool's very processing
+structure "receive a segment and decrypt it whole" does not hold. Chapter 26 covers **how the encryption
+granularity determines the shape of the processing pipeline.**

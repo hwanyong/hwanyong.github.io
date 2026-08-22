@@ -1,27 +1,26 @@
 ---
-untranslated: ko
-title: "패딩 오라클의 반대편"
-description: "왜 여기서는 예외를 던지지 않는가"
-date: 2026-08-18
+title: "The Other Side of the Padding Oracle"
+description: "Why it does not throw an exception here"
+date: 2026-07-13
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-24-padding-oracle-inverse.svg
 ---
-## 24.0 이 장에서 답할 것
+## 24.0 What this chapter answers
 
-1. PKCS#7 패딩은 무엇을 하며, 왜 **정확히 맞아떨어져도 한 블록을 더 붙이는가**
-2. 패딩 검증에 실패했을 때 무엇을 해야 하는가 — 예외를 던질 것인가, 삼킬 것인가
-3. **패딩 오라클 공격은 정확히 어떤 조건에서 성립하는가**
-4. 같은 아홉 줄이 한쪽에서는 취약점이고 다른 쪽에서는 옳은 이유는 무엇인가
+1. What does PKCS#7 padding do, and why does it **append one more block even when it lands exactly**?
+2. What should you do when padding verification fails — throw an exception, or swallow it?
+3. **Under exactly what conditions does a padding-oracle attack hold?**
+4. Why are the same nine lines a vulnerability on one side and correct on the other?
 
-네 번째 질문이 이 장의 정점이다. 그 답은 코드 안에 없다. 코드 밖, **그 코드가 놓인
-자리**에 있다.
+The fourth question is this chapter's summit. Its answer is not inside the code. It is outside the code, in **the
+place that code is set.**
 
 ---
 
-## 24.1 문제 — 아홉 줄짜리 함수와 그 안의 결정
+## 24.1 The problem — a nine-line function and the decision inside it
 
-이 저장소에서 가장 짧은 축에 드는 함수 하나를 그대로 옮긴다.
+Copy as-is one function among the shortest in this repository.
 
 ```python
 # decrypt.py:50-58
@@ -29,147 +28,145 @@ def _unpad_pkcs7(data: bytes) -> bytes:
     if not data:
         return data
     n = data[-1]
-    # 패딩이 깨졌으면(잘린 세그먼트 등) 자르지 않고 원본을 넘긴다.
-    # 여기서 예외를 던지면 손상 검출이 복호화 단계에 묻혀버린다.
+    # if the padding is broken (a truncated segment, etc.) do not cut, pass the original.
+    # throw an exception here and damage detection gets buried in the decryption stage.
     if 1 <= n <= 16 and data[-n:] == bytes([n]) * n:
         return data[:-n]
     return data
 ```
 
-마지막 줄 `return data` 가 이 장의 전부다. **패딩이 규격에 맞지 않으면 아무 일도
-일어나지 않는다.** 예외도 없고, 로그도 없고, 반환값에 성공 여부를 실어 보내지도
-않는다. 호출자는 패딩이 유효했는지 알 방법이 없다.
+The last line `return data` is all of this chapter. **If the padding does not conform to spec, nothing happens.**
+No exception, no log, and it does not carry a success flag in the return value either. The caller has no way to
+know whether the padding was valid.
 
-이것은 교과서가 가르치는 것과 정반대다. 표준 라이브러리들의 기본 동작을 나열하면 이렇다.
+This is the exact opposite of what the textbook teaches. List the standard libraries' default behavior and it is
+this.
 
-| 구현 | 패딩이 깨졌을 때 |
+| Implementation | When the padding is broken |
 |---|---|
 | Java `Cipher` (`PKCS5Padding`) | `BadPaddingException` |
 | .NET `ICryptoTransform` | `CryptographicException` |
-| OpenSSL `EVP_DecryptFinal_ex` | 0 반환(실패) |
-| Python `cryptography` 의 `padding.PKCS7().unpadder()` | `ValueError` |
-| **이 코드** | **원본을 그대로 반환** |
+| OpenSSL `EVP_DecryptFinal_ex` | returns 0 (failure) |
+| Python `cryptography`'s `padding.PKCS7().unpadder()` | `ValueError` |
+| **this code** | **returns the original as-is** |
 
-다섯 번째 행만 다르다. 그런데 이 코드는 위 라이브러리들과 같은 문제를 풀지 않는다.
-같은 연산을 하지만 **역할이 다르다.** 이 장은 그 차이가 무엇을 뒤집는지를 다룬다.
+Only the fifth row is different. And yet this code does not solve the same problem as the libraries above. It
+does the same operation but **the role differs.** This chapter covers what that difference inverts.
 
-주석 두 줄이 이유를 밝히고 있으므로 출발점은 정해져 있다. "여기서 예외를 던지면 손상
-검출이 복호화 단계에 묻혀버린다." 이 문장이 참인지, 참이라면 어디까지 참인지를
-확인하는 것이 §24.3 이다.
+Since the two comment lines state the reason, the starting point is set. "Throw an exception here and damage
+detection gets buried in the decryption stage." Whether this sentence is true, and if so how far true, is what
+§24.3 confirms.
 
 ---
 
-## 24.2 원리 — PKCS#7 패딩
+## 24.2 The principle — PKCS#7 padding
 
-### 24.2.1 왜 패딩이 필요한가
+### 24.2.1 Why is padding needed
 
-AES 는 **블록 암호(block cipher)** 다.
+AES is a **block cipher.**
 
-> **용어** — **블록 암호(block cipher)**: 고정 길이 블록 단위로만 동작하는 대칭키 암호.
-> AES 의 블록 길이는 어떤 키 길이에서도 128비트(16바이트)다.
+> **Term** — **block cipher**: a symmetric-key cipher operating only in fixed-length block units. AES's block
+> length is 128 bits (16 bytes) at any key length.
 
-> **용어** — **CBC(Cipher Block Chaining, 암호 블록 연쇄) 모드**: 각 평문 블록을 직전
-> 암호문 블록과 XOR 한 뒤 암호화하는 운용 모드. 복호화는 `P_i = D_K(C_i) XOR C_(i-1)`
-> 이고, 첫 블록의 `C_0` 자리에는 IV(초기화 벡터)가 들어간다. 제23장에서 IV 를
-> media sequence number 로 유도하는 규칙을 다뤘다.
+> **Term** — **CBC (Cipher Block Chaining) mode**: the mode of operation that XORs each plaintext block with the
+> previous ciphertext block and then encrypts. Decryption is `P_i = D_K(C_i) XOR C_(i-1)`, and the IV
+> (initialization vector) goes into the first block's `C_0` slot. Chapter 23 covered the rule deriving the IV
+> from the media sequence number.
 
-CBC 는 평문을 블록 단위로만 먹는다. 그런데 실제 데이터의 길이는 16의 배수가 아니다.
-MPEG-TS 세그먼트는 188바이트의 배수이고, 188 을 16 으로 나눈 나머지는 12 다. 부족분을
-채워 넣는 규칙이 필요하고, 그 규칙 중 가장 널리 쓰이는 것이 PKCS#7 이다.
+CBC eats the plaintext only in block units. And yet the actual data length is not a multiple of 16. An MPEG-TS
+segment is a multiple of 188, and 188 divided by 16 has remainder 12. A rule to fill the shortfall is needed, and
+the most widely used of those rules is PKCS#7.
 
-> **용어** — **PKCS#7 패딩(PKCS#7 padding)**: 블록 길이를 채우기 위해 부족한 `n`
-> 바이트를 **전부 값 `n`** 으로 채우는 규칙. 원래 RFC 2315 의 PKCS #7 규격에서 왔고
-> 지금은 RFC 5652 §6.3 에 같은 규칙이 실려 있다. HLS 의 AES-128 은 RFC 8216 §4.3.2.4
-> 에서 이 패딩을 쓴다고 규정한다.
+> **Term** — **PKCS#7 padding**: the rule filling the shortfall of `n` bytes **all with the value `n`** to fill
+> the block length. It originally came from RFC 2315's PKCS #7 spec and the same rule is now in RFC 5652 §6.3.
+> HLS's AES-128 stipulates this padding in RFC 8216 §4.3.2.4.
 
-### 24.2.2 규칙과, 규칙을 유일하게 만드는 조항
+### 24.2.2 The rule, and the clause that makes the rule unique
 
-규칙 자체는 한 줄이다. **부족한 `n` 바이트를 값 `n` 으로 채운다.** 그런데 여기에
-언뜻 낭비로 보이는 조항이 하나 더 붙는다.
+The rule itself is one line. **Fill the shortfall of `n` bytes with the value `n`.** And yet one more clause,
+seemingly wasteful at a glance, attaches here.
 
-> **평문이 블록 경계에서 정확히 끝나면, 값 16(`0x10`)만으로 이루어진 블록을
-> 통째로 하나 더 붙인다.**
+> **If the plaintext ends exactly at a block boundary, append one whole block consisting only of the value 16
+> (`0x10`).**
 
-![PKCS#7 마지막 블록의 세 가지 모양](/images/lecture/hls-recon/24-pkcs7-block.svg)
+![The three shapes of a PKCS#7 last block](/images/lecture/hls-recon/24-pkcs7-block.svg)
 
-*그림 24-1 — PKCS#7 마지막 블록의 세 가지 모양*
+*Figure 24-1 — the three shapes of a PKCS#7 last block*
 
-**이 조항이 없으면 무엇이 깨지는가.** 평문의 마지막 네 바이트가 우연히
-`04 04 04 04` 이고 길이가 마침 16의 배수라고 하자. 패딩을 붙이지 않았으므로 이것은
-평문 그대로다. 그런데 제거하는 쪽은 마지막 바이트 `04` 를 읽고 "패딩 4바이트"라고
-판정해 **평문 네 바이트를 잘라낸다.** 붙였는지 안 붙였는지 구별할 수단이 없기
-때문이다.
+**What breaks without this clause.** Say the plaintext's last four bytes are by chance `04 04 04 04` and the
+length happens to be a multiple of 16. No padding was appended so this is the plaintext as-is. And yet the
+removing side reads the last byte `04` and judges "4 padding bytes" and **cuts off four plaintext bytes.** Because
+there is no means to tell whether padding was appended or not.
 
-조항을 넣으면 이 모호성이 사라진다. **패딩은 언제나 존재한다**는 불변식이 서고,
-제거 규칙은 "마지막 바이트를 읽어 그만큼 잘라낸다" 하나로 유일해진다. 낭비처럼
-보이는 한 블록은 **제거의 결정성(determinism)을 사는 값**이다.
+Insert the clause and this ambiguity vanishes. The invariant **padding always exists** stands, and the removal
+rule becomes unique as the single one "read the last byte and cut off that much." The block that looks wasteful
+is **the value that buys the determinism of removal.**
 
-같은 이유로 `n = 0` 인 패딩은 정의되지 않는다. `n` 의 범위가 1–16 이므로 마지막
-바이트 하나가 곧 패딩 길이가 된다. 코드의 `1 <= n <= 16` 이 이 범위 검사다.
+For the same reason, padding with `n = 0` is undefined. Since `n`'s range is 1–16, the single last byte is itself
+the padding length. The code's `1 <= n <= 16` is this range check.
 
-### 24.2.3 실측 — HLS 세그먼트에는 몇 바이트가 붙는가
+### 24.2.3 Measured — how many bytes attach to an HLS segment
 
-실제로 얼마가 붙는지는 세그먼트마다 다르다. TS 세그먼트의 길이는 `188 × N`(N = 패킷
-수)이고, `188 × N mod 16 = 12N mod 16` 이므로 패킷 수가 4의 배수일 때만 0 이 된다.
+How much actually attaches differs per segment. A TS segment's length is `188 × N` (N = packet count), and `188 ×
+N mod 16 = 12N mod 16`, so it becomes 0 only when the packet count is a multiple of 4.
 
-로컬에서 AES-128 HLS 스트림을 만들어 직접 재어 보았다.
+I made an AES-128 HLS stream locally and measured directly.
 
 ```
 ffmpeg 8.1.1 · Python 3.14.5 · cryptography 48.0.0 · macOS 25.5.0
 ffmpeg -f lavfi -i testsrc2 … -f hls -hls_key_info_file keyinfo …
 ```
 
-| 세그먼트 | 암호문 | 복호문 | 패딩 `n` | 벗긴 뒤 | 패킷 수 |
+| Segment | Ciphertext | Plaintext | Padding `n` | After stripping | Packet count |
 |---|---|---|---|---|---|
 | `seg000.ts` | 210,384 B | 210,384 B | **12** | 210,372 B | 1,119 |
 | `seg001.ts` | 228,800 B | 228,800 B | **4** | 228,796 B | 1,217 |
 | `seg002.ts` | 222,224 B | 222,224 B | **8** | 222,216 B | 1,182 |
 
-세 값이 다 다르다. `12N mod 16` 을 계산해 보면 각각 4·12·8 이고, 패딩은 `16 −` 그 값
-이므로 12·4·8 이 된다 — 측정값과 일치한다. 벗긴 뒤 길이는 셋 다 188 로 정확히
-나누어떨어진다.
+All three values are different. Compute `12N mod 16` and it is 4·12·8 respectively, and the padding is `16 −` that
+value so it becomes 12·4·8 — matching the measurements. The stripped length is exactly divisible by 188 for all
+three.
 
-> **패딩 길이는 데이터의 성질이지 규격의 상수가 아니다.** "AES-128 HLS 세그먼트는
-> 항상 16바이트가 붙는다" 같은 문장을 코드에 상수로 박으면 세 개 중 하나만 맞는다.
+> **The padding length is a property of the data, not a constant of the spec.** Nail a sentence like "an AES-128
+> HLS segment always gets 16 bytes appended" as a constant into the code and only one of the three matches.
 
-### 24.2.4 검증 절차와 그 정보량
+### 24.2.4 The verification procedure and its information content
 
-제거 쪽 검사는 두 조건이다.
+The removing side's check is two conditions.
 
 ```python
 # decrypt.py:56
     if 1 <= n <= 16 and data[-n:] == bytes([n]) * n:
 ```
 
-첫째, `n` 이 유효 범위인가. 둘째, 끝 `n` 바이트가 **전부** `n` 인가. 둘째 조건이 없이
-길이만 보는 구현은 사실상 아무것도 검사하지 않는다.
+First, is `n` in the valid range. Second, are the last `n` bytes **all** `n`. An implementation looking only at
+the length without the second condition checks essentially nothing.
 
-여기서 중요한 것은 이 검사가 **얼마나 약한 검사인가**다. 아무 관련 없는 바이트열이
-우연히 이 검사를 통과할 확률을 계산하면,
+What matters here is **how weak a check** this is. Compute the probability an entirely unrelated byte string
+passes this check by chance, and
 
 ```
 P = Σ(n=1..16) 256^-n ≈ 1/255 ≈ 0.392%
 ```
 
-이고 그중 압도적인 몫이 `n = 1` 항이다 — 마지막 바이트가 `0x01` 이기만 하면 "끝
-1바이트가 전부 `0x01`"은 언제나 참이기 때문이다. 무작위 16바이트 블록 200,000개로
-실제로 세어 보면 801개가 통과했다(**1/249.7**, 이론값 1/255.0 · 표본 오차 범위).
+and the overwhelming share of that is the `n = 1` term — because as long as the last byte is `0x01`, "the last 1
+byte is all `0x01`" is always true. Count actually with 200,000 random 16-byte blocks and 801 passed (**1/249.7**,
+theoretical 1/255.0 · within sampling error).
 
-> **패딩 검사가 통과했다는 사실은 마지막 두 블록에 대한 1비트 남짓의 정보다.**
-> 세그먼트 전체의 무결성에 대해서는 아무것도 말하지 않는다.
+> **That a padding check passed is about a bit's worth of information about the last two blocks.** It says nothing
+> about the whole segment's integrity.
 
-이 문장은 §24.3.3 의 실측에서 그대로 확인된다. 세그먼트 **중간**에서 12개 패킷을
-들어내도 패딩은 여전히 유효하다. CBC 에서 마지막 평문 블록은 마지막 두 **암호문**
-블록에만 의존하고, 그 둘은 중간을 도려낸 뒤에도 그대로 남아 있기 때문이다.
+This sentence is confirmed as-is in §24.3.3's measurement. Take out 12 packets from the **middle** of a segment
+and the padding is still valid. Because in CBC the last plaintext block depends only on the last two **ciphertext**
+blocks, and those two remain as-is even after the middle is gouged out.
 
 ---
 
-## 24.3 코드 — 왜 이 저장소는 삼키는가
+## 24.3 The code — why this repository swallows
 
-### 24.3.1 던졌다면 그 예외는 어디로 가는가
+### 24.3.1 If it had thrown, where would that exception go
 
-호출 사슬을 위에서 아래로 따라간다. `_unpad_pkcs7` 은 `KeyCache.decrypt` 의 마지막
-줄에서 불린다.
+Follow the call chain from top to bottom. `_unpad_pkcs7` is called on the last line of `KeyCache.decrypt`.
 
 ```python
 # decrypt.py:33-47
@@ -178,8 +175,8 @@ P = Σ(n=1..16) 256^-n ≈ 1/255 ≈ 0.392%
             return data
         if not key.is_supported:
             raise NotImplementedError(
-                f"METHOD={key.method} KEYFORMAT={key.keyformat} 는 세그먼트 단위 "
-                "복호화가 불가능하다 — --mode remux 로 ffmpeg 에 위임할 것"
+                f"METHOD={key.method} KEYFORMAT={key.keyformat} cannot be decrypted "
+                "segment-by-segment — delegate to ffmpeg with --mode remux"
             )
 
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -190,22 +187,22 @@ P = Σ(n=1..16) 256^-n ≈ 1/255 ≈ 0.392%
         return _unpad_pkcs7(plain)
 ```
 
-그리고 `decrypt` 는 세그먼트 루프 안에서 불린다.
+And `decrypt` is called inside the segment loop.
 
 ```python
 # cli.py:452-468
     for seg, res in zip(segs, results):
         if not res.ok:
-            _eprint(f"    ✗ seg#{seg.index} 수신 실패: {res.error}")
+            _eprint(f"    ✗ seg#{seg.index} receive failed: {res.error}")
             continue
         data = res.body
         if seg.key and seg.key.is_encrypted:
             data = keys.decrypt(data, seg.key, seg.seq)
         kind = sniff(data)
         if kind == "unknown":
-            # 200 을 받았지만 미디어가 아니다 — 오류 페이지가 실려 온 경우다.
+            # received a 200 but it is not media — an error page came instead.
             bogus.append((seg.index, res.content_type, data[:16].hex()))
-            _eprint(f"    ✗ seg#{seg.index} 미디어가 아님 (Content-Type: {res.content_type or '없음'})")
+            _eprint(f"    ✗ seg#{seg.index} not media (Content-Type: {res.content_type or 'none'})")
             continue
         ts_total.merge(analyze(data, cc_state))
         p = work / f"seg{seg.index:06d}{ext}"
@@ -213,487 +210,472 @@ P = Σ(n=1..16) 256^-n ≈ 1/255 ≈ 0.392%
         paths.append(p)
 ```
 
-**이 루프에는 `try` 가 없다.** 위로 올라가도 마찬가지다. 전수로 확인한 결과는 이렇다.
+**This loop has no `try`.** Going up it is the same. The exhaustive check result is this.
 
-| 지점 | 코드 | 예외를 잡는가 |
+| Spot | Code | Catches the exception |
 |---|---|---|
-| [`cli.py:458`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L458) | `data = keys.decrypt(...)` | 아니오 |
-| [`cli.py:587`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L587) | `run = _run_segments(...)` | 아니오 |
-| [`cli.py:678`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L678) | `rep = _run_one(...)` (단건 실행) | 아니오 |
-| [`cli.py:916`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L916) | `rep = _run_one(...)` (시리즈 일괄 실행) | **`SystemExit` 만** 잡는다 |
-| [`cli.py:1117`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1117) `main()` | — | 전역 처리기 없음 |
+| [`cli.py:458`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L458) | `data = keys.decrypt(...)` | no |
+| [`cli.py:587`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L587) | `run = _run_segments(...)` | no |
+| [`cli.py:678`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L678) | `rep = _run_one(...)` (single run) | no |
+| [`cli.py:916`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L916) | `rep = _run_one(...)` (series batch run) | **only `SystemExit`** |
+| [`cli.py:1117`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1117) `main()` | — | no global handler |
 
-이 저장소는 "사용자에게 보일 실패"를 `SystemExit` 으로 통일해 던진다([`cli.py:135`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L135)
-`:143` `:445` `:471` 등). 시리즈 일괄 실행은 그 규약에 기대어 **한 회차의 실패를
-삼키고 다음 회차로 넘어간다**([`cli.py:917-922`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L917-L922)).
+This repository throws "failures to be shown to the user" uniformly as `SystemExit` ([`cli.py:135`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L135) `:143`
+`:445` `:471`, etc.). The series batch run leans on that convention and **swallows one episode's failure and moves
+to the next** ([`cli.py:917-922`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L917-L922)).
 
-`_unpad_pkcs7` 이 `ValueError` 를 던졌다면 이 규약 밖으로 새어 나간다. 결과는 둘이다.
+Had `_unpad_pkcs7` thrown a `ValueError`, it leaks outside this convention. The results are two.
 
-1. **단건 실행** — 파이썬 스택 트레이스가 그대로 출력된다. 리포트는 만들어지지 않고,
-   그때까지 수집한 계측치도 함께 사라진다.
-2. **시리즈 일괄 실행** — 27화 중 7화의 세그먼트 하나가 깨졌을 뿐인데 **8화부터
-   27화까지가 실행되지 않는다.**
+1. **Single run** — the Python stack trace is output as-is. The report is not made, and the measurements
+   collected until then vanish with it.
+2. **Series batch run** — just one segment of episode 7 of 27 broke, yet **episodes 8 through 27 are not run.**
 
-두 번째가 이 결정의 실제 무게다. 잘린 세그먼트 하나가 남은 스무 편을 데리고 죽는다.
+The second is this decision's real weight. One truncated segment drags the remaining twenty down with it.
 
-### 24.3.2 삼키면 손상은 어디서 드러나는가
+### 24.3.2 If it swallows, where does the damage surface
 
-예외를 던지지 않으면 손상은 사라지는가. 아니다. **한 층 위로 올라간다.**
+Do you make the damage vanish by not throwing an exception. No. **It goes up one layer.**
 
-![손상 하나가 어디에서 이름을 얻는가](/images/lecture/hls-recon/24-diagnosis-path.svg)
+![Where one piece of damage gets its name](/images/lecture/hls-recon/24-diagnosis-path.svg)
 
-*그림 24-2 — 손상 하나가 어디에서 이름을 얻는가*
+*Figure 24-2 — where one piece of damage gets its name*
 
-오른쪽 경로에서 손상을 잡는 것은 두 장치다.
+On the right path, two devices catch the damage.
 
-**첫째, 컨테이너 판별**([`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37) `sniff`). 제5·14·16장에서 세 번 만난
-그 함수다. 복호문의 선두가 `0x47` 이고 188바이트 뒤에도 `0x47` 이면 MPEG-TS,
-아니면 `unknown` 이다. `unknown` 은 `bogus` 목록에 쌓이고 리포트에서 **페이로드
-유효성 FAIL** 이 된다([`report.py:198-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L198-L211)).
+**First, container determination** ([`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37) `sniff`). That function met three times in Chapters
+5·14·16. If the decrypted head is `0x47` and `0x47` 188 bytes later too, it is MPEG-TS, else `unknown`. `unknown`
+piles into the `bogus` list and becomes a **payload-validity FAIL** in the report ([`report.py:198-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L198-L211)).
 
-**둘째, TS 연속성 검사**([`tsanalyze.py:71-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L71-L121) `analyze`). 여기서 결정적인 것은
-[`cli.py:438`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L438) 에서 만든 `cc_state` 딕셔너리를 **루프 밖에서 만들어 매 세그먼트에
-넘긴다**는 점이다. continuity counter 상태가 세그먼트 경계를 넘어 이어지므로, 어떤
-세그먼트의 **끝**이 잘려도 다음 세그먼트의 첫 패킷에서 점프로 드러난다.
+**Second, the TS-continuity check** ([`tsanalyze.py:71-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L71-L121) `analyze`). What is decisive here is that the `cc_state`
+dict made at [`cli.py:438`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L438) is **made outside the loop and passed to each segment.** Since the continuity-counter
+state carries across segment boundaries, even if some segment's **end** is cut, it surfaces as a jump at the next
+segment's first packet.
 
 ```python
 # report.py:243-249
         rep.add(
-            "TS 무결성",
+            "TS integrity",
             FAIL if (ts.sync_errors or ts.scrambled_packets) else (WARN if problems else PASS),
             ", ".join(problems)
             if problems
-            else f"{ts.packets:,} 패킷 / PID {len(ts.pids)}종, 손실 0",
+            else f"{ts.packets:,} packets / {len(ts.pids)} PIDs, 0 loss",
         )
 ```
 
-판정의 비대칭에 주의할 것. **동기 이탈과 미복호 패킷은 FAIL 이고, CC 불연속만
-있으면 WARN 이다.** 그리고 `_exit_code`([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652))는 WARN 을 0 으로 매핑한다.
-이 사실은 §24.8 에서 다시 다룬다.
+Note the verdict asymmetry. **Sync loss and undecrypted packets are FAIL, and only a CC discontinuity is WARN.**
+And `_exit_code` ([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)) maps WARN to 0. This fact is revisited in §24.8.
 
-### 24.3.3 실측 — 손상 종류별로 어디서 잡히는가
+### 24.3.3 Measured — where each kind of damage is caught
 
-§24.2.3 에서 만든 스트림의 `seg000.ts` 를 여러 방식으로 망가뜨린 뒤, 이 저장소의
-`_unpad_pkcs7` · `sniff` · `analyze` 를 그대로 불러 결과를 기록했다.
+I broke §24.2.3's stream's `seg000.ts` in several ways, then called this repository's `_unpad_pkcs7` · `sniff` ·
+`analyze` as-is and recorded the results.
 
-| 손상 | 복호화 | 패딩 | `sniff` | 세그먼트 내 CC 이상 | 동기 이탈 | 최종 진단 |
+| Damage | Decryption | Padding | `sniff` | In-segment CC anomaly | Sync loss | Final diagnosis |
 |---|---|---|---|---|---|---|
-| 없음(대조군) | 성공 | 유효 | `mpegts` | 0 | 0 | PASS |
-| 끝에서 1,024 B 절단(16의 배수) | 성공 | **무효** | `mpegts` | **0** | 0 | 경계를 넘어 CC 1건 → **WARN** |
-| 끝에서 1,000 B 절단 | **ValueError** | — | — | — | — | 트레이스백 |
-| 끝에서 188 B 절단(TS 1패킷) | **ValueError** | — | — | — | — | 트레이스백 |
-| 중간에서 188×12 B 제거 | 성공 | **유효** | `mpegts` | 1 | **1** | **FAIL** |
-| 틀린 키 | 성공 | 무효 | **`unknown`** | — | — | 페이로드 유효성 **FAIL** |
-| 틀린 IV(seq 0↔7) | 성공 | 유효 | `mpegts` | 0 | 0 | **PASS — 검출 안 됨** |
+| none (control) | success | valid | `mpegts` | 0 | 0 | PASS |
+| cut 1,024 B from the end (multiple of 16) | success | **invalid** | `mpegts` | **0** | 0 | 1 CC across the boundary → **WARN** |
+| cut 1,000 B from the end | **ValueError** | — | — | — | — | traceback |
+| cut 188 B from the end (1 TS packet) | **ValueError** | — | — | — | — | traceback |
+| remove 188×12 B from the middle | success | **valid** | `mpegts` | 1 | **1** | **FAIL** |
+| wrong key | success | invalid | **`unknown`** | — | — | payload-validity **FAIL** |
+| wrong IV (seq 0↔7) | success | valid | `mpegts` | 0 | 0 | **PASS — not detected** |
 
-이 표에서 읽어야 할 것이 넷이다.
+There are four things to read in this table.
 
-**(1) 패딩 무효는 손상의 신호로 쓸모가 없다.** 중간에서 12개 패킷을 들어냈는데도
-패딩은 유효했다. §24.2.4 에서 계산한 대로 마지막 두 블록만 온전하면 되기 때문이다.
-반대로 끝을 자르면 패딩은 무효가 되지만, 그 사실은 "복호화가 잘못됐다"가 아니라
-"전송이 잘렸다"를 뜻한다. **패딩 검사와 무결성 검사는 애초에 다른 것을 재는 자다.**
+**(1) Padding invalidity is useless as a damage signal.** Taking out 12 packets from the middle, the padding was
+still valid. Because, as computed in §24.2.4, only the last two blocks need be intact. Conversely, cut the end and
+the padding becomes invalid, but that fact means not "decryption went wrong" but "transmission was cut." **The
+padding check and the integrity check are rulers measuring different things in the first place.**
 
-**(2) 틀린 키는 패딩이 아니라 `sniff` 가 잡는다.** 그리고 훨씬 확실하게 잡는다.
-무작위 바이트열이 `sniff` 를 통과할 확률은 대략 1/65,536(선두 `0x47` 이 1/256,
-188바이트 뒤에도 `0x47` 이 1/256)로, 패딩 검사의 1/255 보다 두 자릿수 낮다.
-**키가 틀렸다는 사실을 알아내는 데 패딩은 필요하지 않다.**
+**(2) A wrong key is caught by `sniff`, not padding.** And caught much more surely. The probability a random byte
+string passes `sniff` is about 1/65,536 (leading `0x47` is 1/256, `0x47` 188 bytes later is 1/256), two orders of
+magnitude lower than the padding check's 1/255. **To find out the key is wrong, padding is not needed.**
 
-**(3) 원인이 관측된 층에서 이름을 얻는다.** 끝이 잘린 세그먼트의 진짜 원인은 전송
-결손이다. 그리고 그 사실은 "CC 불연속 1건(패킷 유실)"이라는 문장으로 리포트에
-적힌다. 예외를 던졌다면 같은 사건이 "복호화 실패"로 적혔을 것이다 — **틀린
-문장이고, 그 문장을 읽은 사람은 키와 IV 를 의심하며 엉뚱한 곳을 판다.**
+**(3) The cause gets its name in the layer where it was observed.** The real cause of a segment cut at the end is
+a transmission loss. And that fact is written in the report as the sentence "1 CC discontinuity (packet loss)."
+Had it thrown an exception, the same event would have been written as "decryption failure" — **a wrong sentence,
+and whoever read that sentence digs the wrong place, suspecting the key and IV.**
 
-**(4) 진단의 국소성이 유지된다.** 예외는 스택을 타고 올라가면서 문맥을 잃는다.
-`seg#7 에서 ValueError` 라는 정보는 남지만 "그래서 나머지 26개 세그먼트는
-멀쩡했는가"는 남지 않는다. 삼키는 쪽은 27개를 전부 처리한 뒤 **집계된 판정**을 낸다.
+**(4) The locality of the diagnosis is maintained.** An exception loses context as it rides up the stack. The
+information "ValueError at seg#7" remains, but "so were the remaining 26 segments fine" does not. The swallowing
+side gives an **aggregated verdict** after processing all 27.
 
-### 24.3.4 그리고 이 정책에는 구멍이 있다
+### 24.3.4 And this policy has a hole
 
-표의 3·4행을 그냥 넘기면 안 된다. **1,000바이트나 188바이트를 자르면 예외가 난다.**
+Do not just pass over the table's rows 3·4. **Cut 1,000 bytes or 188 bytes and an exception arises.**
 
 ```
 ValueError: The length of the provided data is not a multiple of the block length.
 ```
 
-이 예외는 `_unpad_pkcs7` 이 아니라 그 **한 줄 위**, [`decrypt.py:46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L46) 의
-`dec.update(data) + dec.finalize()` 에서 나온다. CBC 복호화기는 입력이 16의 배수가
-아니면 마무리할 수 없다.
+This exception comes not from `_unpad_pkcs7` but **one line above it**, at [`decrypt.py:46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L46)'s `dec.update(data) +
+dec.finalize()`. The CBC decryptor cannot finalize if the input is not a multiple of 16.
 
-그러므로 정확한 서술은 이렇다.
+So the exact statement is this.
 
-> **"패딩 오류로 예외를 던지지 않는다"는 정책은 패딩 검증 층에만 적용된다.
-> 블록 정렬 층은 여전히 예외를 던지고, 그 예외를 잡는 곳은 어디에도 없다.**
+> **The policy "do not throw an exception on a padding error" applies only to the padding-verification layer.
+> The block-alignment layer still throws an exception, and nowhere catches that exception.**
 
-절단 길이가 16의 배수일 확률은 1/16 이므로, **잘린 세그먼트의 15/16 은 §24.3.1 이
-서술한 그 실패 경로로 간다.** 주석이 명시한 반례("잘린 세그먼트 등")가 대부분의
-경우에 실제로는 막히지 않는다는 뜻이다. 이 코드가 의도한 설계와 실제 동작이 갈리는
-지점이고, 코드에는 이에 대한 언급이 없다. §24.8 에서 미해결로 기록한다.
+Since the probability a cut length is a multiple of 16 is 1/16, **15/16 of truncated segments go to that failure
+path §24.3.1 described.** It means the counterexample the comment stated ("a truncated segment, etc.") is
+actually not blocked in most cases. It is the spot where this code's intended design and its actual behavior
+diverge, and the code makes no mention of this. Recorded as an open question in §24.8.
 
 ---
 
-## 24.4 원리 — 패딩 오라클 공격
+## 24.4 The principle — the padding-oracle attack
 
-이제 반대편을 본다. 같은 "패딩을 검증하고 결과를 알린다"는 동작이 서버에 있을 때
-무슨 일이 벌어지는가.
+Now look at the other side. What happens when the same behavior "verify the padding and report the result" is on
+a server.
 
-### 24.4.1 성립 조건은 셋이다
+### 24.4.1 The holding conditions are three
 
-> **용어** — **패딩 오라클(padding oracle)**: 제출된 암호문을 복호화한 뒤 **패딩이
-> 규격에 맞는지 여부**를 외부에서 구별 가능하게 알려 주는 인터페이스. 알려 주는
-> 정보는 사실상 1비트지만, 그 1비트를 반복해서 얻을 수 있으면 키 없이 평문을
-> 복원할 수 있다.
+> **Term** — **padding oracle**: an interface that decrypts a submitted ciphertext and then makes externally
+> distinguishable **whether the padding conforms to spec.** The information told is effectively 1 bit, but if you
+> can obtain that 1 bit repeatedly, you can recover the plaintext without the key.
 
-제10장에서 정의한 오라클의 특수한 경우다. 성립 조건을 조목으로 쪼개면 셋이다.
+It is a special case of the oracle defined in Chapter 10. Split the holding conditions into items and there are
+three.
 
-| 조건 | 내용 | 없으면 |
+| Condition | Content | Without it |
 |---|---|---|
-| **(a) 반복 제출** | 공격자가 변조한 암호문을 **원하는 만큼 다시 제출**할 수 있다 | 1비트를 한 번 얻고 끝난다. 공격이 성립하지 않는다 |
-| **(b) 구별 가능한 응답** | 수신자가 **패딩 오류**와 **그 밖의 오류**를 다르게 응답한다(오류 코드·메시지·응답 시간·연결 처리 중 어느 것이든) | 응답이 같으면 1비트를 얻을 수 없다 |
-| **(c) 관측 가능성** | 그 차이를 공격자가 **볼 수 있다** | 서버 내부 로그에만 남으면 채널이 아니다 |
+| **(a) repeated submission** | the attacker can **resubmit the tampered ciphertext as much as wanted** | you get 1 bit once and it ends. the attack does not hold |
+| **(b) distinguishable response** | the receiver responds differently to a **padding error** and **other errors** (whether by error code·message·response time·connection handling) | if the responses are the same you cannot get the 1 bit |
+| **(c) observability** | the attacker can **see** that difference | if it is left only in the server's internal log it is not a channel |
 
-셋 중 하나만 무너져도 공격은 성립하지 않는다. 반대로 셋이 모두 서면, **키를 전혀
-모르는 공격자가 평문을 블록 단위로 복원한다.**
+Break even one of the three and the attack does not hold. Conversely, stand all three, and **an attacker with no
+knowledge of the key recovers the plaintext block by block.**
 
-### 24.4.2 왜 1비트가 평문을 내주는가 — 개념 수준
+### 24.4.2 Why 1 bit gives up the plaintext — at a concept level
 
-CBC 복호화 식이 전부다.
+The CBC decryption formula is all.
 
 ```
 P_i = D_K(C_i) XOR C_(i-1)
 ```
 
-`D_K(C_i)` 는 공격자가 모르는 값이지만 **`C_i` 를 고정하는 한 변하지 않는 상수**다.
-그리고 `C_(i-1)` 은 공격자가 통째로 바꿔 넣을 수 있는 값이다. 즉 공격자는
-`P_i` 를 **자기가 고른 값과 미지의 상수의 XOR** 로 만들어 제출할 수 있다.
+`D_K(C_i)` is a value the attacker does not know, but **a constant that does not change as long as `C_i` is
+fixed.** And `C_(i-1)` is a value the attacker can swap out wholesale. That is, the attacker can make and submit
+`P_i` as **the XOR of a value they chose and the unknown constant.**
 
-여기에 조건 (b)·(c)가 붙으면, 수신자는 그렇게 만들어진 `P_i` 의 **끝부분이 유효한
-PKCS#7 패딩 모양인가**를 답해 준다. "유효하다"는 답 하나가 미지의 상수 마지막
-바이트에 대한 방정식을 준다. 그 상수를 알면 `P_i` 의 원래 마지막 바이트는 **원래의
-`C_(i-1)` 과 XOR 해서** 바로 나온다. 같은 절차가 안쪽 바이트로 이어진다.
+Attach conditions (b)·(c) here, and the receiver answers **whether the end of the `P_i` so made is a valid PKCS#7
+padding shape.** One answer of "valid" gives an equation for the unknown constant's last byte. Know that constant
+and `P_i`'s original last byte comes out directly by **XORing with the original `C_(i-1)`.** The same procedure
+continues to the inner bytes.
 
-> 이 교재는 여기까지만 쓴다. 바이트를 어떤 순서로 어떻게 탐색하는지, 어떤 요청을
-> 어떻게 구성하는지는 **실행 가능한 공격 절차**이므로 다루지 않는다. 원리를
-> 이해하는 데 필요한 것은 위 세 문단이고, 방어에 필요한 것은 §24.6 이다.
+> This course writes only up to here. In what order and how the bytes are searched, and how the requests are
+> constructed, is an **executable attack procedure** so it is not covered. What is needed to understand the
+> principle is the three paragraphs above, and what is needed for defense is §24.6.
 
-규모만 짚어 둔다. 한 바이트를 확정하는 데 필요한 질의는 최악 256회·**평균 128회**
-이고, 16바이트 블록 하나면 그 16배다. 이 수치는 Vaudenay 의 2002년 논문 이래 널리
-인용되는 문헌값이며 **이 교재가 실측한 값이 아니다.** 제10장 §10.6 의 오라클 비교표
-("패딩 오라클 — 복호문의 패딩 유효성 1비트 — 바이트당 평균 128")가 가리키는 것이
-이 값이다.
+Note only the scale. The queries needed to determine one byte are at worst 256· **on average 128**, and one
+16-byte block is 16 times that. This figure is a literature value widely cited since Vaudenay's 2002 paper and **is
+not a value this course measured.** What Chapter 10 §10.6's oracle-comparison table ("padding oracle — 1 bit of
+the decrypted padding validity — average 128 per byte") points to is this value.
 
-역사적으로 이 형태는 반복해서 실전이 되었다.
+Historically this form has repeatedly become a real-world reality.
 
-| 사건 | 연도 | 오라클이 된 것 |
+| Event | Year | What became the oracle |
 |---|---|---|
-| Vaudenay 의 CBC 패딩 공격 | 2002 | 논문에서 조건 (a)(b)(c)를 정식화 |
-| ASP.NET 패딩 오라클(MS10-070) | 2010 | 패딩 오류와 그 밖의 오류에 **다른 HTTP 상태 코드** |
-| Lucky Thirteen | 2013 | 응답 코드는 같지만 **MAC 계산 시간**이 달랐다 |
-| POODLE | 2014 | SSL 3.0 의 패딩 바이트가 **MAC 으로 보호되지 않았다** |
+| Vaudenay's CBC padding attack | 2002 | formalized conditions (a)(b)(c) in a paper |
+| ASP.NET padding oracle (MS10-070) | 2010 | **a different HTTP status code** for a padding error and other errors |
+| Lucky Thirteen | 2013 | the response code is the same but the **MAC computation time** differed |
+| POODLE | 2014 | SSL 3.0's padding bytes were **not protected by the MAC** |
 
-2010년의 것은 조건 (b)가 노골적인 경우이고, 2013년의 것은 (b)가 **타이밍으로만**
-성립한 경우다. 뒤쪽이 훨씬 다루기 어렵고, 그래서 §24.6.2 를 따로 둔다.
+The 2010 one is a case where condition (b) is blatant, and the 2013 one is a case where (b) holds **only by
+timing.** The latter is far harder to handle, and so §24.6.2 is placed separately.
 
-### 24.4.3 이 코드에서는 세 조건이 어떻게 무너지는가
+### 24.4.3 How the three conditions break in this code
 
-같은 표를 이 저장소에 대고 채운다.
+Fill the same table against this repository.
 
-| 조건 | 서버(취약한 경우) | 이 저장소의 `_unpad_pkcs7` |
+| Condition | Server (vulnerable case) | This repository's `_unpad_pkcs7` |
 |---|---|---|
-| **(a) 반복 제출** | 공격자가 HTTP 요청을 반복한다 | **성립하지 않는다.** 이 함수를 부르는 것은 사용자 자신이고, 암호문은 사용자가 받아 온 것이다. 제출할 상대가 없다 |
-| **(b) 구별 가능한 응답** | 패딩 오류를 다른 코드·메시지·시간으로 응답한다 | **성립하지 않는다.** 애초에 응답을 만들지 않는다. 반환값에 성공 여부가 실리지도 않는다 |
-| **(c) 관측 가능성** | 공격자가 응답을 본다 | **성립하지 않는다.** 결과를 보는 것은 프로세스 자신뿐이다 |
+| **(a) repeated submission** | the attacker repeats HTTP requests | **does not hold.** what calls this function is the user themselves, and the ciphertext is what the user received. there is no party to submit to |
+| **(b) distinguishable response** | responds to a padding error with a different code·message·time | **does not hold.** it does not make a response in the first place. the return value does not carry a success flag |
+| **(c) observability** | the attacker sees the response | **does not hold.** the only thing seeing the result is the process itself |
 
-셋이 전부 무너진다. 그런데 여기서 멈추면 절반만 본 것이다. 진짜 요점은 다음이다.
+All three break. But stopping here is seeing only half. The real point is the following.
 
-> **이 코드에서 오류를 삼키는 것은 "위험하지만 다행히 괜찮은" 선택이 아니다.
-> 오류를 삼키는 쪽이 진단 정확도를 높인다 — 적극적으로 옳은 선택이다.**
+> **Swallowing the error in this code is not a "dangerous but luckily fine" choice. The swallowing side raises the
+> diagnostic accuracy — it is an actively correct choice.**
 
-서버에서 오류를 구별 불가능하게 만드는 이유(공격자에게 1비트를 주지 않기 위해)와,
-이 도구에서 오류를 삼키는 이유(손상의 원인을 정확한 층에 귀속시키기 위해)는
-**서로 다른 이유이며 우연히 같은 방향을 가리킨다.** 결론이 같다고 근거가 같은 것은
-아니다.
+The reason a server makes the errors indistinguishable (so as not to give the attacker 1 bit) and the reason this
+tool swallows the error (so as to attribute the damage's cause to the correct layer) are **different reasons that
+happen to point the same direction.** The conclusion being the same does not mean the basis is the same.
 
 ---
 
-## 24.5 일반화 — 취약점은 코드의 속성이 아니다
+## 24.5 Generalization — a vulnerability is not a property of the code
 
-### 24.5.1 명제
+### 24.5.1 The proposition
 
-이 장의 핵심 명제를 한 문장으로 쓴다.
+Write this chapter's core proposition in one sentence.
 
-> **같은 코드가 역할에 따라 취약점이 되기도 하고 미덕이 되기도 한다.
-> 취약점은 코드의 속성이 아니라 코드와 위협 모델의 관계다.**
+> **The same code becomes a vulnerability or a virtue depending on the role. A vulnerability is not a property of
+> the code but the relationship between the code and the threat model.**
 
-> **용어** — **위협 모델(threat model)**: 무엇을 지키는가(자산), 누구로부터
-> 지키는가(공격자와 그의 능력), 어디까지를 신뢰하는가(신뢰 경계)를 명시한 서술.
-> 이 셋이 정해지지 않으면 어떤 코드도 안전하다·위험하다고 판정할 수 없다.
+> **Term** — **threat model**: a statement specifying what you protect (assets), from whom you protect (the
+> attacker and their capabilities), and how far you trust (the trust boundary). Without these three set, no code
+> can be judged safe or dangerous.
 
-정적 분석기에 `_unpad_pkcs7` 을 넣으면 "패딩 검증 실패를 무시함"이라는 경고가 나올
-수 있다. 그 경고는 **틀리지 않았지만 판정이 아니다.** 판정에는 세 번째 항이 필요하다.
+Put `_unpad_pkcs7` into a static analyzer and a warning "ignores a padding-verification failure" can come out.
+That warning is **not wrong but not a verdict.** A verdict needs the third term.
 
 ```
-판정 = f(코드, 위협 모델)
+verdict = f(code, threat model)
 ```
 
-같은 첫째 항에 다른 둘째 항을 넣으면 다른 값이 나온다. 이 함수에서 둘째 항을 생략한
-채 첫째 항만으로 답을 내는 도구·규칙·체크리스트는 **오탐과 미탐을 동시에** 만든다.
+Put a different second term into the same first term and a different value comes out. A tool·rule·checklist
+answering from the first term alone, omitting the second term of this function, makes **both false positives and
+false negatives.**
 
-### 24.5.2 이 저장소 안의 같은 형태
+### 24.5.2 The same form within this repository
 
-이 교재에서 같은 구조가 나타난 자리를 모으면 다음과 같다. 넷 다 **정보를 드러내는
-쪽과 감추는 쪽**의 선택이고, 넷 다 역할이 뒤집히면 답이 뒤집힌다.
+Gather the spots where the same structure appeared in this course and it is the following. All four are a choice
+between **revealing information and hiding it**, and for all four the answer inverts if the role inverts.
 
-| 장 | 코드·행위 | 클라이언트 검증 도구에서 | 서버에서 |
+| Chapter | Code·behavior | In a client verification tool | On a server |
 |---|---|---|---|
-| 제5장 | `_diagnose` — 실패 원인을 자세히 출력 | **미덕** — 정보량이 진단을 만든다 | **취약점** — 자세한 진단은 공격자에게도 자세하다 |
-| 제16장 | `sniff` — 선언을 무시하고 내용으로 판별 | **미덕** — 판별 결과가 분류만 결정한다 | **취약점** — 판별 결과가 실행을 결정하면 XSS 벡터(그래서 `nosniff`) |
-| 제22장 | 갭 임계값을 리포트에 공개 | **미덕** — 감사자가 PASS 의 사정거리를 계산한다 | **취약점** — 탐지 임계 공개는 회피 매뉴얼 배포 |
-| **제24장** | **패딩 오류를 삼킨다** | **미덕** — 손상이 관측된 층에서 이름을 얻는다 | **취약점** — 구별 가능한 응답은 패딩 오라클 |
+| Chapter 5 | `_diagnose` — outputs the failure cause in detail | **virtue** — information content makes the diagnosis | **vulnerability** — a detailed diagnosis is detailed to the attacker too |
+| Chapter 16 | `sniff` — ignores the declaration and determines by content | **virtue** — the determination result decides only classification | **vulnerability** — if the determination result decides execution it is an XSS vector (hence `nosniff`) |
+| Chapter 22 | publishes the gap threshold in the report | **virtue** — the auditor computes a PASS's range | **vulnerability** — publishing the detection threshold is distributing an evasion manual |
+| **Chapter 24** | **swallows the padding error** | **virtue** — the damage gets its name in the layer where it was observed | **vulnerability** — a distinguishable response is a padding oracle |
 
-넷째 행이 앞의 셋과 다른 점이 하나 있다. 제5·16·22장은 **정보를 드러내는 것**이
-클라이언트에서 미덕이었다. 제24장은 반대로 **정보를 감추는 것**이 미덕이다. 방향이
-반대인데 원리는 같다 — 어느 쪽이든 **판별 결과가 누구에게 무엇을 열어 주는가**가
-답을 정한다.
+The fourth row has one thing different from the first three. Chapters 5·16·22 had **revealing information** as the
+virtue on the client. Chapter 24 is the opposite — **hiding information** is the virtue. The direction is opposite
+but the principle is the same — either way, **what the determination result opens to whom** decides the answer.
 
-### 24.5.3 도메인 밖의 같은 형태
+### 24.5.3 The same form outside the domain
 
-| 행위 | 취약점이 되는 자리 | 미덕이 되는 자리 |
+| Behavior | Where it is a vulnerability | Where it is a virtue |
 |---|---|---|
-| 로그인 실패를 사유별로 구분해 안내 | 공개 서비스의 로그인 — 계정 열거(user enumeration) | 사내 관리 콘솔의 감사 로그 — 원인 규명 |
-| 비교를 조기 종료(early return)한다 | 비밀 비교 — 타이밍으로 접두사 길이 노출 | 일반 문자열 비교 — 성능 |
-| 응답을 압축한다 | 비밀이 섞인 응답 — CRIME·BREACH 형태의 추측 채널 | 정적 자산 — 대역 절감 |
-| 실패를 자동 재시도한다 | 인증 시도 — 계정 잠금 우회·자격증명 스터핑 보조 | 멱등한 GET — 가용성(제8장) |
-| 예외를 삼키고 계속 진행한다 | 권한 검사 — 검사 실패가 통과가 된다 | **배치 처리기·검증 도구 — 이 장** |
-| 오류 메시지에 입력값을 그대로 반영 | 웹 응답 — 반사형 XSS | CLI 도구 — 진단 정보 |
+| guide login failures distinguished by cause | a public service's login — user enumeration | an internal admin console's audit log — cause identification |
+| early-return the comparison | secret comparison — timing leaks the prefix length | ordinary string comparison — performance |
+| compress the response | a response with a secret mixed in — a CRIME·BREACH-style guessing channel | a static asset — bandwidth saving |
+| auto-retry a failure | authentication attempts — account-lockout bypass·credential-stuffing aid | an idempotent GET — availability (Chapter 8) |
+| swallow the exception and continue | a permission check — a check failure becomes a pass | **a batch processor·verification tool — this chapter** |
+| reflect the input as-is in the error message | a web response — reflected XSS | a CLI tool — diagnostic information |
 
-마지막에서 둘째 행이 이 장의 일반형이다. "예외를 삼키지 마라"는 널리 통하는 조언이고
-대부분의 경우 옳다. 그러나 **권한 검사에서 예외를 삼키면 페일 오픈(fail-open)이 되고,
-집계형 검증 도구에서 예외를 던지면 집계 자체가 사라진다.** 규칙이 아니라 규칙이
-전제하는 문맥을 봐야 한다.
+The second-to-last row is this chapter's general form. "Do not swallow exceptions" is widely-accepted advice and
+right in most cases. But **swallow the exception in a permission check and it becomes fail-open, and throw an
+exception in an aggregating verification tool and the aggregation itself vanishes.** You must look not at the rule
+but at the context the rule presupposes.
 
-### 24.5.4 규칙을 다시 쓰면
+### 24.5.4 Rewriting the rule
 
-이 장에서 끌어낼 수 있는 실무 규칙은 "삼켜라"도 "던져라"도 아니다.
+The practical rule you can pull from this chapter is neither "swallow" nor "throw."
 
-> **실패를 그 실패가 관측된 층에 귀속시켜라. 그 층이 아직 판정할 수 없는 정보라면,
-> 판정할 수 있는 층까지 정보를 잃지 않고 올려라.**
+> **Attribute a failure to the layer where that failure was observed. If it is information that layer cannot yet
+> judge, raise the information up to the layer that can judge, without losing it.**
 
-`_unpad_pkcs7` 은 "패딩이 안 맞는다"는 사실만 안다. 그 사실만으로는 원인이 전송
-결손인지·키 오류인지·정상적인 비패딩 데이터인지 구별할 수 없다. **판정할 수 없는
-층에서 판정하지 않는 것**이 이 함수가 한 일이고, 판정은 `sniff` 와 `analyze` 가 서로
-다른 근거로 나눠 맡는다. 제38장의 "알 수 없음과 통과를 구별한다"와 같은 계열의
-결정이되, 여기서는 **알 수 없음을 아예 만들지 않고 아래로 흘려보낸다**는 점이 다르다.
+`_unpad_pkcs7` knows only the fact "the padding does not match." From that fact alone you cannot tell whether the
+cause is a transmission loss·a key error·normal non-padding data. **Not judging in a layer that cannot judge** is
+what this function did, and the judgment is split between `sniff` and `analyze` on mutually different bases. It is
+a decision of the same lineage as Chapter 38's "distinguish unknown from passing," but here it differs in that it
+**does not even make an unknown and flows it down below.**
 
 ---
 
-## 24.6 보안 — 방어자 관점
+## 24.6 Security — the defender's view
 
-이 장의 우회 쪽 설명은 §24.4 로 끝났다. 여기서부터가 방어다.
+This chapter's evasion-side explanation ended at §24.4. From here is defense.
 
-### 24.6.1 서버 구현자가 해야 할 것 — 최소한
+### 24.6.1 What a server implementer must do — at minimum
 
-패딩 검증을 하는 쪽에 서 있다면 조건 (b)를 무너뜨리는 것이 최소 요구다.
+If you stand on the padding-verifying side, breaking condition (b) is the minimum requirement.
 
-| 해야 할 것 | 이유 | 하지 않으면 |
+| What to do | Reason | If you do not |
 |---|---|---|
-| **오류를 구별 불가능하게** | 패딩 오류·MAC 오류·형식 오류를 **같은 응답**으로 통일한다. 상태 코드·본문·헤더·연결 종료 방식이 전부 같아야 한다 | 조건 (b) 성립 — 2010년 ASP.NET 사례가 이것이다 |
-| **상수 시간으로 처리** | 검증 경로의 실행 시간이 입력에 따라 달라지지 않게 한다. 조기 반환을 없애고, 실패해도 남은 연산을 수행한다 | 응답이 같아도 **시간이 오라클이 된다** — Lucky Thirteen |
-| **자세한 사유는 내부에만** | 운영자가 원인을 알아야 하므로 로그에는 남기되, **응답에는 싣지 않는다** | 조건 (c) 성립 |
-| **속도 제한·이상 탐지** | 한 자원에 대한 변조 암호문의 반복 제출은 정상 트래픽이 아니다 | 조건 (a)가 무제한으로 성립 |
+| **make the errors indistinguishable** | unify a padding error·MAC error·format error into the **same response.** the status code·body·headers·connection-close method must all be the same | condition (b) holds — the 2010 ASP.NET case is this |
+| **process in constant time** | make the verification path's execution time not vary by input. remove early returns, and even on failure perform the remaining operations | even with the same response, **time becomes an oracle** — Lucky Thirteen |
+| **detailed cause only internally** | since the operator must know the cause, leave it in the log, but **do not carry it in the response** | condition (c) holds |
+| **rate limit·anomaly detection** | repeated submission of tampered ciphertexts against one resource is not normal traffic | condition (a) holds without limit |
 
-넷째 행은 완화(mitigation)이지 수정(patch)이 아니라는 점을 분명히 해야 한다. 제15장
-§15.2.3 의 구분이 그대로 적용된다 — **도달 경로를 좁히는 것과 취약점을 없애는 것은
-다른 층위**이고, 속도 제한만으로 패딩 오라클을 닫았다고 말할 수는 없다.
+The fourth row must be made clear as a mitigation, not a patch. Chapter 15 §15.2.3's distinction applies as-is —
+**narrowing the reach path and removing the vulnerability are different layers**, and you cannot say a padding
+oracle was closed by rate limiting alone.
 
-### 24.6.2 타이밍 채널 — 응답을 통일해도 남는 것
+### 24.6.2 The timing channel — what remains even after unifying the response
 
-조건 (b)에서 가장 자주 놓치는 것이 **시간**이다. 상태 코드와 본문을 완벽히 통일해도,
-"패딩이 깨졌으므로 MAC 계산을 건너뛰었다"는 사실이 응답 지연 차이로 새어 나가면
-그것으로 1비트가 관측된다. Lucky Thirteen 이 정확히 이 형태였다.
+The most often missed thing in condition (b) is **time.** Even perfectly unify the status code and body, and if
+the fact "the padding was broken so the MAC computation was skipped" leaks as a response-latency difference, 1 bit
+is observed by that. Lucky Thirteen was exactly this form.
 
-> **용어** — **부채널(side channel)**: 프로토콜이 의도적으로 전달하는 값이 아니라,
-> 실행 시간·전력 소모·캐시 상태·응답 크기처럼 **구현이 부수적으로 흘리는 관측량**을
-> 통해 비밀이 새는 경로.
+> **Term** — **side channel**: a path by which a secret leaks not through a value the protocol intentionally
+> conveys but through an **observable the implementation incidentally leaks**, like execution time·power
+> consumption·cache state·response size.
 
-여기서 두 가지를 함께 봐야 한다.
+Here two things must be seen together.
 
-- **차이는 아주 작아도 된다.** 관측을 반복해 평균을 내면 잡음 아래의 차이도 드러난다.
-  "네트워크 지연 때문에 몇 마이크로초는 안 보인다"는 반박은 **한 번 관측할 때만**
-  참이다. 조건 (a)가 반복을 허용하는 한 참이 아니다.
-- **상수 시간은 컴파일러·CPU 와의 싸움이다.** 소스에서 분기를 없애도 최적화가
-  되살릴 수 있고, 데이터 의존 메모리 접근은 캐시 타이밍을 남긴다. 그래서 실무의
-  답은 "상수 시간으로 잘 짜기"가 아니라 **§24.6.3 이다.**
+- **The difference can be very small.** Repeat the observation and average and even a below-noise difference
+  surfaces. The rebuttal "a few microseconds are invisible because of network delay" is true **only for a single
+  observation.** As long as condition (a) permits repetition, it is not true.
+- **Constant time is a fight with the compiler·CPU.** Remove the branch in source and the optimizer can revive
+  it, and a data-dependent memory access leaves cache timing. So the practical answer is not "write it well in
+  constant time" but **§24.6.3.**
 
-### 24.6.3 근본 해법 — 애초에 패딩 오라클이 생기지 않게
+### 24.6.3 The root solution — so a padding oracle does not arise in the first place
 
-지금까지의 항목은 전부 **CBC + 별도 MAC** 이라는 구조를 전제한 대증요법이다. 근본
-해법은 그 구조를 쓰지 않는 것이다.
+Every item so far is symptomatic treatment presupposing the structure **CBC + a separate MAC.** The root solution
+is to not use that structure.
 
-> **용어** — **AEAD(Authenticated Encryption with Associated Data, 연관 데이터
-> 인증 암호)**: 기밀성과 무결성·인증을 **하나의 연산으로** 제공하는 암호 방식.
-> AES-GCM, ChaCha20-Poly1305 가 대표적이다. 복호화는 인증 태그 검증에 실패하면
-> **평문을 한 바이트도 내주지 않고** 실패한다.
+> **Term** — **AEAD (Authenticated Encryption with Associated Data)**: a crypto scheme providing confidentiality
+> and integrity·authentication **in one operation.** AES-GCM, ChaCha20-Poly1305 are representative. Decryption,
+> if the authentication-tag verification fails, fails **without putting out a single byte of plaintext.**
 
-> **용어** — **encrypt-then-MAC**: 평문을 암호화한 뒤 **암호문에 대해** MAC 을 계산해
-> 붙이는 합성 방식. 수신 측은 **복호화하기 전에** MAC 을 검증하고, 실패하면 복호화를
-> 아예 수행하지 않는다.
+> **Term** — **encrypt-then-MAC**: a composition method that encrypts the plaintext then computes and attaches a
+> MAC **over the ciphertext.** The receiving side verifies the MAC **before decrypting**, and on failure does not
+> perform decryption at all.
 
-AEAD 나 encrypt-then-MAC 이 패딩 오라클을 막는 이유는 "패딩 검사를 더 잘해서"가
-아니다. **패딩을 검사할 일이 없어서**다. 변조된 암호문은 인증 단계에서 걸러지고,
-패딩 검증 코드에는 도달조차 하지 못한다. 오라클이 될 코드에 입력이 닿지 않으므로
-조건 (b)를 논할 필요가 사라진다.
+The reason AEAD or encrypt-then-MAC blocks a padding oracle is not "by checking the padding better." It is **by
+having nothing to check the padding for.** A tampered ciphertext is filtered at the authentication stage and does
+not even reach the padding-verification code. Since input does not touch the code that would become an oracle,
+there is no need to discuss condition (b).
 
-> **원칙** — **Cryptographic Doom Principle**(Marlinspike, 2011): *MAC 을 검증하기
-> 전에 암호 연산을 하나라도 수행해야 한다면, 그 구현은 어떻게든 파국을 맞는다.*
-> MAC-then-encrypt 와 encrypt-and-MAC 이 반복해서 깨진 이유를 한 문장으로 요약한다.
+> **Principle** — **Cryptographic Doom Principle** (Marlinspike, 2011): *if you must perform any cryptographic
+> operation before verifying the MAC, that implementation will somehow meet doom.* It summarizes in one sentence
+> why MAC-then-encrypt and encrypt-and-MAC repeatedly broke.
 
-표준의 이동도 같은 방향이었다.
+The standards' movement was in the same direction too.
 
-| 규격 | 대응 |
+| Spec | Response |
 |---|---|
-| TLS 1.2 (RFC 5246) | 패딩 오류를 `bad_record_mac` 과 **구별 불가능하게** 응답하라고 지시 — 대증요법 |
-| TLS 확장 (RFC 7366) | CBC 조합을 **encrypt-then-MAC** 으로 교체 |
-| TLS 1.3 (RFC 8446) | **CBC 조합을 목록에서 제거.** AEAD 만 남긴다 — 구조적 해법 |
+| TLS 1.2 (RFC 5246) | instructs to respond to a padding error **indistinguishably** from `bad_record_mac` — symptomatic |
+| TLS extension (RFC 7366) | replaces the CBC combination with **encrypt-then-MAC** |
+| TLS 1.3 (RFC 8446) | **removes the CBC combination from the list.** leaves only AEAD — a structural solution |
 
-20년에 걸쳐 "잘 구현하라"에서 "그 구조를 쓰지 마라"로 이동했다. 반복해서 깨지는
-구조를 조심해서 쓰는 것보다 **깨질 수 없는 구조로 바꾸는 것**이 값싸다는 결론이다.
+Over 20 years it moved from "implement it well" to "do not use that structure." It is the conclusion that
+**switching to a structure that cannot break** is cheaper than carefully using a repeatedly-breaking structure.
 
-### 24.6.4 그런데 HLS 에는 그 자리가 없다
+### 24.6.4 And yet HLS has no slot for that
 
-이 장의 마지막 층이다. 위 처방을 HLS 의 AES-128 에 적용하려면 세그먼트마다 인증
-태그나 MAC 을 실을 자리가 필요하다. **`EXT-X-KEY` 에는 그런 필드가 없다.**
+This is this chapter's last layer. To apply the above prescription to HLS's AES-128, you need a slot per segment
+to carry an authentication tag or MAC. **`EXT-X-KEY` has no such field.**
 
-| 규격의 자리 | 담는 것 |
+| The spec's slot | What it holds |
 |---|---|
 | `METHOD` | `NONE` · `AES-128` · `SAMPLE-AES` |
-| `URI` | 키를 받을 주소 |
-| `IV` | 초기화 벡터(생략 시 media sequence 로 유도, 제23장) |
-| `KEYFORMAT` · `KEYFORMATVERSIONS` | 키 형식 식별 |
-| — | **MAC·인증 태그를 담을 자리는 없다** |
+| `URI` | the address to get the key |
+| `IV` | initialization vector (derived from media sequence if omitted, Chapter 23) |
+| `KEYFORMAT` · `KEYFORMATVERSIONS` | key-format identification |
+| — | **there is no slot to hold a MAC·authentication tag** |
 
-[`playlist.py:48-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L48-L64) 의 `Key` 데이터클래스가 이 표를 그대로 반영한다. 필드가 넷이고
-다섯째가 없다.
+[`playlist.py:48-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L48-L64)'s `Key` dataclass reflects this table as-is. There are four fields and the fifth is absent.
 
-그러므로 **HLS 의 AES-128 은 무결성을 제공하지 않는다.** 제4장 §4.5.2 에서 CBC 의
-가단성(malleability)을 다루며 이미 확인한 사실이고, 이 장은 그 반대편에서 같은
-결론에 도달한다 — 무결성이 없으므로 패딩이 무결성 검사를 대신할 수도 없다.
+So **HLS's AES-128 does not provide integrity.** It is a fact already confirmed in Chapter 4 §4.5.2 covering CBC's
+malleability, and this chapter reaches the same conclusion from the other side — there being no integrity, padding
+cannot substitute for an integrity check either.
 
-여기서 이 저장소의 설계가 다시 정당화된다. **암호 계층이 무결성을 제공하지 않으므로,
-무결성 판정은 전부 상위 층의 일이다.** `sniff` 와 `analyze` 와 PTS 갭 스캔이 그
-일을 나눠 맡는다. `_unpad_pkcs7` 이 판정에 끼어들지 않는 것은 **끼어들 자격이 없기
-때문**이다.
+Here this repository's design is justified again. **Since the crypto layer does not provide integrity, integrity
+judgment is entirely the upper layer's job.** `sniff` and `analyze` and the PTS gap scan split that job.
+`_unpad_pkcs7` not butting into the judgment is **because it is not qualified to butt in.**
 
-### 24.6.5 역할별로 해야 할 일
+### 24.6.5 What to do by role
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **서버·API 구현자** | 패딩 검증 결과를 응답에 반영하지 않는다. 모든 복호화 실패를 하나의 응답으로 통일하고, 시간까지 통일한다. 가능하면 그 코드를 지우고 AEAD 로 옮긴다 |
-| **프로토콜 설계자** | 암호화 필드를 규격에 넣을 때 **인증 태그를 담을 자리를 함께** 넣는다. 나중에 붙일 수 없다 — HLS 의 `EXT-X-KEY` 가 그 실례다 |
-| **클라이언트·도구 구현자** | 암호 계층이 무결성을 주지 않는다면 **어느 층이 그 일을 하는지 명시**한다. 명시하지 않으면 아무도 하지 않는다 |
-| **감사자** | "패딩 검증 실패를 무시함" 같은 정적 분석 경고를 볼 때 **위협 모델을 먼저 묻는다.** 이 함수의 결과를 관측하는 상대가 있는가, 반복 제출이 가능한가. 두 질문에 답하지 않은 판정은 판정이 아니다 |
-| **교재·규칙 작성자** | "예외를 삼키지 마라" 같은 규칙에 **전제하는 문맥을 함께** 적는다. 문맥 없는 규칙은 반례를 만나면 통째로 버려진다 |
+| **server·API implementer** | do not reflect the padding-verification result in the response. unify all decryption failures into one response, and unify the time too. if possible, delete that code and move to AEAD |
+| **protocol designer** | when putting an encryption field into a spec, put a **slot to hold an authentication tag together.** it cannot be attached later — HLS's `EXT-X-KEY` is the case in point |
+| **client·tool implementer** | if the crypto layer does not give integrity, **state which layer does that job.** without stating it, no one does it |
+| **auditor** | when you see a static-analysis warning like "ignores a padding-verification failure," **ask the threat model first.** is there a party observing this function's result, is repeated submission possible. a verdict not answering these two questions is not a verdict |
+| **course·rule author** | with a rule like "do not swallow exceptions," write **the presupposed context together.** a context-free rule is thrown away wholesale on meeting a counterexample |
 
 ---
 
-## 24.7 이 결정이 성립하는 조건 — 그리고 깨지는 조건
+## 24.7 The conditions under which this decision holds — and the conditions under which it breaks
 
-이 장의 논리가 "예외를 삼켜도 된다"로 일반화되면 위험하다. 조건을 명시해 둔다.
+It is dangerous if this chapter's logic generalizes to "you may swallow exceptions." State the conditions.
 
-| 조건 | 이 저장소 | 깨지면 |
+| Condition | This repository | If broken |
 |---|---|---|
-| 삼킨 오류가 **다른 층에서 반드시 잡힌다** | `sniff` + `analyze` + PTS 갭 스캔이 잡는다(§24.3.3 실측) | 그냥 결함을 숨긴 것이 된다 |
-| 삼킨 사실이 **판정에 영향을 주지 않는다** | 패딩 유효 여부는 어떤 검사 항목에도 들어가지 않는다 | 판정 근거가 침묵으로 바뀐다 |
-| 함수 결과를 **외부에서 관측할 수 없다** | 프로세스 내부에서만 쓰인다 | 조건 (c) 성립 → 오라클 |
-| 입력을 **반복 제출하는 상대가 없다** | 사용자가 자기 데이터를 처리한다 | 조건 (a) 성립 → 오라클 |
-| 실패가 **집계되어야 의미가 있다** | 27개 세그먼트·27개 회차를 끝까지 처리해야 판정이 나온다 | 즉시 중단이 더 나을 수 있다 |
+| the swallowed error is **necessarily caught by another layer** | `sniff` + `analyze` + PTS gap scan catch it (§24.3.3 measured) | it just becomes hiding a defect |
+| the swallowing fact **does not affect the verdict** | the padding validity does not go into any check item | the verdict basis turns into silence |
+| the function result **cannot be observed from outside** | it is used only inside the process | condition (c) holds → oracle |
+| there is **no party repeatedly submitting** the input | the user processes their own data | condition (a) holds → oracle |
+| a failure **must be aggregated to have meaning** | 27 segments·27 episodes must be processed to the end for a verdict | immediate stop may be better |
 
-다섯 줄 중 하나라도 깨지면 이 장의 결론은 그대로 적용되지 않는다. **결론을 옮길
-때는 조건도 같이 옮겨야 한다.**
-
----
-
-## 24.8 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **암호화 스트림에 대한 결함 주입 회귀 테스트가 없다.** `tests/run.sh:130` 이
-  결함 주입본을 만드는 방식은 `cp -R plain damaged` 다 — **평문 스트림의 사본**이고,
-  `enc/` 스트림에는 어떤 결함도 주입되지 않는다. `tests/run.sh:174` 의
-  `expect_pass "AES128-복호화"` 는 **정상 경로만** 고정한다. 즉 §24.3.3 의 표는 이
-  장을 쓰기 위해 별도로 측정한 것이지 **회귀로 못박혀 있지 않다.** 제34장의 표현을
-  빌리면, 이 결정에는 지금 오라클이 없다. `_unpad_pkcs7` 의 마지막 줄을
-  `raise ValueError` 로 바꿔도 **회귀 테스트는 전량 그대로 통과한다** — 어느 테스트도
-  패딩이 깨진 암호문을 이 함수에 흘려보내지 않기 때문이다(이는 코드 경로를 따라
-  확인한 추론이며, 실제로 코드를 고쳐 돌려 본 것은 아니다).
-- **블록 정렬 예외는 문서화되지 않은 구멍이다**(§24.3.4). 절단 길이가 16의 배수가
-  아니면 [`decrypt.py:46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L46) 에서 `ValueError` 가 나고 아무도 잡지 않는다. 주석이 명시한
-  반례("잘린 세그먼트")의 15/16 이 여기 해당한다. 이 장은 이 사실을 측정했을 뿐
-  **코드를 고치지는 않았다.** 고친다면 `_run_segments` 의 루프에서 세그먼트 단위로
-  잡아 `bogus` 계열의 검사 항목으로 승격시키는 것이 §24.5.4 의 규칙에 맞지만,
-  그 변경의 회귀 영향은 확인하지 않았다.
-- **CC 불연속 단독은 WARN 이고 종료 코드는 0 이다**([`report.py:245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L245),
-  [`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)). §24.3.3 의 "끝 1,024바이트 절단" 사례는 리포트에 기록되지만
-  **CI 를 실패시키지 않는다.** 이것이 옳은 임계인지는 제22·39장의 문제이며 이 장에서
-  판단하지 않는다. 다만 "삼켜도 상위 층이 잡는다"는 §24.3.2 의 주장이 **"잡아서
-  FAIL 을 낸다"까지는 아니라는 점**은 여기 적어 둔다.
-- **틀린 IV 사례를 일반화할 수 없다.** §24.3.3 마지막 행에서 IV 를 seq 0 대신 7 로
-  주었더니 어떤 검사에도 걸리지 않았다. 그러나 이는 두 IV 가 **마지막 한 바이트만**
-  다른 값이어서 복호문 첫 블록의 한 바이트만 틀어졌기 때문이다. 차이가 큰 IV 였다면
-  선두 `0x47` 이 깨져 `sniff` 가 잡았을 것이다. **"IV 오류는 검출되지 않는다"는 결론을
-  이 한 번의 측정에서 끌어낼 수 없다.** IV 유도 규칙 자체는 제23장의 주제다.
-- **패딩 오라클의 질의 횟수는 문헌값이다.** 바이트당 평균 128회라는 수치는 이 교재가
-  실측한 것이 아니다. 실측하려면 취약한 오라클을 세워야 하고, 그것은 이 교재의
-  범위 밖이다.
-- **상수 시간 여부를 측정하지 않았다.** `_unpad_pkcs7` 의 `data[-n:] == bytes([n]) * n`
-  은 파이썬의 바이트열 비교이므로 조기 종료한다. 이 저장소의 위협 모델에서는 관측할
-  상대가 없어 문제되지 않지만, **"문제되지 않는다"는 것은 위협 모델에서 나온 판단이지
-  측정 결과가 아니다.** 이 함수를 다른 자리로 옮기는 사람은 이 문장을 근거로 삼으면
-  안 된다.
-- **측정 환경은 하나다.** §24.2.3·§24.3.3 의 수치는 ffmpeg 8.1.1 · Python 3.14.5 ·
-  cryptography 48.0.0 · macOS 에서 한 번 잰 것이다. 패딩 길이는 산술로 재현되지만
-  (`12N mod 16`), 예외 메시지와 `finalize()` 의 동작은 라이브러리 구현에 의존한다.
+Break even one of the five and this chapter's conclusion does not apply as-is. **When you move the conclusion, you
+must move the conditions with it.**
 
 ---
 
-## 24.9 요약
+## 24.8 Limits and open questions
 
-1. **PKCS#7 패딩**은 부족한 `n` 바이트를 값 `n` 으로 채운다. 평문이 블록 경계에서
-   정확히 끝나도 **값 16 뿐인 블록을 하나 더 붙인다** — 그래야 제거 규칙이
-   유일해진다. 붙이지 않으면 `04 04 04 04` 로 끝나는 평문에서 네 바이트를 잘라먹는다.
-2. 실측하면 TS 세그먼트의 패딩 길이는 매번 다르다(12·4·8바이트). `188 × N` 을 16 으로
-   나눈 나머지가 세그먼트마다 다르기 때문이다. **패딩 길이는 규격의 상수가 아니다.**
-3. **패딩 검증은 약한 검사다.** 무작위 블록이 통과할 확률이 약 1/255(실측 1/249.7)이고,
-   무엇보다 **마지막 두 블록에 대해서만** 말한다. 세그먼트 중간에서 12개 패킷을
-   들어내도 패딩은 유효했다.
-4. 이 코드는 패딩이 깨져도 예외를 던지지 않는다. 던졌다면 그 예외를 잡는 곳이
-   `cli.py` 어디에도 없어 **단건 실행은 트레이스백으로 죽고, 시리즈 일괄 실행은 남은
-   회차까지 함께 죽는다.** 그리고 진단은 "복호화 실패"라는 **틀린 이름**을 얻는다.
-   실제 원인은 전송 결손이었다.
-5. 삼킨 손상은 사라지지 않고 한 층 위에서 이름을 얻는다 — 틀린 키는 `sniff` 가
-   `unknown` 으로(확률 1/65,536 수준의 확실성), 전송 결손은 세그먼트 경계를 넘는
-   `cc_state` 가 CC 불연속으로 잡는다. **세그먼트 하나만 단독으로 보면 0건이던 이상이
-   경계를 이어 주면 1건으로 드러난다.**
-6. **패딩 오라클 공격은 세 조건이 모두 설 때만 성립한다** — (a) 변조 암호문의 반복
-   제출, (b) 패딩 오류와 그 밖의 오류의 구별 가능한 응답, (c) 그 차이의 관측 가능성.
-   이 도구에서는 셋이 전부 무너진다.
-7. **핵심 명제 — 같은 코드가 역할에 따라 취약점이 되기도 미덕이 되기도 한다.
-   취약점은 코드의 속성이 아니라 코드와 위협 모델의 관계다.** 판정에는 언제나 세
-   번째 항이 필요하다.
-8. 방어자는 오류를 **구별 불가능하게, 상수 시간으로** 처리해야 한다. 그러나 그것은
-   대증요법이고, 근본 해법은 **AEAD 또는 encrypt-then-MAC** 이다 — 패딩 검사를 더
-   잘하는 것이 아니라 **패딩을 검사할 일이 없게 만드는 것**이다. TLS 는 20년에 걸쳐
-   "구별 불가능하게 하라"에서 "그 구조를 제거한다"로 이동했다.
-9. **HLS 의 `EXT-X-KEY` 에는 MAC 을 담을 자리가 없다.** 그러므로 AES-128 은 무결성을
-   제공하지 않으며, 무결성 판정은 전부 상위 층의 일이다. `_unpad_pkcs7` 이 판정에
-   끼어들지 않는 것은 끼어들 자격이 없기 때문이다.
-10. 이 결정이 옳은 것은 **다섯 가지 조건이 성립할 때뿐이다**(§24.7). 결론을 옮길 때는
-    조건도 같이 옮겨야 한다.
+Written honestly.
+
+- **There is no defect-injection regression test for encrypted streams.** The way `tests/run.sh:130` makes a
+  defect-injected copy is `cp -R plain damaged` — a **copy of the plaintext stream**, and no defect is injected
+  into the `enc/` stream. `tests/run.sh:174`'s `expect_pass "AES128-decrypt"` fixes **only the normal path.** That
+  is, §24.3.3's table was measured separately to write this chapter and **is not nailed down by regression.**
+  Borrowing Chapter 34's phrasing, this decision has no oracle now. Change `_unpad_pkcs7`'s last line to `raise
+  ValueError` and **the regression test passes entirely as-is** — because no test flows a padding-broken
+  ciphertext into this function (this is an inference confirmed by following the code path, not actually running a
+  modified copy).
+- **The block-alignment exception is an undocumented hole** (§24.3.4). If the cut length is not a multiple of 16,
+  a `ValueError` arises at [`decrypt.py:46`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L46) and no one catches it. 15/16 of the counterexample the comment stated ("a
+  truncated segment") falls here. This chapter only measured this fact and **did not fix the code.** If fixing,
+  catching it per segment in `_run_segments`'s loop and promoting it to a `bogus`-family check item fits §24.5.4's
+  rule, but the regression impact of that change was not confirmed.
+- **A lone CC discontinuity is WARN and the exit code is 0** ([`report.py:245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L245), [`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)). §24.3.3's "cut
+  1,024 bytes from the end" case is recorded in the report but **does not fail CI.** Whether this is the right
+  threshold is Chapters 22·39's problem and this chapter does not judge it. Only, that §24.3.2's claim "swallow and
+  the upper layer catches it" **does not go as far as "catches it and gives a FAIL"** is written here.
+- **The wrong-IV case cannot be generalized.** In §24.3.3's last row, giving the IV as 7 instead of seq 0 caught
+  on no check. But this is because the two IVs differed **only in the last byte** so only one byte of the decrypted
+  first block went off. Had it been an IV differing greatly, the leading `0x47` would break and `sniff` would
+  catch it. **You cannot pull the conclusion "an IV error is not detected" from this single measurement.** The IV
+  derivation rule itself is Chapter 23's subject.
+- **The padding oracle's query count is a literature value.** The figure of average 128 per byte is not something
+  this course measured. To measure it you would have to stand up a vulnerable oracle, and that is outside this
+  course's scope.
+- **Constant-time-ness was not measured.** `_unpad_pkcs7`'s `data[-n:] == bytes([n]) * n` is a Python byte-string
+  comparison so it early-terminates. In this repository's threat model there is no party to observe so it is no
+  problem, but **"no problem" is a judgment from the threat model, not a measurement result.** Whoever moves this
+  function to a different spot must not use this sentence as a basis.
+- **There is one measurement environment.** §24.2.3·§24.3.3's figures were measured once on ffmpeg 8.1.1 · Python
+  3.14.5 · cryptography 48.0.0 · macOS. The padding length is reproduced by arithmetic (`12N mod 16`), but the
+  exception message and `finalize()`'s behavior depend on the library implementation.
 
 ---
 
-**다음 장** — 이 장은 "무엇으로부터 지키는가"를 정하지 않으면 판정이 불가능하다는
-것을 패딩 하나로 보였다. 제25장은 같은 질문을 프로토콜 전체에 던진다. HLS 의
-AES-128 은 평문 16바이트 키를 URI 로 그대로 내려준다. 그런데도 널리 쓰인다면, 그것은
-**누구로부터 무엇을 지키고 있는가.** Kerckhoffs 원리 위에서 "링크 보호"와 "콘텐츠
-보호"를 가르는 선이 어디인지, 그리고 그 선을 긋지 않은 보호가 왜 보호가 아닌지를
-다룬다.
+## 24.9 Summary
+
+1. **PKCS#7 padding** fills the shortfall of `n` bytes with the value `n`. Even when the plaintext ends exactly at
+   a block boundary, it **appends one more block of only the value 16** — only then is the removal rule unique.
+   Without appending, it eats four bytes from a plaintext ending in `04 04 04 04`.
+2. Measured, a TS segment's padding length differs every time (12·4·8 bytes). Because `188 × N` mod 16 differs per
+   segment. **The padding length is not a constant of the spec.**
+3. **Padding verification is a weak check.** The probability a random block passes is about 1/255 (measured
+   1/249.7), and above all it speaks **only about the last two blocks.** Take out 12 packets from the middle of a
+   segment and the padding was still valid.
+4. This code does not throw an exception even when the padding is broken. Had it thrown, nowhere in `cli.py`
+   catches that exception, so **a single run dies with a traceback, and a series batch run dies together with the
+   remaining episodes.** And the diagnosis gets the **wrong name**, "decryption failure." The real cause was a
+   transmission loss.
+5. Swallowed damage does not vanish but gets its name one layer up — a wrong key by `sniff` as `unknown` (a
+   certainty at the 1/65,536 level), a transmission loss by the `cc_state` crossing segment boundaries as a CC
+   discontinuity. **An anomaly that is 0 when looking at a single segment alone surfaces as 1 when the boundaries
+   are connected.**
+6. **A padding-oracle attack holds only when all three conditions stand** — (a) repeated submission of a tampered
+   ciphertext, (b) a distinguishable response for a padding error vs other errors, (c) observability of that
+   difference. In this tool all three break.
+7. **The core proposition — the same code becomes a vulnerability or a virtue depending on the role. A
+   vulnerability is not a property of the code but the relationship between the code and the threat model.** A
+   verdict always needs the third term.
+8. The defender must process the errors **indistinguishably, in constant time.** But that is symptomatic, and the
+   root solution is **AEAD or encrypt-then-MAC** — not checking the padding better but **making there be nothing
+   to check the padding for.** TLS moved over 20 years from "make it indistinguishable" to "remove that
+   structure."
+9. **HLS's `EXT-X-KEY` has no slot to hold a MAC.** So AES-128 does not provide integrity, and integrity judgment
+   is entirely the upper layer's job. `_unpad_pkcs7` not butting into the judgment is because it is not qualified
+   to butt in.
+10. This decision is right **only when five conditions hold** (§24.7). When you move the conclusion, you must move
+    the conditions with it.
+
+---
+
+**Next chapter** — this chapter showed, with padding alone, that a verdict is impossible without setting "protect
+from what." Chapter 25 throws the same question at the whole protocol. HLS's AES-128 hands down a plaintext 16-byte
+key over a URI as-is. If it is nonetheless widely used, then **from whom is it protecting what.** On Kerckhoffs's
+principle, it covers where the line dividing "link protection" and "content protection" is, and why a protection
+that does not draw that line is not a protection.

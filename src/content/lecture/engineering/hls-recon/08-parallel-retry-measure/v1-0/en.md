@@ -1,155 +1,151 @@
 ---
-untranslated: ko
-title: "병렬성·재시도·계측"
-description: "관측하는 다운로더"
-date: 2026-08-16
+title: "Parallelism, Retry, Measurement"
+description: "The observing downloader"
+date: 2026-06-06
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-08-parallel-retry-measure.svg
 ---
-## 8.0 이 장에서 답할 것
+## 8.0 What this chapter answers
 
-1. 실패를 만났을 때 **무엇을 다시 하고 무엇을 포기하는가.** 그 판단의 기준은 무엇인가
-2. 왜 `408`·`429` 만 4xx 에서 예외인가. 지수 백오프는 누구를 보호하는가
-3. 병렬로 받으면 결과가 도착 순서로 섞인다. **순서를 잃으면 정확히 무엇이 깨지는가**
-4. 지연을 평균이 아니라 **p50·p95** 로 보는 이유는 무엇인가. 그 지표는 언제 거짓말하는가
-5. 병렬도와 재시도는 상대 서버에 무엇으로 보이는가
+1. On meeting a failure, **what do you retry and what do you give up on?** What is the basis for that judgment?
+2. Why are only `408`·`429` exceptions among the 4xx? Whom does exponential backoff protect?
+3. Receive in parallel and results get scrambled by arrival order. **When you lose the order, what exactly breaks?**
+4. Why look at latency as **p50·p95** rather than the mean? When does that metric lie?
+5. To the peer server, what do parallelism and retry look like?
 
-앞의 넷은 이 저장소의 `Fetcher` 가 내린 세 개의 결정이고, 마지막 하나는 그 결정들이
-**받는 쪽이 아니라 주는 쪽에 남기는 자국**이다. 다섯째 질문 없이 앞의 넷만 답하면
-성능 튜닝 문서가 되고, 교재가 되지 않는다.
+The first four are three decisions this repository's `Fetcher` made, and the last one is **the mark those
+decisions leave on the giving side, not the receiving side.** Answer only the first four without the fifth and
+it becomes a performance-tuning document, not a course.
 
 ---
 
-## 8.1 문제 — 한 루프에 세 결정이 얽혀 있다
+## 8.1 The problem — three decisions are tangled in one loop
 
-이 도구가 하는 일은 세그먼트 수백 개를 받아 붙이는 것이다. 규모를 숫자로 세워 둔다.
-6초 세그먼트로 45분짜리 한 편이면 세그먼트 450개, 27화 배치면 **요청 약 12,000건**이다.
-여기서 세 가지가 동시에 문제가 된다.
+What this tool does is receive and join hundreds of segments. Let us set the scale in numbers. With 6-second
+segments, one 45-minute episode is 450 segments, and a 27-episode batch is **about 12,000 requests.** Here
+three things become problems at once.
 
-| 문제 | 순진한 구현 | 그 결과 |
+| Problem | Naive implementation | Its result |
 |---|---|---|
-| **시간** | 한 건씩 순차 수신 | 요청당 왕복 지연이 그대로 누적된다 |
-| **실패** | 실패하면 그냥 재시도, 또는 그냥 포기 | 재시도가 서버를 더 밀거나, 회복 가능한 실패를 버린다 |
-| **관측** | 받아졌는지만 본다 | "총 길이가 맞는데 중간이 비어 있다"를 못 잡는다 |
+| **time** | receive one at a time, sequentially | the per-request round-trip delay accumulates directly |
+| **failure** | just retry on failure, or just give up | a retry pushes the server more, or throws away a recoverable failure |
+| **observation** | see only whether it arrived | cannot catch "the total length matches but the middle is empty" |
 
-세 문제의 해법이 서로를 제약한다는 것이 이 장의 출발점이다. 병렬로 던지면 실패가
-동시다발로 오고, 재시도를 넣으면 병렬도가 실질적으로 곱해지며, 둘 다 하면
-**계측치의 의미가 흐려진다** — 어떤 요청의 지연이 서버 탓인지 내 쪽 큐 대기 탓인지
-알 수 없게 된다.
+That the three problems' solutions constrain each other is this chapter's starting point. Throw in parallel and
+failures come simultaneously; add retry and the parallelism is effectively multiplied; do both and **the
+meaning of the measurements blurs** — you cannot tell whether a request's delay is the server's fault or my
+own queue wait.
 
-이 저장소의 `Fetcher` 는 이 셋을 다음과 같이 갈랐다.
+This repository's `Fetcher` split these three as follows.
 
-| 결정 | 코드 위치 | 한 줄 요약 |
+| Decision | Code location | One-line summary |
 |---|---|---|
-| **재시도 분류** | [`fetch.py:139-215`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L139-L215) `_send` | 실패를 "다시 하면 달라질 수 있는 것"과 아닌 것으로 나눈다 |
-| **순서 복원** | [`fetch.py:223-243`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L223-L243) `get_many` | 완료 순서로 받되 제출 시점의 자리로 되돌린다 |
-| **분위수 계측** | [`report.py:56-61`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L56-L61) `_quantile` | 평균이 아니라 p50·p95 로 지연을 본다 |
+| **retry classification** | [`fetch.py:139-215`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L139-L215) `_send` | split failures into "could differ if done again" and not |
+| **order restoration** | [`fetch.py:223-243`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L223-L243) `get_many` | receive in completion order but return to the submission-time slot |
+| **quantile measurement** | [`report.py:56-61`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L56-L61) `_quantile` | see latency as p50·p95, not the mean |
 
-모듈 최상단의 독스트링이 이 도구가 일반 다운로더와 다른 지점을 한 문장으로 적어 두었다.
+The docstring at the top of the module wrote in one sentence where this tool differs from a general downloader.
 
 ```python
 # fetch.py:1-5
-"""계측형 HTTP 페처.
+"""An instrumented HTTP fetcher.
 
-일반 다운로더와 다른 점은 매 요청의 지연·크기·재시도 횟수를 기록한다는 것이다.
-송출 검증에서 "받아졌다"보다 "언제·얼마나 걸려 받아졌다"가 중요하기 때문이다.
+What differs from a general downloader is that it records each request's latency·size·retry count.
+Because in delivery verification "when and how long it took to receive" matters more than "it was received."
 """
 ```
 
-**"받아졌다"보다 "언제·얼마나 걸려"** — 이 문장이 제1장에서 세운 문제 의식의 전송
-계층 버전이다. 제4장이 이 자료형(`FetchResult`)의 설계를 다뤘다면, 이 장은 그 값을
-**만들어 내는 루프**와 **소비하는 판정 규칙**을 다룬다.
+**"When and how long" over "it was received"** — this sentence is the transport-layer version of the problem
+consciousness Chapter 1 set up. If Chapter 4 covered this data type's (`FetchResult`) design, this chapter
+covers **the loop that produces** that value and **the verdict rules that consume** it.
 
 ---
 
-## 8.2 원리 ① — 재시도는 성능 최적화가 아니라 분류 문제다
+## 8.2 Principle ① — retry is not a performance optimization but a classification problem
 
-### 8.2.1 기준은 "실패했는가"가 아니다
+### 8.2.1 The criterion is not "did it fail"
 
-재시도를 "실패하면 몇 번 더 해 보는 것"으로 이해하면 재시도 횟수만 정하면 되는
-문제가 된다. 그러나 실제 판단 지점은 횟수가 아니라 **다음 명제가 참인가**다.
+Understand retry as "try a few more times on failure" and it becomes a problem of only deciding the retry
+count. But the actual decision point is not the count but **whether the following proposition is true.**
 
-> **같은 요청을 다시 보내면 다른 답이 올 수 있는가.**
+> **Send the same request again and could a different answer come?**
 
-이 명제가 거짓이면 재시도는 정확히 0 의 이득에 N 배의 비용이다. 참이면 재시도는
-회복이다. 그러므로 재시도 정책은 백오프 상수를 고르는 일이 아니라 **응답을 두 부류로
-나누는 분류기를 설계하는 일**이다.
+If this proposition is false, retry is exactly 0 gain at N× cost. If true, retry is recovery. Therefore a retry
+policy is not choosing a backoff constant but **designing a classifier that splits responses into two classes.**
 
-> **용어** — **멱등(idempotent)**: 같은 요청을 여러 번 보내도 서버 상태에 대한 효과가
-> 한 번 보낸 것과 같은 성질. HTTP 규격은 `GET`·`HEAD`·`PUT`·`DELETE` 를 멱등으로,
-> 그중 `GET`·`HEAD` 를 부작용이 없는 **안전(safe)** 한 방식으로 정의한다. 이 도구는
-> 세그먼트를 `GET` 으로만 받으므로 재시도가 원격 상태를 바꿀 위험이 없다. 멱등하지
-> 않은 `POST` 를 자동 재시도하는 클라이언트는 결제를 두 번 만든다.
+> **Term** — **idempotent**: the property that sending the same request several times has the same effect on
+> server state as sending it once. The HTTP spec defines `GET`·`HEAD`·`PUT`·`DELETE` as idempotent, and among
+> them `GET`·`HEAD` as **safe**, with no side effects. This tool receives segments only with `GET`, so a retry
+> has no risk of changing remote state. A client that auto-retries a non-idempotent `POST` makes a payment
+> twice.
 
-멱등성은 재시도의 **필요조건**이지 충분조건이 아니다. `GET /seg010.ts` 는 몇 번을 보내도
-안전하지만, 404 를 세 번 보내는 것은 여전히 무의미하다. 그래서 두 번째 조건이 붙는다 —
-**응답이 시간에 의존하는가.**
+Idempotency is a **necessary condition** for retry, not a sufficient one. `GET /seg010.ts` is safe however many
+times you send it, but sending a 404 three times is still meaningless. So a second condition is added — **does
+the response depend on time.**
 
-### 8.2.2 4xx 는 왜 즉시 포기인가, 408·429 는 왜 예외인가
+### 8.2.2 Why is a 4xx immediate give-up, and why are 408·429 exceptions?
 
-HTTP 상태 코드의 4xx 계열은 "요청 쪽에 문제가 있다"는 뜻이다. 요청 문자열·헤더·
-자격증명이 그대로인 채 다시 보내면 서버는 같은 판단을 반복한다.
+The 4xx family of HTTP status codes means "there is a problem on the request side." Send it again with the
+request string·header·credentials unchanged and the server repeats the same judgment.
 
-| 코드 | 뜻 | 시간이 지나면 답이 바뀌는가 | 이 코드의 처리 |
+| Code | Meaning | Does the answer change over time? | This code's handling |
 |---|---|---|---|
-| `400` Bad Request | 요청 자체가 규격 위반 | 아니오 | 중단 |
-| `401` Unauthorized | 자격증명 없음·무효 | 아니오 — 자격증명이 그대로다 | 중단 |
-| `403` Forbidden | 접근 거부(핫링크 차단·서명 불일치) | 아니오 | 중단 |
-| `404` Not Found | 자원 없음 | 아니오 | 중단 |
-| **`408`** Request Timeout | 서버가 요청 수신을 기다리다 끊음 | **예** — 다음번엔 제때 도착할 수 있다 | **재시도** |
-| **`429`** Too Many Requests | 속도 제한에 걸림 | **예** — 창(window)이 지나면 열린다 | **재시도** |
-| `5xx` | 서버 측 오류 | 예 | 재시도 |
+| `400` Bad Request | the request itself violates the spec | No | halt |
+| `401` Unauthorized | no·invalid credentials | No — the credentials are unchanged | halt |
+| `403` Forbidden | access denied (hotlink block·signature mismatch) | No | halt |
+| `404` Not Found | resource absent | No | halt |
+| **`408`** Request Timeout | the server waited for the request and cut it | **Yes** — next time it may arrive in time | **retry** |
+| **`429`** Too Many Requests | hit the rate limit | **Yes** — it opens once the window passes | **retry** |
+| `5xx` | server-side error | Yes | retry |
 
-`408` 과 `429` 는 상태 코드 체계 안에서 **자기 자신을 부정하는 두 항목**이다. 4xx 는
-"요청을 고쳐라"는 계열인데, 이 둘만은 요청을 고칠 필요가 없고 **기다리면 된다**고
-말한다. `429` 는 RFC 6585 가 뒤늦게 추가한 코드이고, 규격 문서가 이 코드와 함께
-`Retry-After` 헤더를 쓰라고 권한다. 즉 **서버가 명시적으로 "다시 오라"고 말하는
-유일한 4xx** 다.
+`408` and `429` are **two items that negate themselves** within the status-code system. 4xx is the "fix the
+request" family, yet these two alone need no fixing of the request and say **you can just wait.** `429` is a
+code RFC 6585 added belatedly, and the spec document recommends using the `Retry-After` header with it. That is,
+it is **the only 4xx where the server explicitly says "come again."**
 
-그래서 이 두 코드를 예외로 두지 않으면 두 방향으로 틀린다.
+So not treating these two codes as exceptions goes wrong in two directions.
 
-- **`429` 를 재시도하지 않으면** — 서버가 "잠시 후 다시 오라"고 말했는데 클라이언트가
-  받아쓰기를 실패한 것이다. 정상 스트림을 결손으로 보고하고, 검증 도구가 **송출자에게
-  없는 결함을 있다고 말한다.**
-- **`404` 를 재시도하면** — 결손 세그먼트 하나당 요청이 3배가 된다. 27화 배치에서
-  토큰이 만료돼 전량 404 가 나면 12,000건이 36,000건이 되고, 그것은 **자기 자신을
-  향한 증폭**이다.
+- **Not retrying `429`** — the server said "come again shortly" and the client failed to take dictation. It
+  reports a normal stream as a loss, and the verification tool **tells the deliverer of a fault they do not
+  have.**
+- **Retrying `404`** — the requests per lost segment triple. In a 27-episode batch, if the token expires and it
+  all 404s, 12,000 becomes 36,000, and that is **amplification toward oneself.**
 
-두 오류의 방향이 정반대라는 점이 중요하다. 한쪽은 관대해서 틀리고 한쪽은 인색해서
-틀린다. 분류기를 하나만 두고 임계를 옮겨서는 둘 다 고칠 수 없다 — **코드별 의미론을
-읽어야 한다.**
+That the two errors' directions are opposite matters. One goes wrong by being lenient and one by being stingy.
+You cannot fix both by having one classifier and moving the threshold — **you must read the per-code
+semantics.**
 
-### 8.2.3 지수 백오프 — 누구를 보호하는 장치인가
+### 8.2.3 Exponential backoff — a device that protects whom?
 
-> **용어** — **지수 백오프(exponential backoff)**: 재시도 간격을 시도 횟수에 대해
-> 지수적으로 늘리는 방식. 이 코드는 `backoff × 2^(n−1)` 로, 기본값 `backoff=0.8`
-> 에서 0.8초 → 1.6초가 된다([`fetch.py:205-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L205-L206)).
+> **Term** — **exponential backoff**: a scheme that increases the retry interval exponentially in the attempt
+> count. This code does `backoff × 2^(n−1)`, which at the default `backoff=0.8` is 0.8s → 1.6s
+> ([`fetch.py:205-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L205-L206)).
 
-간격을 늘리는 목적을 "내 요청의 성공 확률을 높이려고"로만 이해하면 절반만 맞다.
-지수 백오프에는 두 개의 수혜자가 있다.
+Understand the purpose of widening the interval only as "to raise my request's success probability" and it is
+half right. Exponential backoff has two beneficiaries.
 
-| 수혜자 | 무엇을 얻는가 | 늘리지 않으면 |
+| Beneficiary | What it gets | If you do not widen |
 |---|---|---|
-| **클라이언트(나)** | 일시 장애가 지나갈 시간을 준다 | 장애가 끝나기 전에 3회를 다 써 버리고 실패로 확정한다 |
-| **서버(상대)** | 장애 중인 서버에 가해지는 요청률이 지수적으로 감소한다 | **장애가 재시도를 부르고 재시도가 장애를 키운다** |
+| **the client (me)** | gives time for a transient fault to pass | you use up all 3 attempts before the fault ends and confirm failure |
+| **the server (the peer)** | the request rate on a faulting server decreases exponentially | **the fault calls up retries and retries grow the fault** |
 
-두 번째 줄이 핵심이다. 서버가 과부하로 5xx 를 내기 시작한 순간, 모든 클라이언트가
-즉시 재시도하면 요청률이 그 자리에서 몇 배가 된다. 이 상태를 **재시도 폭풍(retry
-storm)** 이라 부르고, 원래 회복 가능했을 장애를 회복 불가능하게 만든다.
+The second row is the crux. The moment the server starts giving 5xx from overload, if all clients retry
+immediately the request rate multiplies on the spot. This state is called a **retry storm**, and it turns an
+originally recoverable fault into an unrecoverable one.
 
-> **지수 백오프는 예의가 아니라 안정성 장치다. 그리고 그 안정성은 상대 시스템의
-> 것이면서 동시에 내 것이다** — 서버가 죽으면 내 요청도 전부 실패한다.
+> **Exponential backoff is not courtesy but a stability device. And that stability is the peer system's and at
+> the same time mine** — if the server dies, all my requests fail too.
 
-이 저장소의 백오프에는 **지터(jitter)가 없다.** 무작위 흔들림 없이 정확히 0.8초와
-1.6초를 잔다. 병렬 8건이 동시에 `429` 를 받으면 8개 스레드가 **같은 시각에 깨어
-같은 시각에 다시 던진다.** 이것이 무엇을 뜻하는지는 §8.9 와 §8.10 에서 다룬다.
+This repository's backoff has **no jitter.** With no random wobble, it sleeps exactly 0.8 and 1.6 seconds.
+Receive `429` on 8 parallel requests at once and 8 threads **wake at the same time and throw again at the same
+time.** What this means is covered in §8.9 and §8.10.
 
 ---
 
-## 8.3 코드 ① — 재시도 루프 한 바퀴
+## 8.3 Code ① — one lap of the retry loop
 
-### 8.3.1 루프에 들어가기 전에 확정되는 것
+### 8.3.1 What is fixed before entering the loop
 
 ```python
 # fetch.py:149-151
@@ -158,51 +154,51 @@ storm)** 이라 부르고, 원래 회복 가능했을 장애를 회복 불가능
         url = normalize_url(url)
 ```
 
-`normalize_url` 이 **루프 밖**에 있다는 사실이 재시도의 전제를 만든다. 재시도가
-"같은 요청을 다시 보내는 것"이려면 요청 줄의 바이트열이 시도마다 동일해야 한다.
-정규화를 루프 안에 두면 변환이 시도마다 다시 적용되고, 퍼센트 인코딩처럼 멱등하지
-않을 수 있는 변환에서는 **2회차의 요청이 1회차와 다른 자원을 가리킬 수 있다.**
-`%20` 이 `%2520` 이 되는 경로가 그것이다.
+The fact that `normalize_url` is **outside the loop** makes retry's premise. For a retry to be "sending the same
+request again," the request line's byte sequence must be identical each attempt. Put normalization inside the
+loop and the transform is re-applied each attempt, and with a possibly non-idempotent transform like
+percent-encoding **the 2nd attempt's request could point at a different resource than the 1st.** That is the
+path where `%20` becomes `%2520`.
 
-부수 효과로, 반환되는 `FetchResult.url`([`fetch.py:182`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L182))은 정규화 **후**의 문자열이다.
-리포트에 남는 주소가 실제로 회선에 나간 주소와 같다는 뜻이고, 이것이 없으면 사후
-재현이 어긋난다.
+As a side effect, the returned `FetchResult.url` ([`fetch.py:182`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L182)) is the string **after** normalization. It
+means the address left in the report is the same as the address that actually went out on the wire, and without
+this after-the-fact reproduction goes off.
 
-### 8.3.2 루프는 세 갈래로만 갈린다
+### 8.3.2 The loop branches only three ways
 
-![한 번의 시도가 끝났을 때 재시도 루프가 갈리는 세 갈래](/images/lecture/hls-recon/08-retry-classification.svg)
+![The three branches the retry loop takes when one attempt finishes](/images/lecture/hls-recon/08-retry-classification.svg)
 
-*그림 8-1 — 한 번의 시도가 끝났을 때 재시도 루프가 갈리는 세 갈래*
+*Figure 8-1 — the three branches the retry loop takes when one attempt finishes*
 
-분류를 실행하는 조건은 두 줄이다.
+The condition that runs the classification is two lines.
 
 ```python
 # fetch.py:199-201
-                # 4xx 는 재시도해도 결과가 같다 (401/403/404 = 토큰 만료·핫링크 차단)
+                # 4xx gives the same result on retry (401/403/404 = token expiry·hotlink block)
                 if 400 <= e.code < 500 and e.code not in (408, 429):
                     break
 ```
 
-`break` 는 남은 시도를 **버리는** 것이다. `continue` 도 `return` 도 아닌 이유는,
-루프를 빠져나간 뒤 [`fetch.py:208-215`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L208-L215) 의 공통 실패 반환으로 합류해야 하기 때문이다.
-성공은 루프 안에서 즉시 `return` 하고([`fetch.py:181-195`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L181-L195)), 실패는 종류를 불문하고
-**하나의 출구**로 모인다. 실패 경로가 하나이므로 실패 기록의 형태가 언제나 같다.
+`break` is **discarding** the remaining attempts. The reason it is neither `continue` nor `return` is that after
+exiting the loop it must merge into the common failure return of [`fetch.py:208-215`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L208-L215). Success `return`s
+immediately inside the loop ([`fetch.py:181-195`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L181-L195)), and failure of every kind gathers at **one exit.** Because the
+failure path is one, the shape of the failure record is always the same.
 
-도식은 세 갈래로 그렸지만, 코드에는 네 번째 갈래가 있다. 도식의 단순화를 정확히
-적어 둔다.
+The figure is drawn as three branches, but the code has a fourth. Let me record the figure's simplification
+precisely.
 
-| 분기 | 발생 조건 | 루프 동작 | 앵커 |
+| Branch | Condition | Loop action | Anchor |
 |---|---|---|---|
-| 성공 | 응답 수신 + 압축 해제 성공 | `return` (즉시) | [`fetch.py:181-195`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L181-L195) |
-| 본문 해제 실패 | `Content-Encoding` 해제 중 예외 | `break` — 재시도 안 함 | [`fetch.py:177-180`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L177-L180) |
-| 영속 실패 | 4xx 중 `408`·`429` 제외 | `break` — 재시도 안 함 | [`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201) |
-| 일시 실패 | 5xx · `408` · `429` · 네트워크 예외 | 백오프 후 다음 시도 | [`fetch.py:202-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L202-L206) |
+| success | response received + decompression succeeded | `return` (immediately) | [`fetch.py:181-195`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L181-L195) |
+| body-decompression failure | exception during `Content-Encoding` decompression | `break` — no retry | [`fetch.py:177-180`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L177-L180) |
+| permanent failure | 4xx except `408`·`429` | `break` — no retry | [`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201) |
+| transient failure | 5xx · `408` · `429` · network exception | backoff then next attempt | [`fetch.py:202-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L202-L206) |
 
-둘째 줄이 도식에 없는 갈래다. HTTP 는 200 으로 성공했는데 본문을 풀 수 없는 경우이며,
-"같은 서버가 같은 손상된 본문을 다시 준다"는 판단으로 `break` 한다. 제6장에서 이
-결정을 상세히 다뤘다.
+The second row is the branch not in the figure. It is the case where HTTP succeeded with 200 but the body cannot
+be decompressed, and it `break`s on the judgment "the same server gives the same corrupted body again." Chapter 6
+covered this decision in detail.
 
-### 8.3.3 잠들지 않는 마지막 시도
+### 8.3.3 The last attempt that does not sleep
 
 ```python
 # fetch.py:205-206
@@ -210,28 +206,27 @@ storm)** 이라 부르고, 원래 회복 가능했을 장애를 회복 불가능
                 time.sleep(self.backoff * (2 ** (attempt - 1)))
 ```
 
-`if attempt < self.retries` 가 없으면 마지막 시도 뒤에도 3.2초(`0.8 × 2^2`)를 잔 다음
-실패를 반환한다. 아무도 기다리지 않는 잠이다. 세그먼트 450개가 전량 실패하는
-상황(서버 장애·타임아웃)에서 이 한 줄이 없으면 **의미 없는 대기가 450번** 쌓인다.
+Without `if attempt < self.retries`, it sleeps 3.2 seconds (`0.8 × 2^2`) even after the last attempt and then
+returns failure. A sleep no one is waiting on. In a situation where all 450 segments fail (server fault·timeout),
+without this one line **450 meaningless waits** pile up.
 
-기본값([`fetch.py:108-118`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L108-L118): `timeout=30.0`, `retries=3`, `backoff=0.8`)으로 요청 한
-건의 최악 소요 시간을 계산하면 이렇다.
+Compute the worst-case duration of one request with the defaults ([`fetch.py:108-118`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L108-L118): `timeout=30.0`,
+`retries=3`, `backoff=0.8`) and it is this.
 
-| 시도 | 최대 소요 | 이후 대기 |
+| Attempt | Max duration | Wait after |
 |---|---|---|
-| 1회차 | 30.0s (`timeout`) | 0.8s |
-| 2회차 | 30.0s | 1.6s |
-| 3회차 | 30.0s | 없음 |
-| **합** | **92.4s** | — |
+| 1st | 30.0s (`timeout`) | 0.8s |
+| 2nd | 30.0s | 1.6s |
+| 3rd | 30.0s | none |
+| **sum** | **92.4s** | — |
 
-이 92.4초는 **계산한 상한이지 실측치가 아니다.** 그러나 상한이 이 크기라는 사실
-자체가 설계 정보다. 세그먼트 450개가 모두 타임아웃하는 경우 병렬 8건이면
-`450 ÷ 8 × 92.4s ≈ 1.4시간` 동안 도구가 반환하지 않는다. 이 도구에 전체 작업
-시한(deadline)이 없다는 것이 여기서 드러난다(§8.10).
+This 92.4 seconds is **a computed upper bound, not a measurement.** But the very fact that the bound is this
+size is design information. If all 450 segments time out, with 8 parallel the tool does not return for
+`450 ÷ 8 × 92.4s ≈ 1.4 hours`. That this tool has no whole-job deadline surfaces here (§8.10).
 
-### 8.3.4 `attempts` 가 실패 경로에서 거짓말한다
+### 8.3.4 `attempts` lies on the failure path
 
-성공 경로와 실패 경로가 이 필드를 다르게 채운다.
+The success path and the failure path fill this field differently.
 
 ```python
 # fetch.py:191
@@ -247,77 +242,76 @@ storm)** 이라 부르고, 원래 회복 가능했을 장애를 회복 불가능
             attempts=self.retries,
 ```
 
-성공은 **실제로 성공한 시도 번호**를 넣는데, 실패는 **시도했을 리 없는 경우에도
-`self.retries`(기본 3)** 를 넣는다. 404 를 받고 1회차에서 `break` 한 요청도
-`attempts=3` 으로 기록된다. 회선에 나간 요청은 1건이다.
+Success puts in the **attempt number that actually succeeded**, while failure puts in **`self.retries` (default
+3) even in a case where it could not have retried.** A request that received a 404 and `break`ed on the 1st
+attempt is also recorded as `attempts=3`. The requests that went out on the wire are 1.
 
-지금 이것이 아무것도 깨뜨리지 않는 이유는 소비 측이 성공한 것만 세기 때문이다.
+The reason this breaks nothing now is that the consuming side counts only successes.
 
 ```python
 # report.py:162
         retried = [f for f in fetches if f.ok and f.attempts > 1]
 ```
 
-`f.ok and` 가 앞에 붙어 있어 실패 요청의 부풀려진 `attempts` 는 집계에 닿지 않는다.
-**두 코드가 서로를 모른 채 우연히 맞물려 있는 상태**이며, 누군가 "총 요청 수 =
-`sum(f.attempts)`" 를 계산하는 순간 조용히 틀린다. 제15장의 표현을 빌리면 이것도
-우연한 방어에 가깝다 — 다른 곳의 필터가 앞을 막고 있어서 결함이 드러나지 않을 뿐이다.
+`f.ok and` in front means a failed request's inflated `attempts` does not reach the aggregation. **A state where
+two pieces of code interlock by chance without knowing each other**, and the moment someone computes "total
+requests = `sum(f.attempts)`" it goes quietly wrong. In Chapter 15's phrasing this too is close to an accidental
+defense — the fault does not surface only because a filter elsewhere blocks it in front.
 
 ---
 
-## 8.4 원리 ② — 세그먼트는 순서가 곧 내용이다
+## 8.4 Principle ② — for a segment, order is content
 
-### 8.4.1 왜 순서를 잃으면 안 되는가
+### 8.4.1 Why you must not lose the order
 
-병렬 수신에서 결과 순서 보존은 대개 "있으면 편한 성질"이다. 이 도메인에서는 아니다.
+In parallel receipt, result-order preservation is usually a "nice-to-have property." In this domain it is not.
 
-제19장에서 다루듯 MPEG-TS 는 **연결에 대해 닫혀 있는(closed under concatenation) 포맷**이라
-세그먼트를 바이트 그대로 이어 붙이면 유효한 스트림이 된다. 그 성질이 재조립을 단순한
-`concat` 으로 만들어 주는 대신, **정확히 그 이유로 순서가 곧 내용이 된다.**
+As Chapter 19 covers, MPEG-TS is a **format closed under concatenation**, so joining segments byte-for-byte
+makes a valid stream. That property makes reassembly a simple `concat` instead, but **for exactly that reason,
+order becomes content.**
 
-| 포맷 성질 | 얻는 것 | 대가 |
+| Format property | What is gained | The price |
 |---|---|---|
-| 연결에 닫혀 있다 | 병합기를 만들 필요가 없다 — `cat` 으로 충분하다 | 잘못된 순서로 이어 붙여도 **똑같이 유효한 스트림**이 된다 |
+| closed under concatenation | no need to make a merger — `cat` suffices | join in the wrong order and it is **an equally valid stream** |
 
-여기가 함정이다. 순서가 뒤섞인 재조립본은 **깨지지 않는다.** 파일은 열리고, 총
-재생 길이도 맞고, 컨테이너 검사도 통과한다. 다만 영상이 뒤섞여 있을 뿐이다. 제1장의
-"총 길이가 맞는데 중간이 비어 있다"와 같은 계열의, **검사기가 잡지 못하는 형태의
-오류**다.
+Here is the trap. A reassembled copy with scrambled order **does not break.** The file opens, the total playback
+length matches, and the container check passes. Only the video is scrambled. It is the same family as Chapter
+1's "the total length matches but the middle is empty" — **an error of a form the checker cannot catch.**
 
-실제 소비 지점이 이 성질을 그대로 전제한다.
+The actual consuming point takes this property as its premise.
 
 ```python
 # cli.py:452
     for seg, res in zip(segs, results):
 ```
 
-`zip` 은 **위치로** 짝짓는다. `segs[3]` 의 복호화 키·시퀀스 번호·세그먼트 번호를
-`results[3]` 의 본문에 적용한다. 순서가 한 칸 밀리면 AES-128 스트림에서는 **틀린 IV
-로 복호화**하고(제5부), 평문 스트림에서는 조용히 뒤섞인 영상이 나온다.
+`zip` pairs **by position.** It applies `segs[3]`'s decryption key·sequence number·segment number to
+`results[3]`'s body. Push the order one slot and in an AES-128 stream it **decrypts with the wrong IV**
+(Part 5), and in a plaintext stream a quietly scrambled video comes out.
 
-### 8.4.2 완료 순서와 제출 순서
+### 8.4.2 Completion order and submission order
 
-> **용어** — **`as_completed`**: `concurrent.futures` 의 함수. 넘긴 Future 들을
-> **완료된 순서대로** 하나씩 내주는 이터레이터를 만든다. 제출 순서와는 무관하다.
+> **Term** — **`as_completed`**: a function of `concurrent.futures`. It makes an iterator that yields the passed
+> Futures one at a time **in completion order.** Unrelated to submission order.
 
-병렬 수신에서 완료 순서가 제출 순서와 달라지는 원인은 최소 넷이다 — 세그먼트마다
-다른 크기, 서버 측 캐시 적중 여부, 경로별 혼잡, 스레드 풀의 스케줄링. 넷 중 어느
-것도 클라이언트가 통제하지 못한다.
+There are at least four causes of completion order differing from submission order in parallel receipt — a
+different size per segment, server-side cache hit or not, per-path congestion, thread-pool scheduling. None of
+the four is controlled by the client.
 
-![병렬 수신에서 완료 순서를 입력 순서로 되돌리는 방법](/images/lecture/hls-recon/08-order-restore.svg)
+![How to return completion order to input order in parallel receipt](/images/lecture/hls-recon/08-order-restore.svg)
 
-*그림 8-2 — 병렬 수신에서 완료 순서를 입력 순서로 되돌리는 방법*
+*Figure 8-2 — how to return completion order to input order in parallel receipt*
 
-핵심은 **자리를 도착 시점에 정하지 않고 제출 시점에 정한다**는 것이다. 결과 배열을
-`[None] * len(items)` 로 미리 만들어 두면, 각 결과는 "몇 번째로 도착했는가"와 무관하게
-"몇 번째로 제출됐는가"의 칸에 들어간다. 도착 시각이 자리 배정에 **입력되지 않는
-구조**이므로, 순서가 뒤집혀도 결과는 같다.
+The crux is **deciding the slot not at arrival time but at submission time.** Make the result array in advance
+with `[None] * len(items)` and each result goes into the slot of "in what position was it submitted,"
+regardless of "in what position did it arrive." Since the arrival time is **a structure not input to the slot
+assignment**, the result is the same even if the order is inverted.
 
 ---
 
-## 8.5 코드 ② — `get_many` 와 실측
+## 8.5 Code ② — `get_many` and measurement
 
-### 8.5.1 제출 — 매핑의 키가 Future 인 이유
+### 8.5.1 Submission — why the map's key is a Future
 
 ```python
 # fetch.py:230-234
@@ -328,12 +322,12 @@ storm)** 이라 부르고, 원래 회복 가능했을 장애를 회복 불가능
             }
 ```
 
-`futures` 는 `{Future 객체: 인덱스}` 다. 자연스러워 보이는 대안인 `{URL: 인덱스}` 는
-이 저장소에서 **반드시 깨진다.**
+`futures` is `{Future object: index}`. The natural-looking alternative `{URL: index}` **necessarily breaks** in
+this repository.
 
-`EXT-X-BYTERANGE` 플레이리스트는 파일 하나 안의 바이트 구간들을 세그먼트로 삼는다.
-파서가 만드는 `Segment` 들은 `uri` 가 전부 같고 `byterange` 만 다르다
-([`playlist.py:236-247`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L236-L247)). 그래서 [`cli.py:423`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L423) 이 만드는 작업 목록은 이런 모양이 된다.
+An `EXT-X-BYTERANGE` playlist takes byte spans within one file as segments. The `Segment`s the parser makes all
+have the same `uri` and differ only in `byterange` ([`playlist.py:236-247`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L236-L247)). So the work list [`cli.py:423`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L423)
+makes looks like this.
 
 ```
 items = [("…/all.ts", (188000, 0)),
@@ -341,12 +335,12 @@ items = [("…/all.ts", (188000, 0)),
          ("…/all.ts", (188000, 376000)), …]
 ```
 
-URL 을 키로 잡으면 세 항목이 하나로 뭉개져 **인덱스 두 개가 사라진다.** Future 객체는
-동일성(identity)으로 해시되므로 같은 URL 의 서로 다른 요청이 절대 충돌하지 않는다.
-제7장이 다루는 URL 정규화도 이 점에서 무해하다 — 정규화가 두 주소를 같은 문자열로
-만들더라도 키는 여전히 다른 Future 다.
+Take the URL as the key and the three items collapse into one and **two indices disappear.** A Future object is
+hashed by identity, so different requests of the same URL never collide. The URL normalization Chapter 7 covers
+is also harmless in this respect — even if normalization makes two addresses the same string, the keys are still
+different Futures.
 
-### 8.5.2 수확 — 인덱스로 되돌리기
+### 8.5.2 Harvest — returning to the index
 
 ```python
 # fetch.py:236-243
@@ -360,120 +354,117 @@ URL 을 키로 잡으면 세 항목이 하나로 뭉개져 **인덱스 두 개�
         return [r for r in results if r is not None]
 ```
 
-읽어야 할 것이 세 가지다.
+Three things to read.
 
-**(1) `i = futures[fut]` 가 복원의 전부다.** 완료된 Future 를 키로 되짚어 제출 당시의
-인덱스를 꺼낸다. 이 한 줄이 없으면 `results.append(res)` 가 되고, 그 순간 결과 배열은
-완료 순서로 채워진다.
+**(1) `i = futures[fut]` is the whole of the restoration.** It looks up the completed Future by key to take out
+the index at submission time. Without this one line it becomes `results.append(res)`, and the moment it does,
+the result array is filled in completion order.
 
-**(2) 진행률은 완료 순서로 세고, 결과는 제출 순서로 쌓는다.** `done` 은 도착할 때마다
-1씩 늘고 `on_done(done, res)` 로 넘어간다([`cli.py:426-431`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L426-L431) 의 `tick`). **진행률과 결과
-순서가 서로 다른 축을 쓴다**는 점이 이 함수의 구조를 요약한다 — 사용자에게 보이는
-것은 "몇 개나 왔는가"이고, 다음 단계로 넘어가는 것은 "몇 번 세그먼트인가"다.
+**(2) Progress is counted in completion order, and results are piled in submission order.** `done` increments by
+1 on each arrival and is handed to `on_done(done, res)` ([`cli.py:426-431`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L426-L431)'s `tick`). **That progress and result
+order use different axes** summarizes this function's structure — what is visible to the user is "how many
+arrived," and what goes to the next stage is "which segment number."
 
-**(3) 마지막 줄의 `None` 필터는 위험한 잔재다.** `as_completed` 는 넘긴 Future 를
-빠짐없이 내주므로 정상 경로에서 `results` 에 `None` 이 남을 수 없다. 그런데 만약
-남는다면 — 반환 리스트의 **길이가 줄어들고**, [`cli.py:452`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L452) 의 `zip` 이 그 지점부터
-**한 칸씩 밀린 채 조용히 계속된다.** 짝이 어긋난 것을 아무도 알아채지 못한다.
+**(3) The last line's `None` filter is a dangerous residue.** `as_completed` yields every passed Future, so on
+the normal path no `None` can remain in `results`. But if one did — the return list's **length shrinks**, and
+[`cli.py:452`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L452)'s `zip` **continues quietly, pushed one slot from that point.** No one notices the pairing went off.
 
-같은 상황을 알리는 형태로 쓰려면 필터가 아니라 단정(assertion)이어야 한다. 걸러 내면
-결손이 **길이 감소**로 나타나고, 단정하면 **즉시 정지**로 나타난다. 검증 도구에서는
-후자가 옳다 — 제34장의 오라클 문제와 같은 형태다.
+To write it in a form that reports the same situation, it should be an assertion, not a filter. Filter it out and
+the loss appears as a **length decrease**; assert and it appears as an **immediate stop.** In a verification tool
+the latter is correct — the same form as Chapter 34's oracle problem.
 
-### 8.5.3 실측 — 순서가 완전히 뒤집혀도 결과는 같다
+### 8.5.3 Measurement — even with the order fully inverted, the result is the same
 
-그림 8-2 가 그린 상황을 로컬에서 재현한 결과다. 외부 서버 없이 재현되며, 사용한 것은
-표준 라이브러리뿐이다.
+The result of reproducing Figure 8-2's situation locally. Reproducible with no external server, using only the
+standard library.
 
-**설정** — `ThreadingHTTPServer` 로 `seg0.ts` … `seg7.ts` 를 서비스하되, 핸들러가
-`0.10 × (7 − i)` 초를 자도록 했다. `seg0` 이 가장 느리고 `seg7` 이 가장 빠르다.
-`jobs=8` 이므로 8건이 동시에 나간다.
+**Setup** — serve `seg0.ts` … `seg7.ts` with `ThreadingHTTPServer`, having the handler sleep `0.10 × (7 − i)`
+seconds. `seg0` is slowest and `seg7` fastest. With `jobs=8`, 8 requests go out at once.
 
 ```python
-# 실험 코드 (이 저장소 밖) — 서버 핸들러의 핵심 한 줄
-        time.sleep(0.10 * (N - 1 - i))   # seg0 가 가장 느리다
+# experiment code (outside this repository) — the handler's key line
+        time.sleep(0.10 * (N - 1 - i))   # seg0 is slowest
 ```
 
 ```
-완료(도착) 순서 : 7 6 5 4 3 2 1 0
-반환 순서      : 0 1 2 3 4 5 6 7
-본문 확인      : seg0 seg1 seg2 seg3 seg4 seg5 seg6 seg7
-경과 0.73s (직렬이면 2.80s+)
+completion (arrival) order : 7 6 5 4 3 2 1 0
+return order               : 0 1 2 3 4 5 6 7
+body check                 : seg0 seg1 seg2 seg3 seg4 seg5 seg6 seg7
+elapsed 0.73s (serial would be 2.80s+)
 ```
 
-3회 반복해 같은 결과를 얻었다. 읽을 것이 둘이다.
+Repeated 3 times with the same result. Two things to read.
 
-- **도착 순서는 완전한 역순인데 반환 순서는 입력 순서 그대로다.** 본문까지 확인해
-  `results[3]` 안에 정말 `seg3` 의 바이트가 들어 있음을 대조했다 — 인덱스만 맞고
-  내용이 밀린 경우를 배제하기 위해서다.
-- **경과 0.73초.** 순차로 받았다면 잠든 시간만 `0.0+0.1+…+0.7 = 2.80초`다. 병렬화는
-  전체를 가장 느린 한 건(0.7초)에 맞춰 눌렀다.
+- **The arrival order is a complete inversion but the return order is exactly the input order.** It even
+  confirmed the body, cross-checking that `results[3]` really contains `seg3`'s bytes — to rule out the case
+  where the index is right but the content is pushed.
+- **Elapsed 0.73 seconds.** Received serially, the sleep time alone is `0.0+0.1+…+0.7 = 2.80 seconds`.
+  Parallelization pressed the whole thing down to the slowest single one (0.7 seconds).
 
-두 번째 항목이 §8.6 으로 이어진다. **병렬 배치의 완료 시각은 평균이 아니라 최악의
-한 건이 정한다.**
+The second item leads to §8.6. **A parallel batch's completion time is decided not by the mean but by the worst
+single one.**
 
 ---
 
-## 8.6 원리 ③ — 평균이 감추는 것
+## 8.6 Principle ③ — what the mean hides
 
-### 8.6.1 fan-out 작업에서 꼬리가 전부를 정한다
+### 8.6.1 In a fan-out job the tail decides everything
 
-세그먼트 수신은 부분 성공이 의미 없는 작업이다. 450개 중 449개를 받아도 영상은
-완성되지 않는다. 이런 **전량 필요(all-or-nothing) 병렬 작업**에서 배치 완료 시각은
-평균 지연이 아니라 **가장 느린 요청**이 정한다.
+Segment receipt is a job where partial success is meaningless. Receive 449 of 450 and the video is not
+completed. In such an **all-or-nothing parallel job** the batch's completion time is decided not by the mean
+latency but by **the slowest request.**
 
-산술로 보면 이렇다. 어떤 요청이 "가장 느린 5%"에 들 확률이 0.05 라 할 때, 동시
-8건을 던지는 한 묶음에서 그중 최소 하나가 그 5%에 들 확률은
+Seen arithmetically, it is this. When the probability that some request is in the "slowest 5%" is 0.05, the
+probability that at least one of a bundle throwing 8 at once is in that 5% is
 
 ```
 1 − 0.95^8 = 1 − 0.6634 = 0.3366
 ```
 
-**한 묶음의 3분의 1이 꼬리를 만난다.** 450개를 8건씩 나누면 56묶음이고, 꼬리를 만나는
-묶음의 기댓값은 19묶음이다. 평균 지연이 아무리 낮아도 배치 전체는 이 19번의 꼬리를
-전부 기다린다.
+**A third of each bundle meets the tail.** Split 450 into bundles of 8 and it is 56 bundles, and the expected
+number meeting the tail is 19 bundles. However low the mean latency, the whole batch waits out all 19 of these
+tails.
 
-> **용어** — **꼬리 지연(tail latency)**: 지연 분포의 상위 백분위(p95·p99 등)에 해당하는
-> 느린 응답들. 규모가 커질수록 사용자가 실제로 경험하는 지연은 평균이 아니라 이쪽에
-> 수렴한다. 이 현상을 정리한 고전이 Dean 과 Barroso 의 "The Tail at Scale"(CACM, 2013)
-> 이다.
+> **Term** — **tail latency**: the slow responses corresponding to the upper percentiles (p95·p99, etc.) of the
+> latency distribution. The larger the scale, the more the latency users actually experience converges here
+> rather than to the mean. The classic that organized this phenomenon is Dean and Barroso's "The Tail at
+> Scale" (CACM, 2013).
 
-### 8.6.2 평균은 어떤 실제 응답과도 닮지 않는다
+### 8.6.2 The mean resembles no actual response
 
-![세그먼트 20건의 TTFB 를 평균 p50 p95 세 지표로 본 결과](/images/lecture/hls-recon/08-tail-latency.svg)
+![The result of seeing 20 segments' TTFB by the three metrics mean·p50·p95](/images/lecture/hls-recon/08-tail-latency.svg)
 
-*그림 8-3 — 세그먼트 20건의 TTFB 를 평균·p50·p95 세 지표로 본 결과*
+*Figure 8-3 — the result of seeing 20 segments' TTFB by the three metrics mean·p50·p95*
 
-**이 표본은 실측이 아니라 구성한 예시다.** 다만 이 표본에 이 저장소의 `_quantile` 을
-실제로 돌려 도식의 숫자를 대조했다. 표본과 결과는 다음과 같다.
+**This sample is not a measurement but a constructed example.** But this repository's `_quantile` was actually
+run on this sample to cross-check the figure's numbers. The sample and result are as follows.
 
 ```
-표본 20건 (ms)
+20 samples (ms)
 41 44 45 47 48 49 50 52 53 55 56 58 60 62 65 70 72 75 2900 5200
 
-평균                    455.1      ← 18건이 41~75ms 인데 평균은 그 8배
+mean                    455.1      ← 18 are 41~75ms but the mean is 8× that
 _quantile(v, 0.50)       56        ← idx = round(0.50 × 19) = 10
 _quantile(v, 0.95)     2900        ← idx = round(0.95 × 19) = 18
-최댓값                 5200
+max                    5200
 ```
 
-평균 455ms 는 **표본 20건 중 어느 것과도 닮지 않았다.** 41ms 대의 18건과도 다르고
-2900ms·5200ms 의 2건과도 다르다. 평균이 하는 일은 두 무리를 섞어 존재하지 않는 값
-하나를 만드는 것이다.
+The mean 455ms **resembles none of the 20 samples.** It differs from the 18 in the 41ms range and from the 2 at
+2900ms·5200ms. What the mean does is mix the two groups to make a single non-existent value.
 
-이것이 이 도구가 평균을 쓰지 않는 이유다. 검증 리포트가 답해야 하는 질문은 두 개인데,
-평균은 둘 다 답하지 못한다.
+This is why this tool does not use the mean. A verification report must answer two questions, and the mean
+answers neither.
 
-| 질문 | 답하는 지표 | 평균이 답하지 못하는 이유 |
+| Question | The metric that answers | Why the mean cannot answer |
 |---|---|---|
-| 이 송출은 **평소에** 얼마나 빠른가 | **p50**(중앙값) | 이상치 2건에 8배로 끌려간다 |
-| 이 송출은 **가끔** 얼마나 느린가 | **p95** | 이상치를 평균 안에 녹여 없앤다 |
+| how fast is this delivery **usually** | **p50** (median) | it is dragged 8× by the 2 outliers |
+| how slow is this delivery **occasionally** | **p95** | it dissolves the outliers into the mean and erases them |
 
 ---
 
-## 8.7 코드 ③ — `_quantile` 과 전송 계층 판정
+## 8.7 Code ③ — `_quantile` and the transport-layer verdict
 
-### 8.7.1 분위수는 보간이 아니라 최근접 순위다
+### 8.7.1 A quantile is nearest-rank, not interpolation
 
 ```python
 # report.py:56-61
@@ -485,81 +476,79 @@ def _quantile(values: list[float], q: float) -> float:
     return s[idx]
 ```
 
-여섯 줄에 결정이 넷 들어 있다.
+Six lines with four decisions in them.
 
-| 줄 | 결정 | 대안이었다면 |
+| Line | Decision | Had it been the alternative |
 |---|---|---|
-| `if not values: return 0.0` | 빈 표본에 0 을 준다 | 예외를 던지면 세그먼트 0개인 경로에서 리포트 생성이 중단된다 |
-| `s = sorted(values)` | 호출마다 정렬한다 | p50·p95 를 각각 부르므로 같은 리스트를 두 번 정렬한다 |
-| `int(round(...))` | **최근접 순위(nearest-rank)** — 보간하지 않는다 | 선형 보간이면 표본에 없는 값이 나온다 |
-| `min(len(s) - 1, ...)` | 인덱스 상한 고정 | `q=1.0` 에서 범위를 벗어난다 |
+| `if not values: return 0.0` | give 0 for an empty sample | throw an exception and report generation halts on the 0-segment path |
+| `s = sorted(values)` | sort per call | p50·p95 are each called, so the same list is sorted twice |
+| `int(round(...))` | **nearest-rank** — no interpolation | with linear interpolation a value not in the sample comes out |
+| `min(len(s) - 1, ...)` | fix the index upper bound | at `q=1.0` it goes out of range |
 
-> **용어** — **최근접 순위(nearest-rank)**: 정렬한 표본에서 하나의 원소를 골라 분위수로
-> 삼는 방식. 반환값이 **반드시 실제 관측치**라는 성질이 있다.
-> **선형 보간(linear interpolation)**: 두 이웃 원소 사이를 비례로 나눠 계산하는 방식.
-> NumPy 의 `percentile` 과 파이썬 `statistics.quantiles` 의 기본 동작이다. 반환값이
-> 실제 관측치가 아닐 수 있다.
+> **Term** — **nearest-rank**: a scheme of picking one element from the sorted sample as the quantile. It has
+> the property that the return value **is necessarily an actual observation.**
+> **linear interpolation**: a scheme of computing proportionally between two neighboring elements. The default
+> behavior of NumPy's `percentile` and Python's `statistics.quantiles`. The return value may not be an actual
+> observation.
 
-세 번째 줄이 이 절의 본론이다. **어느 방식을 쓰느냐가 같은 표본에서 판정을 뒤집는다.**
+The third line is this section's main point. **Which scheme you use flips the verdict on the same sample.**
 
-### 8.7.2 방식이 판정을 뒤집는 실측
+### 8.7.2 A measurement where the scheme flips the verdict
 
-§8.6.2 의 표본에 두 방식을 모두 적용한 결과다. 임계는 [`report.py:187`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L187) 의 3000ms 다.
+The result of applying both schemes to §8.6.2's sample. The threshold is [`report.py:187`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L187)'s 3000ms.
 
-| 계산 방식 | p50 | p95 | `p95 > 3000` | 판정 |
+| Computation scheme | p50 | p95 | `p95 > 3000` | Verdict |
 |---|---|---|---|---|
-| 이 코드 (최근접 순위) | 56 | **2900** | 거짓 | **PASS** |
-| 선형 보간 (NumPy 기본) | 55.5 | **3015.0** | 참 | **WARN** |
+| this code (nearest-rank) | 56 | **2900** | false | **PASS** |
+| linear interpolation (NumPy default) | 55.5 | **3015.0** | true | **WARN** |
 
-**같은 표본, 같은 임계, 반대 판정이다.** 차이의 출처는 단순하다. 최근접 순위는
-`s[18] = 2900` 이라는 실제 관측치를 그대로 내놓고, 선형 보간은 `s[18]` 과 `s[19]`
-사이 5% 지점을 계산해 `2900 + 0.05 × (5200 − 2900) = 3015` 를 만든다. 3015ms 라는
-지연은 **어떤 요청에서도 관측되지 않았다.**
+**Same sample, same threshold, opposite verdict.** The source of the difference is simple. Nearest-rank puts out
+the actual observation `s[18] = 2900` as is, and linear interpolation computes the 5% point between `s[18]` and
+`s[19]` to make `2900 + 0.05 × (5200 − 2900) = 3015`. The delay 3015ms **was observed in no request.**
 
-여기서 이 절의 명제가 나온다.
+Here comes this section's proposition.
 
-> **임계값을 정하기 전에 그 임계에 비교될 통계량의 정의를 먼저 정해야 한다.**
-> "p95 가 3초를 넘으면 경고"는 p95 의 계산 방식을 말하지 않으면 완결된 규칙이 아니다.
+> **Before setting a threshold you must first set the definition of the statistic to be compared against it.**
+> "warn if p95 exceeds 3 seconds" is not a complete rule unless it states p95's computation scheme.
 
-제22장이 이 임계 `3000` 에 근거가 없다는 점을 다룬다. 이 절은 그 위에 한 층을 더
-얹는다 — **근거 없는 임계이면서, 비교 대상의 정의조차 문서화돼 있지 않다.**
+Chapter 22 covers that this threshold `3000` has no basis. This section adds one more layer on top — **a
+baseless threshold, and the definition of the comparison target is not even documented.**
 
-### 8.7.3 표본이 작으면 p95 는 백분위수가 아니다
+### 8.7.3 With a small sample, p95 is not a percentile
 
-인덱스 식 `round(0.95 × (n − 1))` 을 직접 계산하면 작은 표본에서 지표가 성질을
-바꾼다.
+Compute the index formula `round(0.95 × (n − 1))` directly and on a small sample the metric changes its
+character.
 
-| 표본 수 n | p95 인덱스 | 최댓값 인덱스 | p95 = 최댓값? |
+| Sample count n | p95 index | max index | p95 = max? |
 |---|---|---|---|
-| 5 | 4 | 4 | **예** |
-| 10 | 9 | 9 | **예** |
-| 11 | 10 | 10 | **예** |
-| 12 | 10 | 11 | 아니오 |
-| 20 | 18 | 19 | 아니오 |
+| 5 | 4 | 4 | **Yes** |
+| 10 | 9 | 9 | **Yes** |
+| 11 | 10 | 10 | **Yes** |
+| 12 | 10 | 11 | No |
+| 20 | 18 | 19 | No |
 
-**표본이 11건 이하이면 "p95"는 최댓값이다.** `--limit` 로 앞 몇 개만 받는 표본 실행이나
-짧은 스트림에서 이 지표는 "가장 느렸던 한 번"이 되고, 서버가 딱 한 번 3초를 넘으면
-WARN 이 뜬다. 꼬리를 보려던 지표가 표본이 작으면 **이상치 지표로 성질이 바뀐다.**
-제22장이 임계 설계의 관점에서 같은 사실을 다룬다.
+**If the sample is 11 or fewer, "p95" is the max.** In a sample run receiving only the first few with `--limit`
+or on a short stream, this metric becomes "the one slowest time," and if the server exceeds 3 seconds just once,
+a WARN appears. A metric meant to see the tail changes its character into an **outlier metric** on a small
+sample. Chapter 22 covers the same fact from a threshold-design view.
 
-p50 에도 덜 알려진 성질이 하나 있다. `round` 는 파이썬 3 에서 **짝수 쪽 반올림
-(round-half-to-even)** 이므로, 표본 수가 짝수일 때 두 중앙값 중 어느 쪽을 고를지가
-n 에 따라 번갈아 바뀐다.
+p50 has one lesser-known property too. `round` is **round-half-to-even** in Python 3, so when the sample count is
+even, which of the two medians it picks alternates by n.
 
-| n | `0.5 × (n−1)` | `round` 결과 | 고르는 쪽 |
+| n | `0.5 × (n−1)` | `round` result | which side chosen |
 |---|---|---|---|
-| 2 | 0.5 | 0 | 아래쪽 |
-| 4 | 1.5 | 2 | 위쪽 |
-| 6 | 2.5 | 2 | 아래쪽 |
-| 8 | 3.5 | 4 | 위쪽 |
+| 2 | 0.5 | 0 | lower |
+| 4 | 1.5 | 2 | upper |
+| 6 | 2.5 | 2 | lower |
+| 8 | 3.5 | 4 | upper |
 
-즉 이 함수의 `q=0.5` 는 **두 중앙값의 평균을 내는 통상적 중앙값이 아니다.**
-`statistics.median` 과 값이 다를 수 있다(§8.7.2 의 표본에서 56 대 55.5). 계측 리포트
-수준에서는 영향이 없지만, 이 함수를 다른 곳에 재사용할 때는 알고 있어야 한다.
+That is, this function's `q=0.5` is **not the usual median that averages the two medians.** It can differ in
+value from `statistics.median` (56 vs 55.5 on §8.7.2's sample). At the measurement-report level there is no
+impact, but when reusing this function elsewhere you must know it.
 
-### 8.7.4 전송 계층 판정 — 무엇을 무엇으로 환산하는가
+### 8.7.4 Transport-layer verdict — what is converted into what
 
-[`report.py:160-230`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L160-L230) 이 계측치를 판정으로 바꾸는 전 구간이다. 먼저 집계다.
+[`report.py:160-230`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L160-L230) is the whole stretch that turns measurements into verdicts. First, aggregation.
 
 ```python
 # report.py:161-165
@@ -570,42 +559,42 @@ n 에 따라 번갈아 바뀐다.
         total_bytes = sum(f.size for f in fetches)
 ```
 
-네 리스트가 모두 `f.ok` 를 기준으로 갈린다는 점을 기억해 둔다(§8.7.5). 판정은 세 갈래다.
+Note that all four lists split on the basis of `f.ok` (§8.7.5). The verdict is three-way.
 
-| 조건 | 판정 | 근거 |
+| Condition | Verdict | Basis |
 |---|---|---|
-| `failed` 가 하나라도 있다 | **FAIL** | 재조립본에 결손 구간이 생긴다 |
-| 전량 성공하되 재시도가 있었다 | **WARN** | 결과물은 온전하나 송출 측이 불안정했다 |
-| 전량 1회 성공 | PASS | — |
+| there is at least one `failed` | **FAIL** | a loss interval appears in the reassembled output |
+| all succeeded but there were retries | **WARN** | the result is intact but the delivery side was unstable |
+| all succeeded on the first try | PASS | — |
 
-가운데 줄이 계측형 페처의 값어치다. **재시도로 회복된 실패는 최종 산출물에 흔적을
-남기지 않는다.** 파일만 보면 정상이고, 페처가 세어 두지 않으면 그 불안정은 영원히
-관측되지 않는다. 제36장의 대조군 설계와 같은 발상이다 — 도구가 무엇을 잡는지는
-도구가 무엇을 세는지로 결정된다.
+The middle row is the worth of an instrumented fetcher. **A failure recovered by retry leaves no trace in the
+final output.** Look at the file alone and it is normal, and if the fetcher does not count it, that instability
+is observed never. It is the same idea as Chapter 36's control-group design — what a tool catches is decided by
+what the tool counts.
 
-지연 판정은 한 줄이다.
+The latency verdict is one line.
 
 ```python
 # report.py:185-189
         rep.add(
-            "응답 지연",
+            "response latency",
             WARN if _quantile(ttfb, 0.95) > 3000 else PASS,
             f"TTFB p50 {_quantile(ttfb, 0.5):.0f}ms / p95 {_quantile(ttfb, 0.95):.0f}ms, "
-            f"처리량 중앙값 {_quantile(tput, 0.5):.1f} Mbps"
+            f"throughput median {_quantile(tput, 0.5):.1f} Mbps"
 ```
 
-**판정에 쓰는 것은 p95 하나뿐이고 p50 은 표시만 한다.** 그리고 처리량은 반대로 p50
-만 쓴다. 이 비대칭에는 이유가 있다.
+**What it uses for the verdict is p95 alone, and p50 is only displayed.** And throughput, conversely, uses only
+p50. This asymmetry has a reason.
 
-| 지표 | 쓰는 분위수 | 왜 |
+| Metric | Quantile used | Why |
 |---|---|---|
-| TTFB(지연) | **p95** | 나쁜 쪽이 큰 값이다. 꼬리는 위쪽에 있다 |
-| 처리량 | **p50** | 나쁜 쪽이 작은 값이다. 꼬리를 보려면 p5 여야 하는데, 이 코드는 대표값만 표시한다 |
+| TTFB (latency) | **p95** | the bad side is a large value. the tail is on top |
+| throughput | **p50** | the bad side is a small value. to see the tail it should be p5, but this code only displays the representative value |
 
-처리량의 꼬리(느린 쪽)는 이 리포트에 **나타나지 않는다.** 표시용 대표값만 있고 판정도
-없다. 의도적 생략인지 누락인지는 코드에서 판단할 근거가 없다.
+Throughput's tail (the slow side) **does not appear** in this report. There is only a representative display
+value and no verdict. Whether it is an intentional omission or a miss cannot be judged from the code.
 
-마지막으로 계측치는 기계가 읽을 수 있게 남는다.
+Finally, the measurements remain machine-readable.
 
 ```python
 # report.py:227-229
@@ -614,14 +603,14 @@ n 에 따라 번갈아 바뀐다.
             "throughput_mbps_p50": round(_quantile(tput, 0.5), 2),
 ```
 
-여기 없는 것이 중요하다 — **분위수의 표본 수가 그 자체로는 없다.** `ttfb` 의 표본 수는
-`"segments"` 에서 `"failed"` 를 빼야 나오고([`report.py:221-222`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L221-L222)), `tput` 은 처리량이 0 인
-성공 요청까지 빠지므로 아예 되짚을 수 없다. §8.7.3 에서 본 대로 표본 수를 모르면
-`ttfb_ms_p95` 를 해석할 수 없는데, 그 수가 분위수 옆에 함께 남지는 않는다.
+What is not here matters — **the sample count of the quantiles is not there in itself.** `ttfb`'s sample count
+comes out only by subtracting `"failed"` from `"segments"` ([`report.py:221-222`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L221-L222)), and `tput` cannot even be
+traced back because successful requests with 0 throughput are also excluded. As seen in §8.7.3, without knowing
+the sample count you cannot interpret `ttfb_ms_p95`, yet that count does not remain beside the quantile.
 
-### 8.7.5 계측의 사각지대 — 이 지표가 못 보는 시간
+### 8.7.5 The measurement's blind spot — the time this metric cannot see
 
-`ttfb_ms` 의 측정 구간을 코드에서 확인하면 사각지대 셋이 드러난다.
+Confirm `ttfb_ms`'s measurement span in the code and three blind spots surface.
 
 ```python
 # fetch.py:168-171
@@ -631,243 +620,239 @@ n 에 따라 번갈아 바뀐다.
                     ttfb = (time.perf_counter() - t0) * 1000
 ```
 
-**(1) `t0` 이 시도마다 초기화된다.** 3회차에 성공한 요청의 `ttfb_ms` 는 3회차만의
-값이다. 앞선 두 번의 타임아웃(최대 60초)과 백오프 대기(2.4초)는 **어떤 계측치에도
-남지 않는다.** 그 요청이 겪은 실제 시간은 `attempts > 1` 이라는 사실로만 간접 표시된다.
+**(1) `t0` is reset each attempt.** The `ttfb_ms` of a request that succeeded on the 3rd attempt is the value of
+the 3rd only. The two prior timeouts (up to 60 seconds) and backoff waits (2.4 seconds) **remain in no
+measurement.** The actual time that request experienced is indicated only indirectly by the fact `attempts > 1`.
 
-**(2) 실패한 요청은 지연 통계에 아예 없다.** `ttfb` 리스트가 `if f.ok` 로 걸러지므로
-([`report.py:163`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L163)), **가장 오래 걸린 요청들이 정확히 그 이유로 표본에서 빠진다.**
-타임아웃 90초짜리 요청이 지연 지표를 전혀 움직이지 않는다. 다행히 그 경우 "세그먼트
-수신"이 FAIL 이라 전체 판정은 실패로 나오지만, `ttfb_ms_p95` 라는 **숫자 자체는
-낙관적으로 편향돼 있다.**
+**(2) Failed requests are not in the latency statistics at all.** Since the `ttfb` list is filtered by `if f.ok`
+([`report.py:163`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L163)), **the requests that took longest are excluded from the sample for exactly that reason.** A
+request that timed out at 90 seconds moves the latency metric not at all. Fortunately in that case "segment
+receipt" is FAIL so the overall verdict comes out as a failure, but the **number `ttfb_ms_p95` itself is biased
+optimistically.**
 
-**(3) `ttfb` 는 서버 처리 시간이 아니다.** `t0` 이 `urlopen` 호출 **전**이므로
-DNS 조회·TCP 연결·TLS 협상이 모두 포함된다. 게다가 urllib 의 기본 opener 는 3xx 를
-자동으로 따라가므로, **리다이렉트 사슬 전체가 하나의 TTFB 로 접힌다.** 서명 URL 이
-리다이렉트로 발급되는 송출에서 이 값이 커져도, 서버가 느린 것인지 홉이 많은 것인지
-구별할 수 없다.
+**(3) `ttfb` is not the server processing time.** Since `t0` is **before** the `urlopen` call, DNS lookup·TCP
+connection·TLS negotiation are all included. Moreover urllib's default opener auto-follows 3xx, so **the whole
+redirect chain is folded into one TTFB.** On a delivery where a signed URL is issued via a redirect, even if
+this value grows, you cannot tell whether the server is slow or the hops are many.
 
-세 항목의 공통 형태를 한 줄로 적으면 이렇다.
+Written in one line, the common form of the three items is this.
 
-> **계측치의 이름이 그 계측치의 정의를 말해 주지 않는다.** `ttfb_ms` 라는 이름은
-> 이 값이 마지막 시도의, 성공한 요청의, 리다이렉트를 포함한 값이라는 사실을
-> 알려 주지 않는다.
+> **A measurement's name does not tell you the measurement's definition.** The name `ttfb_ms` does not tell you
+> that this value is of the last attempt, of a successful request, including redirects.
 
 ---
 
-## 8.8 일반화 — 세 결정이 다른 곳에서 나타나는 형태
+## 8.8 Generalization — the form the three decisions take elsewhere
 
-### 8.8.1 재시도 분류
+### 8.8.1 Retry classification
 
-같은 분류를 하는 시스템은 전부 "다시 하면 달라지는가"라는 같은 질문에 답하고 있다.
+Every system doing the same classification is answering the same question, "does it change if done again."
 
-| 도메인 | 다시 하면 달라질 수 있는 실패 | 다시 해도 같은 실패 |
+| Domain | A failure that could differ if done again | A failure the same however you redo it |
 |---|---|---|
-| HTTP 클라이언트 (이 코드) | 5xx · `408` · `429` · 연결 오류 | `400` · `401` · `403` · `404` |
-| 메시지 큐 | 소비자 측 일시 오류 → 재큐(requeue) | 형식이 깨진 메시지 → 데드레터 큐 |
-| 관계형 DB | 직렬화 실패 · 교착(deadlock) | 제약 위반(constraint violation) |
+| HTTP client (this code) | 5xx · `408` · `429` · connection error | `400` · `401` · `403` · `404` |
+| message queue | a consumer-side transient error → requeue | a malformed message → dead-letter queue |
+| relational DB | serialization failure · deadlock | constraint violation |
 | gRPC | `UNAVAILABLE` · `RESOURCE_EXHAUSTED` | `INVALID_ARGUMENT` · `PERMISSION_DENIED` |
-| POSIX 시스템 호출 | `EINTR` · `EAGAIN` | `ENOENT` · `EACCES` |
+| POSIX syscall | `EINTR` · `EAGAIN` | `ENOENT` · `EACCES` |
 
-마지막 줄이 이 분류가 HTTP 보다 오래됐음을 보여 준다. `EINTR`(시그널에 의한 중단)은
-"다시 부르면 된다"의 원형이고, 그것을 재시도하지 않는 코드가 오래된 유닉스 버그의
-한 부류였다.
+The last row shows this classification is older than HTTP. `EINTR` (interruption by a signal) is the archetype of
+"just call it again," and code that did not retry it was a class of old Unix bugs.
 
-**한 도메인에서 나머지를 유추할 수 없다는 점도 같이 봐야 한다.** 어떤 오류가 일시적인가는
-그 시스템의 의미론에 달렸고, 목록은 규격 문서를 읽어서만 만들 수 있다. 이 코드가
-`408`·`429` 를 하드코딩으로 예외 처리한 것([`fetch.py:200`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L200))은 **그 목록이 유도되지 않고
-열거될 수밖에 없는 성질**의 결과다.
+**That you cannot infer the rest from one domain must be seen together.** Which error is transient depends on that
+system's semantics, and the list can be made only by reading the spec document. That this code hardcoded the
+exception handling of `408`·`429` ([`fetch.py:200`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L200)) is a result of **that list being a property that can only be
+enumerated, not derived.**
 
-### 8.8.2 순서 복원
+### 8.8.2 Order restoration
 
-| 도메인 | 순서가 뒤섞이는 지점 | 순서를 되돌리는 장치 |
+| Domain | Where the order gets scrambled | The device that returns the order |
 |---|---|---|
-| 이 코드 | `as_completed` 의 완료 순서 | 제출 시점에 잡아 둔 인덱스 |
-| TCP | 패킷의 도착 순서 | 시퀀스 번호 |
-| MapReduce | 리듀서의 완료 순서 | 파티션 번호 |
-| 배치 API | 응답의 도착 순서 | 요청마다 붙인 상관 식별자(correlation id) |
-| JavaScript | Promise 의 이행 순서 | `Promise.all` 이 입력 배열 순서로 정렬 |
+| this code | `as_completed`'s completion order | the index held at submission time |
+| TCP | packet arrival order | sequence number |
+| MapReduce | reducer completion order | partition number |
+| batch API | response arrival order | a correlation id attached per request |
+| JavaScript | Promise fulfillment order | `Promise.all` sorts by input-array order |
 
-다섯 행이 공유하는 원리를 한 문장으로 쓰면 이렇다.
+Written in one sentence, the principle the five rows share is this.
 
-> **순서를 보존하려면 순서를 데이터에 실어야 한다.** 도착 순서를 순서로 쓰는 시스템은
-> 병렬화되는 순간 틀린다. TCP 의 시퀀스 번호는 이 문제를 1970년대에 이미 이렇게 풀었다.
+> **To preserve order you must carry order in the data.** A system that uses arrival order as the order goes wrong
+> the moment it is parallelized. TCP's sequence number already solved this problem this way in the 1970s.
 
-### 8.8.3 분위수
+### 8.8.3 Quantiles
 
-| 도메인 | 평균이 감추는 것 |
+| Domain | What the mean hides |
 |---|---|
-| 웹 서비스 SLO | p99 지연 — 평균 100ms 라도 1%가 5초면 사용자의 1%는 그 서비스를 못 쓴다 |
-| 가비지 컬렉션 | 평균 정지 시간은 짧고, 프레임을 떨어뜨리는 것은 최대 정지 시간이다 |
-| 저장장치 | 평균 IOPS 뒤에 숨은 큐 대기의 꼬리 |
-| 이 코드 | 세그먼트 한 건의 5.2초가 평균 455ms 안에 녹아 사라진다 |
+| web-service SLO | p99 latency — even at a mean of 100ms, if 1% is 5 seconds then 1% of users cannot use the service |
+| garbage collection | the mean pause is short, and what drops a frame is the max pause |
+| storage | the tail of queue wait hidden behind mean IOPS |
+| this code | one segment's 5.2 seconds dissolves and vanishes inside a mean of 455ms |
 
-그리고 §8.7.2 가 덧붙이는 것이 하나 더 있다. **분위수로 바꾸는 것만으로는 부족하고,
-그 분위수의 계산 방식과 표본 수까지 함께 보고해야 한다.** 방식이 판정을 뒤집고
-(2900 대 3015), 표본 수가 지표의 성질을 바꾸기(n ≤ 11 이면 p95 = 최댓값) 때문이다.
+And §8.7.2 adds one more. **Switching to a quantile is not enough; you must also report that quantile's
+computation scheme and sample count.** Because the scheme flips the verdict (2900 vs 3015), and the sample count
+changes the metric's character (if n ≤ 11, p95 = max).
 
 ---
 
-## 8.9 보안·윤리 — 병렬도는 상대 시스템에 남기는 부하다
+## 8.9 Security·ethics — parallelism is a load left on the peer system
 
-### 8.9.1 클라이언트의 선택이 서버에 무엇으로 보이는가
+### 8.9.1 What the client's choice looks like in server logs
 
-지금까지 세 결정을 "내가 얼마나 빨리·정확히 받는가"의 관점에서 봤다. 같은 결정을
-서버 로그에서 보면 다른 것이 된다.
+So far the three decisions were seen from the view of "how fast·accurately do I receive." See the same decisions
+in server logs and they become something else.
 
-| 클라이언트 쪽 결정 | 서버 쪽에서 보이는 것 | 서버가 내리는 판단 |
+| Client-side decision | What is visible on the server side | The judgment the server makes |
 |---|---|---|
-| 동시 8건 (`--jobs 8`) | 한 IP 에서 초당 수십 건, 순차 세그먼트 번호 | 사람이 쓰는 플레이어가 아니다 |
-| 동시 64건 | 위와 같되 정상 시청의 수십 배 대역 | 이상 트래픽 · 속도 제한 대상 |
-| 4xx 재시도 | 같은 404 가 3연속 | 봇 · 스캐너 |
-| `429` 무시하고 계속 | 제한을 통보했는데도 유지되는 요청률 | **차단** |
+| 8 concurrent (`--jobs 8`) | tens per second from one IP, sequential segment numbers | not a player a person uses |
+| 64 concurrent | as above but tens of times the bandwidth of normal viewing | anomalous traffic · rate-limit target |
+| retry a 4xx | the same 404 three in a row | bot · scanner |
+| ignore `429` and continue | a request rate maintained despite a limit notice | **block** |
 
-브라우저 플레이어는 **재생에 필요한 만큼만** 앞서 받는다. 30초 앞을 버퍼링하는
-플레이어는 세그먼트를 6초에 한 개꼴로 요청한다. 병렬 8건으로 전부 받는 클라이언트는
-**같은 자원에 대해 수십 배의 요청률**을 만들고, 그 차이는 어떤 헤더를 위조하든 지워지지
-않는다. 제9장에서 다룰 `Referer` 위장은 "누구인가"를 바꾸지만 **"얼마나 요청하는가"는
-바꾸지 못한다.**
+A browser player prefetches only **as much as it needs to play.** A player buffering 30 seconds ahead requests a
+segment about once per 6 seconds. A client that receives everything with 8 parallel makes **tens of times the
+request rate for the same resource**, and that difference is not erased by forging any header. The `Referer`
+disguise Chapter 9 covers changes "who," but **cannot change "how much you request."**
 
-> **행동은 헤더보다 위조하기 어렵다.** 신원 위장은 문자열 한 줄이지만, 요청률 위장은
-> 속도를 실제로 포기해야 한다.
+> **Behavior is harder to forge than a header.** Identity disguise is one line of a string, but request-rate
+> disguise requires actually giving up speed.
 
-### 8.9.2 무제한 병렬은 의도치 않은 서비스 거부가 된다
+### 8.9.2 Unlimited parallelism becomes an unintended denial of service
 
-`--jobs` 에는 상한이 없다.
+`--jobs` has no upper bound.
 
 ```python
 # cli.py:1061
-    ap.add_argument("--jobs", type=int, default=8, help="동시 다운로드 수 (기본 8)")
+    ap.add_argument("--jobs", type=int, default=8, help="number of concurrent downloads (default 8)")
 ```
 
-`type=int` 뿐이므로 `--jobs 500` 을 넣으면 `ThreadPoolExecutor(max_workers=500)` 이
-그대로 만들어진다. 27화 배치를 그렇게 돌리면 한 출처에 500 병렬 연결이 유지된다.
-악의가 없어도 결과는 같다 — **소규모 송출 서버에서 이것은 서비스 거부다.**
+With only `type=int`, put in `--jobs 500` and `ThreadPoolExecutor(max_workers=500)` is made as is. Run a
+27-episode batch that way and 500 parallel connections are maintained to one origin. The result is the same even
+with no malice — **on a small-scale delivery server this is a denial of service.**
 
-> **용어** — **서비스 거부(denial of service)**: 정상 이용자가 서비스를 이용하지 못하게
-> 만드는 상태. **공격 의도는 정의에 포함되지 않는다.** 부하로 가용성이 무너지면
-> 원인이 무엇이든 서비스 거부다.
+> **Term** — **denial of service**: a state where normal users cannot use the service. **Attack intent is not in
+> the definition.** If availability collapses under load, whatever the cause, it is a denial of service.
 
-기본값 8 은 이 점에서 정책적 선택이다. 코드에 근거가 적혀 있지는 않지만, 브라우저가
-출처당 유지하는 동시 연결 수(HTTP/1.1 관행에서 6개 남짓)와 같은 자릿수라는 점은
-지적해 둘 만하다. **기본값을 정상 클라이언트의 자릿수에 맞추는 것 자체가 방어적 설계다.**
+The default 8 is a policy choice in this respect. The basis is not written in the code, but it is worth noting
+that it is the same order of magnitude as the concurrent connections a browser maintains per origin (about 6 in
+HTTP/1.1 practice). **Setting the default to a normal client's order of magnitude is itself defensive design.**
 
-### 8.9.3 `429` 를 존중한다는 것의 실제 의미
+### 8.9.3 What respecting `429` actually means
 
-이 코드는 `429` 를 재시도 대상에 넣어 규격을 지킨다([`fetch.py:200`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L200)). 그러나 **존중의
-수준을 정직하게 평가하면 절반이다.**
+This code puts `429` among the retry targets, keeping the spec ([`fetch.py:200`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L200)). But **evaluated honestly, the
+level of respect is half.**
 
-| 규격·관행이 기대하는 것 | 이 코드가 하는 것 | 차이 |
+| What the spec·practice expects | What this code does | The gap |
 |---|---|---|
-| `Retry-After` 헤더가 지정한 시간만큼 기다린다 | 헤더를 읽지 않고 0.8초·1.6초를 잔다 | 서버가 "60초 뒤"라고 말해도 0.8초 뒤에 다시 간다 |
-| 속도 제한을 만나면 **동시성을 낮춘다** | 그 요청 하나만 잠든다 | 나머지 7개 스레드는 그대로 계속 던진다 |
-| 재시도 시각을 흩어 놓는다(지터) | 고정 간격 | 8개가 동시에 깨어 동시에 던진다 |
+| wait for the time the `Retry-After` header specifies | it does not read the header and sleeps 0.8s·1.6s | even if the server says "in 60 seconds," it goes again after 0.8 |
+| when hitting a rate limit, **lower concurrency** | only that one request sleeps | the other 7 threads keep throwing as is |
+| scatter the retry times (jitter) | fixed interval | 8 wake at the same time and throw at the same time |
 
-세 줄이 모두 같은 방향의 결함이다. **`429` 를 개별 요청의 문제로 처리하고 배치 전체의
-문제로 처리하지 않는다.** 속도 제한은 본래 연결 하나가 아니라 클라이언트 전체에
-걸리는 신호인데, 이 구조에서는 그 신호가 한 스레드 안에 갇힌다.
+All three lines are faults in the same direction. **It treats `429` as an individual request's problem and not
+as the whole batch's problem.** A rate limit is originally a signal on the whole client, not one connection, but
+in this structure that signal is trapped inside one thread.
 
-올바른 형태는 페처가 **공유 상태**를 갖는 것이다 — `429` 를 한 번 보면 전체 동시성을
-줄이고(가산 증가·승산 감소 방식), 지터를 섞고, `Retry-After` 를 읽어 그만큼 기다린다.
-이 저장소에는 그 구조가 없다. §8.10 에 미해결로 적는다.
+The correct form is for the fetcher to have **shared state** — see `429` once and lower the whole concurrency
+(additive-increase·multiplicative-decrease), mix in jitter, read `Retry-After` and wait that long. This
+repository has no such structure. Recorded as open in §8.10.
 
-### 8.9.4 방어자 관점
+### 8.9.4 The defender's view
 
-우회를 설명하고 끝내지 않기 위해, 같은 지점을 서버·플랫폼 쪽에서 본다.
+To not explain bypass and stop, see the same point from the server·platform side.
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **송출 서버 운영자** | 속도 제한에 **정확한 상태 코드**를 쓴다. `429` 를 제대로 다루는 클라이언트는 동시성을 낮추고 `Retry-After` 만큼 기다리지만, `503` 을 받으면 그것을 일시 장애로 읽어 **같은 속도로 재시도한다**. 이 코드는 둘을 구별하지 않으므로([`fetch.py:200`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L200) 은 5xx 도 `429` 도 재시도 대상으로 둔다) 그 차이가 드러나지 않는다. 상태 코드를 정확히 고르는 것이 서버 자신의 방어다 |
-| **같은 운영자** | `429` 에 `Retry-After` 를 반드시 붙인다. 붙이지 않으면 클라이언트는 자기 상수로 추측하고, 대개 서버가 원한 것보다 훨씬 짧게 기다린다 |
-| **CDN·인프라** | 속도 제한을 요청 수만이 아니라 **동시 연결 수**로도 건다. 요청률 제한만 있으면 병렬도를 올려 같은 시간에 같은 양을 받는 클라이언트를 막지 못한다 |
-| **플랫폼 보안** | 봇 판별의 근거를 헤더가 아니라 **행동 지표**(요청률, 순차 접근 패턴, 버퍼링 없는 전량 수신)에 둔다. 헤더는 §8.9.1 대로 문자열이고, 행동은 비용이다 |
-| **클라이언트 구현자** | 전역 동시성 제어와 지터를 넣는다. 재시도에 **예산(retry budget)** 을 건다 — 예컨대 "전체 요청의 10% 이상을 재시도에 쓰지 않는다". 예산이 없으면 장애 시 재시도가 전체 트래픽을 지배한다 |
-| **감사자** | 자동화 도구를 승인할 때 **기본 동시성과 재시도 정책**을 함께 본다. 두 값이 곧 그 도구가 상대 시스템에 남길 최대 부하다 |
+| **delivery-server operator** | use the **accurate status code** for a rate limit. a client that handles `429` properly lowers concurrency and waits for `Retry-After`, but receive a `503` and it reads it as a transient fault and **retries at the same rate.** this code does not distinguish the two ([`fetch.py:200`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L200) puts both 5xx and `429` among retry targets) so that difference does not surface. choosing the status code accurately is the server's own defense |
+| **the same operator** | always attach `Retry-After` to a `429`. do not attach it and the client guesses with its own constant, usually waiting much shorter than the server wanted |
+| **CDN·infrastructure** | apply the rate limit by **concurrent connections** too, not only request count. with only a request-rate limit you cannot stop a client that raises parallelism to receive the same amount in the same time |
+| **platform security** | base bot determination on **behavior metrics** (request rate, sequential access pattern, full receipt with no buffering), not headers. a header is a string per §8.9.1, and behavior is a cost |
+| **client implementer** | add global concurrency control and jitter. put a **retry budget** on retries — e.g., "do not spend more than 10% of total requests on retries." without a budget, on a fault retries dominate the whole traffic |
+| **auditor** | when approving an automation tool, look at the **default concurrency and retry policy** together. the two values are the maximum load that tool will leave on the peer system |
 
-첫 줄의 역설을 한 번 더 짚어 둔다. **`429` 를 쓰는 서버가 `403` 을 쓰는 서버보다 이
-클라이언트에게서 더 많은 요청을 받는다.** `403` 은 즉시 중단이고 `429` 는 재시도이기
-때문이다. 규격을 정확히 따르는 서버가 더 많은 부하를 받는 구조이며, 이는 규격이 잘못된
-것이 아니라 **`Retry-After` 를 읽지 않는 클라이언트가 규격의 절반만 구현한 결과**다.
-
----
-
-## 8.10 한계와 미해결
-
-정직하게 적어 둔다. 확인한 것과 계산에 그친 것, 그리고 확인하지 못한 것을 구분한다.
-
-**측정한 것**
-
-- §8.5.3 의 순서 복원 실측은 로컬 `ThreadingHTTPServer` 로 3회 재현했다. 완료 순서가
-  완전한 역순일 때 반환 순서와 본문이 모두 입력 순서와 일치했다.
-- §8.7.2 의 두 계산 방식 비교(2900 대 3015.0)는 구성한 표본에 실제로 두 방식을 적용해
-  얻었다. 판정이 갈리는 것도 임계 3000 과 직접 대조해 확인했다.
-- §8.7.3 의 인덱스 표는 `round(0.95 × (n − 1))` 을 n=1..24 에 대해 계산해 얻었다.
-
-**계산했을 뿐 측정하지 않은 것**
-
-- §8.3.3 의 요청당 최악 92.4초와 배치 1.4시간은 기본값에서 산출한 **상한**이다. 실제로
-  타임아웃을 유발해 재어 보지 않았다.
-- §8.6.1 의 `1 − 0.95^8 = 0.337` 은 각 요청의 지연이 독립이라는 가정 위의 계산이다.
-  실제 세그먼트 지연은 같은 서버·같은 경로를 공유하므로 **양의 상관이 있고**, 그러면
-  이 확률은 과대평가다. 상관을 실측하지 않았다.
-
-**확인하지 못했거나 이 저장소에 없는 것**
-
-- **`Retry-After` 를 읽지 않는다.** [`fetch.py:196-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L196-L201) 은 `e.headers` 에서
-  `Access-Control-Allow-Origin` 만 꺼낸다. `429`·`503` 이 지정한 대기 시간은 버려진다.
-- **지터가 없고 전역 속도 조절이 없다.** §8.9.3 의 세 항목 모두 미구현이다. 병렬 8건이
-  동시에 `429` 를 받는 상황을 재현해 실제로 동기화된 재시도가 일어나는지는 확인하지
-  않았다 — 코드 구조에서 그렇게 되리라 읽었을 뿐이다.
-- **전체 작업 시한이 없다.** 요청 하나의 `timeout` 은 있지만 배치 전체의 상한은 없다.
-  대량 타임아웃 시 도구가 언제 끝날지 사용자가 알 수 없다.
-- **`get_many` 의 `None` 필터가 유발할 수 있는 밀림(§8.5.2)은 현재 코드에서 도달 불가로
-  보이지만, 도달 불가임을 증명하지는 않았다.** `fut.result()` 가 예외를 던지면 배치
-  전체가 중단되므로 부분적으로 채워진 배열이 반환되는 경로는 확인되지 않았다. 다만
-  "지금은 안전하다"와 "안전하게 설계됐다"는 다르다.
-- **표본 수가 분위수 옆에 없다.** `ttfb_ms_p95` 를 해석하려면 표본 수가 필요한데
-  ([`report.py:227-229`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L227-L229) 옆에 없고 `"segments"` 에서 `"failed"` 를 빼야 나온다), 이것이
-  의도인지 누락인지는 코드에서 판단할 수 없다.
-- **처리량의 꼬리를 보지 않는다.** `tput` 은 p50 만 계산하고 판정도 없다(§8.7.4).
-  느린 쪽 꼬리는 리포트 어디에도 나타나지 않는다.
-- **그림 8-3 의 표본은 실측이 아니다.** 구성한 예시이며, 그 표본에 `_quantile` 을 돌린
-  결과가 도식의 숫자와 같다는 것만 확인했다. 실제 송출에서 TTFB 분포가 이런 모양인지는
-  이 저장소의 데이터로 말할 수 없다.
+Let me point at the first row's paradox once more. **A server that uses `429` receives more requests from this
+client than a server that uses `403`.** Because `403` is an immediate halt and `429` is a retry. It is a
+structure where a server accurately following the spec receives more load, and this is not the spec being wrong
+but **the result of a client that does not read `Retry-After` implementing only half the spec.**
 
 ---
 
-## 8.11 요약
+## 8.10 Limits and open questions
 
-1. **재시도는 성능 최적화가 아니라 분류 문제다.** 기준은 "실패했는가"가 아니라
-   **"같은 요청을 다시 보내면 다른 답이 올 수 있는가"** 이며, 멱등성은 필요조건이고
-   시간 의존성이 판단 기준이다.
-2. 4xx 는 요청을 고치지 않는 한 답이 같으므로 즉시 중단한다. **`408`·`429` 만 예외**인
-   이유는 이 둘이 "요청을 고쳐라"가 아니라 **"기다렸다 다시 오라"** 를 뜻하는 4xx 이기
-   때문이다([`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)).
-3. **지수 백오프는 예의가 아니라 안정성 장치다.** 재시도가 장애를 키우는 재시도 폭풍을
-   막고, 그 안정성은 서버의 것이면서 동시에 클라이언트의 것이다.
-4. 병렬 수신에서 **순서는 데이터에 실어야 한다.** `as_completed` 는 완료 순으로 내주므로
-   `{Future: 인덱스}` 로 제출 시점의 자리를 되짚는다. 키가 URL 이면 `EXT-X-BYTERANGE`
-   세그먼트가 뭉개진다. 실측에서 완전한 역순 도착에도 반환 순서와 본문이 보존됐다.
-5. **순서를 잃은 재조립본은 깨지지 않는다.** MPEG-TS 가 연결에 닫혀 있어 뒤섞여도
-   유효한 스트림이 되고, 총 길이도 맞는다. 그래서 순서 보존은 편의가 아니라 정확성이다.
-6. **평균은 꼬리 지연을 감춘다.** 구성한 20건 표본에서 평균 455ms 는 어떤 실제 응답과도
-   닮지 않았다. 전량 필요 병렬 작업의 완료 시각은 평균이 아니라 최악의 한 건이 정한다.
-7. `_quantile` 은 **최근접 순위**이고 보간하지 않는다. 같은 표본·같은 임계 3000ms 에서
-   최근접 순위는 2900(PASS), 선형 보간은 3015.0(WARN) 을 낸다 — **계산 방식이 판정을
-   뒤집는다.** 임계를 정하기 전에 통계량의 정의를 정해야 한다.
-8. **표본이 11건 이하이면 p95 는 최댓값이다.** 지표의 성질이 표본 수에 따라 바뀌는데,
-   리포트 JSON 에는 그 표본 수가 분위수 옆에 없다.
-9. 계측에는 사각지대가 있다 — **재시도로 회복된 요청의 앞선 시도 시간, 실패한 요청의
-   지연, 리다이렉트 홉**이 모두 `ttfb_ms` 에 나타나지 않거나 하나로 접힌다.
-10. **병렬도와 재시도는 상대 시스템에 남기는 부하다.** 헤더는 위조할 수 있어도 요청률은
-    위조하려면 실제로 속도를 포기해야 한다. 무제한 병렬은 악의 없이도 서비스 거부가 되고,
-    `429` 를 존중하는 것은 규격 준수이자 상대 시스템에 대한 방어다. 다만 이 코드의 존중은
-    절반이다 — `Retry-After` 를 읽지 않고, 전역 동시성을 낮추지 않는다.
+Noted honestly. Distinguishing what was confirmed, what stopped at computation, and what could not be confirmed.
+
+**What was measured**
+
+- §8.5.3's order-restoration measurement was reproduced 3 times with a local `ThreadingHTTPServer`. When the
+  completion order was a complete inversion, both the return order and the body matched the input order.
+- §8.7.2's comparison of the two computation schemes (2900 vs 3015.0) was obtained by actually applying both
+  schemes to a constructed sample. That the verdict splits was also confirmed by direct comparison with the
+  threshold 3000.
+- §8.7.3's index table was obtained by computing `round(0.95 × (n − 1))` for n=1..24.
+
+**What was computed but not measured**
+
+- §8.3.3's worst 92.4 seconds per request and 1.4 hours per batch are an **upper bound** derived from the
+  defaults. It was not actually measured by inducing timeouts.
+- §8.6.1's `1 − 0.95^8 = 0.337` is a computation on the assumption that each request's delay is independent. Real
+  segment delays share the same server·same path so there is **positive correlation**, and then this probability
+  is an overestimate. The correlation was not measured.
+
+**What could not be confirmed or is not in this repository**
+
+- **It does not read `Retry-After`.** [`fetch.py:196-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L196-L201) takes only `Access-Control-Allow-Origin` out of
+  `e.headers`. The wait time `429`·`503` specified is discarded.
+- **There is no jitter and no global rate control.** All three items of §8.9.3 are unimplemented. Whether
+  synchronized retries actually happen when 8 parallel receive `429` at once was not reproduced — it was only
+  read to be so from the code structure.
+- **There is no whole-job deadline.** There is a `timeout` for one request but no upper bound for the whole
+  batch. On mass timeout the user cannot know when the tool will finish.
+- **The push `get_many`'s `None` filter could induce (§8.5.2) looks unreachable in the current code, but its
+  unreachability was not proven.** If `fut.result()` throws an exception the whole batch halts, so the path that
+  returns a partially filled array was not confirmed. But "safe now" and "designed safely" are different.
+- **The sample count is not beside the quantile.** To interpret `ttfb_ms_p95` you need the sample count (it is
+  not beside [`report.py:227-229`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L227-L229) and comes out only by subtracting `"failed"` from `"segments"`), and whether
+  this is intentional or a miss cannot be judged from the code.
+- **It does not see throughput's tail.** `tput` computes only p50 and has no verdict (§8.7.4). The slow-side tail
+  appears nowhere in the report.
+- **Figure 8-3's sample is not a measurement.** It is a constructed example, and it only confirmed that running
+  `_quantile` on that sample equals the figure's numbers. Whether a real delivery's TTFB distribution is this
+  shape cannot be said with this repository's data.
 
 ---
 
-**다음 장** — 제2부는 HTTP 가 무엇을 보증하지 않는지를 따라왔다. 무결성도, 상태 코드의
-의미도, 협상 결과도, 주소의 동일성도 보증하지 않았다. 제3부는 여기서 한 걸음 더
-나아가, HTTP 가 **접근 통제**를 보증하지 않는 방식을 다룬다. 제9장은 그 첫 사례로
-`Referer` 헤더 하나에 접근 권한을 거는 핫링크 차단을 해부한다 — 클라이언트가 스스로
-신고한 값으로 접근을 통제할 수 있는가, 그리고 그 통제가 실제로 막는 것은 무엇인가.
+## 8.11 Summary
+
+1. **Retry is not a performance optimization but a classification problem.** The criterion is not "did it fail"
+   but **"send the same request again and could a different answer come,"** and idempotency is a necessary
+   condition while time-dependence is the judgment criterion.
+2. A 4xx has the same answer unless you fix the request, so halt immediately. The reason **only `408`·`429` are
+   exceptions** is that these two are 4xx that mean not "fix the request" but **"wait and come again"**
+   ([`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)).
+3. **Exponential backoff is not courtesy but a stability device.** It blocks a retry storm where retries grow the
+   fault, and that stability is the server's and at the same time the client's.
+4. In parallel receipt, **order must be carried in the data.** Since `as_completed` yields in completion order,
+   `{Future: index}` looks up the submission-time slot. With the URL as key, `EXT-X-BYTERANGE` segments collapse.
+   In measurement, even with a complete inversion of arrival, the return order and body were preserved.
+5. **A reassembled copy that lost its order does not break.** MPEG-TS being closed under concatenation, scrambled
+   it is still a valid stream and the total length matches too. So order preservation is not convenience but
+   correctness.
+6. **The mean hides tail latency.** On a constructed 20-sample set the mean 455ms resembles no actual response.
+   An all-or-nothing parallel job's completion time is decided not by the mean but by the worst single one.
+7. `_quantile` is **nearest-rank** and does not interpolate. On the same sample·same threshold 3000ms,
+   nearest-rank gives 2900 (PASS) and linear interpolation gives 3015.0 (WARN) — **the computation scheme flips
+   the verdict.** Before setting a threshold you must set the statistic's definition.
+8. **If the sample is 11 or fewer, p95 is the max.** The metric's character changes with the sample count, yet
+   the report JSON has no such sample count beside the quantile.
+9. Measurement has blind spots — **the prior-attempt time of a retry-recovered request, a failed request's
+   delay, redirect hops** all do not appear in `ttfb_ms` or are folded into one.
+10. **Parallelism and retry are a load left on the peer system.** A header can be forged but a request rate, to
+    forge, requires actually giving up speed. Unlimited parallelism becomes a denial of service without malice,
+    and respecting `429` is spec compliance and a defense of the peer system. But this code's respect is half —
+    it does not read `Retry-After` and does not lower global concurrency.
+
+---
+
+**Next chapter** — Part 2 followed what HTTP does not guarantee. Not integrity, not the meaning of status codes,
+not the negotiation result, not the identity of an address. Part 3 goes one step further and covers the way HTTP
+does not guarantee **access control.** Chapter 9, as its first case, dissects hotlink blocking, which puts access
+permission on a single `Referer` header — can access be controlled by a value the client self-reported, and what
+does that control actually block?

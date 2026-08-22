@@ -1,34 +1,33 @@
 ---
-untranslated: ko
-title: "자기동기 포맷과 연결의 대수"
-description: "왜 바이트를 그냥 이어붙여도 되는가"
-date: 2026-08-17
+title: "Self-Synchronizing Formats and the Algebra of Concatenation"
+description: "Why you can just join the bytes"
+date: 2026-07-02
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-19-self-synchronizing.svg
 ---
-## 19.0 이 장에서 답할 것
+## 19.0 What this chapter answers
 
-1. 내려받은 세그먼트 수십 개를 하나의 파일로 합칠 때, 왜 바이트를 그냥 이어붙이면 되는가
-2. 그 "이어붙이기"가 규격상 유효한 결과를 내는 것은 어떤 포맷 성질 때문인가
-3. 자기동기가 아닌 fMP4 는 왜 같은 방식으로 처리되는가 — 무엇을 앞에 두어야 하는가
-4. 바이트를 맞춰도 여전히 남는 문제(시간축)는 무엇이고 코드는 그것을 어떻게 메우는가
+1. When you merge dozens of downloaded segments into one file, why does just joining the bytes work?
+2. What format property makes that "joining" produce a spec-valid result?
+3. fMP4, which is not self-synchronizing, is handled the same way — what must you place in front?
+4. What problem remains after aligning the bytes (the time axis), and how does the code fill it?
 
 ---
 
-## 19.1 문제 — 조각을 하나로 합치는 일
+## 19.1 The problem — merging the pieces into one
 
-파이프라인(제0장 §0.2)의 후반부는 단순하게 들린다. 세그먼트 수십·수백 개를 내려받아
-디스크에 두었으니, 이제 하나의 파일로 합치면 된다. 합치는 코드는 이 저장소에서
-`concat_segments` 하나이고, 실제로 다음이 전부다.
+The back half of the pipeline (Chapter 0 §0.2) sounds simple. Dozens·hundreds of segments were downloaded and
+put on disk, so now merge them into one file. The merging code is `concat_segments` alone in this repository, and
+in fact this is all of it.
 
 ```python
 # assemble.py:93-105
 def concat_segments(paths: Iterable[Path], raw_out: Path) -> int:
-    """내려받은 세그먼트를 바이트 단위로 이어붙인다.
+    """Join the downloaded segments byte by byte.
 
-    MPEG-TS 는 자기동기(self-synchronizing) 포맷이라 단순 연결이 규격상 유효하고,
-    fMP4 는 호출자가 init segment(EXT-X-MAP)를 목록 맨 앞에 넣어주면 동일하게 성립한다.
+    MPEG-TS is a self-synchronizing format so a simple concatenation is spec-valid, and
+    fMP4 holds the same if the caller puts the init segment (EXT-X-MAP) at the front of the list.
     """
     total = 0
     with raw_out.open("wb") as fh:
@@ -39,180 +38,176 @@ def concat_segments(paths: Iterable[Path], raw_out: Path) -> int:
     return total
 ```
 
-파일을 순서대로 열어 `fh.write(data)` 로 뒤에 붙일 뿐이다. 셸로 쓰면
-`cat seg*.ts > joined.ts` 한 줄과 같다. **파싱도, 경계 조정도, 헤더 재작성도 없다.**
+It just opens the files in order and appends with `fh.write(data)`. In shell it is the one line `cat seg*.ts >
+joined.ts`. **No parsing, no boundary adjustment, no header rewrite.**
 
-여기서 멈추고 물어야 한다. 이것이 왜 되는가. 대부분의 파일 포맷에서는 되지 않기
-때문이다. WAV 파일 둘을 `cat` 으로 이어붙이면 첫 파일만 재생되고, MP4 둘을 이어붙이면
-두 번째는 데이터 취급되어 사라진다. PNG 둘을 이어붙여도 한 장의 더 큰 PNG 가 되지
-않는다. 그런데 MPEG-TS 는 된다. **같은 `cat` 이 어떤 포맷에서는 유효한 결과를 내고
-어떤 포맷에서는 쓰레기를 낸다.** 그 차이가 이 장의 주제다.
+Stop here and ask. Why does this work. Because it does not work in most file formats. `cat` two WAV files
+together and only the first plays; join two MP4s and the second is treated as data and vanishes. Join two PNGs
+and you do not get one bigger PNG. And yet MPEG-TS works. **The same `cat` produces a valid result in one format
+and garbage in another.** That difference is this chapter's subject.
 
-`concat_segments` 가 13줄인 것은 코드를 잘 짜서가 아니라, **포맷이 대신 일을 해 주기
-때문**이다. 그 성질이 없었다면 이 자리에 세그먼트를 파싱해 다시 엮는 병합기가 들어와야
-했다. 포맷의 수학적 성질이 도구의 복잡도를 결정한다 — 이 장은 그 명제의 가장 깨끗한
-사례다.
+`concat_segments` being 13 lines is not because the code is well-written but **because the format does the work
+instead.** Without that property, a merger that parses segments and re-weaves them would have to sit here. A
+format's mathematical property determines the tool's complexity — this chapter is the cleanest case of that
+proposition.
 
 ---
 
-## 19.2 원리 — 자기동기와 연결에 대한 닫힘
+## 19.2 The principle — self-synchronization and closure under concatenation
 
-### 19.2.1 자기동기 포맷이란 무엇인가
+### 19.2.1 What is a self-synchronizing format
 
-> **용어** — **자기동기(self-synchronizing) 포맷**: 스트림의 임의 지점에서 읽기를
-> 시작해 프레임 경계를 잃어버린 수신자가, **유한한 바이트만 소비하면 올바른 경계를
-> 스스로 회복**할 수 있는 포맷. 경계 정보가 스트림 선두의 전역 헤더가 아니라 스트림
-> 곳곳에 국소적으로 박혀 있어야 이 성질이 성립한다.
+> **Term** — **self-synchronizing format**: a format in which a receiver who started reading at an arbitrary
+> point in the stream and lost the frame boundary can **recover the correct boundary by itself after consuming
+> only a finite number of bytes.** For this property to hold, boundary information must be embedded locally
+> throughout the stream, not in a global header at the stream's head.
 
-MPEG-TS(MPEG-2 Transport Stream)는 이 성질을 **고정 주기의 동기 바이트**로 얻는다.
+MPEG-TS (MPEG-2 Transport Stream) gets this property from a **fixed-period sync byte.**
 
-> **용어** — **동기 바이트(sync byte)**: MPEG-TS 의 188바이트 패킷마다 선두에 오는
-> 고정값 `0x47`. 이 저장소에서는 상수로 못박혀 있다 — `PACKET_SIZE = 188`,
-> `SYNC_BYTE = 0x47`([`tsanalyze.py:12-13`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L12-L13)).
+> **Term** — **sync byte**: the fixed value `0x47` that comes at the head of every 188-byte packet of MPEG-TS. In
+> this repository it is nailed down as constants — `PACKET_SIZE = 188`, `SYNC_BYTE = 0x47` ([`tsanalyze.py:12-13`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L12-L13)).
 
-수신자가 스트림 중간에 끼어들어도, `0x47` 이 **188바이트 간격으로 반복**되는 위치를
-찾으면 그 지점이 패킷 경계다. 방송 TV 를 프로그램 도중에 켜도 화면이 잡히는 것,
-전송 중 패킷 몇 개가 유실돼도 그 뒤가 멀쩡히 이어지는 것이 모두 이 성질이다. TS 는
-애초에 **아무 데서나 끼어들 수 있게** 설계된 방송 시대의 포맷이고, HLS 는 그 성질을
-그대로 물려받았다.
+Even if a receiver breaks into the middle of the stream, if it finds the position where `0x47` **repeats at
+188-byte intervals**, that point is a packet boundary. Turning on broadcast TV mid-program and the picture still
+locks, and even if a few packets are lost in transit what follows continues fine — all of this is this property.
+TS is a broadcast-era format designed **to be joinable anywhere**, and HLS inherited that property as-is.
 
-### 19.2.2 연결에 대해 닫혀 있다
+### 19.2.2 It is closed under concatenation
 
-자기동기의 결과가 이 장의 핵심 명제다. 유효한 TS 스트림의 집합을 `V` 라 하자.
+The consequence of self-synchronization is this chapter's core proposition. Let `V` be the set of valid TS
+streams.
 
-> **명제** — `a ∈ V` 이고 `b ∈ V` 이면 `a ++ b ∈ V` 다. (`++` 는 바이트 연결)
-> 즉 **`V` 는 연결에 대해 닫혀 있다(closed under concatenation).**
+> **Proposition** — if `a ∈ V` and `b ∈ V`, then `a ++ b ∈ V`. (`++` is byte concatenation)
+> That is, **`V` is closed under concatenation.**
 
-유효한 TS 둘을 이어붙인 결과는 다시 유효한 TS 다. 이 성질이 `concat_segments` 의
-정당성 전체다. 세그먼트 `s₁, s₂, …, sₙ` 이 각각 유효한 TS 라면, 이어붙인
-`s₁ ++ s₂ ++ … ++ sₙ` 도 유효한 TS 이므로, 루프가 하는 `fh.write` 의 반복이 곧
-규격에 맞는 스트림을 만든다.
+The result of joining two valid TS is again a valid TS. This property is the whole justification of
+`concat_segments`. If segments `s₁, s₂, …, sₙ` are each valid TS, then the joined `s₁ ++ s₂ ++ … ++ sₙ` is also
+valid TS, so the loop's repeated `fh.write` makes exactly a spec-conforming stream.
 
-![유효한 TS 둘을 이어붙이면 다시 유효한 TS 다](/images/lecture/hls-recon/19-concat-closure.svg)
+![Join two valid TS and you get valid TS again](/images/lecture/hls-recon/19-concat-closure.svg)
 
-*그림 19-1 — 연결에 대한 닫힘. 각 패킷이 188바이트 자기 완결 단위이므로, 이음매가
-패킷 경계에 정확히 놓이고 디코더는 그 자리에서 다음 `0x47` 을 만난다.*
+*Figure 19-1 — closure under concatenation. Since each packet is a 188-byte self-contained unit, the seam lands exactly on a packet boundary and the decoder meets the next `0x47` right there.*
 
-### 19.2.3 왜 성립하는가 — 전역 불변식이 없다
+### 19.2.3 Why it holds — there is no global invariant
 
-닫힘이 성립하는 이유는 자기동기의 이면이다. **TS 에는 "스트림 전체"를 서술하는
-전역 구조가 없다.** 각 188바이트 패킷은 자기 헤더(PID·연속성 카운터·페이로드 시작
-플래그)를 들고 있는 독립 단위이고, "이 스트림의 총 길이는 N 이다" "오프셋 K 에 색인이
-있다" 같은 **선두에서 전체를 못박는 불변식이 존재하지 않는다.**
+The reason closure holds is the flip side of self-synchronization. **TS has no global structure describing "the
+whole stream."** Each 188-byte packet is an independent unit carrying its own header (PID·continuity counter·
+payload-start flag), and **an invariant nailing down the whole at the head** — like "this stream's total length
+is N" or "there is an index at offset K" — **does not exist.**
 
-연결이 깨지는 포맷은 정확히 그 반대다 — 이어붙이면 위반되는 전역 불변식을 갖고 있다.
+Formats where concatenation breaks are exactly the opposite — they have a global invariant that joining
+violates.
 
-| 포맷 | 전역 불변식 | 이어붙이면 |
+| Format | Global invariant | If you join |
 |---|---|---|
-| WAV(RIFF) | 바이트 4–7 에 파일 전체 크기 선언 | 선언 크기가 첫 파일만 덮으므로 둘째가 통째로 무시된다(관대한 파서는 둘째의 RIFF 헤더를 PCM 표본으로 오독) |
-| 단일 MP4 | `moov` 박스가 전체 표본 오프셋을 서술 | 둘째 파일의 박스가 첫 파일 뒤 데이터로 취급돼 사라진다 |
-| PNG | `IEND` 청크가 끝을 표시, 청크마다 CRC | `IEND` 뒤는 후행 쓰레기 — 한 장의 더 큰 PNG 가 아니다 |
-| ZIP | 파일 끝의 중앙 디렉터리가 선두 기준 오프셋 보유 | 오프셋이 어긋나 둘째 디렉터리가 깨진다 |
-| **MPEG-TS** | **없음 — 188바이트 국소 프레이밍뿐** | **유효한 TS 유지** |
+| WAV (RIFF) | bytes 4–7 declare the whole file size | the declared size covers only the first file so the second is wholly ignored (a lenient parser misreads the second's RIFF header as PCM samples) |
+| single MP4 | the `moov` box describes all sample offsets | the second file's boxes are treated as data after the first file and vanish |
+| PNG | the `IEND` chunk marks the end, each chunk has a CRC | everything after `IEND` is trailing garbage — not one bigger PNG |
+| ZIP | the central directory at the file's end holds head-relative offsets | the offsets go off and the second directory breaks |
+| **MPEG-TS** | **none — only 188-byte local framing** | **stays valid TS** |
 
-마지막 행만 닫혀 있다. 그리고 그 이유가 위 네 행에 없는 것(**전역 불변식의
-부재**)과 정확히 같다. 자기동기이기 위해 경계를 국소화한 대가로 전역 구조를
-포기했고, 전역 구조를 포기했기에 연결이 아무것도 위반하지 못한다.
+Only the last row is closed. And the reason is exactly the same as what the four rows above lack (**the absence
+of a global invariant**). In exchange for localizing boundaries to be self-synchronizing, TS gave up global
+structure, and because it gave up global structure, concatenation can violate nothing.
 
-한 가지 더. 세그먼트가 188의 배수가 아니게 잘려 오면 이음매에서 정렬이 어긋날 수
-있다. 그래도 **자기동기가 손상을 국소에 가둔다** — 디코더는 다음 `0x47` 을 188주기로
-다시 찾아 재동기하므로, 잘린 세그먼트가 그 **뒤** 세그먼트의 해독까지 망가뜨리지는
-않는다. 이 정렬 깨짐 자체는 별도로 계측된다(`tsanalyze.py` 의 `sync_errors`,
-제17장). 닫힘은 "완벽한 이음매"를 보장하는 게 아니라 "손상이 번지지 않음"을 보장한다.
+One more thing. If a segment comes cut to a non-multiple of 188, alignment can go off at the seam. Even so,
+**self-synchronization confines the damage locally** — the decoder re-finds the next `0x47` at the 188-period
+and resyncs, so a cut segment does not wreck even the decoding of the segment **after** it. This alignment
+breakage itself is measured separately (`tsanalyze.py`'s `sync_errors`, Chapter 17). Closure guarantees not a
+"perfect seam" but "damage does not spread."
 
 ---
 
-## 19.3 코드 — `concat_segments` 가 13줄인 이유
+## 19.3 The code — why `concat_segments` is 13 lines
 
-### 19.3.1 위임하지 않고 직접 하는 유일한 컨테이너 작업
+### 19.3.1 The only container work done directly, not delegated
 
-이 저장소의 재조립 계층은 원칙이 하나다.
+This repository's reassembly layer has one principle.
 
 ```python
 # assemble.py:1-6
-"""재조립 계층 — 실제 컨테이너 작업은 전부 ffmpeg 에 위임한다.
+"""Reassembly layer — all actual container work is delegated to ffmpeg.
 
-세그먼트 병합·복호화·타임스탬프 정규화는 ffmpeg 의 hls/mpegts demuxer 가
-이미 규격대로 구현하고 있으므로 여기서 다시 만들지 않는다. 이 모듈의 책임은
-"어떤 인자로 위임할지"와 "진행 상황을 어떻게 계측할지" 뿐이다.
+Segment merging·decryption·timestamp normalization are already implemented per spec
+by ffmpeg's hls/mpegts demuxer, so they are not rebuilt here. This module's responsibility
+is only "with what arguments to delegate" and "how to measure progress."
 """
 ```
 
-컨테이너를 건드리는 일은 전부 ffmpeg 에 넘긴다. 그런데 `concat_segments` 만은
-예외적으로 **직접** 한다. 모순이 아니다 — **바이트 연결은 컨테이너를 이해할 필요가
-없는 작업**이기 때문이다. 파싱도 재작성도 없이 이어붙이기만 하면 되는 것은 §19.2 의
-닫힘이 보장한다. 그래서 이 한 줄만은 위임할 이유가 없다.
+Everything that touches the container is handed to ffmpeg. And yet `concat_segments` alone does it **directly**,
+as an exception. This is no contradiction — **byte concatenation is work that needs no understanding of the
+container.** That it can just join with no parsing or rewriting is guaranteed by §19.2's closure. So this one
+line alone has no reason to be delegated.
 
-만약 TS 가 닫혀 있지 않았다면 이 자리에 무엇이 왔을까. 세그먼트마다 헤더를 파싱하고,
-연속성 카운터를 다시 매기고, PES 경계를 잇고, 타임스탬프를 재정렬하는 **병합기**가
-들어와야 했다 — 즉 위임 원칙이 깨지고 ffmpeg 의 mpegts muxer 를 다시 구현하는 셈이
-됐을 것이다. 닫힘이라는 대수적 성질 하나가 이 함수를 13줄에 묶어 둔다.
+Had TS not been closed, what would have come here. A **merger** that parses each segment's header, renumbers
+continuity counters, joins PES boundaries, and re-orders timestamps — that is, the delegation principle would
+have broken and it would amount to reimplementing ffmpeg's mpegts muxer. One algebraic property, closure, ties
+this function to 13 lines.
 
-### 19.3.2 닫힘의 운영적 증거 — `sniff` 의 주기 확인
+### 19.3.2 Operational evidence of closure — `sniff`'s period check
 
-§19.2.1 의 "188주기로 `0x47` 이 반복된다"는 성질은 추상적 주장이 아니라 코드가
-실제로 검사하는 조건이다. 컨테이너 판별 함수가 바로 이 주기를 본다.
+§19.2.1's property, "`0x47` repeats at the 188-period," is not an abstract claim but a condition the code
+actually checks. The container-determination function looks at exactly this period.
 
 ```python
 # tsanalyze.py:30-34
-    # TS 는 188바이트 주기로 sync byte 가 반복되므로 두 번째 패킷까지 확인한다.
+    # TS repeats a sync byte every 188 bytes, so check up to the second packet.
     if data[0] == SYNC_BYTE and (
         len(data) < PACKET_SIZE + 1 or data[PACKET_SIZE] == SYNC_BYTE
     ):
         return "mpegts"
 ```
 
-선두 바이트가 `0x47` 이고 **188바이트 뒤에도 `0x47`** 이면 TS 로 판정한다. 한 바이트만
-보지 않는 이유는 우연 일치 배제다 — 임의의 바이트열이 `0x47` 로 시작할 확률은 1/256
-이지만, 188바이트 뒤에도 `0x47` 일 확률은 1/65536 로 떨어진다.
+If the leading byte is `0x47` **and `0x47` is 188 bytes later** too, it is judged TS. The reason it does not look
+at just one byte is to exclude a chance match — the probability an arbitrary byte string starts with `0x47` is
+1/256, but the probability it is also `0x47` 188 bytes later falls to 1/65536.
 
-이 검사가 확인하는 "주기적 동기 바이트"가 바로 자기동기의 실체이자, §19.2.2 닫힘의
-전제다. 두 세그먼트를 이어붙였을 때 이음매에서 다음 세그먼트의 첫 `0x47` 이 정확히
-경계에 놓이는 것 — 그것이 `sniff` 가 검사하는 성질과 같은 것이다.
+The "periodic sync byte" this check confirms is exactly the substance of self-synchronization and the premise of
+§19.2.2's closure. That when two segments are joined the next segment's first `0x47` lands exactly on the
+boundary — that is the same thing as the property `sniff` checks.
 
-### 19.3.3 이어붙인 결과를 먹싱으로 넘긴다
+### 19.3.3 The joined result is passed to muxing
 
-`concat_segments` 가 만든 원본(`joined.ts`)은 곧바로 최종 컨테이너로 무손실 먹싱된다.
+The raw (`joined.ts`) `concat_segments` made is immediately losslessly muxed into the final container.
 
 ```python
 # cli.py:473-476
-    _eprint(f"  [3/3] 재조립 → {out}")
+    _eprint(f"  [3/3] reassemble → {out}")
     raw = work / f"joined{ext}"
     assemble.concat_segments(paths, raw)
     mux_cmd = assemble.remux_local(raw, out, subs=embed)
 ```
 
-바이트 연결(`concat_segments`)과 컨테이너 먹싱(`remux_local`)은 별개의 두 단계다.
-전자는 닫힘 덕분에 직접 하고, 후자는 위임한다. 이 분업이 왜 필요한지는 §19.5 에서
-드러난다 — 연결은 바이트는 맞추지만 시간축까지 맞추지는 못하기 때문이다.
+Byte concatenation (`concat_segments`) and container muxing (`remux_local`) are two separate stages. The former
+is done directly thanks to closure, the latter is delegated. Why this division of labor is needed is revealed in
+§19.5 — because concatenation aligns the bytes but does not align the time axis too.
 
 ---
 
-## 19.4 fMP4 — 자기동기가 아닌 포맷에 같은 성질을 부여하기
+## 19.4 fMP4 — giving the same property to a non-self-synchronizing format
 
-### 19.4.1 fMP4 는 닫혀 있지 않다
+### 19.4.1 fMP4 is not closed
 
-HLS 세그먼트가 늘 MPEG-TS 인 것은 아니다. 근래 스트림의 상당수는 **fMP4(fragmented
-MP4)** 를 쓴다.
+An HLS segment is not always MPEG-TS. A considerable share of recent streams use **fMP4 (fragmented MP4).**
 
-> **용어** — **fMP4(fragmented MP4)**: ISO-BMFF(ISO Base Media File Format, MP4 계열)를
-> 조각으로 나눈 형태. 각 미디어 세그먼트는 `moof`(movie fragment) 박스와 `mdat`(media
-> data) 박스로 이루어진다. 이 저장소는 확장자 `.m4s` 로 다룬다([`cli.py:450`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L450)).
+> **Term** — **fMP4 (fragmented MP4)**: a form of ISO-BMFF (ISO Base Media File Format, the MP4 family) divided
+> into fragments. Each media segment consists of a `moof` (movie fragment) box and an `mdat` (media data) box.
+> This repository handles it with the extension `.m4s` ([`cli.py:450`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L450)).
 
-fMP4 세그먼트에는 동기 바이트가 없다. 188주기의 `0x47` 대신 박스 구조(TLV, 제20장)로
-프레이밍되며, `sniff` 는 이것을 오프셋 4–8 의 박스 타입으로 판별한다([`tsanalyze.py:16-17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L16-L17)
-의 `_MP4_BOXES` = `ftyp`·`styp`·`moof`·… ). **fMP4 는 자기동기가 아니다.** 임의 지점에서
-경계를 회복하는 국소 신호가 없다.
+An fMP4 segment has no sync byte. Instead of the 188-period `0x47` it is framed by box structure (TLV, Chapter
+20), and `sniff` determines this by the box type at offset 4–8 ([`tsanalyze.py:16-17`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L16-L17)'s `_MP4_BOXES` =
+`ftyp`·`styp`·`moof`·… ). **fMP4 is not self-synchronizing.** There is no local signal to recover the boundary at
+an arbitrary point.
 
-게다가 미디어 세그먼트(`moof`+`mdat`)만으로는 **디코딩 자체가 불가능**하다. 코덱 설정,
-트랙 구성, 표본 서술(sample description) 같은 초기화 정보가 세그먼트가 아니라 **별도의
-초기화 세그먼트**에 들어 있기 때문이다.
+Moreover, **decoding itself is impossible** with the media segment (`moof`+`mdat`) alone. Because initialization
+info like the codec configuration, track composition, and sample description is not in the segment but in **a
+separate initialization segment.**
 
-> **용어** — **init segment(초기화 세그먼트) / `EXT-X-MAP`**: fMP4 스트림의 디코딩 문맥
-> (`ftyp`+`moov`)을 담은 세그먼트. 미디어 데이터는 없고 코덱·트랙 설정만 있다. HLS
-> 플레이리스트에서는 `#EXT-X-MAP:URI="init.mp4"` 태그로 가리킨다.
+> **Term** — **init segment / `EXT-X-MAP`**: a segment holding the fMP4 stream's decoding context
+> (`ftyp`+`moov`). It has no media data, only codec·track configuration. In an HLS playlist it is pointed to by
+> the `#EXT-X-MAP:URI="init.mp4"` tag.
 
-이 저장소의 파서는 이 태그를 다음처럼 읽는다.
+This repository's parser reads this tag as follows.
 
 ```python
 # playlist.py:318-325
@@ -226,7 +221,7 @@ fMP4 세그먼트에는 동기 바이트가 없다. 188주기의 `0x47` 대신 �
             pl.init_map = (_absolute(base_url, uri), rng)
 ```
 
-그리고 `init_map` 이 존재하면 그 플레이리스트를 fMP4 로 판정한다.
+And if `init_map` exists, that playlist is judged fMP4.
 
 ```python
 # playlist.py:168-170
@@ -235,21 +230,21 @@ fMP4 세그먼트에는 동기 바이트가 없다. 188주기의 `0x47` 대신 �
         return self.init_map is not None
 ```
 
-### 19.4.2 init 을 앞에 두면 닫힘이 회복된다
+### 19.4.2 Put init in front and closure is recovered
 
-fMP4 자체는 닫혀 있지 않지만, 한 가지 조작으로 §19.2 의 성질을 되살릴 수 있다.
-**초기화 세그먼트를 맨 앞에 한 번 두는 것**이다.
+fMP4 itself is not closed, but with one operation §19.2's property can be revived. It is **placing the
+initialization segment once at the very front.**
 
-> `init ++ seg₁ ++ seg₂ ++ … ++ segₙ` 은 유효한 fMP4 스트림이다.
+> `init ++ seg₁ ++ seg₂ ++ … ++ segₙ` is a valid fMP4 stream.
 
-init 이 디코딩 문맥을 세우고, 그 뒤로 `moof`+`mdat` 조각들이 이어지면 전체가 하나의
-연속된 조각화 MP4 가 된다. 이것은 CMAF·DASH 가 의도한 설계 그대로다 — 세그먼트는
-독립적으로 전송·연결 가능하되, **init 이라는 문맥 접두사가 있어야** 비로소 그렇다.
-이 접두사는 §19.6 에서 볼 대수 구조의 **단위원(identity)이 아니다** — 단위원인 빈
-바이트열과 달리, 없으면 나머지가 유효하지 않기 때문이다.
+init sets up the decoding context, and when the `moof`+`mdat` fragments follow after it the whole becomes one
+continuous fragmented MP4. This is exactly the design CMAF·DASH intended — segments are independently
+transmittable·joinable, but **only with the context prefix called init.** This prefix is **not the identity** of
+the algebraic structure seen in §19.6 — unlike the empty byte string, the identity, its absence makes the rest
+invalid.
 
-코드는 정확히 이 순서를 만든다. 세그먼트 루프가 돌기 **전에** init 을 받아 `paths` 의
-맨 앞에 넣는다.
+The code makes exactly this order. It receives init **before** the segment loop runs and puts it at the front of
+`paths`.
 
 ```python
 # cli.py:441-450
@@ -257,7 +252,7 @@ init 이 디코딩 문맥을 세우고, 그 뒤로 `moof`+`mdat` 조각들이 �
         init_uri, init_range = pl.init_map
         init = fetcher.get(init_uri, init_range)
         if not init.ok:
-            raise SystemExit(f"초기화 세그먼트(EXT-X-MAP) 수신 실패: {init.error}")
+            raise SystemExit(f"init segment (EXT-X-MAP) receive failed: {init.error}")
         ipath = work / "init.mp4"
         ipath.write_bytes(init.body)
         paths.append(ipath)
@@ -265,229 +260,221 @@ init 이 디코딩 문맥을 세우고, 그 뒤로 `moof`+`mdat` 조각들이 �
     ext = ".m4s" if pl.is_fmp4 else ".ts"
 ```
 
-`paths.append(ipath)` 가 세그먼트 루프([`cli.py:452-468`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L452-L468))보다 먼저 실행되므로, `init.mp4`
-는 `paths` 의 0번 원소가 되고 `concat_segments` 가 이것을 가장 먼저 기록한다. **코드가
-init 을 맨 앞에 두는 이유가 곧 §19.4.2 의 닫힘 회복 조건이다.**
+Since `paths.append(ipath)` runs before the segment loop ([`cli.py:452-468`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L452-L468)), `init.mp4` becomes element 0 of
+`paths` and `concat_segments` records it first. **The reason the code puts init at the front is exactly §19.4.2's
+closure-recovery condition.**
 
-![init 세그먼트를 맨 앞에 두면 fMP4 도 연결로 합쳐진다](/images/lecture/hls-recon/19-fmp4-init-prefix.svg)
+![Put the init segment at the front and fMP4 too merges by concatenation](/images/lecture/hls-recon/19-fmp4-init-prefix.svg)
 
-*그림 19-2 — fMP4 의 닫힘 회복. `moof`+`mdat` 조각들만으로는 디코딩 문맥이 없어
-합쳐지지 않지만, `ftyp`+`moov` 를 담은 init 을 `paths` 맨 앞에 한 번 두면 전체가
-유효한 fMP4 가 된다.*
+*Figure 19-2 — fMP4's closure recovery. The `moof`+`mdat` fragments alone have no decoding context so they do not merge, but put init holding `ftyp`+`moov` once at the front of `paths` and the whole becomes valid fMP4.*
 
-### 19.4.3 만약 init 을 빠뜨리면
+### 19.4.3 If you omit init
 
-`EXT-X-MAP` 을 무시하고 `.m4s` 조각만 이어붙이면 어떻게 되는가. 결과 스트림에는
-`ftyp`·`moov` 가 없으므로 **어떤 디코더도 트랙을 구성하지 못한다** — `moof` 는 참조할
-`trak` 이 없고, 표본은 코덱을 알 수 없다. 바이트는 이어졌지만 재생 불가다. 반대로,
-TS 스트림에 굳이 init 을 앞에 두려 하면(있지도 않다) 아무 의미가 없다. **닫힘이
-성립하는 조건이 포맷마다 다르다** — TS 는 무조건, fMP4 는 접두사 하나를 두는 조건부다.
+What happens if you ignore `EXT-X-MAP` and join only the `.m4s` fragments. The result stream has no
+`ftyp`·`moov` so **no decoder can compose the tracks** — `moof` has no `trak` to reference, and the samples have
+no known codec. The bytes joined but it cannot play. Conversely, forcing init in front of a TS stream (there is
+none anyway) means nothing. **The condition for closure to hold differs per format** — TS unconditionally, fMP4
+conditionally on placing one prefix.
 
-이 저장소가 `EXT-X-MAP` 수신 실패를 조용히 넘기지 않고 `SystemExit` 로 중단하는
-이유가 이것이다([`cli.py:444-445`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L444-L445)). init 이 없으면 나머지를 아무리 잘 받아도 결과가
-성립하지 않으므로, 부분 성공이라는 것이 존재하지 않는다.
+This is why this repository does not quietly pass over an `EXT-X-MAP` receive failure but aborts with
+`SystemExit` ([`cli.py:444-445`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L444-L445)). Without init, no matter how well the rest is received the result does not hold,
+so a partial success does not exist.
 
 ---
 
-## 19.5 연결이 바이트는 맞춰도 시간축은 못 맞춘다
+## 19.5 Concatenation aligns the bytes but not the time axis
 
-### 19.5.1 남는 문제 — PTS 결손
+### 19.5.1 The remaining problem — PTS gaps
 
-§19.2 의 닫힘은 **바이트 구조**가 유효함을 보장한다. 그러나 재생에 필요한 것은 바이트
-구조만이 아니다 — **표시 시각(PTS)** 이 이음매에서 연속이어야 한다.
+§19.2's closure guarantees the **byte structure** is valid. But playback needs more than the byte structure —
+the **presentation time (PTS)** must be continuous at the seam.
 
-> **용어** — **PTS(Presentation Time Stamp, 표시 시각)**: 프레임을 언제 화면에 내보낼지
-> 지정하는 시각값. MPEG-TS 에서는 PES(Packetized Elementary Stream) 헤더에 실리며,
-> 모든 패킷이 아니라 접근 단위(프레임) 선두에만 붙는다. 90kHz 클럭 기준의 절대값이다
-> (제21장에서 상술).
+> **Term** — **PTS (Presentation Time Stamp)**: a time value specifying when to put a frame out on screen. In
+> MPEG-TS it rides in the PES (Packetized Elementary Stream) header and attaches only to the head of an access
+> unit (frame), not every packet. It is an absolute value on a 90kHz clock (detailed in Chapter 21).
 
-문제는 **PES 패킷마다 PTS 가 붙는 게 아니라는 점**이다. 이음매 근처, 또는 스트림
-선두에서 첫 PES 헤더에 PTS 가 없거나 DTS(디코딩 시각)만 있는 경우, 이어붙인 원본은
-그 지점의 표시 시각을 알 수 없다. 바이트는 유효한데 타임라인에 구멍이 생기는 것이다.
+The problem is **that PTS does not attach to every PES packet.** If near a seam, or at the stream head, the first
+PES header has no PTS or only a DTS (decoding time), the joined raw cannot know that point's presentation time.
+The bytes are valid but a hole opens in the timeline.
 
-### 19.5.2 코드 — `-fflags +genpts`
+### 19.5.2 The code — `-fflags +genpts`
 
-`remux_local` 은 이어붙인 원본을 먹싱할 때 이 결손을 보정하는 플래그를 준다.
+`remux_local` gives a flag to correct this gap when muxing the joined raw.
 
 ```python
 # assemble.py:119-123
     cmd = [
         require("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",
-        "-fflags", "+genpts",  # 세그먼트 연결부의 PTS 결손을 보정
+        "-fflags", "+genpts",  # correct the PTS gap at segment junctions
         "-i", str(raw),
     ]
 ```
 
-> **용어** — **`genpts`(generate PTS)**: ffmpeg 의 입력 플래그. 문서상 동작은 "DTS 가
-> 있으면 없는 PTS 를 생성한다"이다. 즉 표시 시각이 비어 있고 디코딩 시각만 있을 때,
-> 프레임 간격으로부터 PTS 를 합성해 채운다.
+> **Term** — **`genpts` (generate PTS)**: an ffmpeg input flag. Its documented behavior is "if there is a DTS,
+> generate the missing PTS." That is, when the presentation time is empty and only the decoding time exists, it
+> synthesizes and fills the PTS from the frame interval.
 
-이 플래그가 없으면, 연결부에서 PTS 가 빠진 프레임을 만난 먹서가 그 구간의 시각을
-비워 두거나 어긋난 값으로 채워 **재생 시각이 튀는** 결과를 낼 수 있다. `+genpts` 는
-그 빈칸을 DTS 기반으로 메워 이음매를 매끄럽게 만든다. **닫힘이 바이트를 맞추고,
-`genpts` 가 그 위에 남은 시간축 결손을 메운다** — 두 단계가 분업하는 이유다(§19.3.3).
+Without this flag, a muxer meeting a frame with no PTS at the junction can leave that stretch's time empty or
+fill it with an off value, producing **jumping playback time.** `+genpts` fills that blank on a DTS basis and
+smooths the seam. **Closure aligns the bytes, and `genpts` fills the time-axis gap left on top of it** — the
+reason the two stages divide the labor (§19.3.3).
 
-한 가지 정직하게 구분해 둔다. `remux_from_url`(플레이리스트를 ffmpeg 에 직접 넘기는
-기본 경로)에는 `+genpts` 가 없다([`assemble.py:81-88`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L81-L88)). 그 경로에서는 ffmpeg 의 hls
-demuxer 가 세그먼트 경계와 타임스탬프를 규격대로 직접 처리하므로 별도 보정이 필요
-없기 때문이다. `+genpts` 는 **우리가 직접 이어붙인 원본을 다시 열 때만** 필요하다 —
-즉 이 플래그의 존재 자체가 "직접 연결에는 시간축 보정이라는 뒤처리가 딸린다"는
-표시다.
+One thing to distinguish honestly. `remux_from_url` (the default path handing the playlist to ffmpeg directly)
+has no `+genpts` ([`assemble.py:81-88`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L81-L88)). Because on that path ffmpeg's hls demuxer handles the segment boundaries and
+timestamps per spec directly, so no separate correction is needed. `+genpts` is needed **only when we re-open a
+raw we joined ourselves** — that is, the very existence of this flag is a marker that "direct concatenation comes
+with time-axis correction as a cleanup step."
 
 ---
 
-## 19.6 일반화 — 포맷의 대수적 성질이 도구의 복잡도를 결정한다
+## 19.6 Generalization — a format's algebraic property determines the tool's complexity
 
-### 19.6.1 모노이드로 본 연결
+### 19.6.1 Concatenation seen as a monoid
 
-바이트열 전체는 연결 연산 `++` 에 대해 **모노이드**를 이룬다.
+The whole of byte strings forms a **monoid** under the concatenation operation `++`.
 
-> **용어** — **모노이드(monoid)**: 집합과 이항연산이 (1) **결합법칙**
-> `(a++b)++c = a++(b++c)` 을 만족하고 (2) **단위원** `e`(여기서는 빈 바이트열)이 있어
-> `e++a = a++e = a` 인 대수 구조.
+> **Term** — **monoid**: an algebraic structure of a set and a binary operation satisfying (1) **associativity**
+> `(a++b)++c = a++(b++c)` and (2) an **identity** `e` (here the empty byte string) with `e++a = a++e = a`.
 
-"유효한 TS 스트림"의 집합 `V` 는 이 모노이드의 **부분모노이드(submonoid)** 다 — `++`
-에 대해 닫혀 있고(§19.2.2), 단위원(빈 스트림)을 포함한다. 이 두 성질이 코드에서
-실제로 일한다.
+The set `V` of "valid TS streams" is a **submonoid** of this monoid — it is closed under `++` (§19.2.2) and
+contains the identity (the empty stream). These two properties actually work in the code.
 
-| 모노이드 법칙 | `concat_segments` 에서 하는 일 |
+| Monoid law | What it does in `concat_segments` |
 |---|---|
-| **닫힘** | 유효한 세그먼트들의 연결이 다시 유효 — 파싱 없이 `write` 만으로 규격에 맞는 결과 |
-| **결합법칙** | `((s₁++s₂)++s₃)…` 로 **한 번에 하나씩 append** 해도 전체를 한꺼번에 이은 것과 같음 → 스트리밍 기록이 정당 |
-| **단위원** | 빈/누락 세그먼트를 건너뛰어도(`e`) 이웃이 훼손되지 않음 → 부분 결손이 국소에 머묾 |
+| **closure** | the concatenation of valid segments is valid again — a spec-conforming result by `write` alone with no parsing |
+| **associativity** | even appending **one at a time** as `((s₁++s₂)++s₃)…` equals joining the whole at once → streaming writes are justified |
+| **identity** | even skipping an empty/missing segment (`e`) does not damage neighbors → a partial loss stays local |
 
-결합법칙이 특히 조용히 중요하다. 루프는 세그먼트를 **하나씩** 뒤에 붙이는데, 이것이
-전체를 한 번에 이어붙인 것과 같은 결과임을 보장하는 것이 결합법칙이다. 만약 이음매가
-그룹핑에 따라 달라지는 포맷이었다면 스트리밍 기록 자체가 성립하지 않았을 것이다.
+Associativity is especially quietly important. The loop appends segments **one by one**, and what guarantees this
+equals joining the whole at once is associativity. Had it been a format where the seam depends on the grouping,
+streaming writes themselves would not have held.
 
-### 19.6.2 세 부류의 포맷과 병합기의 복잡도
+### 19.6.2 Three classes of format and the merger's complexity
 
-포맷을 연결에 대한 성질로 나누면 도구가 해야 할 일이 정해진다.
+Divide formats by their concatenation property and what the tool must do is set.
 
-| 부류 | 예 | 병합 방법 | 도구 복잡도 |
+| Class | Example | Merge method | Tool complexity |
 |---|---|---|---|
-| **무조건 닫힘** | MPEG-TS, MP3(프레임마다 sync word), ADTS AAC | 바이트 연결 | `cat` 한 줄 |
-| **조건부 닫힘** | fMP4/CMAF (init 접두사 필요) | 접두사 하나 + 바이트 연결 | 접두사를 맨 앞에 두는 몇 줄 |
-| **닫혀 있지 않음** | WAV, 단일 MP4, PNG, ZIP | 파싱 후 재구성 | 컨테이너를 이해하는 병합기 |
+| **unconditionally closed** | MPEG-TS, MP3 (sync word per frame), ADTS AAC | byte concatenation | one line of `cat` |
+| **conditionally closed** | fMP4/CMAF (needs the init prefix) | one prefix + byte concatenation | a few lines putting the prefix at the front |
+| **not closed** | WAV, single MP4, PNG, ZIP | reconstruct after parsing | a merger that understands the container |
 
-`concat_segments` 가 13줄인 것과, `EXT-X-MAP` 을 맨 앞에 두는 몇 줄이 붙는 것과,
-닫혀 있지 않은 포맷이었다면 병합기를 써야 했을 것 — 이 셋의 차이가 전부 **포맷의
-대수적 성질**에서 나온다. 여기서 이 장의 일반 명제가 나온다.
+`concat_segments` being 13 lines, the few lines attached to put `EXT-X-MAP` at the front, and the merger that
+would have been needed had it been a non-closed format — the difference of these three comes entirely from **the
+format's algebraic property.** From here comes this chapter's general proposition.
 
-> **포맷(또는 자료구조)의 수학적 성질이 그것을 다루는 도구의 복잡도를 결정한다.
-> 유효한 스트림 집합이 연결에 대해 닫혀 있으면 병합은 한 줄이고, 닫혀 있지 않으면
-> 파서–재구성기를 써야 한다.**
+> **A format's (or data structure's) mathematical property determines the complexity of the tool that handles
+> it. If the set of valid streams is closed under concatenation the merge is one line, and if not closed you must
+> use a parser–reconstructor.**
 
-이 명제는 스트리밍 밖에서도 반복된다. 로그를 이어붙일 때(줄 단위 append-only 로그는
-닫혀 있다), 청크 전송에서, append-only 데이터베이스에서 — **"이어붙여도 유효한가"**
-라는 질문의 답이 그 시스템의 병합·복제·복구 코드의 분량을 정한다.
+This proposition repeats outside streaming too. When joining logs (a line-oriented append-only log is closed),
+in chunked transfer, in append-only databases — the answer to the question **"is it valid after joining"** sets
+the volume of that system's merge·replicate·recovery code.
 
 ---
 
-## 19.7 보안 — 닫힘의 이면: 위조·삽입·스머글링
+## 19.7 Security — the flip side of closure: forgery·insertion·smuggling
 
-닫힘은 편의이자 취약면이다. **연결에 대해 닫혀 있다는 것은, 임의의 유효 조각을 임의의
-유효 스트림에 끼워 넣어도 여전히 "유효"하다는 뜻**이기 때문이다. 이 성질은 위협 모델의
-양면을 만든다.
+Closure is both a convenience and an attack surface. **Because being closed under concatenation means that
+inserting any valid fragment into any valid stream still yields "valid."** This property makes two sides of the
+threat model.
 
-### 19.7.1 전역 무결성의 포기
+### 19.7.1 The surrender of global integrity
 
-§19.2.3 에서 본 "전역 불변식의 부재"는 검증 관점에서 이렇게 읽힌다 — **TS 에는 스트림
-전체를 봉인하는 구조가 없다.** "이 스트림은 N 패킷이고 그 해시는 H 다" 같은 선언이
-컨테이너 안에 없으므로, **바이트가 유효한 TS 라는 사실만으로는 조각이 삽입·삭제·교체
-되지 않았음을 알 수 없다.** 삽입된 조각도 유효한 TS 이기 때문이다.
+The "absence of a global invariant" seen in §19.2.3 reads, from the verification view, like this — **TS has no
+structure sealing the whole stream.** Since a declaration like "this stream is N packets and its hash is H" is
+not inside the container, **the fact that the bytes are a valid TS alone cannot tell you a fragment was not
+inserted·deleted·replaced.** Because an inserted fragment is also a valid TS.
 
-이 저장소의 유일한 **내부(in-band)** 무결성 신호는 연속성 카운터(continuity counter)다.
+This repository's only **in-band** integrity signal is the continuity counter.
 
-> **용어** — **continuity counter(연속성 카운터)**: TS 패킷 헤더의 4비트 필드. PID 별로
-> 0–15 를 순환하며, 페이로드를 실은 패킷마다 1씩 증가한다. 값이 건너뛰면 패킷 유실
-> 신호다(제17·18장).
+> **Term** — **continuity counter**: a 4-bit field of the TS packet header. It cycles 0–15 per PID and increments
+> by 1 for each packet carrying payload. A skipped value is a packet-loss signal (Chapters 17·18).
 
-그런데 이 신호는 4비트라 **정확히 16의 배수만큼 유실·삽입되면 검출하지 못한다**
-(제18장에서 정량화). 즉 닫힘이 준 "구조적 유효성"과 연속성 카운터가 주는 "내용
-무결성"은 **다른 층위의 주장**이고, 후자는 원리적으로 불완전하다. 진짜 변조 방지를
-원하면 무결성은 컨테이너 **위 계층**에서 와야 한다 — 서명된 매니페스트, 세그먼트별
-해시, 인증 암호화(authenticated encryption) 같은 것들이다. 이 교재는 특정 보호 시스템의
-우회를 다루지 않으며(§0.1), 여기서 짚는 것은 **위협 모델의 원리**다 — 컨테이너의
-구조적 유효성을 인증성으로 착각하지 말라는 것.
+But this signal, being 4 bits, **cannot detect a loss·insertion of exactly a multiple of 16** (quantified in
+Chapter 18). That is, the "structural validity" closure gave and the "content integrity" the continuity counter
+gives are **claims at different layers**, and the latter is incomplete in principle. If you want real
+tamper-proofing, integrity must come from a **layer above** the container — things like a signed manifest,
+per-segment hashes, authenticated encryption. This course does not cover bypassing a particular protection system
+(§0.1), and what is noted here is **the principle of the threat model** — do not mistake the container's
+structural validity for authenticity.
 
-### 19.7.2 스머글링과 폴리글롯
+### 19.7.2 Smuggling and polyglots
 
-자기동기 + 닫힘은 **데이터 밀반입(smuggling)** 의 토양이기도 하다. 디코더가 첫 `0x47`
-정렬을 찾을 때까지의 선행 바이트를 건너뛰므로, 스트림 앞이나 정렬되지 않은 틈에 다른
-데이터를 얹어도 재생은 유지된다.
+Self-synchronization + closure is also the soil for **data smuggling.** Since the decoder skips the leading bytes
+until it finds the first `0x47` alignment, putting other data at the stream's front or in an unaligned gap keeps
+playback intact.
 
-> **용어** — **폴리글롯(polyglot) 파일**: 하나의 바이트열이 둘 이상의 포맷에서 동시에
-> 유효하게 해석되는 파일. 예컨대 유효한 TS 이면서 동시에 다른 무언가로도 파싱되는
-> 파일. 콘텐츠 검사기가 "이건 영상이다"라고 판정한 바로 그 바이트가 다른 파서에게는
-> 전혀 다른 것일 수 있다.
+> **Term** — **polyglot file**: a file where one byte string is simultaneously validly interpreted in two or more
+> formats. For instance a file that is a valid TS and at the same time parses as something else. The very bytes a
+> content checker judged "this is video" can be something entirely different to another parser.
 
-이것은 제14장(세그먼트 확장자 위장)과 이어진다 — 거기서는 이름과 선언이 내용과 갈라졌고,
-여기서는 **하나의 내용이 둘로 해석**된다. 공통점은 "이 바이트가 무엇인지"가 단일하게
-결정되지 않는다는 것이다. 그리고 이 다중 해석 가능성에 도달할 수 있게 만드는 것이,
-"유효한 조각은 어디에 붙여도 유효하다"는 닫힘이다.
+This connects to Chapter 14 (segment extension masquerade) — there the name and declaration diverged from the
+content, and here **one content is interpreted as two.** The commonality is that "what these bytes are" is not
+determined uniquely. And what makes reaching this multi-interpretation possible is closure, "a valid fragment is
+valid wherever you attach it."
 
-### 19.7.3 방어자 관점
+### 19.7.3 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **스트림·CDN 운영자** | "바이트가 유효한 TS 로 파싱됨"을 무결성 검사로 쓰지 않는다. 세그먼트 무결성은 **서명된 매니페스트 안의 세그먼트별 해시**나 인증 암호화로 컨테이너 위 계층에서 확보한다. 구조적 유효성 ≠ 진본성 |
-| **플레이어·디코더 구현자** | 자기동기는 디코더가 **임의의 바이트를 먹게 된다는 보장**이다. 스트림 도중의 PMT/PAT 변경, PID 급변, 정렬 깨짐을 의심 신호로 다루고, 악의적 패킷에 견디도록 파서를 강화한다(제15장 CVE-2023-6602 의 교훈 — demuxer 는 공격면이다) |
-| **검증 도구 작성자(이 코드)** | 닫힘 덕에 연결은 한 줄이지만, "유효한 TS = 완전·진본"이라고 결론짓지 않는다. 연속성 카운터는 알려진 미탐(16배수)이 있는 **불완전한 내부 신호**임을 전제로 판정을 설계한다 |
-| **보안 감사자** | 자기동기·연결 닫힘 포맷은 **내장 변조 방지가 없다**는 것을 전제로 감사한다. 무결성이 필요한 경로라면 그것이 컨테이너 밖 어느 계층에서 오는지를 확인하고, 없다면 그 부재를 결함으로 기록한다 |
+| **stream·CDN operator** | do not use "the bytes parse as valid TS" as an integrity check. secure segment integrity at a layer above the container with **per-segment hashes in a signed manifest** or authenticated encryption. structural validity ≠ authenticity |
+| **player·decoder implementer** | self-synchronization is a **guarantee the decoder will eat arbitrary bytes.** treat mid-stream PMT/PAT changes, sudden PID shifts, and alignment breaks as suspect signals, and harden the parser to withstand malicious packets (the lesson of Chapter 15's CVE-2023-6602 — a demuxer is an attack surface) |
+| **verification-tool author (this code)** | thanks to closure the concatenation is one line, but do not conclude "valid TS = complete·authentic." design the verdict presupposing the continuity counter is an **incomplete in-band signal** with a known miss (multiples of 16) |
+| **security auditor** | audit self-synchronizing·concatenation-closed formats presupposing they have **no built-in tamper-proofing.** if a path needs integrity, confirm which layer outside the container it comes from, and if none, record that absence as a defect |
 
-핵심은 하나다. **닫힘은 도구를 단순하게 만든 바로 그 성질로 인해 무결성 보장을
-포기한다.** `concat_segments` 를 13줄로 만든 성질과, 삽입·스머글링을 구조적으로 막지
-못하게 만드는 성질은 **같은 하나**다. 편의와 취약면이 분리된 두 사실이 아니라, 한
-성질의 양면이라는 점이 이 장 보안 절의 요지다.
-
----
-
-## 19.8 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **`genpts` 의 구체적 발동 조건을 실측하지 않았다.** §19.5 는 코드 주석의 명시된
-  의도("연결부의 PTS 결손 보정")와 ffmpeg 문서상 동작("DTS 있으면 PTS 생성")을
-  근거로 서술했다. 이 저장소의 어떤 이음매가 실제로 PTS 결손을 만드는지는 결함 주입으로
-  분리 측정하지 않았다 — 추론에 근거한 서술임을 밝혀 둔다.
-- **닫힘 명제의 규격상 엄밀한 조건을 코드로 검증하지 못했다.** "유효한 TS 둘의 연결이
-  항상 유효하다"는 것은 국소 프레이밍의 성질에서 따라 나오지만, 불연속(discontinuity)·
-  PCR 재설정·PMT 버전 변경이 걸친 이음매에서 **모든** 디코더가 동일하게 재생하는지는
-  포맷 명세와 디코더 구현에 달려 있고, 여기서는 ffmpeg 한 구현으로만 확인했다.
-- **`sniff` 는 두 컨테이너만 안다.** MPEG-TS 와 ISO-BMFF 외의 세그먼트 포맷(예: 패킷화
-  오디오 raw AAC)은 `unknown` 으로 떨어진다. 그런 포맷의 닫힘 성질은 이 코드가 다루지
-  않으므로 이 장의 분류표(§19.6.2)에도 실측이 아니라 일반 지식으로만 실었다.
-- **세그먼트가 각각 유효하다는 전제.** 닫힘은 **유효한** 조각들에 대한 성질이다. 잘린·
-  손상된 세그먼트가 섞이면 이음매 정렬이 깨지고(§19.2.3), 그 검출은 닫힘이 아니라
-  별도 계측(`sync_errors`·연속성 카운터)의 몫이다. 이 장은 "합칠 수 있다"를 다루지
-  "합친 것이 온전하다"를 보장하지 않는다 — 후자는 제17·18·21장의 주제다.
+The core is one. **Closure surrenders the integrity guarantee by the very property that made the tool simple.**
+The property that made `concat_segments` 13 lines and the property that makes it structurally unable to stop
+insertion·smuggling are **one and the same.** That convenience and attack surface are not two separate facts but
+two faces of one property is the gist of this chapter's security section.
 
 ---
 
-## 19.9 요약
+## 19.8 Limits and open questions
 
-1. 세그먼트를 하나로 합치는 `concat_segments` 는 **바이트를 그냥 이어붙이는 13줄**이다.
-   대부분의 포맷에서는 이 방법이 쓰레기를 내지만 MPEG-TS 에서는 유효한 결과를 낸다.
-2. 그 차이는 **자기동기**에서 온다. TS 는 188바이트 주기의 동기 바이트 `0x47` 로
-   프레이밍을 국소화했고, 그 대가로 전역 불변식을 포기했다. 전역 불변식이 없으므로
-   **연결이 아무것도 위반하지 못한다** — 유효한 TS 집합은 **연결에 대해 닫혀 있다.**
-3. fMP4 는 자기동기가 아니라 닫혀 있지 않지만, **init 세그먼트(`EXT-X-MAP`)를 맨 앞에
-   한 번 두면** 같은 성질이 회복된다. 코드가 `init.mp4` 를 `paths` 의 0번에 넣는
-   이유가 이것이다([`cli.py:441-448`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L441-L448)).
-4. 연결은 **바이트**를 맞추지만 **시간축**까지 맞추지는 못한다. 이음매의 PTS 결손을
-   `remux_local` 이 `-fflags +genpts` 로 보정한다 — 닫힘과 시간축 보정의 분업.
-5. 유효한 스트림 집합은 연결 연산에 대한 **부분모노이드**다. 닫힘·결합법칙·단위원이
-   각각 "파싱 없는 병합" "스트리밍 기록의 정당성" "부분 결손의 국소화"로 코드에서
-   일한다. **포맷의 대수적 성질이 도구의 복잡도를 결정한다.**
-6. 닫힘은 편의이자 취약면이다. **`concat_segments` 를 13줄로 만든 바로 그 성질이,
-   삽입·스머글링을 구조적으로 막지 못하게 만든다.** 무결성이 필요하면 컨테이너 위
-   계층(서명·해시)에서 와야 하며, 구조적 유효성을 진본성으로 착각해선 안 된다.
+Written honestly.
+
+- **Did not measure `genpts`'s concrete firing condition.** §19.5 narrated on the basis of the code comment's
+  stated intent ("correct the PTS gap at junctions") and ffmpeg's documented behavior ("generate PTS if there is
+  a DTS"). Which seam in this repository actually makes a PTS gap was not separately measured by defect
+  injection — I note that it is a narrative based on inference.
+- **Could not verify the closure proposition's spec-strict condition by code.** "The concatenation of two valid
+  TS is always valid" follows from the property of local framing, but whether **every** decoder plays a seam
+  straddling a discontinuity·PCR reset·PMT version change identically depends on the format spec and decoder
+  implementation, and here it was confirmed with only one implementation, ffmpeg.
+- **`sniff` knows only two containers.** A segment format other than MPEG-TS and ISO-BMFF (e.g. packetized raw
+  AAC audio) falls to `unknown`. Such a format's closure property is not handled by this code, so this chapter's
+  classification table (§19.6.2) also lists it as general knowledge, not measurement.
+- **The premise that segments are each valid.** Closure is a property about **valid** fragments. If cut·damaged
+  segments are mixed in, seam alignment breaks (§19.2.3), and detecting that is the job not of closure but of a
+  separate measurement (`sync_errors`·continuity counter). This chapter covers "can be merged" and does not
+  guarantee "the merged thing is intact" — the latter is the subject of Chapters 17·18·21.
 
 ---
 
-**다음 장** — 이 장은 fMP4 세그먼트를 `moof`+`mdat` 박스로만 언급하고 지나갔다. 그
-박스 구조는 **재귀적 TLV(Type-Length-Value)** 이고, 그 성질을 이용하면 **본문(`mdat`)을
-한 바이트도 읽지 않고** 파일이 구조적으로 온전한지를 판정할 수 있다. 제20장은 박스
-경계의 합이 파일 크기와 맞는지로 완결성을 검사하는 [`inventory.py:67-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L67-L102) 를 읽으며,
-"내용을 읽지 않고 온전함을 판정하는 법"을 다룬다.
+## 19.9 Summary
+
+1. `concat_segments`, which merges segments into one, is **13 lines that just join the bytes.** In most formats
+   this method produces garbage, but in MPEG-TS it produces a valid result.
+2. That difference comes from **self-synchronization.** TS localized framing with the 188-period sync byte
+   `0x47`, and in exchange gave up the global invariant. Since there is no global invariant, **concatenation can
+   violate nothing** — the set of valid TS is **closed under concatenation.**
+3. fMP4 is not self-synchronizing so it is not closed, but **put the init segment (`EXT-X-MAP`) once at the
+   front** and the same property is recovered. This is why the code puts `init.mp4` at element 0 of `paths`
+   ([`cli.py:441-448`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L441-L448)).
+4. Concatenation aligns the **bytes** but does not align the **time axis** too. `remux_local` corrects the seam's
+   PTS gap with `-fflags +genpts` — the division of labor of closure and time-axis correction.
+5. The set of valid streams is a **submonoid** under the concatenation operation. Closure·associativity·identity
+   each work in the code as "parsing-free merge," "the justification of streaming writes," and "the localization
+   of partial loss." **A format's algebraic property determines the tool's complexity.**
+6. Closure is both a convenience and an attack surface. **The very property that made `concat_segments` 13 lines
+   makes it structurally unable to stop insertion·smuggling.** If you need integrity it must come from a layer
+   above the container (signature·hash), and structural validity must not be mistaken for authenticity.
+
+---
+
+**Next chapter** — this chapter mentioned fMP4 segments only as `moof`+`mdat` boxes and passed on. That box
+structure is a **recursive TLV (Type-Length-Value)**, and using that property you can judge whether a file is
+structurally intact **without reading a single byte of the body (`mdat`).** Chapter 20 reads [`inventory.py:67-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L67-L102),
+which checks completeness by whether the sum of box boundaries matches the file size, and covers "how to judge
+intactness without reading the content."

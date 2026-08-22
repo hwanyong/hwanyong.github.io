@@ -1,240 +1,238 @@
 ---
-untranslated: ko
-title: "HTTP 위에서 스트리밍을 흉내내기"
-description: "ABR 과 HLS 의 발명"
-date: 2026-08-15
+title: "Mimicking Streaming over HTTP"
+description: "The invention of ABR and HLS"
+date: 2026-05-22
 version: '1.0'
 tags: ['streaming', 'foundations']
 thumbnail: /images/lecture/thumb/hls-recon-02-abr-and-hls.svg
 ---
-## 2.0 이 장에서 답할 것
+## 2.0 What this chapter answers
 
-1. 전용 스트리밍 프로토콜이 있었는데 왜 HTTP 로 옮겨왔는가
-2. 왜 영상을 조각내고, 그 조각들을 **텍스트 목록**으로 가리키는가
-3. ABR(적응 비트레이트)은 무엇을 얻었고 무엇을 대가로 냈는가
-4. 상태가 서버에서 클라이언트로 넘어가면서 **무엇이 검증 불가능해졌는가**
+1. There were dedicated streaming protocols, so why move to HTTP?
+2. Why chop the video into pieces and point to those pieces with a **text list**?
+3. What did ABR (adaptive bitrate) gain, and what did it pay for it?
+4. As state moved from server to client, **what became impossible to verify?**
 
-제1장은 "받아졌다"와 "옳게 받아졌다"가 다르다는 것을 보였다. 이 장은 **왜 그 둘이
-갈라질 수 있는 구조가 만들어졌는지**를 답한다. 결론을 먼저 적으면 이렇다 — 그 간극은
-버그가 아니라 설계 결정의 귀결이다.
-
----
-
-## 2.1 문제 — 전용 스트리밍 프로토콜은 무엇에 걸렸는가
-
-2000년대 중반까지 인터넷 영상 전달의 주류는 **전용 스트리밍 프로토콜**이었다.
-
-> **용어** — **RTMP(Real-Time Messaging Protocol, 실시간 메시징 프로토콜)**:
-> Macromedia(이후 Adobe)가 만든 스트리밍 프로토콜. 기본 TCP 포트 **1935** 로
-> 지속 연결을 열고 그 위로 오디오·비디오 메시지를 흘려보낸다.
-
-> **용어** — **RTSP(Real Time Streaming Protocol, 실시간 스트리밍 프로토콜)**:
-> RFC 2326(1998)으로 규정된 **제어** 프로토콜. 기본 TCP 포트 554 로 `PLAY`·`PAUSE`·
-> `TEARDOWN` 같은 명령만 주고받고, 미디어 데이터는 별도로 **RTP**(RFC 3550)가 주로
-> UDP 로 나른다. 즉 제어 채널과 데이터 채널이 분리돼 있다.
-
-두 프로토콜은 기술적으로 정확한 도구였다. 서버가 재생 위치를 알고, 클라이언트의
-버퍼 상태에 맞춰 다음 프레임을 밀어 보내고, 필요하면 프레임을 버려 지연을 줄인다.
-그런데 이것이 배포 환경에서 차례로 걸렸다.
-
-| 걸린 지점 | 무엇이 문제였는가 |
-|---|---|
-| **방화벽** | 기업·학교·공용 네트워크가 여는 포트는 사실상 80·443 둘뿐이다. 1935·554 와 RTP 의 동적 UDP 포트는 나가지 못한다 |
-| **NAT** | RTP 는 서버가 클라이언트로 UDP 를 보내는 구조라, NAT 뒤의 클라이언트에 도달하려면 별도의 구멍 뚫기가 필요하다 |
-| **캐시** | 세션 스트림에는 **캐시할 단위(객체)가 없다.** 요청 하나가 응답 하나에 대응하지 않으므로 프록시가 저장할 대상 자체를 만들 수 없다 |
-| **CDN** | 그 시점 CDN 은 이미 **HTTP 객체 캐시**로 완성돼 있었다. 전용 프로토콜을 쓰려면 그 인프라를 통째로 다시 지어야 한다 |
-| **확장** | 서버가 세션 상태를 들고 있으므로 서버 대수는 동시 시청자 수에 비례한다. 무상태 서버처럼 "아무 대나 응답"이 성립하지 않는다 |
-| **TLS** | HTTPS 는 이미 어디서나 통과한다. 전용 프로토콜에 암호화를 얹는 것은 별개의 작업이었다 |
-
-여섯 항목 중 **다섯이 프로토콜의 품질과 무관하다.** 전부 "이미 깔려 있는 인프라가
-무엇을 나르도록 만들어졌는가"의 문제다. 이것이 이 장의 첫 명제다.
-
-> **프로토콜은 기술적 우수성이 아니라 통과 가능성으로 선택된다.**
-> 이미 배치된 인프라가 무엇을 나르도록 만들어져 있는지가 설계 공간을 결정한다.
-
-그래서 2008–2010년 사이에 같은 답이 세 곳에서 독립적으로 나왔다 — Microsoft
-Smooth Streaming(2008), Apple **HLS**(2009, iPhone OS 3.0 과 함께), Adobe HDS(2010).
-이후 MPEG-DASH(ISO/IEC 23009-1, 2012)가 표준화 경로를 밟았다. HLS 자체는 RFC
-8216(2017)으로 문서화됐는데, **Informational 문서이지 Standards Track 이 아니다** —
-규격이 사실상 하나의 구현을 뒤따라 기술한 것이라는 사실이 뒤에서 여러 번 되돌아온다.
+Chapter 1 showed that "it arrived" and "it arrived correctly" are different. This chapter answers **why a
+structure was built in which those two can diverge**. To write the conclusion first — that gap is not a
+bug but the consequence of a design decision.
 
 ---
 
-## 2.2 원리 — 스트리밍을 파일 전송으로 환원하기
+## 2.1 The problem — what did dedicated streaming protocols get caught on?
 
-HTTP 로 영상을 나르려면 두 가지 발명이 필요했다.
+Until the mid-2000s the mainstream of internet video delivery was the **dedicated streaming protocol**.
 
-### 2.2.1 발명 ① — 시간축을 잘라 파일로 만든다
+> **Term** — **RTMP (Real-Time Messaging Protocol)**: a streaming protocol made by Macromedia (later
+> Adobe). It opens a persistent connection on default TCP port **1935** and streams audio·video messages
+> over it.
 
-연속된 영상 스트림을 몇 초 단위로 잘라 **각각을 독립된 파일**로 만든다.
+> **Term** — **RTSP (Real Time Streaming Protocol)**: a **control** protocol specified by RFC 2326 (1998).
+> On default TCP port 554 it exchanges only commands like `PLAY`·`PAUSE`·`TEARDOWN`, while the media data
+> is carried separately, mainly over UDP, by **RTP** (RFC 3550). That is, the control channel and the data
+> channel are separate.
 
-> **용어** — **미디어 세그먼트(media segment)**: HLS 에서 재생 시간의 한 구간에
-> 대응하는 독립된 자원. 이 저장소가 다루는 것은 MPEG-TS(`.ts`)와 fMP4(`.m4s`) 두
-> 컨테이너다.
+Both protocols were technically precise tools. The server knows the playback position, pushes the next
+frame to match the client's buffer state, and drops frames when needed to cut latency. And yet these got
+caught, one after another, in the deployment environment.
 
-이 순간 스트리밍 문제가 **파일 다운로드 문제로 환원된다.** 조각 하나는 그냥 GET 이고,
-GET 은 캐시되고, 캐시되는 것은 CDN 이 이미 아주 잘하는 일이다. §2.1 의 표에서
-방화벽·NAT·캐시·CDN·확장·TLS 여섯 줄이 **한 번에** 해결된다.
-
-### 2.2.2 발명 ② — 조각들을 텍스트 목록으로 가리킨다
-
-조각이 독립 파일이 되면 "다음 조각이 무엇인지"를 알려줄 무언가가 필요하다. 그것이
-매니페스트다.
-
-> **용어** — **매니페스트(manifest) / 플레이리스트(playlist)**: 세그먼트의 주소와
-> 재생 길이, 그리고 재생에 필요한 부가 정보를 담은 목록 문서. HLS 에서는 `.m3u8`
-> 확장자의 **UTF-8 텍스트**이며, 규격상 각 줄은 URI 줄이거나 빈 줄이거나 `#` 으로
-> 시작하는 줄(태그·주석)이다.
-
-M3U8 은 새로 만든 포맷이 아니다. 1990년대 오디오 재생목록 포맷 M3U 를 UTF-8 로
-확장한 것이다. **§2.1 에서 HTTP 를 고른 것과 같은 논리** — 이미 있는 것을 재사용하면
-파서도, 도구도, 사람의 이해도 함께 온다.
-
-텍스트라는 선택이 부수적으로 만든 것 셋을 적어 둔다.
-
-| 텍스트여서 얻은 것 | 대가 |
+| Where it got caught | What the problem was |
 |---|---|
-| 사람이 눈으로 읽고 디버깅할 수 있다 | 목록 전체가 평문으로 노출된다 (→ §2.6) |
-| 같은 URL 을 다시 GET 하면 갱신된다 — **서버 푸시 없이 폴링만으로 라이브가 성립한다** | 갱신 주기가 곧 지연이 된다 |
-| 표준 텍스트 도구로 생성·가공할 수 있다 | 파서가 규격 외 입력에 그대로 노출된다 |
+| **Firewalls** | The ports enterprise·school·public networks open are effectively just 80·443. 1935·554 and RTP's dynamic UDP ports cannot get out |
+| **NAT** | RTP has the server send UDP to the client, so reaching a client behind NAT requires separate hole-punching |
+| **Cache** | A session stream has **no unit (object) to cache.** One request does not correspond to one response, so a proxy cannot even create a target to store |
+| **CDN** | By that time the CDN was already complete as an **HTTP object cache**. Using a dedicated protocol means rebuilding that infrastructure wholesale |
+| **Scaling** | Since the server holds session state, the server count is proportional to the number of concurrent viewers. "Any server can respond," as with a stateless server, does not hold |
+| **TLS** | HTTPS already passes everywhere. Layering encryption onto a dedicated protocol was a separate job |
 
-### 2.2.3 그래서 무엇이 옮겨갔는가
+Five of the six items **have nothing to do with the protocol's quality.** They are all questions of "what
+was the already-deployed infrastructure built to carry." This is this chapter's first proposition.
 
-두 발명의 합에는 대가가 하나 딸려 있다. **서버가 더 이상 재생 상태를 갖지 않는다.**
+> **A protocol is chosen not for technical excellence but for the ability to get through.**
+> What the already-deployed infrastructure was built to carry determines the design space.
 
-![상태가 어디에 있는가](/images/lecture/hls-recon/02-where-state-lives.svg)
+So between 2008 and 2010 the same answer appeared independently in three places — Microsoft Smooth
+Streaming (2008), Apple **HLS** (2009, with iPhone OS 3.0), Adobe HDS (2010). MPEG-DASH (ISO/IEC 23009-1,
+2012) then walked the standardization path. HLS itself was documented by RFC 8216 (2017), but it is an
+**Informational document, not Standards Track** — the fact that the spec effectively describes a single
+implementation after the fact comes back several times later.
 
-*그림 2-1 — 전용 프로토콜에서는 서버가 세션·재생 위치·전환 결정을 쥐고 미디어를 밀어 보낸다. HTTP 위에서는 서버가 요청마다 독립인 파일 서버가 되고, 그 상태 전부가 클라이언트로 넘어간다.*
+---
 
-> **용어** — **무상태(stateless)**: 서버가 요청 사이에 클라이언트별 상태를 유지하지
-> 않는 성질. 각 요청은 자기 자신만으로 해석 가능해야 하며, 그 대가로 요청은 필요한
-> 문맥을 스스로 실어 날라야 한다.
+## 2.2 The principle — reducing streaming to file transfer
 
-옮겨간 것을 항목별로 적으면 이렇다.
+To carry video over HTTP, two inventions were needed.
 
-| 무엇 | 전용 프로토콜 | HTTP + HLS |
+### 2.2.1 Invention ① — cut the timeline into files
+
+Cut a continuous video stream into pieces of a few seconds and make **each an independent file.**
+
+> **Term** — **media segment**: in HLS, an independent resource corresponding to one span of playback time.
+> What this repository handles is two containers, MPEG-TS (`.ts`) and fMP4 (`.m4s`).
+
+At this moment the streaming problem is **reduced to a file-download problem.** One piece is just a GET, a
+GET is cached, and caching is something the CDN already does very well. The six rows of §2.1's table —
+firewalls·NAT·cache·CDN·scaling·TLS — are solved **all at once.**
+
+### 2.2.2 Invention ② — point to the pieces with a text list
+
+Once a piece becomes an independent file, you need something to tell you "what the next piece is." That is
+the manifest.
+
+> **Term** — **manifest / playlist**: a list document holding the segments' addresses and playback lengths,
+> plus the extra information needed for playback. In HLS it is **UTF-8 text** with the `.m3u8` extension,
+> and by spec each line is either a URI line, a blank line, or a line starting with `#` (a tag·comment).
+
+M3U8 is not a newly made format. It extends M3U, a 1990s audio-playlist format, to UTF-8. **The same logic
+as choosing HTTP in §2.1** — reuse what already exists and the parser, the tools, and human understanding
+come along with it.
+
+Three things the choice of text incidentally created, noted here.
+
+| Gained by being text | The price |
+|---|---|
+| A person can read and debug it by eye | The whole list is exposed in plaintext (→ §2.6) |
+| GET the same URL again and it refreshes — **live works by polling alone, with no server push** | The refresh period becomes latency |
+| It can be generated·processed with standard text tools | The parser is directly exposed to off-spec input |
+
+### 2.2.3 So what moved?
+
+The sum of the two inventions comes with one price attached. **The server no longer holds playback state.**
+
+![Where the state lives](/images/lecture/hls-recon/02-where-state-lives.svg)
+
+*Figure 2-1 — in a dedicated protocol the server holds the session·playback position·switching decision and pushes the media. Over HTTP the server becomes a file server independent per request, and all of that state moves to the client.*
+
+> **Term** — **stateless**: the property that the server maintains no per-client state between requests.
+> Each request must be interpretable on its own, and in exchange the request must carry the needed context
+> itself.
+
+Writing out what moved, item by item:
+
+| What | Dedicated protocol | HTTP + HLS |
 |---|---|---|
-| 재생 위치 | 서버가 안다 | **클라이언트만 안다** |
-| 다음에 보낼 것 | 서버가 정한다 | **클라이언트가 요청한다** |
-| 화질 전환 결정 | 서버가 한다 | **클라이언트가 한다** |
-| 버퍼 상태 | 서버에 보고된다 | 클라이언트 내부에만 있다 |
-| 전달 완결성 판정 | 세션이 끝날 때 서버가 안다 | **아무도 모른다** |
+| Playback position | the server knows | **only the client knows** |
+| What to send next | the server decides | **the client requests** |
+| Quality-switch decision | the server does | **the client does** |
+| Buffer state | reported to the server | only inside the client |
+| Judging delivery completeness | the server knows when the session ends | **nobody knows** |
 
-마지막 줄이 이 교재의 출발점이다. 서버는 "이 클라이언트가 세그먼트 5번을 받지
-못했다"는 사실을 알 위치에 있지 않다. 클라이언트도 요청한 것이 왔는지만 알지, 온
-것이 **옳은지**는 따로 확인하지 않으면 모른다. 제1장의 실측 —
+The last row is the starting point of this course. The server is not in a position to know the fact "this
+client did not receive segment 5." The client too knows only that what it requested arrived, not whether
+what arrived is **correct**, unless it checks separately. Chapter 1's measurement —
 
 ```
-6초 세그먼트 1개 결손 → ffmpeg 종료 코드 0, 출력 길이 30.03s (정상과 동일)
-                     → 실제로는 5.99s ~ 12.02s 구간이 통째로 비어 있음
+one 6s segment missing → ffmpeg exit code 0, output length 30.03s (identical to clean)
+                       → in reality the 5.99s ~ 12.02s span is entirely empty
 ```
 
-— 은 이 구조에서 논리적으로 따라 나오는 결과다. 결손을 알아차릴 책임이 있는 주체가
-설계상 존재하지 않는다.
+— is a result that follows logically from this structure. The party responsible for noticing the loss does
+not, by design, exist.
 
 ---
 
-## 2.3 ABR — 얻은 것과 그 대가
+## 2.3 ABR — what it gained and the price
 
-### 2.3.1 원리
+### 2.3.1 The principle
 
-세그먼트가 독립 파일이 되자 예상 밖의 가능성이 열렸다. **같은 시간 구간을 여러
-품질로 만들어 두고, 조각마다 다른 품질을 골라도 재생이 이어진다.**
+Once segments became independent files, an unexpected possibility opened. **Make the same time span in
+several qualities, and playback continues even if you pick a different quality per piece.**
 
-> **용어** — **ABR(adaptive bitrate streaming, 적응 비트레이트 스트리밍)**: 같은
-> 콘텐츠를 여러 비트레이트로 인코딩해 두고, 클라이언트가 측정한 네트워크 상황에
-> 따라 세그먼트 단위로 품질을 바꿔 가며 받는 방식.
+> **Term** — **ABR (adaptive bitrate streaming)**: a method that encodes the same content at several
+> bitrates and lets the client, according to the network conditions it measures, switch quality per segment
+> as it receives.
 
-> **용어** — **래더(ladder) / variant(변종)**: 한 콘텐츠에 대해 준비된 품질 후보의
-> 집합이 래더이고, 그 후보 하나하나가 variant 다. HLS 에서는 마스터 플레이리스트의
-> `#EXT-X-STREAM-INF` 한 줄이 variant 하나를 선언한다. RFC 8216 의 정식 명칭은
-> **Variant Stream** 이다 — `#EXT-X-MEDIA` 로 선언하는 **렌디션(rendition)**, 즉
-> 같은 프로그램의 대체 오디오·자막 트랙과는 별개 개념이므로 섞어 쓰지 않는다.
+> **Term** — **ladder / variant**: the set of quality candidates prepared for one piece of content is the
+> ladder, and each candidate is a variant. In HLS one `#EXT-X-STREAM-INF` line in the master playlist
+> declares one variant. Its formal name in RFC 8216 is **Variant Stream** — a distinct concept from a
+> **rendition** declared with `#EXT-X-MEDIA` (an alternate audio·subtitle track of the same program), so
+> the two are not used interchangeably.
 
-**결정 주체는 클라이언트다.** 서버는 후보 목록을 내놓을 뿐이고, 무엇을 받을지는
-클라이언트가 자기 측정으로 정한다. §2.2.3 의 표에서 "화질 전환 결정" 줄이 오른쪽으로
-간 것이 바로 이것이다.
+**The deciding party is the client.** The server merely puts out a candidate list, and what to receive the
+client decides by its own measurement. That the "quality-switch decision" row moved right in §2.2.3's table
+is exactly this.
 
-### 2.3.2 대가 ① — 반응은 반드시 한 조각 늦는다
+### 2.3.2 Price ① — the reaction is necessarily one piece late
 
-![ABR 의 반응 지연](/images/lecture/hls-recon/02-abr-lag.svg)
+![ABR's reaction lag](/images/lecture/hls-recon/02-abr-lag.svg)
 
-*그림 2-2 — 대역폭이 세그먼트 N 의 수신 도중 떨어져도, 처리량 측정은 N 을 다 받아야 완성된다. 그래서 새 화질이 적용되는 첫 조각은 N+1 이고, 반응 지연의 하한은 세그먼트 한 개 길이다.*
+*Figure 2-2 — even if bandwidth drops during the receipt of segment N, the throughput measurement is not complete until N is fully received. So the first piece to which the new quality applies is N+1, and the lower bound of the reaction lag is one segment length.*
 
-이 하한은 구현을 잘 만들어서 없앨 수 있는 것이 아니다. **관측이 완성되는 시점이
-구조적으로 조각 경계에 묶여 있기 때문**이다. 그래서 세그먼트 길이는 두 방향으로
-동시에 당겨지는 값이 된다.
+This lower bound is not something you can remove by writing a good implementation. It is because **the
+moment the observation completes is structurally tied to the piece boundary.** So the segment length becomes
+a value pulled in two directions at once.
 
-| 세그먼트를 짧게 | 세그먼트를 길게 |
+| Short segment | Long segment |
 |---|---|
-| 반응이 빠르다 | 반응이 느리다 |
-| 라이브 지연이 준다 | 라이브 지연이 는다 |
-| 요청 수가 는다 (헤더·연결·TLS 재개 오버헤드) | 요청 수가 준다 |
-| 인코딩 효율이 떨어진다 — 조각마다 키프레임이 필요하다 | 인코딩 효율이 좋다 |
-| 매니페스트가 길어진다 | 매니페스트가 짧다 |
+| fast reaction | slow reaction |
+| lower live latency | higher live latency |
+| more requests (header·connection·TLS-resumption overhead) | fewer requests |
+| worse encoding efficiency — each piece needs a keyframe | better encoding efficiency |
+| longer manifest | shorter manifest |
 
-HLS 규격은 이 값의 상한을 `#EXT-X-TARGETDURATION` 으로 선언하게 하고, 이 저장소는
-그것을 그대로 보관한다([`playlist.py:156`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L156), [`playlist.py:297-298`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L297-L298)). 판정에도 쓰인다 —
-실측 길이와 선언 길이의 차이가 `TARGETDURATION` 이상이면 세그먼트 하나 이상이 통째로
-어긋난 것이므로 **FAIL** 로 판정한다([`report.py:264-272`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L264-L272)).
+The HLS spec has you declare the upper bound of this value with `#EXT-X-TARGETDURATION`, and this repository
+keeps it as is ([`playlist.py:156`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L156), [`playlist.py:297-298`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L297-L298)). It is used in the verdict too — if the difference
+between measured and declared length is at least `TARGETDURATION`, at least one segment is entirely off, so
+it is judged **FAIL** ([`report.py:264-272`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L264-L272)).
 
-### 2.3.3 대가 ② — 후보들의 경계가 정렬돼 있어야 한다
+### 2.3.3 Price ② — the candidates' boundaries must be aligned
 
-품질을 바꾸려면 **모든 후보에서 세그먼트 경계가 같은 시각에 놓여야** 하고, 그 경계마다
-독립 디코딩 가능한 프레임이 있어야 한다.
+To switch quality, **the segment boundaries must sit at the same time in every candidate**, and at each
+boundary there must be an independently decodable frame.
 
-> **용어** — **IDR 프레임(Instantaneous Decoder Refresh)**: 그 프레임부터 디코딩을
-> 시작해도 되는 H.264/H.265 의 독립 프레임. 앞 프레임을 참조하지 않으므로 여기가
-> 조각을 자를 수 있는 유일한 지점이다. IDR 사이의 묶음을 GOP(Group of Pictures)라 한다.
+> **Term** — **IDR frame (Instantaneous Decoder Refresh)**: an H.264/H.265 independent frame from which you
+> may start decoding. Since it references no previous frame, this is the only point where you can cut a
+> piece. The group between IDRs is called a GOP (Group of Pictures).
 
-이 제약은 인코딩 설정에 그대로 나타난다. 이 저장소의 테스트 스트림 생성이 그렇다.
+This constraint shows up directly in the encoding settings. This repository's test-stream generation does so.
 
 ```bash
 # tests/run.sh:40
   -c:v libx264 -preset ultrafast -g 60 -keyint_min 60 -sc_threshold 0 -pix_fmt yuv420p \
 ```
 
-`-g 60 -keyint_min 60` 은 GOP 길이를 60프레임으로 **고정**하고, `-sc_threshold 0` 은
-장면 전환에서 인코더가 키프레임을 임의로 끼워 넣는 것을 끈다. 30fps 이므로 2초마다
-정확히 IDR 이 놓이고, `-hls_time 6` 으로 자르면 경계가 항상 IDR 에 떨어진다.
+`-g 60 -keyint_min 60` **fixes** the GOP length to 60 frames, and `-sc_threshold 0` turns off the encoder
+arbitrarily inserting a keyframe at a scene change. At 30fps an IDR lands exactly every 2 seconds, and
+cutting with `-hls_time 6` always makes the boundary fall on an IDR.
 
-**이렇게 하지 않으면 무엇이 깨지는가** — 인코더가 장면 전환마다 키프레임을 자유롭게
-넣으면 세그먼트 경계 시각이 후보마다 달라진다. 그러면 전환 시점에 겹치거나 비는
-구간이 생기고, 검증 도구 입장에서는 **정상 송출과 결손을 구별할 기준선 자체가
-사라진다.** 이 저장소의 회귀 테스트가 결정적(deterministic) 경계를 요구하는 이유다.
+**What breaks if you do not do this** — if the encoder freely inserts a keyframe at every scene change, the
+segment-boundary time differs per candidate. Then overlapping or empty spans appear at switch points, and
+from the verification tool's standpoint **the very baseline for distinguishing normal delivery from loss
+disappears.** This is why this repository's regression tests require deterministic boundaries.
 
-### 2.3.4 대가 ③ — 인코딩·보관·캐시가 후보 수만큼 늘어난다
+### 2.3.4 Price ③ — encoding·storage·cache grow by the number of candidates
 
-래더가 5단이면 인코딩 5회, 저장 5벌, 캐시 5벌이다. 그리고 이 배수는 **자막·다국어
-오디오 트랙과 곱해진다.** 서비스 규모에서 이것은 사소한 비용이 아니며, 래더 설계
-자체가 하나의 공학 분야가 된 이유다.
+A 5-rung ladder is 5 encodes, 5 stores, 5 caches. And this multiplier is **multiplied by the subtitle·
+multilingual audio tracks.** At service scale this is not a trivial cost, and it is why ladder design itself
+became an engineering discipline.
 
 ---
 
-## 2.4 코드 — 두 자료구조가 담은 두 개의 축
+## 2.4 The code — two data structures holding two axes
 
-이 저장소의 파서는 §2.2–2.3 의 구조를 거의 그대로 자료구조로 옮겼다. 모듈
-docstring 이 그 구분을 먼저 선언한다.
+This repository's parser moved the structure of §2.2–2.3 almost directly into data structures. The module
+docstring declares that distinction first.
 
 ```python
 # playlist.py:1-5
-"""M3U8 플레이리스트 파서 (RFC 8216).
+"""M3U8 playlist parser (RFC 8216).
 
-마스터 플레이리스트(화질 후보 목록)와 미디어 플레이리스트(세그먼트 목록)를
-같은 진입점에서 파싱하고, 어느 쪽인지는 `Playlist.is_master`로 구분한다.
+Parses the master playlist (the list of quality candidates) and the media playlist
+(the list of segments) at the same entry point, distinguishing which by
+`Playlist.is_master`.
 """
 ```
 
-두 종류의 플레이리스트가 **같은 `parse()` 를 거쳐** 하나의 `Playlist` 로 들어온다.
-그 안에서 서로 다른 두 리스트를 채운다 — `variants` 와 `segments`.
+The two kinds of playlist come in through **the same `parse()`** into one `Playlist`. Inside it, two
+different lists are filled — `variants` and `segments`.
 
-### 2.4.1 `Variant` — 품질 축
+### 2.4.1 `Variant` — the quality axis
 
 ```python
 # playlist.py:102-113
 @dataclass
 class Variant:
-    """#EXT-X-STREAM-INF — 마스터 플레이리스트의 화질 후보 하나."""
+    """#EXT-X-STREAM-INF — one quality candidate of the master playlist."""
 
     uri: str
     bandwidth: int = 0
@@ -242,69 +240,69 @@ class Variant:
     codecs: str = ""
     frame_rate: float = 0.0
     name: str = ""
-    subtitles_group: str = ""  # SUBTITLES="..." — 이 후보에 딸린 자막 그룹
+    subtitles_group: str = ""  # SUBTITLES="..." — the subtitle group attached to this candidate
     audio_group: str = ""  # AUDIO="..."
 ```
 
-읽어야 할 것은 **여기 없는 필드**다. `Variant` 에는 `duration` 도 `seq` 도 없다.
-시간축의 정보가 하나도 없다는 뜻이다. 이 자료구조가 답하는 질문은 하나뿐이다 —
-**"얼마나 굵은 파이프가 필요하고, 그 대가로 무엇을 주는가."**
+What to read is the **field that is not here.** `Variant` has neither `duration` nor `seq`. It means there
+is not a single piece of timeline information. The one question this data structure answers is — **"how fat
+a pipe do I need, and what do I get in return."**
 
-그리고 더 중요한 사실이 있다. **이 여덟 필드 전부가 서버의 자기 신고 값이다.**
-`BANDWIDTH` 가 1.4Mbps 라고 적혀 있어도 실제로 오는 바이트가 그만큼이라는 보증은
-없고, `RESOLUTION=640x360` 이라고 적혀 있어도 세그먼트 안의 영상이 그 해상도라는
-보증도 없다. 규격은 이 값들이 참임을 강제할 방법을 갖고 있지 않다 — 강제할 주체가
-없기 때문이다(§2.2.3). 이 저장소도 대조하지 않는다(§2.7 참조).
+And there is a more important fact. **All eight of these fields are self-reported values from the server.**
+Even if `BANDWIDTH` says 1.4Mbps, there is no guarantee the bytes that actually arrive are that much, and
+even if `RESOLUTION=640x360` is written, there is no guarantee the video inside the segment is that
+resolution. The spec has no way to force these values to be true — because there is no party to force them
+(§2.2.3). This repository does not cross-check them either (see §2.7).
 
-`height` 만은 계산된 값이다([`playlist.py:115-122`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L115-L122)). `RESOLUTION` 문자열에서
-`x` 뒤를 정수로 읽되 실패하면 조용히 `0` 을 돌려준다 — **파싱 실패가 예외가 아니라
-"해상도 미표기"와 같은 상태로 흡수된다.** 표기가 아예 없는 송출과 표기가 깨진 송출을
-구별하지 않는다는 뜻이고, 그 판단은 뒤의 `pick_variant` 오류 메시지에 그대로 드러난다.
+Only `height` is a computed value ([`playlist.py:115-122`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L115-L122)). It reads what follows `x` in the `RESOLUTION`
+string as an integer, but on failure silently returns `0` — **a parse failure is absorbed into the same
+state as "resolution not stated," not raised as an exception.** It means a delivery with no notation and one
+with broken notation are not distinguished, and that judgment shows up directly in the later `pick_variant`
+error message.
 
-### 2.4.2 `Segment` — 시간 축
+### 2.4.2 `Segment` — the time axis
 
 ```python
 # playlist.py:135-146
 @dataclass
 class Segment:
-    """미디어 플레이리스트의 세그먼트 한 조각."""
+    """One segment piece of the media playlist."""
 
     uri: str
     duration: float
-    seq: int  # media sequence number — AES-128 기본 IV 산출에 쓰인다
-    index: int  # 플레이리스트 내 0-기반 순번
+    seq: int  # media sequence number — used to derive the default AES-128 IV
+    index: int  # 0-based order within the playlist
     key: Key | None = None
     byterange: tuple[int, int] | None = None  # (length, offset)
     discontinuity: bool = False
     title: str = ""
 ```
 
-여기에는 `bandwidth` 도 `resolution` 도 없다. 대칭이다 — **두 자료구조가 직교하는
-두 축을 담고 있고, 그것이 곧 마스터/미디어 2계층 구조의 존재 이유다**(자세한 것은
-제3장).
+Here there is neither `bandwidth` nor `resolution`. It is symmetric — **the two data structures hold two
+orthogonal axes, and that is precisely the reason the master/media two-tier structure exists** (details in
+Chapter 3).
 
-`seq` 와 `index` 가 **둘 다** 있는 것이 이 dataclass 의 핵심이다.
+That `seq` and `index` are **both** present is the crux of this dataclass.
 
-> **용어** — **media sequence number(미디어 시퀀스 번호)**: 플레이리스트 전역에서
-> 세그먼트에 붙는 일련번호. 시작값은 `#EXT-X-MEDIA-SEQUENCE` 가 정하고, 이후
-> 세그먼트마다 1씩 증가한다. 라이브에서 창(window)이 앞으로 밀리면 같은 세그먼트가
-> 목록에서는 앞으로 이동하지만 이 번호는 변하지 않는다.
+> **Term** — **media sequence number**: a serial number attached to a segment globally across the playlist.
+> The start value is set by `#EXT-X-MEDIA-SEQUENCE`, and it increments by 1 per segment thereafter. In live,
+> when the window slides forward, the same segment moves forward in the list but this number does not change.
 
-| 필드 | 무엇의 번호인가 | 어디서 오는가 | 틀리면 무엇이 깨지는가 |
+| Field | number of what | where it comes from | what breaks if wrong |
 |---|---|---|---|
-| `seq` | 송출 전역의 위치 | `#EXT-X-MEDIA-SEQUENCE` + 누적 ([`playlist.py:300-302`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L300-L302), `248`) | **AES-128 복호화가 깨진다.** IV 속성이 없으면 이 번호가 128비트 IV 가 된다 |
-| `index` | 이 목록 안의 0-기반 순번 | `len(pl.segments)` ([`playlist.py:241`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L241)) | 보고·진단의 지칭이 어긋난다 |
+| `seq` | position across the whole delivery | `#EXT-X-MEDIA-SEQUENCE` + accumulation ([`playlist.py:300-302`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L300-L302), `248`) | **AES-128 decryption breaks.** with no IV attribute, this number becomes the 128-bit IV |
+| `index` | 0-based order within this list | `len(pl.segments)` ([`playlist.py:241`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L241)) | reporting·diagnostic references go off |
 
-VOD 는 대개 `#EXT-X-MEDIA-SEQUENCE` 가 0 이라 둘이 같은 값이 되고, 그래서 **하나로
-합쳐도 되는 것처럼 보인다.** 라이브에서 창이 밀리는 순간 갈라진다. 둘을 합친 구현은
-VOD 테스트를 전부 통과한 뒤 라이브에서 복호화가 깨진다 — 재현 조건이 좁아 원인을
-찾기 어려운 종류의 실패다.
+VOD usually has `#EXT-X-MEDIA-SEQUENCE` at 0, so the two become the same value, and so **they look like they
+could be merged into one.** They diverge the moment the window slides in live. An implementation that merged
+them passes all the VOD tests and then decryption breaks in live — the kind of failure whose reproduction
+condition is so narrow it is hard to find the cause.
 
-### 2.4.3 파서는 상태 기계일 수밖에 없다
+### 2.4.3 The parser cannot help being a state machine
 
-M3U8 은 "태그 줄이 **다음에 오는 URI 줄**을 수식한다"는 구조다. 줄 하나를 독립적으로
-해석할 수 없으므로 파서는 필연적으로 상태를 갖는다. 그 상태가 함수 앞머리에 전부
-선언돼 있다.
+M3U8 has the structure "a tag line modifies the **URI line that comes next**." One line cannot be
+interpreted independently, so the parser inevitably has state. That state is all declared at the head of the
+function.
 
 ```python
 # playlist.py:215-221
@@ -317,12 +315,12 @@ M3U8 은 "태그 줄이 **다음에 오는 URI 줄**을 수식한다"는 구조�
     pending_variant: Variant | None = None
 ```
 
-그리고 URI 줄을 만나면 쌓인 상태를 소비한다.
+And when it meets a URI line, it consumes the accumulated state.
 
 ```python
 # playlist.py:227-234
         if not line.startswith("#"):
-            # 태그가 아닌 줄 = 직전 태그가 가리키는 URI
+            # a non-tag line = the URI the preceding tag points to
             uri = _absolute(base_url, line)
             if pending_variant is not None:
                 pending_variant.uri = uri
@@ -331,7 +329,7 @@ M3U8 은 "태그 줄이 **다음에 오는 URI 줄**을 수식한다"는 구조�
             elif cur_inf is not None:
 ```
 
-소비 후 처리가 태그마다 다르다는 점이 결정적이다.
+That the post-consumption handling differs per tag is decisive.
 
 ```python
 # playlist.py:248-253
@@ -343,40 +341,40 @@ M3U8 은 "태그 줄이 **다음에 오는 URI 줄**을 수식한다"는 구조�
                 pending_disc = False
 ```
 
-**`cur_key` 가 이 목록에 없다.** 의도적이다. 태그별 유효 범위(scope)를 표로 정리하면
-왜 그런지가 드러난다.
+**`cur_key` is not in this list.** That is deliberate. Organizing the effective scope of each tag into a
+table shows why.
 
-| 태그 | 유효 범위 | 코드에서의 표현 | 리셋을 잘못하면 |
+| Tag | effective scope | expression in code | if you reset it wrong |
 |---|---|---|---|
-| `#EXTINF` | 바로 다음 URI **하나** | `cur_inf = None` (249) | 안 지우면 `EXTINF` 없는 URI 줄이 세그먼트로 오인된다 |
-| `#EXT-X-DISCONTINUITY` | 바로 다음 세그먼트 **하나** | `pending_disc = False` (253) | 안 지우면 이후 전 세그먼트가 불연속으로 표시된다 |
-| `#EXT-X-BYTERANGE` | 다음 URI 하나. 단 오프셋 생략 시 **직전 범위의 끝을 승계** | `prev_range_end` 갱신 후 `cur_range = None` (250-252) | 승계를 안 하면 오프셋 생략형 세그먼트가 전부 파일 선두를 가리킨다 |
-| `#EXT-X-KEY` | **이후 모든 세그먼트** — 다음 `EXT-X-KEY` 까지 | 리셋하지 않는다 | 지우면 **두 번째 세그먼트부터 복호화가 되지 않는다** |
+| `#EXTINF` | the very next URI, **one** | `cur_inf = None` (249) | not clearing it makes a URI line with no `EXTINF` be mistaken for a segment |
+| `#EXT-X-DISCONTINUITY` | the very next segment, **one** | `pending_disc = False` (253) | not clearing it marks every subsequent segment as discontinuous |
+| `#EXT-X-BYTERANGE` | the next URI, one. but with offset omitted, **inherits the end of the previous range** | after updating `prev_range_end`, `cur_range = None` (250-252) | not inheriting makes every offset-omitted segment point to the file's start |
+| `#EXT-X-KEY` | **every subsequent segment** — until the next `EXT-X-KEY` | not reset | clearing it makes **decryption fail from the second segment on** |
 
-같은 파일 안에서 어떤 상태는 한 번 쓰고 버려야 하고, 어떤 상태는 유지해야 하고,
-어떤 상태는 다음 값으로 **이어져야** 한다. 상태 기계를 그려 보지 않고 "일단 다
-지운다"로 쓰면 마지막 줄에서 조용히 틀린다 — 예외도 나지 않고, 복호화 결과가
-쓰레기가 되어 컨테이너 판별 단계까지 흘러간다.
+Within the same file, some state must be used once and thrown away, some must be maintained, and some must
+**carry over** to the next value. Write it as "just clear everything" without drawing the state machine and
+it silently goes wrong at the last line — no exception even, the decryption result becoming garbage that
+flows all the way to the container-identification step.
 
-### 2.4.4 선택은 클라이언트가 한다 — 그리고 근거를 남긴다
+### 2.4.4 The client chooses — and leaves the basis
 
-ABR 의 "결정권이 클라이언트에 있다"가 코드에서는 이렇게 나타난다.
+ABR's "the decision rests with the client" shows up in code like this.
 
 ```python
 # playlist.py:185-204
     def pick_variant(
         self, height: int | None = None, max_bandwidth: int | None = None
     ) -> Variant:
-        """화질 후보 선택. 지정이 없으면 대역폭 최댓값."""
+        """Quality-candidate selection. With none specified, the maximum bandwidth."""
         if not self.variants:
-            raise ValueError("마스터 플레이리스트에 variant 가 없다")
+            raise ValueError("no variants in the master playlist")
         pool = self.variants
         if height is not None:
             matched = [v for v in pool if v.height == height]
             if not matched:
                 avail = sorted({v.height for v in pool if v.height}, reverse=True)
                 raise ValueError(
-                    f"{height}p 후보가 없다. 사용 가능: {avail or '해상도 미표기'}"
+                    f"no {height}p candidate. available: {avail or 'resolution not stated'}"
                 )
             pool = matched
         if max_bandwidth is not None:
@@ -386,38 +384,38 @@ ABR 의 "결정권이 클라이언트에 있다"가 코드에서는 이렇게 �
         return max(pool, key=lambda v: v.bandwidth)
 ```
 
-세 가지를 읽을 수 있다.
+Three things can be read.
 
-1. **`height` 는 엄격하다.** 정확히 일치하는 후보가 없으면 가까운 것으로 조용히
-   대체하지 않고 **예외를 던지고, 가능한 목록을 오류 메시지에 담는다.** 720p 를
-   요청했는데 말없이 1080p 를 받아 오는 것이 검증 도구에서 가장 나쁜 동작이기
-   때문이다 — 이후 모든 계측치가 다른 대상의 것이 된다.
-2. **`max_bandwidth` 는 관대하다.** 상한 이하 후보가 하나도 없으면 `pool` 을 그대로
-   두고 최댓값을 고른다(`201-203`). 즉 **상한을 넘길 수 있다.** "재생 불가보다 초과가
-   낫다"는 판단으로 읽히지만, 두 인자의 이 비대칭은 문서화돼 있지 않다(§2.7).
-3. **기본은 최고 화질이다.** 검증 도구이므로 "가장 무거운 경로를 본다"가 합리적이다.
-   실제 플레이어라면 정반대 — 대개 낮은 화질로 시작해 올려 잡는다.
+1. **`height` is strict.** If there is no exactly matching candidate, it does not silently substitute a near
+   one but **raises an exception and puts the available list in the error message.** Because silently
+   receiving 1080p when you requested 720p is the worst behavior in a verification tool — every measurement
+   afterward becomes that of a different target.
+2. **`max_bandwidth` is lenient.** If there is not a single candidate under the cap, it leaves `pool` as is
+   and picks the maximum (`201-203`). That is, **it can exceed the cap.** It reads as the judgment "exceeding
+   is better than unplayable," but this asymmetry of the two arguments is undocumented (§2.7).
+3. **The default is the highest quality.** As a verification tool, "look at the heaviest path" is reasonable.
+   A real player would be the opposite — it usually starts low and climbs.
 
-그리고 선택은 조용히 일어나지 않는다.
+And the selection does not happen quietly.
 
 ```python
 # cli.py:179-184
-    _eprint(f"  마스터 플레이리스트 — 화질 후보 {len(pl.variants)}개")
+    _eprint(f"  master playlist — {len(pl.variants)} quality candidates")
     for v in sorted(pl.variants, key=lambda x: -x.bandwidth):
         _eprint(f"    · {v.label()}")
 
     chosen = pl.pick_variant(height=args.height, max_bandwidth=args.max_bandwidth)
-    _eprint(f"  선택: {chosen.label()}")
+    _eprint(f"  chosen: {chosen.label()}")
 ```
 
-**후보 전체를 먼저 나열하고 그다음 선택을 출력한다.** 자동 선택은 편의를 주는 대신
-"무엇 중에서 무엇이 골라졌는가"를 감춘다. 계측치를 산출하는 도구에서 그 감춤은
-곧 재현 불가를 뜻하므로, 근거를 표준 오류로 흘려 둔다.
+**It lists all candidates first, then prints the selection.** Automatic selection gives convenience but hides
+"among what was what chosen." In a tool that produces measurements, that hiding means irreproducibility, so
+it flushes the basis to standard error.
 
-로컬 재현에 쓰는 래더는 이렇게 생겼다.
+The ladder used for local reproduction looks like this.
 
 ```
-# tests/run.sh:60-65 — 2단 래더
+# tests/run.sh:60-65 — a 2-rung ladder
 #EXTM3U
 #EXT-X-VERSION:3
 #EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1400000,RESOLUTION=640x360,NAME="360p",CODECS="avc1.42c01e,mp4a.40.2"
@@ -426,254 +424,252 @@ high.m3u8
 low.m3u8
 ```
 
-회귀 테스트는 `--height 180` 으로 **낮은 쪽을 명시 선택**한다
-(`tests/run.sh:176`). 기본값(대역폭 최댓값)과 반대쪽을 고르게 해야
-`pick_variant` 의 선택 경로가 실제로 실행되기 때문이다 — 기본값으로 테스트하면
-"인자를 무시하는 구현"도 통과한다.
+The regression test **explicitly selects the low side** with `--height 180` (`tests/run.sh:176`). It must
+pick the opposite of the default (maximum bandwidth) so that `pick_variant`'s selection path actually runs —
+test with the default and an "implementation that ignores the argument" also passes.
 
-### 2.4.5 이 도구는 ABR 을 하지 않는다
+### 2.4.5 This tool does not do ABR
 
-중요한 지점이므로 분명히 적는다. `pick_variant` 는 **한 번 고르고 끝이다.** 받는
-도중 대역폭을 재서 후보를 바꾸는 코드는 이 저장소에 없다. ABR 의 **A(adaptive)를
-의도적으로 버린 것**이다.
+It is an important point, so state it clearly. `pick_variant` **chooses once and is done.** There is no code
+in this repository that measures bandwidth mid-receipt and switches candidates. It is a **deliberate discard
+of ABR's A (adaptive).**
 
-이유는 검증 도구의 성격에서 나온다. 실행 중 화질이 바뀌면 계측 대상이 실행마다
-달라져 **결과를 비교할 수 없다.** 세그먼트별 TTFB p95 도, 총 바이트도, 해상도도
-"어떤 후보였는가"에 의존하는 값이 된다. 재현 가능성과 적응성은 여기서 정면으로
-충돌하고, 이 도구는 재현 가능성을 택했다.
+The reason comes from the nature of a verification tool. If the quality changes during a run, the
+measurement target differs per run and **the results cannot be compared.** Per-segment TTFB p95, total bytes,
+resolution — all become values dependent on "which candidate it was." Reproducibility and adaptivity collide
+head-on here, and this tool chose reproducibility.
 
-같은 판단이 라이브에서 한 번 더 나타난다.
+The same judgment appears once more in live.
 
 ```python
 # playlist.py:163-166
     @property
     def is_live(self) -> bool:
-        """ENDLIST 가 없으면 진행 중인 라이브 송출이다."""
+        """No ENDLIST means an in-progress live delivery."""
         return not self.is_master and not self.has_endlist
 ```
 
 ```python
 # cli.py:399-401
     if pl.is_live:
-        _eprint("  · LIVE 플레이리스트 → remux 모드로 전환 (스냅샷 계측 불가)")
+        _eprint("  · LIVE playlist → switching to remux mode (snapshot measurement impossible)")
         return "remux"
 ```
 
-`#EXT-X-ENDLIST` 의 **부재**가 라이브 판정 근거다 — 있음이 아니라 없음이 신호다.
-라이브에서는 매니페스트를 다시 GET 할 때마다 목록이 달라지므로, "받아야 할 전체
-집합"이 애초에 정의되지 않는다. 세그먼트 단위 계측의 전제 자체가 성립하지 않으므로
-이 도구는 계측을 포기하고 ffmpeg 에 위임한다. **계측할 수 없는 조건을 계측하는 척하지
-않는 것**이 판단의 내용이다.
+The **absence** of `#EXT-X-ENDLIST` is the basis for the live verdict — the signal is not presence but
+absence. In live, the list differs each time you GET the manifest again, so "the whole set that should be
+received" is not defined in the first place. The very premise of per-segment measurement does not hold, so
+this tool gives up measuring and delegates to ffmpeg. **Not pretending to measure a condition that cannot be
+measured** is the content of the judgment.
 
 ---
 
-## 2.5 일반화 — 조각과 목록, 그리고 빠져 있는 필드
+## 2.5 Generalization — pieces and a list, and the missing field
 
-### 2.5.1 "상태를 클라이언트로 민다"는 일반형
+### 2.5.1 The general form of "push state to the client"
 
-HLS 가 한 일은 특수한 것이 아니다. 같은 교환이 여러 층에서 반복된다.
+What HLS did is not special. The same trade repeats at several layers.
 
-| 시스템 | 서버가 내려놓은 상태 | 클라이언트가 대신 받은 것 | 대가 |
+| System | state the server put down | what the client received instead | the price |
 |---|---|---|---|
-| REST / 무상태 HTTP | 세션 | 매 요청에 실리는 토큰 | 요청마다 인증 비용, 토큰 유출 시 즉시 권한 |
-| JWT | 세션 저장소 | 서명된 클레임 | **폐기(revocation)가 어렵다** — 서버가 상태를 안 갖기로 했으므로 |
-| 커서 기반 페이지네이션 | "어디까지 읽었는지" | 커서 문자열 | 커서를 조작한 요청을 서버가 구분하지 못한다 |
-| DNS | 변경 통지 | TTL + 재질의 | 갱신 지연이 TTL 만큼 발생 |
-| **HLS** | 재생 위치·화질 결정 | 매니페스트 | **전달이 완결됐는지 아무도 모른다** |
+| REST / stateless HTTP | the session | a token carried in every request | per-request authentication cost, immediate privilege on token leak |
+| JWT | the session store | signed claims | **revocation is hard** — because the server chose to hold no state |
+| Cursor-based pagination | "how far you have read" | a cursor string | the server cannot distinguish a request with a manipulated cursor |
+| DNS | change notification | TTL + re-query | a refresh delay of up to the TTL |
+| **HLS** | playback position·quality decision | the manifest | **nobody knows whether delivery completed** |
 
-공통 구조는 이렇게 요약된다.
+The common structure is summarized like this.
 
-> **상태를 클라이언트로 밀면 서버는 확장성을 얻고, 그 상태에 대한 판정 권한을
-> 잃는다. 판정할 수 없는 것은 보증할 수도 없다.**
+> **Push state to the client and the server gains scalability and loses the authority to judge that state.
+> What cannot be judged cannot be guaranteed.**
 
-### 2.5.2 "큰 것을 조각내고 목록으로 가리킨다"는 일반형 — 그리고 HLS 만 빠뜨린 것
+### 2.5.2 The general form of "chop up something big and point with a list" — and the one thing HLS omitted
 
-조각 + 목록 구조도 HLS 의 발명이 아니다. 그런데 다른 시스템들과 나란히 놓으면
-**HLS 에만 없는 필드**가 눈에 띈다.
+The piece + list structure is not HLS's invention either. But set it side by side with other systems and
+**the field HLS alone lacks** stands out.
 
-| 시스템 | 목록(매니페스트) | 조각 | 조각의 무결성 근거 |
+| System | list (manifest) | piece | basis for the piece's integrity |
 |---|---|---|---|
-| BitTorrent | `.torrent` / magnet | piece | **piece 별 해시가 목록 안에 있다** |
-| Git | tree · commit 객체 | blob | **내용 주소(content-addressed) — 이름이 곧 해시다** |
-| OCI 컨테이너 이미지 | image manifest | layer | **레이어별 digest 가 매니페스트 안에 있다** |
-| Debian APT | `Packages` · `Release` | `.deb` | **파일별 해시 + `Release` 에 서명** |
-| **HLS** | `.m3u8` | 미디어 세그먼트 | **없다** — URI 와 재생 길이뿐 |
+| BitTorrent | `.torrent` / magnet | piece | **a per-piece hash is in the list** |
+| Git | tree · commit object | blob | **content-addressed — the name is the hash** |
+| OCI container image | image manifest | layer | **a per-layer digest is in the manifest** |
+| Debian APT | `Packages` · `Release` | `.deb` | **a per-file hash + a signature on `Release`** |
+| **HLS** | `.m3u8` | media segment | **none** — just the URI and playback length |
 
-RFC 8216 에는 미디어 세그먼트의 해시·다이제스트를 담는 속성이 없다. `#EXT-X-KEY`
-가 있지 않느냐는 반론은 성립하지 않는다.
+RFC 8216 has no attribute holding a media segment's hash·digest. The objection "isn't there `#EXT-X-KEY`"
+does not hold.
 
-> **용어** — **비인증 암호화(unauthenticated encryption)**: 기밀성만 제공하고
-> 무결성·출처 인증은 제공하지 않는 암호화. HLS 의 AES-128-CBC 가 여기 해당한다 —
-> 인증 태그가 없으므로 암호문이 변조돼도 복호화는 그냥 "다른 평문"을 내놓는다.
+> **Term** — **unauthenticated encryption**: encryption that provides only confidentiality, not integrity·
+> origin authentication. HLS's AES-128-CBC is one of these — with no authentication tag, even if the
+> ciphertext is tampered with, decryption simply produces "a different plaintext."
 
-즉 **암호화된 HLS 스트림에서도 조각이 바뀌었는지, 빠졌는지는 알 수 없다.**
-암호화는 무결성을 주지 않는다.
+That is, **even in an encrypted HLS stream you cannot know whether a piece was changed or is missing.**
+Encryption does not give integrity.
 
-이 표의 마지막 줄이 이 교재 전체가 존재하는 이유다. 다른 넷은 "받은 것이 옳은가"를
-목록 자체가 답해 준다. HLS 는 답해 주지 않으므로, **바이트를 직접 열어 확인하는
-도구**가 따로 있어야 한다. 이 저장소가 하는 일이 그것이다 — MPEG-TS 연속성
-카운터([`tsanalyze.py:71-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L71-L121)), 컨테이너 판별([`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37)), 타임라인 갭
-스캔([`probe.py:191-233`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L191-L233))은 전부 **매니페스트가 답해 주지 않는 질문을 바이트에서
-직접 되찾는 작업**이다.
+The last row of this table is the reason this whole course exists. For the other four, the list itself
+answers "is what was received correct." HLS does not answer, so there must be a separate **tool that opens the
+bytes directly and checks.** That is what this repository does — the MPEG-TS continuity counter
+([`tsanalyze.py:71-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L71-L121)), container identification ([`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37)), the timeline gap
+scan ([`probe.py:191-233`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L191-L233)) are all **the work of recovering directly from the bytes the questions the manifest
+does not answer.**
 
 ---
 
-## 2.6 보안 — 무상태 전송이 접근 통제에 남긴 것
+## 2.6 Security — what stateless transport left to access control
 
-### 2.6.1 세션이 없으면 통제는 요청 자체로 밀린다
+### 2.6.1 With no session, control is pushed onto the request itself
 
-서버가 세션을 갖지 않기로 했으므로, "이 사람이 이 세그먼트를 받아도 되는가"는
-**요청 안에 들어 있는 것만으로** 판단해야 한다. 판단 재료가 셋뿐이다.
+Since the server chose to hold no session, "is this person allowed to receive this segment" must be judged
+**by what is inside the request alone.** There are only three materials for judgment.
 
-| 재료 | 실제 구현 | 근본 성질 | 이 교재의 장 |
+| Material | actual implementation | fundamental nature | this course's chapter |
 |---|---|---|---|
-| URL 문자열 | 서명 URL — `?md5=<서명>&expires=<unix>` | 능력(capability)이 문자열에 담긴다. **URL 이 새면 권한이 샌다** | 제11장 |
-| 요청 헤더 | `Referer`, `Origin`, `User-Agent` | **전적으로 클라이언트의 자기 신고** — 통제가 아니라 요청이다 | 제9·10장 |
-| 쿠키·토큰 | 세션 쿠키, Bearer 토큰 | 앰비언트 권한 — 프로세스 목록·셸 히스토리·CI 아티팩트에 남는다 | 제12장 |
+| URL string | signed URL — `?md5=<signature>&expires=<unix>` | the capability is carried in a string. **if the URL leaks, the privilege leaks** | Chapter 11 |
+| Request header | `Referer`, `Origin`, `User-Agent` | **entirely the client's self-report** — a request, not a control | Chapters 9·10 |
+| Cookie·token | session cookie, Bearer token | ambient privilege — left in process lists·shell history·CI artifacts | Chapter 12 |
 
-셋 다 약한 이유는 같다. **서버가 상태를 버렸기 때문에, 요청이 스스로를 증명해야 하고,
-그 증명 재료는 전부 클라이언트가 쓴다.** 제3부 전체가 이 한 문장의 전개다.
+All three are weak for the same reason. **Because the server discarded state, the request must prove itself,
+and all the proof material is written by the client.** All of Part 3 is the unfolding of this one sentence.
 
-### 2.6.2 CDN 이 그 위에 한 겹을 더한다
+### 2.6.2 The CDN adds one more layer on top
 
-§2.1 에서 HTTP 를 택한 이유가 CDN 인프라 재사용이었다. 그 재사용에는 구조적
-귀결이 딸려 온다.
+In §2.1 the reason for choosing HTTP was reusing CDN infrastructure. That reuse comes with a structural
+consequence.
 
-> **인가를 판정하는 곳(오리진)과 바이트를 내주는 곳(엣지)이 분리된다.**
+> **The place that judges authorization (origin) and the place that hands out bytes (edge) are separated.**
 
-엣지가 캐시 히트로 응답하면 **오리진의 인가 로직은 아예 실행되지 않는다.** 그래서
-접근 통제를 URL 자체에 담을 수밖에 없고(서명 URL), 여기서 피할 수 없는 교환이 생긴다.
+If the edge responds with a cache hit, **the origin's authorization logic does not run at all.** So access
+control has no choice but to be carried in the URL itself (signed URL), and here an unavoidable trade arises.
 
-| 캐시 키에 사용자 식별자를 | 결과 |
+| Put a user identifier in the cache key | Result |
 |---|---|
-| **넣으면** | 사용자별로 캐시가 갈라져 CDN 의 이점이 사라진다 |
-| **안 넣으면** | 인가는 URL 서명으로만 가능하고, 서명된 URL 은 만료 전까지 **누구에게든 유효하다** |
+| **Yes** | the cache splits per user and the CDN's benefit disappears |
+| **No** | authorization is possible only by URL signing, and a signed URL is **valid for anyone until expiry** |
 
-이것이 서명 URL 의 만료 시각이 짧아지는 이유이고, 동시에 그 짧은 만료가
-클라이언트 구현에 제약(지연 해석)을 만드는 이유다(제11장).
+This is why a signed URL's expiry time gets short, and at the same time why that short expiry creates a
+constraint (late resolution) on the client implementation (Chapter 11).
 
-### 2.6.3 매니페스트는 전체 지도를 평문으로 준다
+### 2.6.3 The manifest gives the whole map in plaintext
 
-`.m3u8` 하나를 받으면 다음이 한꺼번에 드러난다.
+Receive one `.m3u8` and the following are revealed at once.
 
-- 세그먼트 **전체**의 절대 URI 와 각각의 재생 길이
-- 화질 래더 전체 — 존재하는 모든 품질과 그 대역폭
-- 자막·다국어 오디오 트랙 전체와 그 주소
-- 암호화 여부와 **키 배포 URI**(`#EXT-X-KEY:URI=...`)
+- the absolute URIs of **all** segments and each one's playback length
+- the whole quality ladder — every quality that exists and its bandwidth
+- all the subtitle·multilingual audio tracks and their addresses
+- whether it is encrypted and the **key-distribution URI** (`#EXT-X-KEY:URI=...`)
 
-접근 통제를 매니페스트에만 걸고 세그먼트에는 걸지 않은 구성 — 흔한 실패다 — 에서는
-**매니페스트 1회 유출이 곧 전체 유출**이다. 이 저장소가 하는 일의 골격이 정확히 그
-구조를 이용한 것이다. `parse()` 한 번으로 전체 목록을 얻고([`playlist.py:207-337`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L207-L337)),
-`fetch.get_many` 로 병렬 수신한다([`fetch.py:223-243`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L223-L243)). 전용 프로토콜에서는 세션을
-순차로 끌고 가야 얻을 수 있던 것이, 여기서는 텍스트 한 장이다.
+In a setup where access control is put on the manifest only and not on the segments — a common failure —
+**one manifest leak is a whole leak.** The skeleton of what this repository does is exactly an exploitation
+of that structure. It gets the whole list with one `parse()` ([`playlist.py:207-337`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L207-L337)), and receives it in
+parallel with `fetch.get_many` ([`fetch.py:223-243`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L223-L243)). What in a dedicated protocol you could get only by
+dragging a session sequentially is here a single sheet of text.
 
-### 2.6.4 세그먼트 크기 수열은 TLS 로 가려지지 않는다
+### 2.6.4 The segment-size sequence is not hidden by TLS
 
-ABR 이 만든 부수 효과다. 세그먼트가 가변 비트레이트로 인코딩되면 조각마다 바이트
-크기가 다르고, **그 크기 수열은 콘텐츠마다 다르다.** HTTPS 로 내용은 가려도 응답의
-크기와 타이밍은 관측 가능하므로, 수동 관측자가 "무엇을 보고 있는지"를 추정할 여지가
-남는다. 암호화된 영상 트래픽 식별은 문헌에 여러 결과가 있는 알려진 주제다.
+A side effect ABR created. When segments are variable-bitrate encoded, each piece has a different byte size,
+and **that size sequence differs per content.** HTTPS hides the content but the response's size and timing
+are observable, so room remains for a passive observer to infer "what is being watched." Identifying
+encrypted video traffic is a known subject with several results in the literature.
 
-흥미로운 것은 이 저장소가 그 지문의 원재료를 **이미 기록하고 있다**는 점이다.
+What is interesting is that this repository is **already recording** the raw material of that fingerprint.
 
 ```python
-# fetch.py:82-89 (발췌)
-    wire_size: int = 0  # 실제로 회선을 지나간 바이트 (압축된 상태)
+# fetch.py:82-89 (excerpt)
+    wire_size: int = 0  # bytes that actually crossed the wire (compressed state)
     ...
     sha256: str = ""
 ```
 
-검증을 위해 남긴 계측치가 식별에도 쓰일 수 있는 값이라는 사실은, 관측 도구를 만들
-때 되짚어야 할 종류의 대칭이다. 다만 **이 저장소는 그 식별 가능성을 측정한 적이
-없다**(§2.7).
+The fact that a measurement kept for verification can also be a value usable for identification is the kind
+of symmetry to reflect on when building an observation tool. Only, **this repository has never measured that
+identifiability** (§2.7).
 
-### 2.6.5 서버는 시청을 알지 못한다
+### 2.6.5 The server does not know about viewing
 
-세션이 없으므로 서버가 아는 것은 "어떤 URI 가 요청됐다"뿐이다. 재생됐는지, 사람이
-봤는지, 몇 번 봤는지는 모른다. 그래서 시청 측정·과금·동시접속 제한이 전부 **클라이언트가
-보내는 별도 신고 채널**에 의존하게 되고, 그 채널은 클라이언트가 보내므로 §2.6.1 의
-"자기 신고" 문제를 그대로 물려받는다. 세그먼트 요청 로그로 대신하려 해도, 프리페치와
-캐시 히트 때문에 요청 수와 시청 시간이 일치하지 않는다.
+With no session, all the server knows is "some URI was requested." Whether it was played, whether a human
+watched, how many times — it does not know. So viewership measurement·billing·concurrency limits all come to
+depend on a **separate reporting channel the client sends**, and since the client sends it, that channel
+inherits the "self-report" problem of §2.6.1 as is. Even if you try to substitute segment-request logs,
+prefetch and cache hits make the request count and the viewing time not match.
 
-### 2.6.6 방어자 관점 — 역할별로 무엇을 해야 하는가
+### 2.6.6 The defender's view — what to do, by role
 
-| 역할 | 해야 하는 것 |
+| Role | what to do |
 |---|---|
-| **송출 플랫폼 운영자** | 접근 통제를 **매니페스트에만** 걸지 말 것. 세그먼트 URI 도 같은 정책 아래 두어야 한다. 매니페스트 1회 유출이 전체 유출이 되는 구성이 가장 흔한 실패다 |
-| **CDN 설계자** | 인가 판정과 캐시 응답이 분리된다는 사실을 **전제로** 설계할 것. §2.6.2 의 교환은 우회할 수 없으므로, 어느 쪽을 택했는지 명시적으로 문서화해야 운영 중 오해가 없다 |
-| **보안 검토자** | "HTTPS 이므로 안전하다"를 그대로 받지 말 것. 세그먼트 크기·타이밍 수열은 TLS 로 가려지지 않는다. 그리고 **AES-128-CBC 는 무결성을 주지 않는다** — 암호화 여부와 변조 검출은 별개 항목으로 심사해야 한다 |
-| **클라이언트·플레이어 구현자** | 매니페스트는 **신뢰할 수 없는 입력**이다. 파서가 상태 기계이므로(§2.4.3) 순서가 뒤바뀐 태그, 범위를 벗어난 정수, 비정상적으로 많은 세그먼트 수에 대한 상한이 필요하다. 세그먼트 URI 가 예상 호스트를 벗어나는지도 확인해야 한다 |
-| **검증 도구 작성자** | 매니페스트에 무결성 필드가 없다는 사실(§2.5.2)이 도구의 존재 이유다. 목록이 답해 주지 않는 것을 **바이트에서 직접** 되찾아야 하고, 그 검사의 미탐률까지 함께 문서화해야 한다 |
-| **네트워크 운영자** | 세그먼트 전달은 평범한 HTTP GET 이므로 "스트리밍 트래픽"이라는 별도 분류가 성립하지 않는다. 포트·프로토콜 기반 정책은 이 트래픽에 대해 아무 효과가 없다 |
+| **Delivery platform operator** | do not put access control on the **manifest only.** the segment URIs must be under the same policy. a setup where one manifest leak becomes a whole leak is the most common failure |
+| **CDN designer** | design **on the premise** that authorization judgment and cache response are separate. the trade in §2.6.2 cannot be avoided, so document explicitly which side you chose to avoid misunderstanding in operation |
+| **Security reviewer** | do not accept "it is HTTPS so it is safe" at face value. segment size·timing sequences are not hidden by TLS. and **AES-128-CBC does not give integrity** — whether it is encrypted and whether tampering is detected must be reviewed as separate items |
+| **Client·player implementer** | the manifest is **untrusted input.** since the parser is a state machine (§2.4.3), you need bounds for out-of-order tags, out-of-range integers, and an abnormally large segment count. you must also check whether a segment URI leaves the expected host |
+| **Verification-tool author** | the fact that the manifest has no integrity field (§2.5.2) is the tool's reason for existing. what the list does not answer you must recover **directly from the bytes**, and document that check's miss rate along with it |
+| **Network operator** | segment delivery is an ordinary HTTP GET, so a separate "streaming traffic" classification does not hold. port·protocol-based policy has no effect on this traffic |
 
 ---
 
-## 2.7 한계와 미해결
+## 2.7 Limits and open questions
 
-이 장이 코드로 뒷받침하지 못한 것, 그리고 이 코드가 하지 않는 것을 적어 둔다.
+Noted here: what this chapter could not back up with code, and what this code does not do.
 
-- **역사적 동기는 정리이지 측정이 아니다.** §2.1 의 여섯 항목은 문헌과 통념에
-  근거한 정리이고, RTMP·RTSP 가 실제로 막히는 상황을 이 저장소에서 재현하지 않았다.
-  특정 사업자가 HLS 로 옮긴 실제 결정 근거는 그 사업자만 안다.
-- **`BANDWIDTH`·`RESOLUTION`·`CODECS` 는 대조되지 않는다.** [`probe.py:154-155`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L154-L155) 가
-  실측 `width`/`height` 를 읽지만, `report.py` 에는 그 값을 `Variant.resolution` 과
-  비교하는 코드가 없다. **1080p 라고 선언하고 360p 를 보내도 이 도구는 통과시킨다.**
-  검사 항목 하나가 비어 있는 자리다.
-- **`max_bandwidth` 상한은 강제가 아니다**([`playlist.py:200-203`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L200-L203)). 이하 후보가 없으면
-  초과 후보를 고른다. 의도로 보이지만 문서에도 오류 메시지에도 나타나지 않아,
-  사용자는 상한이 지켜졌다고 믿을 수 있다. `height` 의 엄격함과 비대칭이다.
-- **`BANDWIDTH` 누락을 거부하지 않는다**([`playlist.py:264`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L264)). RFC 8216 상 필수
-  속성인데 파서는 기본값 0 을 준다. 모든 후보가 0 이면 `max(...)` 의 선택이 사실상
-  목록 순서에 따라 정해진다.
-- **마스터/미디어 혼합 문서를 거부하지 않는다.** `parse()` 는 같은 문서에
-  `#EXT-X-STREAM-INF` 와 `#EXTINF` 가 섞여 있어도 양쪽 리스트를 모두 채운다.
-  거부는 상위에서 `media.is_master` 하나만 본다([`cli.py:192-193`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L192-L193)).
-- **이 도구는 ABR 의 적응 동작을 구현하지 않는다**(§2.4.5). 따라서 실제 플레이어의
-  전환 시점·버퍼 정책·대역 추정 알고리즘은 이 교재가 코드로 뒷받침할 수 없다.
-  §2.3.2 의 반응 지연 하한은 구조에서 따라 나오는 논증이지 이 저장소의 실측이 아니다.
-- **라이브의 시간적 성질은 스냅샷 한 장으로만 관찰했다.** 매니페스트를
-  `TARGETDURATION` 주기로 다시 받아 창이 미는 것을 따라가는 코드는 없다
-  ([`cli.py:399-401`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L399-L401), README 의 알려진 한계).
-- **세그먼트 크기 지문(§2.6.4)은 이 저장소에서 측정하지 않았다.** `wire_size` 와
-  `sha256` 를 기록하지만, 그것으로 콘텐츠 식별 가능성을 평가한 적은 없다. 인용한
-  것은 외부 문헌의 알려진 결과다.
-
----
-
-## 2.8 요약
-
-1. **HTTP 는 기술적 우월성이 아니라 통과 가능성으로 선택됐다.** 방화벽·NAT·캐시·
-   CDN·확장·TLS 여섯 제약 중 다섯이 프로토콜 품질과 무관하며, 이미 배치된 인프라가
-   설계 공간을 결정했다.
-2. 발명은 둘이다 — **시간축을 잘라 독립 파일로 만들기**, 그리고 **그 조각들을 텍스트
-   목록으로 가리키기.** 이 순간 스트리밍이 파일 다운로드로 환원되고 §2.1 의 여섯
-   제약이 한 번에 풀린다.
-3. 그 대가로 **재생 상태 전부가 서버에서 클라이언트로 넘어갔다.** 재생 위치·다음
-   요청·화질 결정, 그리고 **전달이 완결됐는지 판정할 위치**까지 넘어갔다. 서버는 더
-   이상 그것을 알 수 없다 — 제1장의 "총 길이는 맞는데 중간이 비어 있다"는 이 구조의
-   논리적 귀결이다.
-4. **ABR 의 반응은 반드시 한 조각 늦는다.** 처리량 측정이 세그먼트 수신 완료 시점에야
-   완성되기 때문이며, 구현으로 없앨 수 있는 지연이 아니다. 세그먼트 길이는 반응 속도와
-   오버헤드·인코딩 효율 사이의 교환값이다.
-5. `Variant`([`playlist.py:102-132`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L102-L132))와 `Segment`([`playlist.py:135-146`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L135-L146))는 **직교하는 두
-   축**을 담는다 — 품질과 시간. `Variant` 의 모든 필드는 서버의 자기 신고이고, 이
-   저장소는 그것을 실측과 대조하지 않는다.
-6. **M3U8 파서는 상태 기계일 수밖에 없다.** 태그마다 유효 범위가 달라, 어떤 상태는
-   소비 후 버리고(`cur_inf`), 어떤 것은 유지하며(`cur_key`), 어떤 것은 다음으로
-   이어진다(`prev_range_end`). `cur_key` 를 함께 지우면 **두 번째 세그먼트부터
-   복호화가 깨진다.**
-7. **HLS 매니페스트에는 조각 무결성 정보가 없다.** BitTorrent·Git·OCI·APT 는 모두
-   목록 안에 해시나 서명을 둔다. HLS 는 URI 와 재생 길이뿐이고, AES-128-CBC 는
-   비인증 암호화라 기밀성만 준다. **이 빈칸이 이 저장소 같은 검증 도구가 존재하는
-   이유다.**
-8. 무상태 전송은 접근 통제를 **URL 문자열·자기 신고 헤더·앰비언트 자격증명** 셋으로
-   밀어내고, CDN 캐시가 인가 판정과 바이트 전달을 분리한다. 제3부 전체가 이 구조의
-   전개다.
+- **The historical motivation is an organization, not a measurement.** The six items of §2.1 are an
+  organization based on the literature and common understanding, and the situations where RTMP·RTSP actually
+  get blocked were not reproduced in this repository. The real basis for a particular operator's move to HLS
+  is known only to that operator.
+- **`BANDWIDTH`·`RESOLUTION`·`CODECS` are not cross-checked.** [`probe.py:154-155`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L154-L155) reads the measured
+  `width`/`height`, but `report.py` has no code comparing that value against `Variant.resolution`. **Declare
+  1080p and send 360p and this tool passes it.** It is a place where one check item is empty.
+- **The `max_bandwidth` cap is not enforced** ([`playlist.py:200-203`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L200-L203)). If there is no candidate under it, it
+  picks an over-cap candidate. It looks intentional, but appears in neither the docs nor the error message,
+  so a user may believe the cap was honored. It is asymmetric with `height`'s strictness.
+- **A missing `BANDWIDTH` is not rejected** ([`playlist.py:264`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L264)). It is a required attribute in RFC 8216,
+  yet the parser gives a default of 0. If every candidate is 0, `max(...)`'s selection is effectively
+  determined by list order.
+- **A mixed master/media document is not rejected.** `parse()` fills both lists even if
+  `#EXT-X-STREAM-INF` and `#EXTINF` are mixed in the same document. The rejection looks only at
+  `media.is_master` upstream ([`cli.py:192-193`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L192-L193)).
+- **This tool does not implement ABR's adaptive behavior** (§2.4.5). Therefore a real player's switch
+  timing·buffer policy·bandwidth-estimation algorithm cannot be backed by code in this course. The
+  reaction-lag lower bound of §2.3.2 is an argument that follows from the structure, not a measurement of
+  this repository.
+- **Live's temporal nature was observed only with a single snapshot.** There is no code that re-fetches the
+  manifest at the `TARGETDURATION` period to follow the window sliding ([`cli.py:399-401`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L399-L401), the README's
+  known limits).
+- **The segment-size fingerprint (§2.6.4) was not measured in this repository.** It records `wire_size` and
+  `sha256`, but has never evaluated content identifiability with them. What was cited is a known result from
+  outside literature.
 
 ---
 
-**다음 장** — 매니페스트가 한 겹이 아니라 두 겹이라는 사실을 이 장은 전제로만 썼다.
-마스터 플레이리스트가 미디어 플레이리스트를 가리키고, 미디어 플레이리스트가 세그먼트를
-가리키는 2계층 간접 참조는 ABR 을 가능하게 하는 대신 **URL 해석 기준점을 두 번
-바꾸고, 실패 지점을 하나 더 만든다.** 제3장은 그 구조가 무엇을 얻고 무엇을 잃는지를
-[`playlist.py:185-204`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L185-L204) 와 [`cli.py:172-196`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L172-L196) 에서 읽는다.
+## 2.8 Summary
+
+1. **HTTP was chosen not for technical superiority but for the ability to get through.** Five of the six
+   constraints — firewall·NAT·cache·CDN·scaling·TLS — have nothing to do with protocol quality, and the
+   already-deployed infrastructure determined the design space.
+2. There are two inventions — **cutting the timeline into independent files**, and **pointing to those pieces
+   with a text list.** At this moment streaming is reduced to file download and the six constraints of §2.1
+   are solved all at once.
+3. In exchange, **all the playback state moved from server to client.** Playback position·next request·
+   quality decision, and even **the place to judge whether delivery completed**, moved. The server can no
+   longer know it — Chapter 1's "the total length matches but the middle is empty" is the logical consequence
+   of this structure.
+4. **ABR's reaction is necessarily one piece late.** Because the throughput measurement is not complete until
+   segment receipt finishes, and it is not a delay removable by implementation. Segment length is a trade
+   between reaction speed and overhead·encoding efficiency.
+5. `Variant` ([`playlist.py:102-132`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L102-L132)) and `Segment` ([`playlist.py:135-146`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L135-L146)) hold **two orthogonal
+   axes** — quality and time. All of `Variant`'s fields are the server's self-report, and this repository
+   does not cross-check them against measurement.
+6. **An M3U8 parser cannot help being a state machine.** Each tag has a different scope, so some state is
+   thrown away after consumption (`cur_inf`), some maintained (`cur_key`), some carried to the next
+   (`prev_range_end`). Clear `cur_key` along with the rest and **decryption breaks from the second segment on.**
+7. **An HLS manifest has no piece-integrity information.** BitTorrent·Git·OCI·APT all put a hash or signature
+   in the list. HLS has only the URI and playback length, and AES-128-CBC is unauthenticated encryption that
+   gives only confidentiality. **This blank is why a verification tool like this repository exists.**
+8. Stateless transport pushes access control onto three things — **the URL string·self-reported headers·
+   ambient credentials** — and the CDN cache separates authorization judgment from byte delivery. All of
+   Part 3 is the unfolding of this structure.
+
+---
+
+**Next chapter** — this chapter used only as a premise the fact that the manifest is not one layer but two.
+The two-tier indirection where the master playlist points to the media playlist and the media playlist points
+to the segments enables ABR but in exchange **changes the URL-resolution reference point twice and creates
+one more point of failure.** Chapter 3 reads what that structure gains and loses in
+[`playlist.py:185-204`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L185-L204) and [`cli.py:172-196`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L172-L196).

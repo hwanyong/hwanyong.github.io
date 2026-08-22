@@ -1,27 +1,26 @@
 ---
-untranslated: ko
-title: "상태 코드의 의미론적 붕괴"
-description: "200 은 성공이 아니다"
-date: 2026-08-15
+title: "The Semantic Collapse of Status Codes"
+description: "200 is not success"
+date: 2026-05-29
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-05-status-code-collapse.svg
 ---
-## 5.0 이 장에서 답할 것
+## 5.0 What this chapter answers
 
-1. `200 OK` 는 정확히 무엇의 성공인가. 무엇의 성공이 **아닌가**
-2. 왜 토큰이 만료된 CDN 이 404 대신 200 을 돌려주는가 — 사고인가 설계인가
-3. 자기 신고 메타데이터를 믿지 않기로 했다면, 대신 무엇을 보는가
-4. 전송의 실패와 내용의 실패를 왜 **다른 검사 항목**으로 나눠야 하는가
+1. What exactly is `200 OK` the success of? What is it **not** the success of?
+2. Why does a CDN with an expired token return 200 instead of 404 — accident or design?
+3. If you decide not to trust self-reported metadata, what do you look at instead?
+4. Why must a transport failure and a content failure be split into **different check items?**
 
 ---
 
-## 5.1 문제 — 전량 수신 성공, 그런데 6초가 없다
+## 5.1 The problem — full receipt success, and yet 6 seconds are gone
 
-### 5.1.1 재현
+### 5.1.1 Reproduction
 
-30초짜리 HLS 스트림을 만들고, 다섯 세그먼트 중 하나만 오류 페이지로 바꾼다.
-파일 이름은 `.ts` 그대로 둔다.
+Make a 30-second HLS stream and change only one of the five segments into an error page. Leave the
+filename as `.ts`.
 
 ```bash
 mkdir -p plain
@@ -38,7 +37,7 @@ printf '<!DOCTYPE html><html><body><h1>403 Forbidden</h1><p>Link expired</p></bo
 python3 -m http.server 8977 --bind 127.0.0.1 &
 ```
 
-서버가 이 파일에 붙이는 헤더는 다음과 같다.
+The headers the server attaches to this file are as follows.
 
 ```
 $ curl -sI http://127.0.0.1:8977/expired/seg002.ts
@@ -48,42 +47,41 @@ Content-type: video/mp2t
 Content-Length: 83
 ```
 
-**상태 코드는 200 이고, `Content-Type` 은 `video/mp2t` 이고, 파일 확장자는 `.ts` 다.**
-자원의 정체를 말하는 자기 신고 값 셋이 전부 "이것은 MPEG-TS 세그먼트다"라고 말한다.
-본문만 그렇지 않다.
+**The status code is 200, the `Content-Type` is `video/mp2t`, and the file extension is `.ts`.** All three
+self-reported values that state the resource's identity say "this is an MPEG-TS segment." Only the body does
+not.
 
 ```
 $ curl -s http://127.0.0.1:8977/expired/seg002.ts
 <!DOCTYPE html><html><body><h1>403 Forbidden</h1><p>Link expired</p></body></html>
 ```
 
-본문 안에는 `403 Forbidden` 이라고 적혀 있다. **서버는 이것이 거절임을 알고 있었고,
-그 사실을 본문에 적었으며, 상태 줄에는 옮기지 않았다.** 이 장이 다루는 현상 전체가
-이 한 줄에 들어 있다.
+Inside the body it says `403 Forbidden`. **The server knew this was a refusal, wrote that fact in the body,
+and did not carry it to the status line.** The whole phenomenon this chapter deals with is in this one line.
 
-### 5.1.2 무엇이 관측되는가
+### 5.1.2 What is observed
 
-같은 스트림에 ffmpeg 을 단독으로 물린 실측이다(ffmpeg 8.1.1, macOS arm64).
+A measurement with ffmpeg alone on the same stream (ffmpeg 8.1.1, macOS arm64).
 
 ```bash
 ffmpeg -v error -y -i http://127.0.0.1:8977/expired/index.m3u8 -c copy naive.mp4
 ```
 
-| 관측 지표 | 정상 스트림 | seg002 만 오류 페이지 | 구별되는가 |
+| Observed metric | Normal stream | Only seg002 an error page | Distinguishable? |
 |---|---|---|---|
-| ffmpeg 종료 코드 | 0 | **0** | ✗ |
-| 출력 총 길이 | 30.023s | **30.023s** | ✗ (같은 값) |
-| stderr (`-v error`) | 없음 | **없음** | ✗ |
-| stderr (`-v warning`) | 무관한 경고 1줄 | 같은 1줄 + 패킷 손상 경고 3줄 | △ 나타나지만 정량 정보가 없다 |
-| 비디오 프레임 수 | 900 | 720 | ✓ 180프레임 = 6초 소실 |
-| 최대 PTS 간격 | 0.033s | 6.033s @ 11.99s | ✓ |
+| ffmpeg exit code | 0 | **0** | ✗ |
+| output total length | 30.023s | **30.023s** | ✗ (same value) |
+| stderr (`-v error`) | none | **none** | ✗ |
+| stderr (`-v warning`) | 1 unrelated warning line | same 1 line + 3 packet-corruption warning lines | △ appears but has no quantitative info |
+| video frame count | 900 | 720 | ✓ 180 frames = 6 seconds lost |
+| max PTS interval | 0.033s | 6.033s @ 11.99s | ✓ |
 
-여섯 지표 중 앞의 셋이 구별되지 않는다. 그리고 그 셋이 자동화 파이프라인이 실제로 보는
-지표다 — 종료 코드, 총 길이, 오류 로그. **결손을 만든 응답은 HTTP 계층에서 100% 성공한
-응답이었고, 결손은 아래 세 지표에서만 드러난다.**
+Of the six metrics, the first three are indistinguishable. And those three are the metrics an automation
+pipeline actually watches — the exit code, the total length, the error log. **The response that created the
+loss was 100% successful at the HTTP layer, and the loss is revealed only in the bottom three metrics.**
 
-네 번째 행은 정직하게 적어 둘 필요가 있다. **ffmpeg 이 완전히 침묵하는 것은 아니다.**
-기본 로그 수준에서는 이렇게 말한다.
+The fourth row needs to be recorded honestly. **ffmpeg is not completely silent.** At the default log level
+it says this.
 
 ```
 $ ffmpeg -hide_banner -v warning -i .../expired/index.m3u8 -c copy naive.mp4
@@ -93,174 +91,172 @@ mime type is not rfc8216 compliant
 [in#0/hls @ 0x828c14000] corrupt input packet in stream 0
 ```
 
-그런데 이 경고를 판정 신호로 쓰기 어려운 이유가 셋이다.
+But there are three reasons this warning is hard to use as a verdict signal.
 
-1. **WARNING 수준이다.** `-v error` 를 주는 순간 전부 사라진다. 스크립트에서 `-v error`
-   는 매우 흔한 설정이고, 이 저장소의 대조군 테스트조차 그렇게 실행한다
-   (`tests/run.sh:515`).
-2. **종료 코드는 여전히 0 이다.** 경고가 났다는 사실이 프로세스 결과에 반영되지 않으므로,
-   종료 코드로 분기하는 파이프라인은 경고를 볼 기회조차 없다.
-3. **정량 정보가 없다.** "패킷이 손상됐다"는 "11.99초부터 6.03초가 사라졌다"와 다른
-   진술이다. 게다가 정상 스트림에서도 무관한 경고 한 줄(`mime type is not rfc8216
-   compliant` — `python3 -m http.server` 가 `.m3u8` 에 `application/x-mpegurl` 을 붙이기
-   때문)이 나온다. 경고의 유무를 신호로 쓰려면 문자열을 분류해야 하는데, **그 분류기를
-   만드는 일이 곧 검증기를 만드는 일이다.**
+1. **It is WARNING level.** The moment you pass `-v error` it all disappears. `-v error` is a very common
+   setting in scripts, and even this repository's control test runs that way (`tests/run.sh:515`).
+2. **The exit code is still 0.** The fact that a warning occurred is not reflected in the process result, so
+   a pipeline that branches on the exit code has no chance even to see the warning.
+3. **There is no quantitative info.** "A packet is corrupt" is a different statement from "6.03 seconds are
+   gone from 11.99." Moreover, even on a normal stream one unrelated warning line appears
+   (`mime type is not rfc8216 compliant` — because `python3 -m http.server` attaches
+   `application/x-mpegurl` to `.m3u8`). To use the presence of a warning as a signal you must classify the
+   string, and **making that classifier is itself making a verifier.**
 
-그리고 여기서 놓치지 말아야 할 점이 있다. HTTP 계층은 **거짓말을 하지 않았다.** 요청은
-처리됐고 83바이트 응답은 온전히 전달됐다. 전송 계층의 진술은 전부 참이다. 틀린 것은
-그 진술을 "내가 요청한 세그먼트를 받았다"로 읽은 쪽이다.
+And here is a point not to miss. The HTTP layer **did not lie.** The request was processed and the 83-byte
+response was delivered intact. All of the transport layer's statements are true. What is wrong is the side
+that read those statements as "I received the segment I requested."
 
-> 이 장의 문제는 서버가 잘못된 값을 보내는 것이 아니라, **옳은 값을 다른 계층의
-> 명제로 읽는 것**이다.
+> This chapter's problem is not the server sending a wrong value, but **reading a correct value as another
+> layer's proposition.**
 
 ---
 
-## 5.2 원리 — 200 은 무엇의 성공인가
+## 5.2 The principle — 200 is the success of what?
 
-> **용어** — **상태 코드(status code)**: HTTP 응답의 첫 줄에 오는 3자리 정수.
-> 서버가 요청 처리의 결과를 값 하나로 요약해 신고하는 필드다.
+> **Term** — **status code**: a 3-digit integer on the first line of an HTTP response. A field where the
+> server summarizes the result of request processing into one value and reports it.
 
-HTTP 규격(RFC 9110 §15.3.1)이 `200 OK` 에 대해 말하는 것은 두 조각이다.
+What the HTTP spec (RFC 9110 §15.3.1) says about `200 OK` is two pieces.
 
-- **요청이 성공했다**(the request has succeeded)
-- GET 에 대해서는 본문이 **대상 자원의 표현**(a representation of the target resource)이다
+- **the request has succeeded**
+- for a GET, the body is **a representation of the target resource**
 
-앞 조각과 뒤 조각은 성질이 전혀 다르다. 앞은 **관측 가능한 사실**이다 — 응답이 도착했다는
-것 자체가 증거다. 뒤는 **서버의 주장**이다. 규격에는 이 주장을 검증할 수단이 없고, 강제할
-수단도 없다. 즉 하나의 값이 두 개의 명제를 동시에 나른다.
+The first piece and the second are entirely different in nature. The first is an **observable fact** — that
+the response arrived is itself the evidence. The second is **the server's claim.** The spec has no means to
+verify this claim, nor to enforce it. That is, one value carries two propositions at once.
 
-| 명제 | 누가 확정하는가 | 클라이언트가 검증할 수 있는가 |
+| Proposition | Who determines it | Can the client verify it? |
 |---|---|---|
-| P₁ — 요청이 처리되고 응답이 전달되었다 | 전송 계층 | 그렇다. 응답이 도착한 것이 증거다 |
-| P₂ — 본문은 내가 요청한 자원의 표현이다 | 서버의 주장 | **아니다.** 상태 코드로는 불가능하다 |
+| P₁ — the request was processed and the response delivered | the transport layer | Yes. that the response arrived is the evidence |
+| P₂ — the body is a representation of the resource I requested | the server's claim | **No.** impossible with the status code |
 
-> **용어** — **의미론적 붕괴(semantic collapse)**: 서로 다른 계층의 두 명제가 하나의
-> 신호로 표현되면서, 소비자가 아래 계층의 참을 위 계층의 참으로 읽게 되는 현상.
-> 신호가 틀린 것이 아니라, **신호가 담을 수 있는 것보다 많은 것을 읽어 낸 것**이다.
+> **Term** — **semantic collapse**: the phenomenon where two propositions of different layers are expressed
+> by one signal, leading the consumer to read the lower layer's truth as the upper layer's truth. It is not
+> that the signal is wrong, but that **more was read out of it than the signal can carry.**
 
-![성공의 층위와 붕괴 지점](/images/lecture/hls-recon/05-success-layers.svg)
+![The tiers of success and the collapse point](/images/lecture/hls-recon/05-success-layers.svg)
 
-*그림 5-1 — 한 번의 응답에서 성공을 말하는 네 층위. 각 층은 서로 다른 명제를 주장하며,
-앞 층의 참이 뒤 층의 참을 함의하지 않는다. ② 하나를 근거로 ④ 를 단정하는 도약이
-의미론적 붕괴다.*
+*Figure 5-1 — the four tiers that speak of success in one response. Each layer claims a different
+proposition, and a front tier's truth does not entail a rear tier's truth. The leap of asserting ④ on the
+basis of ② alone is semantic collapse.*
 
-### 5.2.1 왜 404 가 아니라 200 이 오는가
+### 5.2.1 Why does 200 come instead of 404?
 
-"서버가 잘못 만든 것"으로 정리하고 넘어가면 클라이언트를 잘못 설계하게 된다. 200-오류
-페이지를 만드는 경로는 최소 여섯 갈래이고, 그중 몇은 **의도된 설계**다.
+Sum it up as "the server made it wrong" and move on, and you design the client wrong. There are at least
+six paths to a 200-error page, and several of them are **intended design.**
 
-| # | 원인 | 어디서 생기는가 | 왜 200 이 되는가 | 의도인가 |
+| # | Cause | Where it arises | Why it becomes 200 | Intended? |
 |---|---|---|---|---|
-| 1 | SPA·정적 호스팅 폴백 | 객체 스토리지·정적 호스팅의 "없는 경로 → `/index.html`" 재작성 | 재작성은 본문뿐 아니라 **상태 코드까지** 바꾼다 | 부작용 |
-| 2 | 리버스 프록시 오류 문서 | nginx `error_page 403 =200 /deny.html;` 류의 구성 | `=200` 을 붙이는 관행이 널리 퍼져 있다 | 구성 선택 |
-| 3 | 인증·동의 인터스티셜 | 만료된 세션 → 로그인 페이지로 302 | 리다이렉트 끝의 로그인 페이지는 **정상 자원**이므로 200 | 설계 |
-| 4 | WAF·봇 챌린지 | JS 챌린지·CAPTCHA 페이지 | 403 을 주면 자동화가 즉시 학습한다. 200 이 탐지를 늦춘다 | **설계(보안)** |
-| 5 | 열거 방지 | "없음"과 "권한 없음"을 상태 코드로 구별하지 않기 | 404/403 의 차이가 곧 자원 존재 여부의 누출 | **설계(보안)** |
-| 6 | CDN 오리진 오류 흡수 | 오리진 5xx 를 오류 문서·stale 응답으로 대체 | 가용성 지표를 지키려는 선택 | 설계(운영) |
+| 1 | SPA·static-hosting fallback | object storage·static hosting's "missing path → `/index.html`" rewrite | the rewrite changes not just the body but the **status code** too | side effect |
+| 2 | reverse-proxy error document | a config like nginx `error_page 403 =200 /deny.html;` | the practice of attaching `=200` is widespread | config choice |
+| 3 | auth·consent interstitial | expired session → 302 to a login page | the login page at the end of the redirect is a **normal resource**, so 200 | design |
+| 4 | WAF·bot challenge | JS challenge·CAPTCHA page | give a 403 and automation learns immediately. 200 delays detection | **design (security)** |
+| 5 | enumeration prevention | not distinguishing "absent" and "unauthorized" by status code | the difference between 404/403 is a leak of resource existence | **design (security)** |
+| 6 | CDN origin-error absorption | replacing an origin 5xx with an error document·stale response | a choice to protect the availability metric | design (operations) |
 
-3·4·5 는 버그가 아니다. **상태 코드의 정보량을 일부러 줄이는 것이 옳은 설계인 경우가
-있다**(§5.5.2에서 다시 다룬다). 그러므로 이 문제는 "서버들이 규격을 제대로 지키면
-사라질 문제"가 아니다.
+3·4·5 are not bugs. **There are cases where deliberately reducing the status code's information content is
+correct design** (covered again in §5.5.2). So this problem is not "a problem that disappears if servers
+follow the spec properly."
 
-> 클라이언트는 상태 코드가 부정확한 세계를 **정상 조건으로** 가정해야 한다.
-> 그것은 상대의 버그가 아니라 상대의 정책일 수 있다.
+> The client must assume, as a **normal condition**, a world in which the status code is inaccurate. That
+> may be not the other party's bug but the other party's policy.
 
-### 5.2.2 제14장과의 경계 — 세 층이 반대로 거짓말한다
+### 5.2.2 The boundary with Chapter 14 — three layers lie in opposite directions
 
-제14장은 **이름과 선언**(URI 확장자·`Content-Type`)이 내용과 갈라지는 현상을 다룬다.
-이 장은 **상태 코드**를 다룬다. 두 장이 같은 원리의 다른 면인 이유는 두 사례를 나란히
-놓으면 보인다.
+Chapter 14 covers the phenomenon of the **name and declaration** (URI extension·`Content-Type`) diverging
+from the content. This chapter covers the **status code.** Why the two chapters are different faces of the
+same principle is seen by placing the two cases side by side.
 
-| | 제14장 — 위장된 정상 세그먼트 | 이 장 — 만료 토큰 오류 페이지 |
+| | Chapter 14 — a disguised normal segment | This chapter — an expired-token error page |
 |---|---|---|
-| URI 확장자 | `.html` | `.ts` |
+| URI extension | `.html` | `.ts` |
 | `Content-Type` | `text/html` | `video/mp2t` |
-| 상태 코드 | `200` | `200` |
-| 선두 바이트 | `47 40 11 10` | `3c 21 44 4f` (`<!DO`) |
-| 실제 내용 | MPEG-TS | HTML |
-| 옳은 처리 | **정상으로 받아들인다** | **FAIL 로 잡는다** |
+| status code | `200` | `200` |
+| leading bytes | `47 40 11 10` | `3c 21 44 4f` (`<!DO`) |
+| actual content | MPEG-TS | HTML |
+| correct handling | **accept as normal** | **catch as FAIL** |
 
-**두 사례에서 자기 신고 층은 정반대 방향으로 거짓말한다.** 제14장에서는 이름·선언이 HTML
-이라 말하고 내용이 TS 였고, 여기서는 이름·선언이 TS 라 말하고 내용이 HTML 이다. 판정이
-정반대인데, 그 판정을 가르는 단서는 양쪽 모두 **선두 바이트 하나**뿐이다.
+**In the two cases the self-reporting layer lies in opposite directions.** In Chapter 14 the name·declaration
+say HTML and the content was TS; here the name·declaration say TS and the content is HTML. The verdict is
+opposite, yet the only clue distinguishing that verdict, in both, is **a single leading byte.**
 
-그래서 이 저장소는 헤더를 보고 분기하는 코드를 아예 두지 않는다. 헤더로 분기하려면 위의
-두 행을 구별하는 규칙을 세워야 하는데, 두 행의 헤더 집합은 서로 배타적이지 않다 —
-`.html` + `text/html` + `200` 조합은 정상일 수도 실패일 수도 있다.
+So this repository puts no code at all that branches on the header. To branch on the header you must set a
+rule distinguishing the two rows above, but the two rows' header sets are not mutually exclusive — the
+`.html` + `text/html` + `200` combination could be normal or a failure.
 
 ---
 
-## 5.3 코드 — `ok` 의 경계와 두 번째 관문
+## 5.3 The code — the boundary of `ok` and the second gate
 
-### 5.3.1 `FetchResult.ok` 는 정확히 무엇을 뜻하는가
+### 5.3.1 What exactly does `FetchResult.ok` mean?
 
 ```python
 # fetch.py:73-79
 @dataclass
 class FetchResult:
-    """요청 한 건의 결과와 계측치."""
+    """One request's result and measurements."""
 
     url: str
     ok: bool
     status: int = 0
 ```
 
-`ok` 가 서는 자리는 `_send` 의 예외 경계다.
+The place `ok` stands is the exception boundary of `_send`.
 
 ```python
 # fetch.py:196-201
 except urllib.error.HTTPError as e:
     last_status, last_err = e.code, f"HTTP {e.code} {e.reason}"
     last_origin = (e.headers or {}).get("Access-Control-Allow-Origin", "") or ""
-    # 4xx 는 재시도해도 결과가 같다 (401/403/404 = 토큰 만료·핫링크 차단)
+    # 4xx gives the same result on retry (401/403/404 = token expiry·hotlink block)
     if 400 <= e.code < 500 and e.code not in (408, 429):
         break
 ```
 
-urllib 은 최종 상태가 2xx 가 아니면 `HTTPError` 를 던진다(`HTTPErrorProcessor.http_response`
-가 `if not (200 <= code < 300)` 로 판정한다). 리다이렉트는 그 전에 `HTTPRedirectHandler`
-가 따라간다. 따라서 `ok=True` 는 다음과 정확히 같은 뜻이다.
+urllib throws an `HTTPError` if the final status is not 2xx (`HTTPErrorProcessor.http_response` judges by
+`if not (200 <= code < 300)`). A redirect is followed before that by `HTTPRedirectHandler`. Therefore
+`ok=True` means exactly the following.
 
-> **최종 상태가 2xx 였고, 본문 압축 해제에 성공했다.** 그 이상 아무것도 아니다.
+> **The final status was 2xx, and the body decompression succeeded.** Nothing more.
 
-경계를 표로 펼치면 이렇다.
+Spread the boundary into a table and it is this.
 
-| 응답 | `ok` | 근거 |
+| Response | `ok` | Basis |
 |---|---|---|
-| 200 + 정상 TS | `True` | 정상 |
-| **200 + HTML 오류 페이지** | **`True`** | 이 장의 문제. 2xx 이므로 예외가 없다 |
-| **204 No Content** (본문 0바이트) | **`True`** | 204 도 2xx 다 |
-| **302 → 로그인 페이지 → 200** | **`True`** | urllib 이 리다이렉트를 따라간 뒤의 200 |
-| 206 Partial Content | `True` | `EXT-X-BYTERANGE` 경로에서 정상 |
-| 403 · 404 | `False` | `HTTPError` — 4xx 이므로 재시도 없이 중단 |
-| 500 · 502 | `False` | `HTTPError` — 5xx 는 재시도 대상 |
-| 200 + gzip 해제 실패 | `False` | [`fetch.py:175-180`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L175-L180) 이 응답 손상으로 승격 |
+| 200 + normal TS | `True` | normal |
+| **200 + HTML error page** | **`True`** | this chapter's problem. being 2xx, no exception |
+| **204 No Content** (0-byte body) | **`True`** | 204 is also 2xx |
+| **302 → login page → 200** | **`True`** | the 200 after urllib followed the redirect |
+| 206 Partial Content | `True` | normal on the `EXT-X-BYTERANGE` path |
+| 403 · 404 | `False` | `HTTPError` — being 4xx, halt without retry |
+| 500 · 502 | `False` | `HTTPError` — 5xx is a retry target |
+| 200 + gzip decompress failure | `False` | [`fetch.py:175-180`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L175-L180) promotes it to a response corruption |
 
-굵게 표시한 세 행이 요점이다. `ok` 는 정직한 이름이다 — "요청이 성공했는가"에 답할 뿐
-"내가 원한 것이 왔는가"에는 답하지 않는다. **이 필드를 최종 판정에 쓰지 않는 것**이
-이 코드가 그 구별을 지키는 방법이다.
+The three bold rows are the point. `ok` is an honest name — it answers only "did the request succeed," not
+"did what I wanted arrive." **Not using this field for the final verdict** is how this code keeps that
+distinction.
 
-한 가지 반례가 여기에 붙는다. 200-오류페이지는 재시도를 유발하지 **않는다**. 재시도
-정책은 상태 코드로만 판단하는데([`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)) 상태가 200 이니 재시도 조건에
-아예 닿지 않는다. 그리고 그 동작은 옳다 — 같은 URL 을 다시 요청해도 만료된 토큰에는
-같은 오류 페이지가 온다. **문제는 재시도하지 않는 것이 아니라, 재시도하지 않으면서
-성공으로 집계되는 것이다.**
+One counterexample attaches here. A 200-error page does **not** trigger a retry. The retry policy judges by
+the status code alone ([`fetch.py:199-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L199-L201)) and, being 200, it never even reaches the retry condition. And
+that behavior is correct — request the same URL again and the same error page comes for the expired token.
+**The problem is not that it does not retry, but that it is counted as a success while not retrying.**
 
-### 5.3.2 두 번째 관문 — 판별은 상태가 아니라 바이트로
+### 5.3.2 The second gate — determination by bytes, not status
 
 ```python
 # tsanalyze.py:20-37
 def sniff(data: bytes) -> str:
-    """세그먼트 바이트의 컨테이너 종류를 판별한다: mpegts | fmp4 | unknown.
+    """Determine the segment bytes' container kind: mpegts | fmp4 | unknown.
 
-    HTTP 200 으로 응답했다고 미디어가 온 것은 아니다. 토큰이 만료된 CDN 이
-    404 대신 HTML 오류 페이지를 200 으로 돌려주는 사례가 흔한데, 이때
-    '수신 성공'으로 집계되면 검증 자체가 무의미해진다. 상태 코드가 아니라
-    선두 바이트로 판정한다.
+    Responding with HTTP 200 does not mean media arrived. It is common for a CDN with an
+    expired token to return an HTML error page as 200 instead of 404, and if that is counted
+    as 'receive success' the verification itself becomes meaningless. Determine by the leading
+    bytes, not the status code.
     """
     if len(data) < 8:
         return "unknown"
-    # TS 는 188바이트 주기로 sync byte 가 반복되므로 두 번째 패킷까지 확인한다.
+    # TS repeats a sync byte every 188 bytes, so check up to the second packet.
     if data[0] == SYNC_BYTE and (
         len(data) < PACKET_SIZE + 1 or data[PACKET_SIZE] == SYNC_BYTE
     ):
@@ -270,39 +266,39 @@ def sniff(data: bytes) -> str:
     return "unknown"
 ```
 
-이 함수의 시그니처가 `sniff(data: bytes)` 라는 사실이 설계다. 상태 코드를 **인자로 받지
-않으므로 참조할 수 없다**(제14장 §14.4.1에서 `Content-Type` 에 대해 같은 이야기를 한다).
-독스트링은 그 이유를 상태 코드에 대해 명시적으로 적어 둔 실측 기록이다.
+That this function's signature is `sniff(data: bytes)` is design. It **does not take the status code as an
+argument, so it cannot reference it** (Chapter 14 §14.4.1 tells the same story about `Content-Type`). The
+docstring is a measurement record that explicitly wrote down that reason for the status code.
 
-§5.1 의 오류 페이지가 이 함수를 어떻게 통과하는지 따라가 보자.
+Let us follow how §5.1's error page passes through this function.
 
-| 단계 | 값 | 결과 |
+| Step | Value | Result |
 |---|---|---|
-| `len(data) < 8` | 83 | 통과 |
-| `data[0] == 0x47` | `0x3c` (`<`) | 불일치 |
-| `data[4:8] in _MP4_BOXES` | `b"CTYP"` (`<!DOCTYPE` 의 5–8번째 바이트) | 불일치 |
-| 반환 | | `"unknown"` |
+| `len(data) < 8` | 83 | pass |
+| `data[0] == 0x47` | `0x3c` (`<`) | mismatch |
+| `data[4:8] in _MP4_BOXES` | `b"CTYP"` (the 5th–8th bytes of `<!DOCTYPE`) | mismatch |
+| return | | `"unknown"` |
 
-`len(data) < 8` 가드는 부수 효과로 **빈 응답도 잡는다.** 204 No Content, 프록시가 절단한
-0바이트 응답, `Content-Length: 0` 인 200 이 전부 여기서 `unknown` 으로 떨어진다. 별도
-분기를 두지 않고 같은 관문이 처리한다.
+The `len(data) < 8` guard, as a side effect, **also catches empty responses.** 204 No Content, a
+proxy-truncated 0-byte response, a 200 with `Content-Length: 0` all fall to `unknown` here. The same gate
+handles them without a separate branch.
 
-### 5.3.3 두 실패는 다른 항목으로 보고된다
+### 5.3.3 The two failures are reported as different items
 
 ```python
 # cli.py:452-468
 for seg, res in zip(segs, results):
     if not res.ok:
-        _eprint(f"    ✗ seg#{seg.index} 수신 실패: {res.error}")
+        _eprint(f"    ✗ seg#{seg.index} receive failed: {res.error}")
         continue
     data = res.body
     if seg.key and seg.key.is_encrypted:
         data = keys.decrypt(data, seg.key, seg.seq)
     kind = sniff(data)
     if kind == "unknown":
-        # 200 을 받았지만 미디어가 아니다 — 오류 페이지가 실려 온 경우다.
+        # received a 200 but it is not media — an error page came carried instead.
         bogus.append((seg.index, res.content_type, data[:16].hex()))
-        _eprint(f"    ✗ seg#{seg.index} 미디어가 아님 (Content-Type: {res.content_type or '없음'})")
+        _eprint(f"    ✗ seg#{seg.index} not media (Content-Type: {res.content_type or 'none'})")
         continue
     ts_total.merge(analyze(data, cc_state))
     p = work / f"seg{seg.index:06d}{ext}"
@@ -310,187 +306,186 @@ for seg, res in zip(segs, results):
     paths.append(p)
 ```
 
-관문이 둘이고, 두 관문의 실패가 **서로 다른 목록**으로 간다. `res.ok` 실패는
-`results` 안에 남고, `sniff` 실패는 `bogus` 에 쌓인다. 리포트에서 둘은 별개의 검사
-항목이 된다.
+There are two gates, and the two gates' failures go to **different lists.** A `res.ok` failure remains in
+`results`, and a `sniff` failure piles into `bogus`. In the report the two become separate check items.
 
 ```python
 # report.py:167-173
 if failed:
     codes = sorted({f.status or 0 for f in failed})
     rep.add(
-        "세그먼트 수신",
+        "segment receipt",
         FAIL,
-        f"{len(failed)}/{len(fetches)}개 실패 (HTTP {codes}) — 재조립본에 결손 구간 발생",
+        f"{len(failed)}/{len(fetches)} failed (HTTP {codes}) — loss interval in the reassembled output",
     )
 ```
 
 ```python
 # report.py:198-211
-# HTTP 200 이어도 내용이 미디어가 아닐 수 있다 (만료 토큰에 대한 오류 페이지 등).
+# even with HTTP 200 the content may not be media (an error page for an expired token, etc.).
 if bogus:
-    types = sorted({ct or "Content-Type 없음" for _, ct, _ in bogus})
+    types = sorted({ct or "no Content-Type" for _, ct, _ in bogus})
     rep.add(
-        "페이로드 유효성",
+        "payload validity",
         FAIL,
-        f"{len(bogus)}개가 200 응답이나 미디어가 아님 ({', '.join(types)}) "
-        f"— seg#{bogus[0][0]} 선두 {bogus[0][2][:16]}",
+        f"{len(bogus)} are 200 responses but not media ({', '.join(types)}) "
+        f"— seg#{bogus[0][0]} head {bogus[0][2][:16]}",
     )
     rep.stats["bogus_payloads"] = [
         {"segment": i, "content_type": ct, "head_hex": h} for i, ct, h in bogus
     ]
 else:
-    rep.add("페이로드 유효성", PASS, "전량 미디어 컨테이너로 확인 (선두 바이트 검사)")
+    rep.add("payload validity", PASS, "all confirmed as media containers (leading-byte check)")
 ```
 
-![두 관문](/images/lecture/hls-recon/05-two-gates.svg)
+![Two gates](/images/lecture/hls-recon/05-two-gates.svg)
 
-*그림 5-2 — 세그먼트 응답 한 건이 지나는 두 관문. 전송의 성공과 내용의 정당성을 따로
-묻고, 두 실패를 서로 다른 리포트 항목으로 보고한다.*
+*Figure 5-2 — the two gates one segment response passes through. It asks separately about the success of
+transport and the validity of content, and reports the two failures as different report items.*
 
-### 5.3.4 왜 항목을 나누는가 — 합치면 리포트가 거짓말한다
+### 5.3.4 Why split the items — merge them and the report lies
 
-§5.1 의 스트림을 이 저장소 도구에 그대로 물린 실측이다.
+A measurement feeding §5.1's stream straight into this repository's tool.
 
 ```
-  [2/3] 복호화 · 전송 무결성 분석
-    ✗ seg#2 미디어가 아님 (Content-Type: video/mp2t)
+  [2/3] Decryption · transport integrity analysis
+    ✗ seg#2 not media (Content-Type: video/mp2t)
 
-  ✓ 플레이리스트       세그먼트 5개, 선언 길이 30.00s, TARGETDURATION 6s, 암호화 없음
-  ✓ 세그먼트 수신      5개 전량 1회 수신, 2.7 MB
-  ✓ 응답 지연          TTFB p50 1ms / p95 2ms, 처리량 중앙값 2021.9 Mbps
-  ✗ 페이로드 유효성    1개가 200 응답이나 미디어가 아님 (video/mp2t) — seg#2 선두 3c21444f43545950
-  ✓ 세그먼트 고유성    SHA-256 전량 상이
-  ! TS 무결성          CC 불연속 5건(패킷 유실)
-  ✓ 길이 정합          실측 30.02s vs 선언 30.00s (드리프트 +0.02s / 0.08%)
-  ✗ 타임라인 연속성    결손 1건 / 합계 6.03s (최대 6.03s) @ 11.99~18.02s
-  ✓ 전체 디코드        끝까지 오류 없이 디코드
+  ✓ Playlist            5 segments, declared length 30.00s, TARGETDURATION 6s, no encryption
+  ✓ Segment receipt     all 5 received on the first try, 2.7 MB
+  ✓ Response latency    TTFB p50 1ms / p95 2ms, throughput median 2021.9 Mbps
+  ✗ Payload validity    1 is a 200 response but not media (video/mp2t) — seg#2 head 3c21444f43545950
+  ✓ Segment uniqueness  all SHA-256 distinct
+  ! TS integrity        5 CC discontinuities (packet loss)
+  ✓ Length consistency  measured 30.02s vs declared 30.00s (drift +0.02s / 0.08%)
+  ✗ Timeline continuity 1 loss / total 6.03s (max 6.03s) @ 11.99~18.02s
+  ✓ Full decode         decoded to the end with no errors
 ```
 
-종료 코드는 2 다([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652) 가 FAIL 을 2 로 사상한다). 여기서 읽어야 할 것은
-FAIL 두 개가 아니라 **PASS 들**이다.
+The exit code is 2 ([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652) maps FAIL to 2). What to read here is not the two FAILs but the
+**PASSes.**
 
-| 항목 | 판정 | 이 판정은 옳은가 |
+| Item | Verdict | Is this verdict correct? |
 |---|---|---|
-| 세그먼트 수신 | ✓ PASS | **옳다.** 5개 전량이 실제로 1회에 수신됐다. HTTP 는 아무것도 실패하지 않았다 |
-| 응답 지연 | ✓ PASS | 옳다. 지연에는 문제가 없었다 |
-| 길이 정합 | ✓ PASS | **옳다.** 실측 30.02s 는 선언 30.00s 와 사실상 같다 |
-| 세그먼트 고유성 | ✓ PASS | 옳다. 해시는 전부 다르다 |
-| TS 무결성 | ! WARN | 옳다. 다만 이것은 오류 페이지 **자체**가 아니라 그것을 건너뛴 **결과**다 — seg001 뒤에 seg003 이 이어붙으면서 PID 5개에서 CC 가 점프한다 (제18장) |
-| 페이로드 유효성 | ✗ FAIL | 오류 페이지를 지목 |
-| 타임라인 연속성 | ✗ FAIL | 11.99–18.02s 의 구멍을 지목 |
+| Segment receipt | ✓ PASS | **correct.** all 5 were actually received on the first try. HTTP failed at nothing |
+| Response latency | ✓ PASS | correct. there was no problem with latency |
+| Length consistency | ✓ PASS | **correct.** the measured 30.02s is effectively the same as the declared 30.00s |
+| Segment uniqueness | ✓ PASS | correct. the hashes are all different |
+| TS integrity | ! WARN | correct. only, this is not the error page **itself** but the **result** of skipping it — as seg003 is joined after seg001, the CC jumps in 5 PIDs (Chapter 18) |
+| Payload validity | ✗ FAIL | points at the error page |
+| Timeline continuity | ✗ FAIL | points at the 11.99–18.02s hole |
 
-**전송 계층 항목을 FAIL 로 만들어 결론만 맞추는 설계는 리포트를 망가뜨린다.** 전송이
-실패했다고 적으면 사용자는 네트워크·인증·URL 을 의심하게 되는데, 이 사례에서 그쪽은
-전부 정상이다. 원인과 조치가 다르기 때문에 항목이 달라야 한다.
+**A design that makes a transport-layer item FAIL just to get the conclusion right ruins the report.** Write
+that the transport failed and the user comes to suspect the network·authentication·URL, whereas in this case
+all of those are normal. Because the cause and the remedy differ, the item must differ.
 
-| | 전송 실패 (`res.ok == False`) | 내용 실패 (`sniff == "unknown"`) |
+| | Transport failure (`res.ok == False`) | Content failure (`sniff == "unknown"`) |
 |---|---|---|
-| 대표 원인 | 네트워크 단절, 404 링크 만료, 403 핫링크 차단 | 토큰 만료 인터스티셜, WAF 챌린지, 오리진 오류 흡수 |
-| 재시도 의미 | 있을 수 있다 (5xx·408·429) | 없다 — 같은 오류 페이지가 다시 온다 |
-| 사용자 조치 | `--referer`·`--cookie`·URL 재취득 | 링크 재취득 (거의 항상 만료다) |
-| 리포트 항목 | 세그먼트 수신 | 페이로드 유효성 |
-| 남기는 증거 | HTTP 상태 코드 집합 | `Content-Type` + 선두 16바이트 ([`report.py:207-209`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L207-L209)) |
+| representative cause | network cut, 404 link expiry, 403 hotlink block | token-expiry interstitial, WAF challenge, origin-error absorption |
+| meaning of retry | may exist (5xx·408·429) | none — the same error page comes again |
+| user action | `--referer`·`--cookie`·re-acquire the URL | re-acquire the link (almost always expired) |
+| report item | segment receipt | payload validity |
+| evidence left | the set of HTTP status codes | `Content-Type` + leading 16 bytes ([`report.py:207-209`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L207-L209)) |
 
-`bogus` 에 `Content-Type` 을 함께 남기는 것은 판정 근거가 아니라 사후 분석용이다.
-판정은 이미 선두 바이트가 끝냈고, 헤더는 "어느 CDN 이 무엇으로 선언했는가"를 남기기
-위한 기록이다.
+Leaving `Content-Type` with `bogus` is not a basis for the verdict but for after-the-fact analysis. The
+verdict was already finished by the leading bytes, and the header is a record to keep "which CDN declared it
+as what."
 
-전량이 오류 페이지인 경우를 위한 마지막 방어도 있다.
+There is also a last defense for the case where all are error pages.
 
 ```python
 # cli.py:470-471
 if not paths:
-    raise SystemExit("수신된 세그먼트가 없다 — 토큰 만료 또는 Referer 검증 실패 가능성")
+    raise SystemExit("no segments received — possibly token expiry or Referer-verification failure")
 ```
 
-전 세그먼트가 200 인데 산출물이 0바이트 파일로 만들어지는 경로를 막는다. 여기서
-**빈 파일을 만들고 PASS 를 내는 것**이 이 장이 겨냥하는 최악의 결말이다.
+It blocks the path where every segment is 200 yet the output is made as a 0-byte file. **Making an empty file
+and returning PASS** here is the worst ending this chapter targets.
 
-### 5.3.5 관측 가능성 — `_diagnose` 는 무엇이 왔는지 보여준다
+### 5.3.5 Observability — `_diagnose` shows what arrived
 
-플레이리스트 단계에서 같은 일이 벌어지면 세그먼트 루프에 도달하지도 못한다. 파서가
-먼저 죽는다.
+If the same thing happens at the playlist stage, it does not even reach the segment loop. The parser dies
+first.
 
 ```python
 # playlist.py:210-211
 if not lines or not lines[0].startswith("#EXTM3U"):
-    raise ValueError("#EXTM3U 헤더가 없다 — M3U8 플레이리스트가 아니다")
+    raise ValueError("no #EXTM3U header — not an M3U8 playlist")
 ```
 
-이 예외만 사용자에게 던지면 사용자는 다음에 무엇을 해야 할지 알 수 없다. 그래서
-`_diagnose` 가 있다.
+Throw only this exception at the user and the user cannot know what to do next. So there is `_diagnose`.
 
 ```python
 # cli.py:57-75
 def _diagnose(res, url: str) -> str:
-    """플레이리스트로 파싱되지 않은 응답이 실제로 무엇이었는지 설명한다.
+    """Explain what a response that did not parse as a playlist actually was.
 
-    '#EXTM3U 헤더가 없다'만 던지면 사용자가 다음에 뭘 해야 할지 알 수 없다.
-    무엇이 왔는지(상태·타입·선두 바이트)를 보여주고 흔한 원인을 짚어준다.
+    Throwing only 'no #EXTM3U header' leaves the user not knowing what to do next.
+    Show what arrived (status·type·leading bytes) and point at common causes.
     """
     head = res.body[:64]
     printable = "".join(chr(b) if 32 <= b < 127 else "." for b in head)
     lines = [
-        f"플레이리스트로 해석할 수 없는 응답이다: {url}",
+        f"a response that cannot be interpreted as a playlist: {url}",
         "",
-        f"  HTTP 상태      : {res.status}",
-        f"  Content-Type   : {res.content_type or '(없음)'}",
-        f"  Content-Encoding: {res.encoding or '(없음)'}",
-        f"  본문 크기      : {res.size:,} B",
-        f"  선두 바이트    : {head[:16].hex()}",
-        f"  선두 문자      : {printable[:48]}",
+        f"  HTTP status     : {res.status}",
+        f"  Content-Type    : {res.content_type or '(none)'}",
+        f"  Content-Encoding: {res.encoding or '(none)'}",
+        f"  body size       : {res.size:,} B",
+        f"  leading bytes   : {head[:16].hex()}",
+        f"  leading chars   : {printable[:48]}",
         "",
     ]
 ```
 
-여섯 줄 중 위 셋은 **서버가 말한 것**이고 아래 셋은 **실제로 온 것**이다. `_diagnose` 는
-둘을 나란히 세워 불일치를 사용자 눈에 보이게 만든다. 판정은 하지 않는다 — 판정에 필요한
-것을 보여줄 뿐이다. `res.status` 는 출력되지만 **어떤 분기 조건에도 쓰이지 않는다.**
+Of the six lines, the top three are **what the server said** and the bottom three are **what actually
+arrived.** `_diagnose` stands the two side by side and makes the mismatch visible to the user. It does not
+render a verdict — it only shows what is needed for one. `res.status` is printed but **is used in no branch
+condition.**
 
-분기는 본문으로만 한다.
+The branch is done by the body alone.
 
 ```python
 # cli.py:77-90
 lowered = res.body[:512].lstrip().lower()
 if lowered.startswith((b"<!doctype", b"<html", b"<?xml")):
-    lines.append("  → 영상이 아니라 웹 페이지가 왔다. 서버가 오류 페이지를 200 으로 돌려주는 상황이다.")
+    lines.append("  → a web page came, not video. the server is returning an error page as 200.")
 elif res.body[:2] == b"\x1f\x8b":
-    lines.append("  → gzip 인데 Content-Encoding 이 선언되지 않았다. 서버 설정 문제다.")
+    lines.append("  → it is gzip but Content-Encoding was not declared. a server-config problem.")
 elif not res.body.strip():
-    lines.append("  → 본문이 비어 있다.")
+    lines.append("  → the body is empty.")
 elif res.size <= 200 and all(9 <= b < 127 for b in res.body):
-    # 오류 페이지 대신 한 줄짜리 문자열만 돌려주는 방어(예: "security error")가 있다.
-    # 본문이 곧 서버가 밝힌 거절 사유이므로 그대로 보여주는 편이 어떤 요약보다 정확하다.
-    lines.append(f'  → 서버가 짧은 오류 문구를 200 으로 돌려줬다: "{res.body.decode().strip()}"')
-    lines.append("     플레이리스트 URL 자체가 거절된 것이다 — 아래를 순서대로 확인할 것.")
+    # there is a defense that returns just a one-line string instead of an error page (e.g., "security error").
+    # the body is the refusal reason the server stated, so showing it as is is more accurate than any summary.
+    lines.append(f'  → the server returned a short error string as 200: "{res.body.decode().strip()}"')
+    lines.append("     the playlist URL itself was refused — check the following in order.")
 else:
-    lines.append("  → M3U8 텍스트가 아니다.")
+    lines.append("  → not M3U8 text.")
 ```
 
-네 번째 분기에 달린 주석이 이 장의 결론을 다시 말한다. **상태 코드가 잃어버린 정보가
-본문에 남아 있다.** 서버는 거절 사유를 알고 있었고 본문에 적었다. 옮기지 않은 것은
-상태 코드뿐이므로, 되찾는 길은 본문을 그대로 보여주는 것이다.
+The comment on the fourth branch restates this chapter's conclusion. **The information the status code lost
+remains in the body.** The server knew the refusal reason and wrote it in the body. The only thing not
+carried over is the status code, so the way to recover it is to show the body as is.
 
-여기에는 비대칭이 하나 있다. **오류 메시지의 정보량과 정보 누출은 상충한다.** 이 코드는
-클라이언트 도구이므로 정보량이 이긴다. 같은 코드가 서버에 있었다면 반대여야 한다 —
-자세한 진단은 공격자에게도 똑같이 자세하다. 이 저장소에서 같은 형태의 역전이 나타나는
-곳이 하나 더 있다(제24장 패딩 오라클).
+There is one asymmetry here. **The information content of an error message and information leakage are in
+tension.** This code is a client tool, so information content wins. Had the same code been on the server, it
+should be the opposite — a detailed diagnosis is equally detailed for an attacker. There is one more place in
+this repository where a reversal of the same form appears (Chapter 24, the padding oracle).
 
-### 5.3.6 같은 원칙의 두 번째 적용 — 자막에서는 처리가 다르다
+### 5.3.6 A second application of the same principle — the handling differs for subtitles
 
 ```python
 # subtitles.py:417-423
 def _sniff_format(body: bytes) -> str:
-    """자막 본문의 형식을 선두 내용으로 판별한다. 자막이 아니면 빈 문자열.
+    """Determine a subtitle body's format by its leading content. Empty string if not a subtitle.
 
-    Content-Type 을 믿지 않는다 — 자막을 `application/octet-stream` 으로 주는
-    서버가 있고, 반대로 200 으로 온 HTML 오류 페이지도 같은 헤더를 달고 온다.
-    큐 타임코드가 하나라도 있는지가 유일하게 확실한 근거다.
+    Do not trust Content-Type — some servers give subtitles as `application/octet-stream`,
+    and conversely an HTML error page arriving as 200 comes with the same header. Whether
+    there is even one cue timecode is the only sure basis.
     """
 ```
 
-판별의 논리는 같다. 그런데 **판별 실패의 처리가 다르다.**
+The logic of determination is the same. And yet **the handling of a determination failure differs.**
 
 ```python
 # subtitles.py:466-473
@@ -500,240 +495,244 @@ for url in urls:
         continue
     found = _sniff_format(got.body)
     if not found:
-        # 200 이지만 자막이 아니다 — 오류 페이지를 자막으로 저장하지 않는다.
+        # a 200 but not a subtitle — do not save an error page as a subtitle.
         continue
 ```
 
-세그먼트에서는 `bogus` 에 쌓여 FAIL 이 되는데, 자막에서는 `continue` 로 다음 후보를
-시도한다. 이유는 두 URL 의 출처가 다르기 때문이다.
+For segments it piles into `bogus` and becomes FAIL, whereas for subtitles it `continue`s and tries the next
+candidate. The reason is that the two URLs have different provenance.
 
-| | 세그먼트 URI | 사이드카 자막 URI |
+| | Segment URI | Sidecar subtitle URI |
 |---|---|---|
-| 어디서 왔는가 | 플레이리스트가 **지정한** 유일한 주소 | 이름 규칙을 **추측해 만든** 후보 목록 |
-| 아닌 것이 오면 | 결함이다 — 있어야 할 것이 없다 | 정상적인 탐색 실패다 — 후보가 틀렸을 뿐 |
-| 처리 | `bogus` → 페이로드 유효성 FAIL | `continue` → 다음 후보 |
-| 전부 실패하면 | 산출물 없음 ([`cli.py:470-471`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L470-L471)) | [`subtitles.py:492`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L492) 가 오류로 보고 |
+| where it came from | the only address the playlist **specified** | a candidate list **guessed** by name rule |
+| when a non-thing arrives | it is a fault — what should be there is not | it is a normal search miss — the candidate was just wrong |
+| handling | `bogus` → payload-validity FAIL | `continue` → next candidate |
+| if all fail | no output ([`cli.py:470-471`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L470-L471)) | [`subtitles.py:492`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L492) reports it as an error |
 
-**같은 판별이 문맥에 따라 결함이 되기도 하고 탐색 신호가 되기도 한다.** 판별 자체는
-사실 진술이고, 그것을 무엇으로 볼지는 호출부의 결정이다. 판별 함수가 판정까지 하도록
-만들었다면 두 경로 중 하나는 반드시 틀렸을 것이다.
+**The same determination becomes a fault in one context and a search signal in another.** The determination
+itself is a factual statement, and what to see it as is the call site's decision. Had the determination
+function rendered the verdict too, one of the two paths would necessarily be wrong.
 
-### 5.3.7 회귀 테스트가 고정하는 것
+### 5.3.7 What the regression test fixes down
 
 ```python
 # tests/run.sh:141-145
-# 결함 4: 만료 토큰에 오류 페이지를 200 으로 돌려주는 CDN 재현
+# fault 4: reproduce a CDN returning an error page as 200 for an expired token
 (d / "seg003.ts").write_bytes(
     b"<!DOCTYPE html><html><body><h1>403 Forbidden</h1>"
     b"<p>Link expired</p></body></html>\n"
 )
 ```
 
-이 주입에서 가장 중요한 결정은 **파일 이름을 `.ts` 로 남긴 것**이다. `.html` 로 바꿨다면
-`python3 -m http.server` 가 `Content-Type: text/html` 을 붙여 헤더만 봐도 걸린다. `.ts` 로
-두면 `mimetypes` 가 `video/mp2t` 를 돌려주므로(Python 3.14.5 확인), 세 자기 신고 층이
-전부 정상이라고 말하는 최악의 조합이 재현된다. README:382-384 가 이 의도를 명시한다.
+The most important decision in this injection is **leaving the filename as `.ts`.** Had it been changed to
+`.html`, `python3 -m http.server` would attach `Content-Type: text/html` and it would be caught by the
+header alone. Leave it `.ts` and `mimetypes` returns `video/mp2t` (confirmed on Python 3.14.5), so the worst
+combination — where all three self-reporting layers say normal — is reproduced. README:382-384 states this
+intent.
 
-> `200 응답에 HTML` 항목은 헤더를 믿으면 놓친다. 테스트에서 서버는
-> `Content-Type: video/mp2t` 로 응답하지만 본문은 `<!DOCTYPE html>` 이다 — 그래서
-> 헤더가 아니라 선두 바이트로 판정한다.
+> The `HTML in a 200 response` item is missed if you trust the header. In the test the server responds with
+> `Content-Type: video/mp2t` but the body is `<!DOCTYPE html>` — so the verdict is by the leading bytes, not
+> the header.
 
-검출은 회귀로 못 박혀 있다.
+The detection is nailed down by regression.
 
 ```bash
 # tests/run.sh:486-487
 grep -q '페이로드 유효성.*미디어가 아님' "$DLOG" \
-  && ok "200-오류페이지 검출" || bad "200-오류페이지 미검출"
+  && ok "200-error-page detected" || bad "200-error-page missed"
 ```
 
-그리고 대조군이 뒤따른다.
+And a control follows.
 
 ```bash
 # tests/run.sh:512-519
-# ffmpeg 단독으로는 같은 결손을 놓친다는 사실 자체를 고정한다.
-head_ "[4/4] 대조군 — ffmpeg 단독은 결손을 놓친다"
+# fix down the very fact that ffmpeg alone misses the same loss.
+head_ "[4/4] Control — ffmpeg alone misses the loss"
 set +e
 ffmpeg -v error -y -i "$BASE/damaged/index.m3u8" -c copy "$WORK/out/naive.mp4" >/dev/null 2>&1
 naive=$?
 set -e
 if [[ $naive -eq 0 ]]; then
-  ok "ffmpeg 단독 exit 0 — 결손을 보고하지 않음 (도구가 필요한 이유)"
+  ok "ffmpeg alone exit 0 — does not report the loss (the reason the tool is needed)"
 ```
 
-§5.1 의 실측은 이 대조군을 **결함 하나만 남긴 조건**에서 재확인한 것이다. 저장소의
-`damaged` 스트림에는 결함 넷이 함께 들어 있어(`tests/run.sh:129-147`) 어느 결함이 무엇을
-유발했는지 분리되지 않기 때문이다. 그리고 여기에 불편한 사실이 하나 있다.
+§5.1's measurement reaffirmed this control **under the condition of leaving only one fault.** The
+repository's `damaged` stream has four faults together (`tests/run.sh:129-147`), so which fault triggered
+what is not separated. And here is one uncomfortable fact.
 
-> **두 도구의 산출물은 사실상 같다.** ffmpeg 단독과 이 저장소의 도구 모두 720프레임짜리
-> 파일을 만들었고, 같은 자리(11.99–18.02s)가 비어 있다. 다른 것은 종료 코드(0 vs 2)와
-> 리포트뿐이다.
+> **The two tools' outputs are effectively the same.** Both ffmpeg alone and this repository's tool made a
+> 720-frame file, and the same place (11.99–18.02s) is empty. The only difference is the exit code (0 vs 2)
+> and the report.
 
-검증은 산출물을 고치지 않는다. **산출물에 대한 진술을 고친다.** 이 구별을 흐리면
-"검증 도구를 붙이면 결과가 좋아진다"는 잘못된 기대가 생긴다.
+Verification does not fix the output. **It fixes the statement about the output.** Blur this distinction and
+a wrong expectation arises — "attach a verification tool and the result gets better."
 
 ---
 
-## 5.4 일반화 — 계층의 성공을 종단의 성공으로 읽기
+## 5.4 Generalization — reading a layer's success as an endpoint's success
 
-> **용어** — **종단 간 논증(end-to-end argument)**: Saltzer·Reed·Clark(1984)의 설계
-> 원칙. 어떤 기능의 정확성이 종단(양 끝점)의 지식에 의존한다면 그 기능은 종단에서
-> 구현되어야 하며, 중간 계층이 제공하는 보증은 성능 최적화 이상의 의미를 갖지 못한다.
+> **Term** — **the end-to-end argument**: a design principle of Saltzer·Reed·Clark (1984). If a function's
+> correctness depends on the endpoints' (both ends') knowledge, that function must be implemented at the
+> endpoints, and a guarantee provided by an intermediate layer has no meaning beyond a performance
+> optimization.
 
-상태 코드는 중간 계층의 성공 신호다. 그리고 같은 형태의 신호가 시스템 곳곳에 있다.
+A status code is an intermediate layer's success signal. And a signal of the same form is everywhere in
+systems.
 
-| 신호 | 실제로 보증하는 것 | 흔히 읽히는 것 | 붕괴가 나타나는 형태 |
+| Signal | What it actually guarantees | What it is often read as | The form the collapse takes |
 |---|---|---|---|
-| HTTP `200 OK` | 요청이 처리되고 응답이 전달됐다 | 원하는 자원을 받았다 | 오류 페이지를 데이터로 저장 |
-| 프로세스 `exit 0` | 프로세스가 스스로 성공을 **선언**했다 | 작업이 완수됐다 | 결손을 건너뛴 ffmpeg (§5.1) |
-| SMTP `250 OK` | 다음 홉이 메시지를 **수락**했다 | 수신자에게 배달됐다 | 이후 바운스·스팸 격리 |
-| DNS `NOERROR` + 빈 ANSWER | 질의가 정상 처리됐다 | 이름이 해석됐다 | NODATA 를 "IP 없음"과 구별 못 함 |
-| TCP ACK | 상대 **커널**이 바이트를 받았다 | 응용이 처리했다 | 수신 측 크래시 시 유실 |
-| 메시지 큐 ack | 브로커가 저장했다 | 컨슈머가 처리했다 | at-least-once 재전달 (제29장) |
-| DB `COMMIT` 성공 | 트랜잭션이 커밋됐다 | 의도한 데이터가 들어갔다 | 느슨한 스키마의 조용한 절삭 |
-| CI 초록불 | **실행한** 검사가 전부 통과했다 | 코드가 옳다 | 검사하지 않은 것 (제34장) |
-| `Content-Length: 0` + 200 | 응답이 도착했다 | 자원이 비어 있다 | 프록시 절단을 정상으로 오인 |
+| HTTP `200 OK` | the request was processed and the response delivered | I received the resource I wanted | saving an error page as data |
+| process `exit 0` | the process **declared** its own success | the work was completed | ffmpeg skipping a loss (§5.1) |
+| SMTP `250 OK` | the next hop **accepted** the message | it was delivered to the recipient | a later bounce·spam quarantine |
+| DNS `NOERROR` + empty ANSWER | the query was processed normally | the name was resolved | failing to distinguish NODATA from "no IP" |
+| TCP ACK | the peer **kernel** received the bytes | the application processed it | loss on a receiver crash |
+| message-queue ack | the broker stored it | the consumer processed it | at-least-once redelivery (Chapter 29) |
+| DB `COMMIT` success | the transaction committed | the intended data went in | quiet truncation of a loose schema |
+| a green CI light | all the checks that **ran** passed | the code is correct | what was not checked (Chapter 34) |
+| `Content-Length: 0` + 200 | the response arrived | the resource is empty | mistaking a proxy truncation for normal |
 
-아홉 행의 오독은 전부 같은 구조다.
+The misreading of all nine rows has the same structure.
 
-> **어떤 신호가 보증할 수 있는 것은, 그 신호를 만든 주체가 관측할 수 있는 것뿐이다.**
+> **What a signal can guarantee is only what the party that made the signal can observe.**
 
-SMTP 250 을 보낸 다음 홉은 최종 수신자의 메일함을 관측할 수 없다. `exit 0` 을 낸 ffmpeg
-은 "빠진 6초"를 결손으로 **정의하지 않는다** — 자기 기준에서는 정상 종료가 맞다. HTTP 200
-을 보낸 프록시는 오리진의 인가 결정을 모른다.
+The next hop that sent SMTP 250 cannot observe the final recipient's mailbox. The ffmpeg that returned
+`exit 0` **does not define** the "missing 6 seconds" as a loss — by its own standard, a normal termination is
+correct. The proxy that sent HTTP 200 does not know the origin's authorization decision.
 
-따라서 검증은 언제나 **종단에서, 그 신호를 만들지 않은 다른 관측으로** 이뤄져야 한다.
-이 저장소가 세 층의 독립 관측을 두는 이유가 전부 여기에 있다.
+Therefore verification must always be done **at the endpoint, by a different observation that did not make
+that signal.** The reason this repository has three layers of independent observation is entirely here.
 
-| 관측 | 무엇을 대신하는가 | 앵커 |
+| Observation | What it substitutes for | Anchor |
 |---|---|---|
-| 페이로드 선두 바이트 | 상태 코드·`Content-Type` 을 대신한다 | [`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37) |
-| continuity counter | "전량 수신"을 대신한다 | [`tsanalyze.py:112-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L112-L119) (제18장) |
-| PTS 타임라인 갭 | 총 길이 비교를 대신한다 | [`probe.py:191-233`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L191-L233) (제21장) |
-| SHA-256 집합 | "서로 다른 조각이 왔다"를 대신한다 | [`report.py:213-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213-L218) |
+| payload leading bytes | substitutes for the status code·`Content-Type` | [`tsanalyze.py:20-37`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L20-L37) |
+| continuity counter | substitutes for "full receipt" | [`tsanalyze.py:112-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L112-L119) (Chapter 18) |
+| PTS timeline gap | substitutes for total-length comparison | [`probe.py:191-233`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L191-L233) (Chapter 21) |
+| the SHA-256 set | substitutes for "different pieces arrived" | [`report.py:213-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213-L218) |
 
-각 행의 왼쪽은 오른쪽이 만들어지는 과정에 관여하지 않는 관측이다. 그 독립성이 검증을
-검증답게 만든다.
+Each row's left is an observation not involved in the process by which the right is made. That independence
+is what makes verification worthy of the name.
 
 ---
 
-## 5.5 보안
+## 5.5 Security
 
-### 5.5.1 200-오류페이지가 만드는 것
+### 5.5.1 What a 200-error page creates
 
-| 귀결 | 메커니즘 | 누가 다치는가 |
+| Consequence | Mechanism | Who gets hurt |
 |---|---|---|
-| **캐시 오염** | HTTP 규격이 "휴리스틱 캐시 가능"(heuristically cacheable)으로 정의한 상태 코드 목록에 200 은 있고 **403 은 없다**(RFC 9110 §15.1 · RFC 9111 §3). 권한 거절을 403 으로 내면 공유 캐시에 남지 않지만 200 으로 내면 남을 수 있다 — 한 사용자의 만료 토큰 오류 페이지가 캐시를 통해 정상 사용자에게 서빙된다 | 정상 사용자 |
-| **모니터링 침묵** | SLO 알람을 4xx·5xx 비율로 거는 관행이 표준이다. 오류가 200 으로 나가면 오류율은 0% 로 관측된다 | 운영자 |
-| **저장 오염** | 자동 수집기가 오류 페이지를 콘텐츠로 저장한다. 이후 재고 조사가 그 파일을 "이미 있음"으로 판정하면 해당 회차는 **영구히** 빠진다 (제20장·제37장) | 파이프라인 |
-| **파서 노출** | HTML 오류 페이지가 미디어 파서·자막 파서의 입력이 된다. 신뢰 경계를 넘는 입력이 예상 밖 형식으로 도착하는 것은 파서 취약점의 표준 전제다 | 클라이언트 |
-| **soft 404** | 검색 엔진이 오류 페이지를 정상 문서로 색인한다 | 사이트 운영자 |
+| **cache poisoning** | 200 is in the list of status codes the HTTP spec defines as "heuristically cacheable" and **403 is not** (RFC 9110 §15.1 · RFC 9111 §3). issue a permission refusal as 403 and it does not stay in a shared cache, but issue it as 200 and it can — one user's expired-token error page is served to a normal user through the cache | normal users |
+| **monitoring silence** | it is standard practice to set SLO alarms on the 4xx·5xx ratio. if the error goes out as 200, the error rate is observed as 0% | operators |
+| **storage poisoning** | an automatic collector saves the error page as content. if a later inventory judges that file "already present," that episode is **permanently** missing (Chapters 20·37) | pipeline |
+| **parser exposure** | an HTML error page becomes the input to a media parser·subtitle parser. input crossing a trust boundary arriving in an unexpected format is the standard premise of a parser vulnerability | client |
+| **soft 404** | a search engine indexes the error page as a normal document | site operator |
 
-세 번째가 이 저장소가 실제로 대비하는 시나리오다. 그래서 재고 조사는 파일의 **존재**가
-아니라 **구조적 완결성**을 본다([`inventory.py:67-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L67-L102), 제20장). 오류 페이지가 아티팩트로
-굳고 그것이 "있다"로 판정되면 그 뒤의 어떤 재실행도 그 회차를 채우지 못하기 때문이다.
+The third is the scenario this repository actually guards against. So the inventory looks not at a file's
+**existence** but at its **structural completeness** ([`inventory.py:67-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L67-L102), Chapter 20). Because if an error
+page hardens into an artifact and that is judged "present," no re-run afterward can fill that episode.
 
-> **200-오류페이지의 진짜 비용은 실패한 그 요청이 아니라, 실패를 성공으로 기록한 상태가
-> 영속화되는 것이다.**
+> **The real cost of a 200-error page is not that failed request, but that a state recording the failure as
+> a success is made permanent.**
 
-### 5.5.2 그런데 200 은 방어이기도 하다
+### 5.5.2 And yet 200 is also a defense
 
-우회 경로만 설명하고 끝내면 절반이다. **상태 코드의 정보량을 줄이는 것이 옳은 보안
-설계인 경우가 있다.**
+Explain only bypass paths and stop, and it is half done. **There are cases where reducing the status code's
+information content is correct security design.**
 
-| 방어 기법 | 왜 200 인가 | 대표 사례 |
+| Defense technique | Why 200 | Representative case |
 |---|---|---|
-| 자원 존재 은닉 | 403(있지만 권한 없음)과 404(없음)의 차이가 곧 존재 여부의 누출 | 비공개 저장소에 404 를 주는 코드 호스팅 서비스 |
-| 계정 열거 방지 | 로그인·비밀번호 재설정에서 성공/실패를 상태 코드로 구별하지 않기 | 인증 설계의 표준 권고 |
-| 봇 챌린지 | 403 을 주면 자동화가 즉시 학습해 우회를 시도한다. 200 + 챌린지 페이지는 그 학습을 늦춘다 | WAF·CDN 의 JS 챌린지 |
+| resource-existence hiding | the difference between 403 (exists but no permission) and 404 (absent) is a leak of existence | a code-hosting service that gives 404 for a private repository |
+| account-enumeration prevention | not distinguishing success/failure by status code in login·password reset | a standard recommendation of authentication design |
+| bot challenge | give a 403 and automation learns immediately and tries to bypass. 200 + a challenge page slows that learning | a WAF·CDN's JS challenge |
 
-제14장이 "위장이 새 취약점을 만든 것이 아니라 원래 성립하지 않던 가정이 드러난 것"이라고
-결론짓는 것과 같은 형태이되, 여기서는 **가정을 깨는 쪽이 방어자**다. 상태 코드를 신뢰
-가능한 판정 근거로 삼는 클라이언트는, 서버가 보안을 개선할 때마다 깨진다.
+It is the same form as Chapter 14 concluding "the disguise did not create a new vulnerability but revealed an
+assumption that never held," except here **the side breaking the assumption is the defender.** A client that
+takes the status code as a trustworthy basis for a verdict breaks every time the server improves its
+security.
 
-이 긴장에는 해소법이 있다. **정보 은닉과 판별 가능성은 양립할 수 있다** — 상태 코드를
-통일하되, 본문을 기계가 읽을 수 있는 오류 표현으로 두면 된다(RFC 9457
-`application/problem+json`). 상태 코드가 잃은 정보는 본문으로 옮기고, 그 본문이 사람용
-HTML 이 아니라 규격화된 구조를 갖도록 하는 것이 옳은 절충이다.
+There is a resolution to this tension. **Information hiding and distinguishability can coexist** — unify the
+status code but leave the body as a machine-readable error representation (RFC 9457
+`application/problem+json`). The information the status code lost is moved to the body, and the correct
+compromise is making that body have a standardized structure rather than human-facing HTML.
 
-### 5.5.3 역할별 방어자 관점
+### 5.5.3 The defender's view, by role
 
-| 역할 | 해야 하는 것 | 하지 말아야 하는 것 |
+| Role | What to do | What not to do |
 |---|---|---|
-| **CDN·리버스 프록시 운영자** | 오류 본문을 200 으로 내보내야 한다면 `Cache-Control: no-store` 를 함께 붙인다. 오리진 오류 흡수 규칙이 상태 코드까지 재작성하는지 점검한다 | `error_page … =200` 을 관성으로 쓰지 않는다 |
-| **API·서비스 설계자** | 상태 코드를 통일하기로 했다면 본문에 **기계가 읽을 수 있는** 오류 표현을 둔다(RFC 9457). 오류 응답의 `Content-Type` 을 성공 응답과 다르게 유지한다 | 200 을 주면서 본문마저 사람용 HTML 로만 주지 않는다 |
-| **SRE·모니터링** | SLO 를 상태 코드 분포만으로 걸지 않는다. 응답 본문의 형식 적합성이나 종단 합성 검사(synthetic check)를 함께 건다 | "5xx 0%" 를 정상의 정의로 삼지 않는다 |
-| **클라이언트·수집기 저자** | 상태 코드 관문 뒤에 **내용 검증 관문을 하나 더** 둔다. 두 실패를 다른 항목으로 보고한다 | `if resp.status == 200: save(resp.body)` |
-| **파이프라인 운영자** | 저장 단계 **앞**에 형식 판별을 둔다. 다운로드 성공률과 완결성 지표를 분리한다 | 성공률을 완결성의 대리 지표로 쓰지 않는다 |
-| **보안 검토자** | 인증·인가 실패 경로에서 상태 코드와 본문이 서로 다른 말을 하는지 본다. 본문이 상태 코드보다 많은 것을 흘리는 경우가 흔하다 | 상태 코드만으로 접근 통제 동작을 검증하지 않는다 |
+| **CDN·reverse-proxy operator** | if you must send an error body as 200, attach `Cache-Control: no-store` along with it. check whether the origin-error-absorption rule rewrites even the status code | do not use `error_page … =200` out of inertia |
+| **API·service designer** | if you decide to unify status codes, put a **machine-readable** error representation in the body (RFC 9457). keep an error response's `Content-Type` different from a success response's | do not, while giving 200, give even the body only as human-facing HTML |
+| **SRE·monitoring** | do not set SLOs by status-code distribution alone. also set the response body's format conformance or an end-to-end synthetic check | do not take "5xx 0%" as the definition of normal |
+| **client·collector author** | put **one more content-verification gate** behind the status-code gate. report the two failures as different items | `if resp.status == 200: save(resp.body)` |
+| **pipeline operator** | put format determination **before** the storage stage. separate the download success rate and the completeness metric | do not use the success rate as a proxy for completeness |
+| **security reviewer** | see whether the status code and the body say different things on auth·authorization failure paths. it is common for the body to leak more than the status code | do not verify access-control behavior by the status code alone |
 
-`if resp.status == 200: save(resp.body)` — 한 줄로 줄이면 이 장이 겨냥하는 코드가 이것이다.
-고치는 방법도 한 줄이다. **저장하기 전에 무엇인지 확인하라.**
+`if resp.status == 200: save(resp.body)` — reduced to one line, this is the code this chapter targets. The
+way to fix it is one line too. **Before saving, confirm what it is.**
 
 ---
 
-## 5.6 한계와 미해결
+## 5.6 Limits and open questions
 
-정직하게 적어 둔다.
+Noted honestly.
 
-- **`sniff` 는 "200-오류페이지"를 잡는 것이 아니라 "미디어가 아닌 것"을 잡는다.**
-  응답이 우연히 유효한 MPEG-TS 라면 — 캐시에 남은 다른 채널의 세그먼트, 광고 스트림으로의
-  치환 — 이 관문을 그대로 통과한다. 뒤따르는 CC 검사나 타임라인 검사가 간접적으로
-  걸러낼 가능성은 있으나 **확인하지 못했다.** 확실한 것은 이 저장소에 "이 세그먼트가
-  내가 요청한 바로 그것인가"를 **직접** 묻는 검사가 없다는 사실이고, 그렇게 물으려면
-  플레이리스트가 세그먼트 다이제스트를 선언해야 하는데 RFC 8216 에 그런 태그가 없다.
-  구현의 한계가 아니라 **규격의 한계**다.
-- **리다이렉트를 따라간 뒤의 200 은 흔적이 남지 않는다.** `fetch.py` 는 urllib 의 기본
-  리다이렉트 처리를 그대로 쓴다. 로그인 페이지로 302 된 뒤 200 을 받으면
-  `FetchResult.status` 는 200 이고, `FetchResult.url`([`fetch.py:181-182`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L181-L182))에는 최종 URL 이
-  아니라 `normalize_url()` 을 거친 **요청 URL** 이 들어간다. 리다이렉트가 있었다는 사실
-  자체가 기록되지 않는다. 진단 정보로서 아쉬운 지점이고, 이 장을 쓰며 확인한 미개선
-  사항이다.
-- **`_diagnose` 는 플레이리스트 경로에만 붙는다.** 호출부는 [`cli.py:140`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L140) 과 [`cli.py:191`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L191)
-  두 곳뿐이다. 세그먼트가 오류 페이지일 때는 `Content-Type` 과 선두 16바이트만 남고
-  그만큼 자세한 설명은 나오지 않는다. 세그먼트가 수백 개일 수 있어 매 건 진단이
-  실용적이지 않다는 판단이지만, **전량이 오류 페이지인 경우**([`cli.py:470-471`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L470-L471))에는
-  한 건이라도 진단을 붙일 여지가 있다.
-- **범위 요청의 정합성은 검사하지 않는다.** `EXT-X-BYTERANGE` 경로에서 `Range` 헤더를
-  보내지만([`fetch.py:155-159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L155-L159)), 응답의 `Content-Range` 나 상태 206 여부를 확인하는 코드는
-  없다. 서버가 범위를 무시하고 전체를 200 으로 돌려줘도 그대로 받아 쓴다. 노출면은 좁지만
-  검사가 없는 것은 사실이다.
-- **§5.2.1 여섯 원인의 비중은 측정하지 않았다.** 각 메커니즘은 실재가 확인된 것이지만,
-  실제로 관측되는 200-오류페이지 중 어느 원인이 몇 퍼센트인지는 이 저장소의 데이터로
-  답할 수 없다. 특히 4·5(보안 목적의 의도된 200)가 전체에서 차지하는 비중은 추정이다.
-- **실측은 로컬 재현이다.** §5.1 과 §5.3.4 의 수치는 `python3 -m http.server` +
-  ffmpeg 8.1.1(macOS arm64)에서 얻었다. 실제 CDN 은 캐시·재작성 규칙에 따라 다르게
-  동작할 수 있으며, 특히 `Content-Type` 을 오류 페이지에 맞춰 `text/html` 로 바꾸는
-  구성도 흔하다 — 그 경우는 헤더만으로도 걸린다. 이 코드가 대비하는 것은 **헤더가
-  바뀌지 않는 더 나쁜 쪽**이다.
+- **`sniff` catches not "a 200-error page" but "a non-media thing."** If the response happens to be valid
+  MPEG-TS — a segment of another channel left in the cache, a substitution to an ad stream — it passes this
+  gate as is. There is a possibility that a following CC check or timeline check filters it indirectly, but
+  **I could not confirm it.** What is certain is the fact that this repository has no check that asks
+  **directly** "is this segment the very one I requested," and to ask that the playlist would have to declare
+  a segment digest, which RFC 8216 has no tag for. It is not an implementation limit but **a spec limit.**
+- **A 200 after following a redirect leaves no trace.** `fetch.py` uses urllib's default redirect handling
+  as is. Get a 200 after a 302 to a login page and `FetchResult.status` is 200, and `FetchResult.url`
+  ([`fetch.py:181-182`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L181-L182)) contains the **request URL** put through `normalize_url()`, not the final URL. The very
+  fact that there was a redirect is not recorded. A regrettable point as diagnostic info, and an unimproved
+  item confirmed while writing this chapter.
+- **`_diagnose` attaches only to the playlist path.** The call sites are only two, [`cli.py:140`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L140) and
+  [`cli.py:191`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L191). When a segment is an error page, only the `Content-Type` and leading 16 bytes remain, and no
+  detailed explanation that thorough comes out. The judgment is that per-item diagnosis is impractical since
+  segments can be hundreds, but for **the case where all are error pages** ([`cli.py:470-471`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L470-L471)) there is room
+  to attach at least one diagnosis.
+- **It does not check the consistency of range requests.** On the `EXT-X-BYTERANGE` path it sends a `Range`
+  header ([`fetch.py:155-159`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L155-L159)), but there is no code that checks the response's `Content-Range` or whether the
+  status is 206. Even if the server ignores the range and returns the whole thing as 200, it is received and
+  used as is. The exposure surface is narrow, but it is a fact that there is no check.
+- **The weights of §5.2.1's six causes were not measured.** Each mechanism is confirmed to be real, but which
+  cause is what percentage of the 200-error pages actually observed cannot be answered by this repository's
+  data. In particular, the share 4·5 (intended 200s for security purposes) take of the whole is an estimate.
+- **The measurement is a local reproduction.** The figures of §5.1 and §5.3.4 were obtained on
+  `python3 -m http.server` + ffmpeg 8.1.1 (macOS arm64). A real CDN can behave differently by its cache·
+  rewrite rules, and in particular a config that changes `Content-Type` to `text/html` to match the error
+  page is common — that case is caught by the header alone. What this code guards against is the **worse
+  side, where the header is not changed.**
 
 ---
 
-## 5.7 요약
+## 5.7 Summary
 
-1. **`200 OK` 는 두 개의 명제를 하나의 값으로 나른다.** "요청이 처리되고 응답이
-   전달됐다"는 관측 가능한 사실이고, "본문은 요청한 자원의 표현이다"는 서버의 주장이다.
-   규격에는 뒤쪽을 검증할 수단도 강제할 수단도 없다.
-2. **의미론적 붕괴는 신호가 틀려서 생기지 않는다.** 신호가 담을 수 있는 것보다 많은 것을
-   읽어 내서 생긴다. §5.1 의 실측에서 HTTP 계층은 정확히 옳은 말을 했다.
-3. **총 길이·종료 코드·오류 로그는 이 결손을 구별하지 못한다.** 30.023s 대 30.023s,
-   exit 0 대 exit 0. 경고 수준 로그에는 `Packet corrupt` 가 나오지만 `-v error` 로
-   사라지고, 종료 코드에 반영되지 않으며, 얼마가 사라졌는지 말하지 않는다. 구별되는 것은
-   프레임 수(900→720)와 PTS 갭(6.03s @ 11.99s)이다.
-4. **판별의 유일한 근거는 페이로드 선두 바이트다.** `sniff(data: bytes)` 는 상태 코드를
-   인자로 받지 않는다 — 받을 수 없으면 참조할 수도 없다.
-5. **전송의 실패와 내용의 실패는 다른 사건이므로 다른 항목으로 보고한다.** 실측 리포트에서
-   "세그먼트 수신 PASS"와 "페이로드 유효성 FAIL"이 동시에 참이고, 둘 다 옳다. 결론만
-   맞추려고 전송 항목을 FAIL 로 만들면 사용자를 엉뚱한 원인으로 보낸다.
-6. **200-오류페이지는 서버의 버그만이 아니다.** 자원 존재 은닉·계정 열거 방지·봇 챌린지는
-   상태 코드의 정보량을 **의도적으로** 줄인 보안 설계다. 클라이언트는 상태 코드가
-   부정확한 세계를 정상 조건으로 가정해야 한다.
-7. **검증은 산출물을 고치지 않고 산출물에 대한 진술을 고친다.** ffmpeg 단독과 이 도구의
-   출력 파일은 둘 다 720프레임으로 같았다. 다른 것은 종료 코드와 리포트뿐이다.
+1. **`200 OK` carries two propositions in one value.** "The request was processed and the response
+   delivered" is an observable fact, and "the body is a representation of the requested resource" is the
+   server's claim. The spec has neither a means to verify the latter nor to enforce it.
+2. **Semantic collapse does not arise because the signal is wrong.** It arises from reading more out of the
+   signal than it can carry. In §5.1's measurement the HTTP layer said exactly the correct thing.
+3. **Total length·exit code·error log do not distinguish this loss.** 30.023s vs 30.023s, exit 0 vs exit 0.
+   The warning-level log shows `Packet corrupt` but it disappears with `-v error`, is not reflected in the
+   exit code, and does not say how much was lost. What is distinguishable is the frame count (900→720) and
+   the PTS gap (6.03s @ 11.99s).
+4. **The only basis for determination is the payload's leading bytes.** `sniff(data: bytes)` does not take
+   the status code as an argument — cannot take it, so cannot reference it.
+5. **A transport failure and a content failure are different events, so they are reported as different
+   items.** In the measured report "segment receipt PASS" and "payload validity FAIL" are simultaneously
+   true, and both are correct. Make the transport item FAIL just to get the conclusion right and you send the
+   user to the wrong cause.
+6. **A 200-error page is not only a server bug.** Resource-existence hiding·account-enumeration prevention·
+   bot challenge are security designs that **deliberately** reduced the status code's information content.
+   The client must assume, as a normal condition, a world in which the status code is inaccurate.
+7. **Verification does not fix the output but fixes the statement about the output.** The output files of
+   ffmpeg alone and of this tool were both 720 frames, the same. The only difference is the exit code and the
+   report.
 
 ---
 
-**다음 장** — 이 장은 상태 코드가 내용을 보증하지 않는다는 것을 다뤘다. 제6장은 서버와
-클라이언트가 **내용의 표현 방식**을 협상하는 기능들(압축·범위 요청)이 서로 겹칠 때
-무엇이 정의되지 않은 채 남는지를 본다. `Range` 와 `Content-Encoding` 이 동시에 걸리면
-"바이트 범위"가 무엇의 범위인지 규격이 답하지 않고, 그 틈이 캐시 오염의 고전적 원인이
-된다.
+**Next chapter** — this chapter covered that the status code does not guarantee the content. Chapter 6 sees
+what is left undefined when the features by which server and client **negotiate the way content is
+represented** (compression·range requests) overlap. When `Range` and `Content-Encoding` are engaged at once,
+the spec does not answer what "the byte range" is the range of, and that gap becomes a classic cause of cache
+poisoning.

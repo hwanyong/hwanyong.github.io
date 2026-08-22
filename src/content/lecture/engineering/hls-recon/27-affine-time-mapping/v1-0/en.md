@@ -1,36 +1,36 @@
 ---
-untranslated: ko
-title: "두 시간축의 아핀 대응"
-description: "X-TIMESTAMP-MAP 과 오프셋 식의 유도"
-date: 2026-08-18
+title: "The Affine Correspondence of Two Time Axes"
+description: "X-TIMESTAMP-MAP and the derivation of the offset formula"
+date: 2026-07-21
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-27-affine-time-mapping.svg
 ---
-## 27.0 이 장에서 답할 것
+## 27.0 What this chapter answers
 
-1. 자막 조각은 왜 자기만의 시각을 갖는가. 그 시각만으로는 왜 자막을 놓을 수 없는가
-2. `offset = mpegts/90000 − video_pts0 − local_sec` — 세 항은 각각 무엇이고 왜 둘을 빼는가
-3. 두 시간축을 잇는 일반형은 **아핀 변환**인데 여기서는 왜 평행이동만 남는가.
-   스케일이 1 이 아니면 무엇이 더 있어야 하는가
-4. ffmpeg 은 왜 이 매핑을 대신 적용해 주지 않는가
-5. 같은 오프셋을 두 경로가 **서로 다른 방법으로** 적용하는데, 왜 그것이 중복 구현이 아닌가
+1. Why does a subtitle piece have its own time. Why can you not place the subtitle by that time alone?
+2. `offset = mpegts/90000 − video_pts0 − local_sec` — what is each of the three terms and why subtract two of
+   them?
+3. The general form joining two time axes is an **affine transform**, yet why is only a translation left here?
+   If the scale is not 1, what more must there be?
+4. Why does ffmpeg not apply this mapping for you?
+5. Two paths apply the same offset by **mutually different methods**, so why is that not duplicate implementation?
 
-제21장은 90kHz 클럭과 PTS 가 무엇인지, 왜 그것이 **절대 좌표**인지를 다뤘다. 이 장은
-그 절대 좌표를 **다른 파일이 쓰는 좌표계와 잇는** 문제다. 좌표계가 하나일 때는
-보이지 않던 것이 둘이 되는 순간 드러난다 — **어느 쪽의 0 을 쓸 것인가.**
+Chapter 21 covered what the 90kHz clock and PTS are, and why it is an **absolute coordinate.** This chapter is the
+problem of **joining that absolute coordinate with the coordinate system another file uses.** What was invisible
+when there was one coordinate system is revealed the moment there are two — **which side's 0 to use.**
 
-이 장의 수치는 모두 로컬에서 직접 잰 것이다(ffmpeg 8.1.1 / macOS arm64). 재현 절차는
-§27.1.1 에 그대로 적었다. 재지 못한 것은 §27.7 에 따로 모았다.
+The figures in this chapter were all measured directly, locally (ffmpeg 8.1.1 / macOS arm64). The reproduction
+procedure is written as-is in §27.1.1. What could not be measured is gathered separately in §27.7.
 
 ---
 
-## 27.1 문제 — 자막이 통째로 60초 밀린다
+## 27.1 The problem — the subtitles slip 60 seconds whole
 
-### 27.1.1 재현
+### 27.1.1 Reproduction
 
-`tests/run.sh:69-108` 이 만드는 것과 같은 픽스처를 손으로 만든다. 30초 영상 하나와,
-같은 큐를 담은 자막 트랙 둘 — 하나는 정상, 하나는 매핑만 60초 어긋나게 잡은 것이다.
+Make by hand a fixture like the one `tests/run.sh:69-108` makes. One 30-second video, and two subtitle tracks
+holding the same cues — one normal, one with only the mapping set 60 seconds off.
 
 ```bash
 ffmpeg -v error -y -f lavfi -i "testsrc2=size=640x360:rate=30:duration=30" \
@@ -43,7 +43,7 @@ ffmpeg -v error -y -i source.mp4 -c copy -f hls -hls_time 6 -hls_playlist_type v
   -hls_segment_filename "plain/seg%03d.ts" plain/index.m3u8
 ```
 
-영상의 첫 표시 시각을 잰다.
+Measure the video's first presentation time.
 
 ```
 $ ffprobe -v error -select_streams v:0 -show_entries packet=pts,pts_time \
@@ -51,45 +51,46 @@ $ ffprobe -v error -select_streams v:0 -show_entries packet=pts,pts_time \
 128090,1.423222
 ```
 
-**영상 타임라인은 0 에서 시작하지 않는다.** 첫 프레임이 90kHz 눈금으로 128,090 tick,
-즉 1.423222초에 놓여 있다. 이것은 손상이 아니라 정상이다 — MPEG-TS 패키저는 시작
-좌표를 자유롭게 고르며, ffmpeg 의 mpegts muxer 는 기본적으로 1.4초 근처에서 시작한다.
+**The video timeline does not start at 0.** The first frame sits at 128,090 tick on the 90kHz mark, i.e.
+1.423222 seconds. This is not damage but normal — an MPEG-TS packager chooses the start coordinate freely, and
+ffmpeg's mpegts muxer starts near 1.4 seconds by default.
 
-이제 자막 조각을 만든다. 큐는 로컬 시각 0초부터 29초까지 놓여 있고, 헤더의 `MPEGTS`
-값만 두 트랙이 다르다.
+Now make the subtitle pieces. The cues sit from local time 0 to 29 seconds, and only the header's `MPEGTS` value
+differs between the two tracks.
 
 ```
-# 정상 트랙 — 자막의 0 초가 영상의 첫 프레임(128090 tick)에 대응한다
+# normal track — the subtitle's 0 seconds corresponds to the video's first frame (128090 tick)
 X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:128090
-# 어긋난 트랙 — 60초(5,400,000 tick)만큼 뒤에 대응한다고 주장한다
+# off track — claims it corresponds 60 seconds (5,400,000 tick) later
 X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:5528090
 ```
 
-두 트랙을 각각 이 저장소의 도구에 물린 결과다. 자막 파일의 바이트는 큐 본문까지
-완전히 같고, **헤더의 숫자 하나만** 다르다.
+The result of putting the two tracks each into this repository's tool. The subtitle files' bytes are completely
+the same down to the cue body, and only **one number in the header** differs.
 
 ```
 $ hls-recon http://127.0.0.1:8993/master-ok.m3u8  -o out/ok.mp4  --subs all …
-  ✓ 자막 추출     1개 전량 추출 (xx 6큐) — 경계 중복 3큐 제거, 본문에 섞인 조각 헤더 4건 정제
-  ✓ 자막 타임라인 전 트랙이 영상 범위 내 (최소 커버리지 97% — xx 0.0~29.0s)
+  ✓ subtitle extract   1 fully extracted (xx 6 cues) — 3 boundary-duplicate cues removed, 4 body-mixed fragment headers cleaned
+  ✓ subtitle timeline  all tracks within video range (min coverage 97% — xx 0.0~29.0s)
 
 $ hls-recon http://127.0.0.1:8993/master-bad.m3u8 -o out/bad.mp4 --subs all …
-    · xx · bad [default] X-TIMESTAMP-MAP 기준 +60.00s 보정
-  ✓ 자막 추출     1개 전량 추출 (xx 6큐) — …, X-TIMESTAMP-MAP 정렬 xx +60.00s
-  ✗ 자막 타임라인 영상 범위를 벗어난 트랙 xx(60.0~89.0s vs 영상 30.0s) — X-TIMESTAMP-MAP 정렬 실패 의심
+    · xx · bad [default] X-TIMESTAMP-MAP-based +60.00s correction
+  ✓ subtitle extract   1 fully extracted (xx 6 cues) — …, X-TIMESTAMP-MAP alignment xx +60.00s
+  ✗ subtitle timeline  track xx out of video range (60.0~89.0s vs video 30.0s) — suspect X-TIMESTAMP-MAP alignment failure
 ```
 
-30초짜리 영상에 60초부터 시작하는 자막이 붙었다. **자막은 한 줄도 손상되지 않았고,
-큐 시각도 원본 그대로다.** 어긋난 것은 자막과 영상 사이의 대응 관계뿐이다.
+Subtitles starting at 60 seconds got attached to a 30-second video. **Not a line of the subtitle was damaged and
+the cue times are the original as-is.** What went off is only the correspondence between subtitle and video.
 
-여기서 이 장의 문제가 성립한다.
+Here this chapter's problem holds.
 
-> **자막 파일은 자기 시각을 갖고 있고 영상도 자기 시각을 갖고 있다. 둘은 다른 좌표계다.
-> 두 좌표계를 잇는 규칙이 없으면, 온전한 자막과 온전한 영상을 합쳐도 틀린 결과가 나온다.**
+> **The subtitle file has its own time and the video has its own time. The two are different coordinate systems.
+> Without a rule joining the two coordinate systems, merge an intact subtitle and an intact video and a wrong
+> result comes out.**
 
-### 27.1.2 자막 조각이 실어 오는 것
+### 27.1.2 What a subtitle piece carries
 
-HLS 의 자막 트랙은 영상과 똑같이 조각나 있다. 조각 하나를 그대로 열면 이렇다.
+An HLS subtitle track is chopped up just like the video. Open one piece as-is and it is this.
 
 ```
 WEBVTT
@@ -102,206 +103,202 @@ cue 1
 cue 2
 ```
 
-> **용어** — **WebVTT(Web Video Text Tracks)**: 자막·캡션을 담는 텍스트 형식. 파일이
-> `WEBVTT` 로 시작하고, 그 뒤에 **큐(cue)** — 시작 시각·종료 시각·본문으로 이루어진
-> 한 덩어리 — 가 이어진다.
+> **Term** — **WebVTT (Web Video Text Tracks)**: a text format holding subtitles·captions. The file starts with
+> `WEBVTT`, followed by **cues** — a chunk of start time·end time·body.
 
-> **용어** — **X-TIMESTAMP-MAP**: HLS 가 WebVTT 파일 헤더에 두는 대응표.
-> `X-TIMESTAMP-MAP=LOCAL:<자막 시각>,MPEGTS:<90kHz 클럭값>` 형식이며, **"이 자막 파일의
-> `LOCAL` 시각이 영상 타임라인의 `MPEGTS` 클럭값에 해당한다"**는 한 쌍의 대응을 선언한다.
+> **Term** — **X-TIMESTAMP-MAP**: a correspondence table HLS places in the WebVTT file header. The form is
+> `X-TIMESTAMP-MAP=LOCAL:<subtitle time>,MPEGTS:<90kHz clock value>`, and it declares one pair of correspondence
+> — **"this subtitle file's `LOCAL` time corresponds to the video timeline's `MPEGTS` clock value."**
 
-> **용어** — **90kHz 클럭**: MPEG-2 시스템 클럭 27MHz 를 300 으로 나눈 눈금.
-> PTS(표시 시각)가 이 눈금의 33비트 부호 없는 정수로 실린다(제21장 §21.2).
+> **Term** — **90kHz clock**: the mark of the MPEG-2 system clock 27MHz divided by 300. The PTS (presentation
+> time) rides as a 33-bit unsigned integer on this mark (Chapter 21 §21.2).
 
-큐 시각 `00:00:00.000` 은 **자막 파일 자신의 좌표**다. 영상의 첫 프레임은 128,090 tick
-에 있다. 두 숫자는 같은 축 위에 있지 않으므로 직접 비교할 수 없다. 헤더 한 줄이
-그 둘을 잇는다.
+The cue time `00:00:00.000` is the **subtitle file's own coordinate.** The video's first frame is at 128,090
+tick. The two numbers are not on the same axis so they cannot be compared directly. One header line joins the
+two.
 
-### 27.1.3 왜 규격이 이 헤더를 두는가
+### 27.1.3 Why the spec puts this header
 
-자막 파일이 그냥 영상과 같은 좌표를 쓰면 되지 않는가 — 이 질문에 답해야 헤더의
-존재 이유가 보인다. 설계 대안은 셋이고, HLS 는 그중 셋째를 골랐다.
+Why doesn't the subtitle file just use the same coordinate as the video — you must answer this question to see the
+header's reason for existing. There are three design alternatives, and HLS chose the third.
 
-| 설계 | 조각이 담는 시각 | 조각 하나만 보고 정렬할 수 있는가 | 대가 |
+| Design | The time a piece carries | Can you align seeing one piece alone | Price |
 |---|---|---|---|
-| (가) 조각 상대 시각 | 조각 시작부터 0 | **불가** — 그 조각이 몇 번째인지, 앞 조각들의 길이가 얼마인지 따로 알아야 한다 | 중간 합류 시 앞 조각을 전부 받아야 한다 |
-| (나) 영상 절대 시각 | 90kHz 클럭을 초로 환산한 값 | 가능 | 원본 자막을 스트림마다 다시 써야 한다. 클럭이 래핑하면(제28장) 표기가 무너진다 |
-| (다) 파일 로컬 시각 + 대응표 | 원본 자막 파일의 시각 그대로 | **가능** — 헤더가 대응점을 실어 오므로 | 대응표를 읽고 적용하는 쪽의 일이 늘어난다 |
+| (a) piece-relative time | 0 from the piece's start | **cannot** — you must separately know which piece it is and the lengths of the prior pieces | on mid-stream join you must receive all prior pieces |
+| (b) video-absolute time | the 90kHz clock converted to seconds | possible | you must rewrite the original subtitle per stream. if the clock wraps (Chapter 28) the notation collapses |
+| (c) file-local time + a correspondence table | the original subtitle file's time as-is | **possible** — because the header carries the correspondence point | the work rises for the side reading and applying the table |
 
-(다)의 이득은 **LIVE 중간 합류**에서 분명해진다. 재생기가 방송 도중에 들어와 자막
-조각 하나를 받았다고 하자. (가)라면 그 조각이 타임라인의 어디인지 알 방법이 없어
-앞의 조각들을 되짚어야 한다. (다)라면 **그 조각 하나에 대응점이 실려 있으므로 즉시
-정렬된다.** 세그먼트가 독립적으로 해석 가능해야 한다는 HLS 의 원칙이 자막에도 그대로
-적용된 것이다.
+(c)'s benefit becomes clear in a **LIVE mid-stream join.** Say the player entered mid-broadcast and received one
+subtitle piece. With (a) there is no way to know where in the timeline that piece is, so you must trace back the
+prior pieces. With (c) **the correspondence point is carried in that one piece so it aligns immediately.** HLS's
+principle that a segment must be independently interpretable is applied to subtitles too.
 
-동시에 (다)는 **원본 자막 파일을 손대지 않는다.** 자막은 한 번 만들어 여러 화질·여러
-패키징에 재사용되는데, 영상 절대 시각을 큐에 박아 넣으면 패키징마다 자막을 다시 써야
-한다. 대응표는 그 재사용성을 지키면서 정렬 정보만 덧붙인다.
+At the same time (c) **does not touch the original subtitle file.** A subtitle is made once and reused across
+several qualities·several packagings, and nail the video-absolute time into the cues and you must rewrite the
+subtitle per packaging. The correspondence table keeps that reusability while adding only the alignment info.
 
-> (가)·(나)는 규격 문서가 열거한 대안이 아니라 이 교재가 설계 공간을 되짚어 재구성한
-> 것이다. RFC 가 어떤 근거로 (다)를 택했는지는 원문에 적혀 있지 않다.
+> (a)·(b) are not alternatives the spec document enumerated but a reconstruction this course made by tracing back
+> the design space. On what basis the RFC chose (c) is not written in the original.
 
 ---
 
-## 27.2 원리 — 하나의 대응점이 두 축을 묶는다
+## 27.2 The principle — one correspondence point ties two axes
 
-### 27.2.1 축이 둘, 원점은 셋
+### 27.2.1 Two axes, three origins
 
-정렬 문제에 등장하는 좌표계를 먼저 분리한다.
+First separate the coordinate systems appearing in the alignment problem.
 
-| 기호 | 축 | 단위 | 0 이 놓인 곳 | 누가 정하는가 |
+| Symbol | Axis | Unit | Where 0 sits | Who sets it |
 |---|---|---|---|---|
-| `S` | 자막 로컬 축 | 초 | 원본 자막 파일이 정한 시작점 | 자막 제작자 |
-| `V` | MPEG-TS 90kHz 축 | tick(초로 환산 가능) | 패키저가 고른 절대 좌표 | 영상 패키저 |
-| `O` | 출력 파일 축 | 초 | **영상의 첫 프레임** | 재조립 도구 |
+| `S` | subtitle-local axis | seconds | the start point the original subtitle file set | the subtitle maker |
+| `V` | MPEG-TS 90kHz axis | tick (convertible to seconds) | the absolute coordinate the packager chose | the video packager |
+| `O` | output-file axis | seconds | **the video's first frame** | the reassembly tool |
 
-`S` 와 `V` 는 서로 다른 두 사람이 각자 정한 축이다. `O` 는 우리가 만드는 파일의
-축이고, 그 0 은 관례상 영상의 시작이다. **축이 둘인데 원점이 셋이라는 것이 이 장의
-식에 항이 셋인 이유다.**
+`S` and `V` are two axes two different people each set. `O` is the axis of the file we make, and its 0 is by
+convention the video's start. **That there are two axes but three origins is why this chapter's formula has three
+terms.**
 
-### 27.2.2 일반형 — 아핀 변환
+### 27.2.2 The general form — the affine transform
 
-두 시간축을 잇는 대응은 일반적으로 다음 꼴이다.
+The correspondence joining two time axes is generally of the following form.
 
 ```
 V = a · S + b
 ```
 
-> **용어** — **아핀 변환(affine transformation)**: 선형 변환(스케일 `a`)에 평행이동
-> (`b`)을 더한 변환. 직선을 직선으로, 등간격을 등간격으로 보낸다. 1차원 시간축에서는
-> `a` 가 **클럭 속도의 비**, `b` 가 **원점의 차이**에 해당한다.
+> **Term** — **affine transformation**: a transform adding a translation (`b`) to a linear transform (scale
+> `a`). It sends a line to a line and equal intervals to equal intervals. On a 1-D time axis, `a` corresponds to
+> the **ratio of clock speeds** and `b` to the **difference of origins.**
 
-미지수가 둘(`a`, `b`)이므로 대응점이 **둘** 있어야 결정된다. 그런데
-`X-TIMESTAMP-MAP` 은 대응점을 **하나**만 준다. 그것으로 충분한 이유는 하나뿐이다 —
-`a` 를 이미 안다고 가정하기 때문이다.
+Since there are two unknowns (`a`, `b`), **two** correspondence points must exist to determine it. And yet
+`X-TIMESTAMP-MAP` gives **only one** correspondence point. The only reason that is enough is one — because it is
+assumed `a` is already known.
 
-### 27.2.3 왜 스케일이 1 인가
+### 27.2.3 Why the scale is 1
 
-`S` 의 단위는 초, `V` 의 단위는 90,000분의 1초다. 90,000 으로 나누어 초로 맞추면 두
-축은 **같은 물리적 초를 센다.** 같은 초를 세는 두 축 사이의 속도비는 1 이다.
+`S`'s unit is seconds and `V`'s unit is 1/90,000 second. Divide by 90,000 to match to seconds and the two axes
+**count the same physical second.** The speed ratio between two axes counting the same second is 1.
 
 ```
-a = 1        →        V = S + b        (평행이동만 남는다)
+a = 1        →        V = S + b        (only translation is left)
 ```
 
-이것이 이 장의 첫 번째 요점이다.
+This is this chapter's first point.
 
-> **아핀 대응이지만 스케일이 1 이므로 평행이동만 남는다. 그래서 대응점 하나로 충분하고,
-> "정렬"이 "덧셈 한 번"으로 축소된다.**
+> **It is an affine correspondence but the scale is 1 so only translation is left. So one correspondence point is
+> enough, and "alignment" reduces to "one addition."**
 
-그리고 이 가정은 **헤더의 형식 자체에 못박혀 있다.** `X-TIMESTAMP-MAP` 은 대응점을
-하나만 담을 수 있는 문법이고, 두 번째 대응점이나 클럭 속도비를 적을 자리가 없다.
-**형식이 표현할 수 없는 것은, 그 형식을 정한 쪽이 일어나지 않는다고 가정한 것이다.**
+And this assumption is **nailed into the header's form itself.** `X-TIMESTAMP-MAP` is a syntax that can hold only
+one correspondence point, and there is no slot to write a second correspondence point or a clock-speed ratio.
+**What a form cannot express is what the side that set the form assumed does not happen.**
 
-### 27.2.4 세 개의 원점 — 식의 유도
+### 27.2.4 The three origins — derivation of the formula
 
-이제 항을 하나씩 세운다. 헤더가 `LOCAL:<local_sec>,MPEGTS:<mpegts>` 를 선언했다고 하자.
+Now set up the terms one by one. Say the header declared `LOCAL:<local_sec>,MPEGTS:<mpegts>`.
 
-**1단계 — 대응점을 초로 환산한다.** `mpegts` 는 tick 이므로 90,000 으로 나눈다.
-이 값은 대응점의 `V` 좌표다.
+**Step 1 — convert the correspondence point to seconds.** `mpegts` is tick so divide by 90,000. This value is the
+correspondence point's `V` coordinate.
 
 ```
 V_anchor = mpegts / 90000
 S_anchor = local_sec
 ```
 
-**2단계 — 평행이동량을 구한다.** `a = 1` 이므로 `b = V_anchor − S_anchor` 이다.
-이것이 **"영상 축이 자막 축보다 얼마나 앞서 있는가"**다.
+**Step 2 — find the translation amount.** Since `a = 1`, `b = V_anchor − S_anchor`. This is **"how far the video
+axis is ahead of the subtitle axis."**
 
 ```
 b = mpegts / 90000 − local_sec
-V(t) = t + b                    (자막 로컬 시각 t 의 영상 축 좌표)
+V(t) = t + b                    (the video-axis coordinate of subtitle-local time t)
 ```
 
-**3단계 — 출력 축으로 옮긴다.** 산출물의 0 은 영상의 첫 프레임이다. 즉 영상 축의
-좌표 `V` 는 출력 파일에서 `V − video_pts0` 에 나타난다.
+**Step 3 — move to the output axis.** The output's 0 is the video's first frame. That is, the video-axis
+coordinate `V` appears in the output file at `V − video_pts0`.
 
 ```
 O(t) = V(t) − video_pts0 = t + (mpegts / 90000 − local_sec − video_pts0)
 ```
 
-자막 파일의 큐는 그대로 두면 출력 축에서 `t` 에 놓인다. 우리가 원하는 자리는 `O(t)`
-이므로, 모든 큐를 다음만큼 밀면 된다.
+Leave the subtitle file's cues as-is and they sit at `t` on the output axis. The spot we want is `O(t)`, so shift
+every cue by the following.
 
 ```
 offset = mpegts / 90000 − video_pts0 − local_sec
 ```
 
-코드가 계산하는 식과 정확히 같다([`subtitles.py:218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L218)). 항을 정리하면 이렇다.
+Exactly the formula the code computes ([`subtitles.py:218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L218)). Organize the terms and it is this.
 
-| 항 | 무엇인가 | 부호 | 왜 그 부호인가 |
+| Term | What it is | Sign | Why that sign |
 |---|---|---|---|
-| `mpegts / 90000` | 대응점의 **영상 축 좌표**(초) | `+` | 기준이 되는 위치 그 자체 |
-| `video_pts0` | 출력 축의 0 이 영상 축에서 놓인 위치 | `−` | 영상 축 좌표를 출력 축 좌표로 옮기려면 원점 차이를 뺀다 |
-| `local_sec` | 대응점의 **자막 축 좌표**(초) | `−` | 대응점이 자막 축에서 이미 `local_sec` 만큼 진행해 있으므로, 그만큼은 큐 자신의 시각이 이미 담고 있다 |
+| `mpegts / 90000` | the correspondence point's **video-axis coordinate** (seconds) | `+` | the reference position itself |
+| `video_pts0` | where the output axis's 0 sits on the video axis | `−` | to move a video-axis coordinate to an output-axis coordinate, subtract the origin difference |
+| `local_sec` | the correspondence point's **subtitle-axis coordinate** (seconds) | `−` | the correspondence point has already progressed `local_sec` on the subtitle axis, so the cue's own time already holds that much |
 
-세 항이 세 원점에 하나씩 대응한다. 그림으로 보면 이것은 **구간 뺄셈**이다.
+The three terms correspond to the three origins, one each. Seen as a figure, this is **interval subtraction.**
 
-![세 개의 원점과 구간 뺄셈으로 본 오프셋 식](/images/lecture/hls-recon/27-three-origins.svg)
+![The offset formula seen as three origins and interval subtraction](/images/lecture/hls-recon/27-three-origins.svg)
 
-*그림 27-1 — 같은 한 순간이 세 축에서 다른 숫자로 읽힌다. 오프셋은 자막 축의 0 과
-출력 축의 0 사이 거리이며, 그 거리는 그림의 세 구간을 빼서 얻는다*
+*Figure 27-1 — the same one instant is read as a different number on the three axes. The offset is the distance between the subtitle axis's 0 and the output axis's 0, and that distance is obtained by subtracting the figure's three intervals*
 
-그림의 예는 `video_pts0 = 1.423s`(실측값)에 `LOCAL:00:00:06.000,MPEGTS:900000` 이라는
-헤더를 가정한 경우다.
+The figure's example assumes `video_pts0 = 1.423s` (measured) and a header `LOCAL:00:00:06.000,MPEGTS:900000`.
 
 ```
 offset = 900000/90000 − 1.423 − 6.000 = 10.000 − 1.423 − 6.000 = +2.577
 ```
 
-### 27.2.5 검산 — 실제 함수에 넣어 본다
+### 27.2.5 Verification — put it into the actual function
 
-식이 맞는지는 코드를 직접 돌려 확인할 수 있다. 실측 `video_pts0 = 1.423222` 를 고정하고
-헤더만 바꿔 넣은 결과다.
+Whether the formula is right can be confirmed by running the code directly. The result of fixing the measured
+`video_pts0 = 1.423222` and changing only the header.
 
 ```python
 from hlsrecon.subtitles import timestamp_offset
 timestamp_offset(b"WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:128090\n\n", 1.423222)
 ```
 
-| 헤더 | 손계산 | 함수 반환값 | 해석 |
+| Header | Hand calculation | Function return | Interpretation |
 |---|---|---|---|
-| `LOCAL:00:00:00.000,MPEGTS:128090` | `1.423222 − 1.423222 − 0` | `2.2e-07` | 정렬 필요 없음 |
-| `LOCAL:00:00:00.000,MPEGTS:5528090` | `61.423 − 1.423 − 0` | `60.0000002` | 60초 밀어야 한다 |
-| `LOCAL:00:00:06.000,MPEGTS:668090` | `7.423 − 1.423 − 6` | `2.2e-07` | **중간 조각의 헤더로도 같은 답** |
-| `MPEGTS:128090,LOCAL:00:00:00.000` | 위와 같음 | `2.2e-07` | 속성 순서가 바뀌어도 같다 |
-| `LOCAL:00:00:00.000,MPEGTS:-128090` | — | `None` | 음수 클럭은 무효(제28장) |
-| 헤더 없음 | — | `None` | 근거가 없으면 계산하지 않는다 |
+| `LOCAL:00:00:00.000,MPEGTS:128090` | `1.423222 − 1.423222 − 0` | `2.2e-07` | no alignment needed |
+| `LOCAL:00:00:00.000,MPEGTS:5528090` | `61.423 − 1.423 − 0` | `60.0000002` | must shift 60 seconds |
+| `LOCAL:00:00:06.000,MPEGTS:668090` | `7.423 − 1.423 − 6` | `2.2e-07` | **the same answer even with a mid-piece header** |
+| `MPEGTS:128090,LOCAL:00:00:00.000` | same as above | `2.2e-07` | the same even with the attribute order swapped |
+| `LOCAL:00:00:00.000,MPEGTS:-128090` | — | `None` | a negative clock is invalid (Chapter 28) |
+| no header | — | `None` | with no basis, do not compute |
 
-`2.2e-07` 은 0 이 아니라 부동소수점 잔차다. 정확한 값 `128090/90000 = 1.4232222…` 대신
-소수점 아래 여섯 자리로 자른 `1.423222` 를 넣었기 때문이며, 코드가 실제로 쓰는 값은
-`ffprobe` 출력 문자열을 `float` 로 읽은 것이라 이 잔차조차 생기지 않는다.
+`2.2e-07` is not 0 but floating-point residue. Because instead of the exact value `128090/90000 = 1.4232222…` I
+put in `1.423222` cut to six decimals, and the value the code actually uses is the `ffprobe` output string read
+as a `float` so even this residue does not arise.
 
-세 번째 행이 중요하다. **스트림 중간 조각의 헤더를 써도 같은 오프셋이 나온다.**
-`local_sec` 과 `mpegts` 가 함께 6초씩 진행했으므로 차가 보존된다. 이것이 "대응점 하나면
-충분하다"의 실측 증거이자, 스케일이 1 이라는 가정이 성립한다는 확인이다 — 두 축이 같은
-속도로 흐르지 않았다면 조각마다 다른 답이 나왔을 것이다.
+The third row matters. **Use a mid-stream piece's header and the same offset comes out.** Since `local_sec` and
+`mpegts` progressed 6 seconds together, the difference is preserved. This is the measured evidence for "one
+correspondence point is enough," and the confirmation that the assumption the scale is 1 holds — had the two axes
+not flowed at the same speed, a different answer would come out per piece.
 
-### 27.2.6 스케일이 1 이 아니면 무엇이 더 필요한가
+### 27.2.6 If the scale is not 1, what more is needed
 
-두 축의 클럭 주파수가 다르면 `a ≠ 1` 이 되고, 대응점 하나로는 결정되지 않는다.
-필요한 것이 늘어난다.
+If the two axes' clock frequencies differ, `a ≠ 1` and it is not determined by one correspondence point. What is
+needed rises.
 
-| `a = 1` 일 때 | `a ≠ 1` 일 때 |
+| When `a = 1` | When `a ≠ 1` |
 |---|---|
-| 대응점 **하나** | 대응점 **둘 이상**(또는 선언된 주파수비) |
-| 정렬 = 덧셈 한 번 | 정렬 = 모든 큐에 `a` 를 곱하고 `b` 를 더함 |
-| 오차가 시간이 지나도 커지지 않는다 | 오차가 **경과 시간에 비례해 누적**된다 |
-| 한 번 계산해 끝 | 주기적 재추정이 필요할 수 있다 |
+| **one** correspondence point | **two or more** correspondence points (or a declared frequency ratio) |
+| alignment = one addition | alignment = multiply every cue by `a` and add `b` |
+| error does not grow over time | error **accumulates in proportion to elapsed time** |
+| compute once and done | periodic re-estimation may be needed |
 
-누적의 크기는 곧바로 계산된다. 클럭 오차 100ppm(백만분율, parts per million)은 2시간
-분량에서 `100e-6 × 7200 = 0.72초` 다. 시작 부분에서는 완벽하게 맞는 자막이 끝에서는
-0.7초 밀린다 — **평행이동만으로는 절대 잡히지 않는 종류의 어긋남**이다.
+The size of accumulation is computed immediately. A clock error of 100ppm (parts per million) is
+`100e-6 × 7200 = 0.72 second` over 2 hours' worth. A subtitle perfectly matched at the start slips 0.7 second at
+the end — **a kind of off-ness that translation alone never catches.**
 
-이 저장소는 `a ≠ 1` 을 다루지 않는다. HLS 의 자막과 영상이 **같은 90kHz 시스템 클럭을
-기준으로 패키징된다**는 전제 위에 서 있고, 그 전제는 규격이 보장한다. 전제가 깨지는
-경우는 §27.5.2 에서 다룬다.
+This repository does not handle `a ≠ 1`. It stands on the premise that HLS's subtitles and video are **packaged
+against the same 90kHz system clock**, and that premise is guaranteed by the spec. The case where the premise
+breaks is covered in §27.5.2.
 
 ---
 
-## 27.3 코드 — 한 번 계산해 두 곳에서 쓴다
+## 27.3 The code — compute once, use in two places
 
-### 27.3.1 헤더 파싱 — 속성 순서에 기대지 않는다
+### 27.3.1 Header parsing — do not lean on the attribute order
 
 ```python
 # subtitles.py:184-188
@@ -309,23 +306,23 @@ _TSMAP_RE = re.compile(
     r"X-TIMESTAMP-MAP\s*=\s*(?=.*LOCAL:(?P<local>[\d:.]+))(?=.*MPEGTS:(?P<mpegts>-?\d+))",
     re.IGNORECASE,
 )
-MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
+MPEGTS_HZ = 90000  # MPEG-TS system clock
 ```
 
-정규식이 두 개의 **전방탐색(lookahead, `(?=…)`)** 으로 되어 있다. 전방탐색은 위치를
-소비하지 않으므로 두 패턴이 각자 독립적으로 같은 지점에서 뒤를 훑는다. 결과적으로
-`LOCAL` 과 `MPEGTS` 가 **어느 순서로 적혀 있어도** 잡힌다.
+The regex is made of two **lookaheads (`(?=…)`)**. A lookahead does not consume the position so the two patterns
+each independently sweep behind from the same spot. As a result `LOCAL` and `MPEGTS` are caught **in whatever
+order they are written.**
 
-이렇게 하지 않고 `LOCAL:…,MPEGTS:…` 를 순서대로 이어 붙여 썼다면, 순서를 바꿔 내보내는
-송출에서 매칭이 실패하고 **오프셋이 조용히 0 이 된다** — 자막은 받아지고 도구는
-성공을 보고하는데 자막만 밀려 있는, 가장 알아채기 어려운 실패 형태다. §27.2.5 의 네 번째
-행이 이 성질을 실측으로 고정한다.
+Had you not done this and written `LOCAL:…,MPEGTS:…` joined in order, matching would fail on a delivery that
+emits them in swapped order and **the offset quietly becomes 0** — the subtitle is received and the tool reports
+success but only the subtitle is slipped, the hardest-to-notice failure form. §27.2.5's fourth row fixes this
+property by measurement.
 
-`MPEGTS` 쪽 패턴이 `-?\d+` 로 **음수까지 일단 받는다**는 점도 의도적이다. 여기서 거르지
-않고 받아들인 뒤 값으로 판정한다 — 정규식이 조용히 매칭에 실패하면 "헤더가 없음"과
-"헤더가 무효함"이 구별되지 않기 때문이다.
+That the `MPEGTS` pattern **receives even a negative** as `-?\d+` for now is intentional too. It receives it here
+without filtering and then judges by value — because if the regex quietly fails to match, "no header" and "invalid
+header" are indistinguishable.
 
-### 27.3.2 식 그 자체
+### 27.3.2 The formula itself
 
 ```python
 # subtitles.py:199-218
@@ -338,7 +335,7 @@ MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
         mpegts = int(raw)
     except ValueError:
         return None
-    # 33비트 부호 없는 값이 규격이라 음수는 무효다 — 매핑 자체를 신뢰하지 않는다.
+    # a 33-bit unsigned value is the spec so a negative is invalid — do not trust the mapping itself.
     if mpegts < 0:
         return None
 
@@ -351,26 +348,25 @@ MPEGTS_HZ = 90000  # MPEG-TS 시스템 클럭
     return (mpegts / MPEGTS_HZ) - video_pts0 - local_sec
 ```
 
-읽을 것이 넷이다.
+There are four things to read.
 
-| 지점 | 결정 | 이렇게 하지 않으면 |
+| Spot | Decision | If you do not do this |
 |---|---|---|
-| `first_segment[:2048]` | 조각 선두 2KB 만 디코드 | 자막 조각 전체를 문자열로 바꾸는 비용을 매 트랙마다 치른다. 헤더는 파일 맨 앞에만 있다 |
-| `errors="replace"` | 디코드 실패해도 예외를 던지지 않는다 | 자막 본문에 깨진 바이트가 있으면 **헤더 파싱 단계에서 전체가 중단**된다. 헤더만 읽으면 되는데 본문 때문에 실패한다 |
-| `if mpegts < 0: return None` | 음수는 매핑 전체를 불신 | 음수 오프셋이 그대로 적용돼 자막이 앞으로 밀린다(§27.6.4) |
-| `while len(parts) < 3` | `MM:SS.mmm` 처럼 짧은 표기를 시(hour) 자리로 채운다 | `00:06.000`(6초)의 `06` 이 `parts[1]*60` 에 걸려 **6분**으로 읽힌다 |
+| `first_segment[:2048]` | decode only the leading 2KB of the piece | pay the cost of turning the whole subtitle piece into a string per track. the header is only at the file's front |
+| `errors="replace"` | do not throw an exception even on decode failure | if the subtitle body has broken bytes, **the whole thing stops at the header-parsing stage.** you only need the header but it fails because of the body |
+| `if mpegts < 0: return None` | distrust the whole mapping on a negative | the negative offset is applied as-is and the subtitle is pushed forward (§27.6.4) |
+| `while len(parts) < 3` | fill a short notation like `MM:SS.mmm` into the hour slot | the `06` of `00:06.000` (6 seconds) catches on `parts[1]*60` and is read as **6 minutes** |
 
-반환값이 `None` 인 것과 `0.0` 인 것은 다르다. `None` 은 "근거가 없다", `0.0` 은
-"근거가 있고 보정할 것이 없다"이다. 호출부는 `None` 을 만나면 그 트랙을 오프셋 표에
-넣지 않고([`cli.py:284-285`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L284-L285)), 표에 없는 트랙은 나중에 `0.0` 으로 조회된다 —
-**결과적으로 같은 동작이지만 기록은 다르다.**
+A return of `None` and a return of `0.0` are different. `None` is "no basis," `0.0` is "there is a basis and
+nothing to correct." When the caller meets `None` it does not put that track in the offset table ([`cli.py:284-285`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L284-L285)),
+and a track not in the table is later looked up as `0.0` — **the same behavior in result but a different record.**
 
-### 27.3.3 기준점 — 패킷 하나만 읽는다
+### 27.3.3 The reference point — read only one packet
 
 ```python
 # probe.py:236-246
 def first_pts(target: str, headers: dict[str, str] | None = None) -> float | None:
-    """영상 트랙의 첫 표시 시각(초). 자막 정렬 기준선으로 쓴다."""
+    """The video track's first presentation time (seconds). Used as the subtitle-alignment baseline."""
     cmd = [require("ffprobe"), "-v", "error", "-hide_banner"]
     cmd += input_args(headers, target)
     cmd += [
@@ -382,32 +378,31 @@ def first_pts(target: str, headers: dict[str, str] | None = None) -> float | Non
     ]
 ```
 
-`-read_intervals "%+#1"` 은 "시작 지점부터 패킷 **1개**만 읽으라"는 뜻이다. 30초짜리
-파일이든 2시간짜리든 읽는 양이 같다.
+`-read_intervals "%+#1"` means "read only **one** packet from the start point." Whether the file is 30 seconds or
+2 hours, the amount read is the same.
 
-이 인자가 없으면 어떻게 되는가 — `first_pts` 는 전체 패킷 목록을 받아 첫 줄만 쓰게
-된다. 제21장의 `gap_scan` 이 바로 그 방식이고(그쪽은 전부가 필요하다), 여기서는
-필요 없는 비용이다. **같은 도구를 부르더라도 필요한 만큼만 읽는다**는 구분이 명시적으로
-인자에 들어가 있다.
+What happens without this argument — `first_pts` receives the whole packet list and uses only the first line.
+Chapter 21's `gap_scan` is exactly that way (there it needs everything), and here it is unneeded cost. **Even
+calling the same tool, read only as much as needed** — that distinction is explicitly in the argument.
 
-호출부가 넘기는 대상도 눈여겨볼 만하다.
+The target the caller passes is worth noting too.
 
 ```python
 # cli.py:266-269
     pts0 = probe.first_pts(media.segments[0].uri, headers)
     if pts0 is None:
-        _eprint("    · 영상 첫 표시 시각을 읽지 못해 자막 정렬 보정을 건너뛴다")
+        _eprint("    · could not read the video first presentation time, skipping subtitle-alignment correction")
         return {}
 ```
 
-플레이리스트가 아니라 **첫 세그먼트 URI** 를 직접 넘긴다. 세그먼트 하나만 받으면
-되므로 영상 전체를 받을 필요가 없다 — `--refill-subs`(자막만 메우기)가 수백 MB 를
-다시 받지 않고도 정렬을 맞출 수 있는 근거가 여기다([`cli.py:714-717`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L714-L717)).
+It passes not the playlist but the **first segment URI** directly. Since only one segment need be received there
+is no need to receive the whole video — this is the basis for `--refill-subs` (fill only subtitles) being able to
+align without re-receiving hundreds of MB ([`cli.py:714-717`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L714-L717)).
 
-그리고 기준점을 못 읽으면 **보정을 포기하고 계속 간다.** 오프셋 0 은 "보정하지 않은
-상태"이지 "틀린 값"이 아니므로, 실패의 대가가 자막 상실이 아니라 미보정에 그친다.
+And if the reference point cannot be read, **it gives up correction and goes on.** Offset 0 is "an uncorrected
+state," not "a wrong value," so the price of failure is not subtitle loss but only non-correction.
 
-### 27.3.4 계산은 한 곳에서
+### 27.3.4 The computation in one place
 
 ```python
 # cli.py:271-289
@@ -416,7 +411,7 @@ def first_pts(target: str, headers: dict[str, str] | None = None) -> float | Non
         try:
             sub_pl = playlist.parse(fetcher.get_text(track.uri), base_url=track.uri)
         except (RuntimeError, ValueError) as e:
-            _eprint(f"    · {track.label()} 플레이리스트를 읽지 못했다: {e}")
+            _eprint(f"    · {track.label()} could not read the playlist: {e}")
             continue
         if not sub_pl.segments:
             continue
@@ -428,29 +423,30 @@ def first_pts(target: str, headers: dict[str, str] | None = None) -> float | Non
             continue
         offsets[track.uri] = off
         if abs(off) >= 0.5:
-            _eprint(f"    · {track.label()} X-TIMESTAMP-MAP 기준 {off:+.2f}s 보정")
+            _eprint(f"    · {track.label()} X-TIMESTAMP-MAP-based {off:+.2f}s correction")
     return offsets
 ```
 
-`_subtitle_offsets`([`cli.py:237-289`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L237-L289))의 반환형은 **트랙 URI → 오프셋(초)** 의 사전이다.
-값이 아니라 표를 돌려주는 이유는 트랙마다 패키징 시점이 다를 수 있어서다 — 한국어
-자막과 영어 자막이 다른 배치로 만들어졌다면 `MPEGTS` 값이 서로 다르다.
+`_subtitle_offsets` ([`cli.py:237-289`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L237-L289))'s return type is a dict of **track URI → offset (seconds).** The reason it returns
+a table and not a value is that the packaging time can differ per track — if the Korean subtitle and the English
+subtitle were made in different batches, their `MPEGTS` values differ.
 
-루프 안의 `continue` 넷이 전부 **조용한 실패**라는 점을 짚어야 한다. 자막 플레이리스트를
-못 읽어도, 첫 조각 수신에 실패해도, 헤더가 없어도 그 트랙만 표에서 빠지고 나머지는
-진행한다. 정렬 보정은 **있으면 좋은 것**이지 자막 추출의 전제 조건이 아니다.
+Note that the four `continue`s in the loop are all **quiet failures.** Even if the subtitle playlist cannot be
+read, even if the first piece fails to receive, even if there is no header, only that track drops from the table
+and the rest goes on. Alignment correction is a **nice-to-have**, not a precondition of subtitle extraction.
 
-`abs(off) >= 0.5` 는 화면에 보고할지를 가르는 선일 뿐 계산에는 관여하지 않는다.
-0.5초 미만의 보정은 일어나되 로그를 어지럽히지 않는다. 임계값의 근거 등급에 관한
-논의는 제22장 §22.4 와 같은 맥락이다 — 이 값은 실측이 아니라 가독성을 위한 관례다.
+`abs(off) >= 0.5` is only a line dividing whether to report on screen and does not participate in the
+computation. A correction below 0.5 second happens but does not clutter the log. The discussion of the threshold's
+basis grade is the same context as Chapter 22 §22.4 — this value is not measured but a convention for
+readability.
 
-### 27.3.5 계산 대상에서 빠지는 것
+### 27.3.5 What is excluded from the computation
 
 ```python
 # cli.py:252-262
-    # 자막 트랙 URI 에 자막 플레이리스트 대신 완성된 파일(.srt)을 넣는 송출이 있다.
-    # 그런 파일에는 X-TIMESTAMP-MAP 이 없어 오프셋을 계산할 근거 자체가 없으므로
-    # 보정 대상에서 뺀다 — 적힌 시각을 그대로 믿는다(sidecar 자막과 같은 취급).
+    # some deliveries put a finished file (.srt) in the subtitle track URI instead of a subtitle playlist.
+    # such a file has no X-TIMESTAMP-MAP so there is no basis to compute an offset at all, so
+    # exclude it from correction — believe the written times as-is (treated the same as a sidecar subtitle).
     segmented: list[playlist.Media] = []
     for track in tracks:
         if not track.uri:
@@ -458,32 +454,32 @@ def first_pts(target: str, headers: dict[str, str] | None = None) -> float | Non
         if playlist.is_playlist_uri(track.uri):
             segmented.append(track)
         else:
-            _eprint(f"    · {track.label()} 완성 자막 파일이라 정렬 기준이 없다 — 보정 없이 쓴다")
+            _eprint(f"    · {track.label()} is a finished subtitle file so there is no alignment reference — use it without correction")
 ```
 
-> **용어** — **sidecar(곁파일)**: 영상 컨테이너 안이 아니라 **별도 파일**로 놓인 자막.
-> 이 저장소에서는 플레이리스트에 선언되지 않고 정적 파일로 따로 존재하는 자막을 특히
-> 이렇게 부른다([`subtitles.py:377-395`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L377-L395)).
+> **Term** — **sidecar**: a subtitle placed as a **separate file** rather than inside the video container. In
+> this repository, a subtitle not declared in the playlist but existing separately as a static file is called
+> this specifically ([`subtitles.py:377-395`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L377-L395)).
 
-조각나지 않은 완성 자막에는 대응표가 없다. 없는 것을 추측해 채우지 않고 **"적힌 시각을
-그대로 믿는다"**로 정하고, 그 결정을 화면에 출력한다. 이것이 왜 중요한가 — 나중에
-그 자막이 어긋난 것으로 드러났을 때, 보정을 안 한 것인지 잘못한 것인지가 로그에
-남아 있어야 원인을 좁힐 수 있다.
+An unchopped finished subtitle has no correspondence table. It does not guess and fill the absent, but sets it as
+**"believe the written times as-is"** and outputs that decision to screen. Why this matters — when that subtitle
+later turns out to be off, whether the correction was not done or was done wrong must be in the log to narrow the
+cause.
 
-내장 경로도 같은 구분을 지킨다.
+The embed path keeps the same distinction.
 
 ```python
 # cli.py:573-575
     if embed_tracks and args.sub_embed:
-        # 오프셋은 HLS 트랙에만 해당한다. 사이드카는 완성 파일이라 X-TIMESTAMP-MAP 이 없다.
+        # the offset applies only to HLS tracks. a sidecar is a finished file so it has no X-TIMESTAMP-MAP.
         offsets = _subtitle_offsets(chosen_subs, media, fetcher, headers)
 ```
 
-`embed_tracks` 에는 sidecar 로 받아 둔 로컬 파일까지 들어 있지만, 오프셋 계산에는
-`chosen_subs`(HLS 트랙)만 넘긴다. 표에 없는 트랙은 조회 시 `0.0` 이 되므로 sidecar 는
-자동으로 보정에서 빠진다.
+`embed_tracks` includes even local files received as sidecar, but only `chosen_subs` (HLS tracks) is passed to
+the offset computation. A track not in the table becomes `0.0` on lookup so a sidecar automatically drops from
+correction.
 
-### 27.3.6 적용 ① sidecar 경로 — 파일을 고친다
+### 27.3.6 Application ① sidecar path — fix the file
 
 ```python
 # subtitles.py:157-161
@@ -494,20 +490,20 @@ def first_pts(target: str, headers: dict[str, str] | None = None) -> float | Non
             res.cues, res.first_cue, res.last_cue = measure(dest)
 ```
 
-순서가 셋 다 의미를 갖는다.
+The order of all three has meaning.
 
-| 순서 | 왜 그 자리인가 |
+| Order | Why that spot |
 |---|---|
-| `dedupe` 가 먼저 | 경계 중복 제거는 **시각과 본문이 같은** 큐를 지운다. 이동 뒤에 해도 결과는 같지만, 중복 판정에 쓰는 시각이 원본 값이어야 로그의 숫자가 송출된 값과 대조된다(제29장) |
-| `shift` 가 중간 | 파일의 큐 시각을 실제로 다시 쓴다 |
-| `measure` 가 마지막 | **이동한 뒤의** 시각을 재야 리포트의 `60.0~89.0s` 가 산출물의 실제 값이 된다. 순서가 뒤바뀌면 리포트는 정상을 보고하고 파일만 밀려 있다 |
+| `dedupe` first | boundary-duplicate removal deletes cues with the **same time and body.** doing it after the shift gives the same result, but the time used for duplicate judgment must be the original value for the log's numbers to compare with the delivered values (Chapter 29) |
+| `shift` in the middle | actually rewrites the file's cue times |
+| `measure` last | you must measure the times **after the shift** for the report's `60.0~89.0s` to be the output's actual value. reverse the order and the report reports normal while only the file is slipped |
 
-`shift` 자체는 정규식 치환 한 번이다.
+`shift` itself is one regex substitution.
 
 ```python
 # subtitles.py:221-231
 def shift(path: Path, fmt: str, seconds: float) -> int:
-    """자막 파일의 모든 큐 시각을 seconds 만큼 이동한다. 반환: 이동한 큐 수."""
+    """Shift all cue times in the subtitle file by seconds. Returns: number of cues shifted."""
     if abs(seconds) < 0.001:
         return 0
 
@@ -519,102 +515,100 @@ def shift(path: Path, fmt: str, seconds: float) -> int:
         return f"{int(h):02d}:{int(m):02d}:{int(s):02d}{sep}{int(round((s % 1) * 1000)):03d}"
 ```
 
-`abs(seconds) < 0.001` 은 **1밀리초 불감대**다. 부동소수점 잔차(§27.2.5 의 `2.2e-07`)
-때문에 파일 전체를 다시 쓰는 일을 막는다. `sep` 분기는 WebVTT 가 소수점에 `.` 를,
-SubRip 이 `,` 를 쓰기 때문이다 — 형식이 바뀌면 재생기가 그 줄을 큐로 인식하지 못한다.
+`abs(seconds) < 0.001` is a **1-millisecond deadzone.** It blocks rewriting the whole file over floating-point
+residue (§27.2.5's `2.2e-07`). The `sep` branch is because WebVTT uses `.` for the decimal and SubRip uses `,` —
+change the format and the player does not recognize that line as a cue.
 
-`total = max(0.0, total)` 은 음수 시각을 0 으로 자른다. 이 한 줄이 §27.6.4 에서
-관측 가능한 결과를 만든다.
+`total = max(0.0, total)` cuts a negative time to 0. This one line makes an observable result in §27.6.4.
 
-### 27.3.7 적용 ② 내장 경로 — ffmpeg 에 넘긴다
+### 27.3.7 Application ② embed path — hand it to ffmpeg
 
 ```python
 # subtitles.py:359-366
     for i, track in enumerate(tracks, start=1):
         inputs += input_args(headers, track.uri or "")
-        # ffmpeg 는 자막 입력의 X-TIMESTAMP-MAP 을 스스로 적용하지 않으므로,
-        # 미리 계산한 정렬 오프셋을 입력 옵션으로 직접 준다.
+        # ffmpeg does not apply a subtitle input's X-TIMESTAMP-MAP itself, so
+        # give the precomputed alignment offset directly as an input option.
         off = (offsets or {}).get(track.uri or "", 0.0)
         if abs(off) >= 0.001:
             inputs += ["-itsoffset", f"{off:.3f}"]
         inputs += ["-i", track.uri or ""]
 ```
 
-> **용어** — **`-itsoffset`**: ffmpeg 의 **입력** 옵션. 바로 뒤에 오는 `-i` 입력의 모든
-> 타임스탬프를 지정한 초만큼 이동시킨다. 출력 옵션이 아니라 입력 옵션이므로 `-i` 앞에
-> 놓여야 하고, 입력마다 따로 지정된다.
+> **Term** — **`-itsoffset`**: ffmpeg's **input** option. It shifts all timestamps of the immediately following
+> `-i` input by the specified seconds. Being an input option, not an output option, it must be placed before `-i`,
+> and it is specified per input.
 
-여기서 파일을 고치지 않는 이유는 **고칠 파일이 없기 때문**이다. 내장 경로에서 자막은
-원격 플레이리스트 URL 이고, ffmpeg 이 받아서 곧바로 컨테이너에 넣는다. 중간 산출물을
-만들어 고친 뒤 다시 넣는 것은 왕복이 하나 더 늘 뿐이다.
+The reason it does not fix the file here is **because there is no file to fix.** On the embed path the subtitle is
+a remote playlist URL, and ffmpeg receives it and puts it straight into the container. Making an intermediate
+output, fixing it, and re-inserting it only adds one more round-trip.
 
-`abs(off) >= 0.001` — `shift` 의 불감대와 같은 값이다. 두 경로가 같은 기준으로 "보정
-없음"을 판정하므로, 한쪽만 인자를 붙이고 다른 쪽은 안 붙이는 어긋남이 생기지 않는다.
-(같은 상수가 두 곳에 문자 그대로 적혀 있다는 점은 §27.7 에 적어 둔다.)
+`abs(off) >= 0.001` — the same value as `shift`'s deadzone. Since the two paths judge "no correction" by the same
+criterion, no off-ness arises where one side attaches the argument and the other does not. (That the same constant
+is written literally in two places is noted in §27.7.)
 
-`embed_args`([`subtitles.py:339-374`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L339-L374))가 인자를 `-i` **앞에** 놓는 것도 필수다. ffmpeg 의
-입력 옵션은 위치에 의미가 있어서, 뒤에 놓으면 출력 옵션으로 해석되거나 무시된다.
+That `embed_args` ([`subtitles.py:339-374`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L339-L374)) places the argument **before** `-i` is essential too. ffmpeg's input options
+have positional meaning, so place it after and it is interpreted as an output option or ignored.
 
-### 27.3.8 하나의 계산, 두 개의 적용 지점
+### 27.3.8 One computation, two application points
 
-![하나의 오프셋 계산을 두 적용 경로가 공유하는 구조](/images/lecture/hls-recon/27-one-offset-two-paths.svg)
+![The structure where two application paths share one offset computation](/images/lecture/hls-recon/27-one-offset-two-paths.svg)
 
-*그림 27-2 — 오프셋 계산은 `_subtitle_offsets` 한 곳에만 있고, sidecar 경로와 내장
-경로는 그 결과를 서로 다른 방법으로 적용하기만 한다*
+*Figure 27-2 — the offset computation is in `_subtitle_offsets` alone, and the sidecar path and the embed path only apply that result by different methods*
 
-이 구조가 이 장의 두 번째 요점이다.
+This structure is this chapter's second point.
 
-> **두 경로가 다른 것은 "적용 방법"이지 "계산"이 아니다. 계산이 한 곳에만 있으므로,
-> 식이 틀리면 두 경로가 함께 틀린다 — 한쪽만 조용히 어긋나는 일이 없다.**
+> **What the two paths differ in is the "application method," not the "computation." Since the computation is in
+> one place, if the formula is wrong the two paths are wrong together — there is no one path quietly going off.**
 
-두 경로를 각각 구현했다면 어떤 실패가 가능한가. sidecar 쪽만 고치고 내장 쪽을 잊는
-변경, 부호를 한쪽에서만 뒤집는 실수, 불감대를 한쪽만 바꾸는 변경 — 모두 **한 경로에서만
-드러나므로 그 경로를 쓰지 않는 테스트는 통과한다.** 이 저장소가 두 경로 각각에 대해
-결함 주입 테스트를 따로 두는 이유이기도 하다(`tests/run.sh:489-510`).
+Had the two paths been implemented separately, what failure is possible. A change fixing only the sidecar side and
+forgetting the embed side, a mistake flipping the sign on only one side, a change altering the deadzone on only
+one side — all **surface on only one path so a test not using that path passes.** It is also why this repository
+puts a defect-injection test for each of the two paths separately (`tests/run.sh:489-510`).
 
-같은 원칙이 한 층 위에도 있다. 자막 추출은 "받으면서 뽑는 경로"와 "자막만 메우는
-경로"(`--refill-subs`)가 함께 쓰는데, 그 이유가 함수 docstring 에 명시돼 있다.
+The same principle is one layer up too. Subtitle extraction is shared by the "extract while receiving" path and
+the "fill only subtitles" path (`--refill-subs`), and the reason is stated in the function docstring.
 
 ```python
 # cli.py:373-378
-    """고른 자막 트랙을 영상 옆에 별도 파일로 뽑는다.
+    """Extract the chosen subtitle tracks as separate files beside the video.
 
-    받으면서 뽑는 경로(`_run_one`)와 자막만 메우는 경로(`--refill-subs`)가 이것을
-    함께 쓴다. 정렬 보정과 파일 이름 규칙이 두 경로에서 갈라지면, 나중에 메운
-    자막만 미묘하게 어긋나 있는데 원인을 짚기 어렵다.
+    The extract-while-receiving path (`_run_one`) and the fill-only-subtitles path (`--refill-subs`)
+    share this. If the alignment correction and the file-name rule diverge in the two paths, the
+    subtitle filled later is subtly off and the cause is hard to point to.
     """
 ```
 
-### 27.3.9 두 경로가 같은 자리에 놓는가 — 실측
+### 27.3.9 Do the two paths land at the same spot — measured
 
-같은 어긋난 스트림(`MPEGTS` 를 +60초로 잡은 트랙)을 두 경로에 각각 물렸다.
+I put the same off stream (a track with `MPEGTS` set to +60 seconds) into the two paths each.
 
-| 경로 | 적용 방법 | 산출물의 첫 자막 시각 | 큐 수 |
+| Path | Application method | The output's first subtitle time | Cue count |
 |---|---|---|---|
-| sidecar (`.vtt` 파일) | `shift()` 로 파일을 다시 씀 | **60.000s** | 6 |
-| 내장 (`.mkv`) | `-itsoffset 60.000` | **60.000s** | 9 |
+| sidecar (`.vtt` file) | rewrite the file with `shift()` | **60.000s** | 6 |
+| embed (`.mkv`) | `-itsoffset 60.000` | **60.000s** | 9 |
 
-시각은 정확히 일치한다. **큐 수는 다르다** — sidecar 경로는 `dedupe` 로 경계 중복
-3큐를 지우지만 내장 경로는 지우지 않는다. 오프셋 계산은 공유되어 있어도 **후처리는
-공유되어 있지 않다.** 정직하게 말하면 "두 경로가 같은 결과를 낸다"는 진술은 **정렬에
-한해** 참이다. 이 비대칭은 §27.7 에 다시 적는다.
+The times match exactly. **The cue counts differ** — the sidecar path deletes 3 boundary-duplicate cues with
+`dedupe` but the embed path does not. Even though the offset computation is shared, **the post-processing is not
+shared.** Honestly, the statement "the two paths give the same result" is true **for alignment only.** This
+asymmetry is written again in §27.7.
 
 ---
 
-## 27.4 ffmpeg 은 왜 대신 해 주지 않는가
+## 27.4 Why does ffmpeg not do it for you
 
-이 저장소의 코드가 오프셋을 직접 계산하는 근거는 주석 한 줄에 있다.
+The basis for this repository's code computing the offset itself is in one comment line.
 
 ```python
 # subtitles.py:194-197
-    X-TIMESTAMP-MAP=LOCAL:<자막 시각>,MPEGTS:<90kHz 클럭> 은 '자막의 이 시각이
-    영상 타임라인의 이 클럭값에 해당한다'는 대응표다. ffmpeg 8.1.1 은 입력 구성과
-    무관하게 이 매핑을 적용하지 않으므로(실측: 마스터 입력으로 열어도 MPEGTS 를 바꾼
-    결과가 같다) 직접 계산해 보정한다. 0 이 아니면 자막이 그만큼 밀려 있다는 뜻이다.
+    X-TIMESTAMP-MAP=LOCAL:<subtitle time>,MPEGTS:<90kHz clock> is a correspondence table saying 'this
+    subtitle time corresponds to this clock value on the video timeline'. ffmpeg 8.1.1 does not apply
+    this mapping regardless of the input configuration (measured: opening via a master input, the result
+    with MPEGTS changed is the same), so compute and correct directly. Nonzero means the subtitle is slipped that much.
 ```
 
-이 주장을 실측으로 확인했다. 큐 내용이 완전히 같고 `MPEGTS` 값만 60초 다른 두 자막
-플레이리스트를 각각 단독 입력으로 열어 추출한다.
+I confirmed this claim by measurement. Extract by opening each of two subtitle playlists with completely the same
+cue content and only the `MPEGTS` value differing by 60 seconds, as standalone inputs.
 
 ```bash
 ffmpeg -v error -y -i subok/index.m3u8  -map 0:s:0 -c:s webvtt subok.vtt
@@ -622,350 +616,347 @@ ffmpeg -v error -y -i subbad/index.m3u8 -map 0:s:0 -c:s webvtt subbad.vtt
 diff subok.vtt subbad.vtt
 ```
 
-결과 — **큐 시각은 두 파일이 완전히 같았다.** `diff` 가 잡아낸 차이는 큐 본문에 섞여
-들어간 `X-TIMESTAMP-MAP=…` 문자열 네 줄뿐이었다. 즉 ffmpeg 은 그 헤더를 **정렬에
-쓰지 않았고**, 오히려 **본문으로 흘려보냈다**(제29장이 다루는 헤더 누출이 이것이다).
+The result — **the cue times were completely the same for the two files.** The difference `diff` caught was only
+the four lines of `X-TIMESTAMP-MAP=…` strings mixed into the cue body. That is, ffmpeg **did not use that header
+for alignment** and rather **flowed it into the body** (this is the header leak Chapter 29 covers).
 
-한 걸음 더 나갔다. "영상이 그 입력에 없어서"가 이유라면, 영상과 자막이 함께 든 마스터
-플레이리스트를 열면 적용되어야 한다.
+I went one step further. If the reason were "because the video is not in that input," opening a master playlist
+holding both video and subtitles should apply it.
 
 ```bash
 ffmpeg -v error -y -allowed_extensions ALL -i master-ok.m3u8  -map 0:s:0 -c:s webvtt m-ok.vtt
 ffmpeg -v error -y -allowed_extensions ALL -i master-bad.m3u8 -map 0:s:0 -c:s webvtt m-bad.vtt
 ```
 
-**두 출력은 바이트 단위로 동일했다.** 매핑은 여기서도 적용되지 않았다. 대신 다른 일이
-일어났다 — 모든 큐가 1.4초 앞으로 당겨지고 첫 큐가 사라졌다. 컨테이너의 시작 시각
-(오디오 첫 PTS = 1.400000초)만큼 입력 전체가 재배치되면서, 그보다 앞에 놓이게 된 큐가
-잘려 나간 것이다.
+**The two outputs were byte-for-byte identical.** The mapping was not applied here either. Instead something else
+happened — every cue was pulled forward by 1.4 seconds and the first cue vanished. As the whole input was
+rearranged by the container's start time (audio first PTS = 1.400000 seconds), a cue that came to sit before that
+was cut off.
 
-정리하면 이렇다.
+Organized it is this.
 
-| 입력 | X-TIMESTAMP-MAP 적용 | 실제로 일어난 일 |
+| Input | X-TIMESTAMP-MAP applied | What actually happened |
 |---|---|---|
-| 자막 플레이리스트 단독 | 안 됨 | 헤더가 큐 본문으로 새어 나옴 |
-| 영상+자막 마스터 | 안 됨 | 입력 전체가 컨테이너 시작 시각만큼 당겨짐 |
+| subtitle playlist standalone | no | the header leaked into the cue body |
+| video+subtitle master | no | the whole input was pulled by the container start time |
 
-**"영상이 없어서"는 코드 주석의 설명이었고, 실측이 보여주는 것은 그보다 넓다** — 이
-버전에서는 영상이 있어도 적용되지 않았다. 이 결과를 근거로 주석은 위 인용처럼
-고쳐졌다. 경위는 제30장 §30.2.4 에 적었다.
+**"Because the video is absent" was the code comment's explanation, and what the measurement shows is broader** —
+in this version it was not applied even with the video present. On the basis of this result the comment was fixed
+as quoted above. The circumstances are written in Chapter 30 §30.2.4.
 
-정황 증거가 하나 더 있다. 이 버전의 `libavformat` 바이너리에서 문자열을 뽑아 보면
-`WEBVTT` 는 15번 나오는데 `X-TIMESTAMP-MAP` 은 **한 번도 나오지 않는다.** 헤더를
-파싱하는 코드가 아예 없다는 뜻으로 읽힌다.
+There is one more piece of circumstantial evidence. Pull strings from this version's `libavformat` binary and
+`WEBVTT` appears 15 times but `X-TIMESTAMP-MAP` appears **not once.** It reads as meaning there is simply no code
+parsing the header.
 
-다만 두 가지를 확인하지 못했다. 이 두 번째 실험은 `-map 0:s:0` 로 자막 스트림만 뽑는
-비정상적 사용이라 **재생 경로에서도 같은지는 모르고**, 문자열 부재는 문자 단위 비교나
-매크로 조립으로 구현된 경우를 배제하지 못한다(§27.7).
+Only, two things could not be confirmed. This second experiment is an abnormal use pulling only the subtitle
+stream with `-map 0:s:0` so **whether it is the same on the playback path is unknown**, and the string absence
+does not exclude a case implemented with character-unit comparison or macro assembly (§27.7).
 
-여기서 일반 원칙 하나가 나온다. 제30장의 주제를 앞당겨 말하면 이렇다.
+Here comes one general principle. Said in advance of Chapter 30's subject, it is this.
 
-> **위임한 도구가 무엇을 하지 않는지를 모르면, 하지 않은 일이 조용히 빠진 결과를
-> 성공으로 보고하게 된다.** 위임의 경계는 문서가 아니라 실측으로 확인해야 한다.
+> **If you do not know what the delegated tool does not do, you come to report as success a result where the
+> undone work is quietly missing.** The delegation boundary must be confirmed by measurement, not a document.
 
 ---
 
-## 27.5 일반화 — 서로 다른 시계를 맞추는 문제
+## 27.5 Generalization — the problem of matching different clocks
 
-### 27.5.1 NTP — 오프셋과 지연을 분리해야 하는 이유
+### 27.5.1 NTP — why offset and delay must be separated
 
-같은 문제가 분산 시스템의 중심에 있다. 두 기계의 시계를 맞추려면 두 시계 사이의
-평행이동량을 알아야 한다.
+The same problem is at the center of distributed systems. To match two machines' clocks you must know the
+translation amount between the two clocks.
 
-> **용어** — **NTP(Network Time Protocol, 네트워크 시각 프로토콜)**: 네트워크 너머의
-> 기준 시계에 로컬 시계를 맞추는 프로토콜. 왕복 측정으로 시계 차이를 추정한다.
+> **Term** — **NTP (Network Time Protocol)**: a protocol matching a local clock to a reference clock beyond the
+> network. It estimates the clock difference by a round-trip measurement.
 
-NTP 는 네 개의 시각을 잰다 — 클라이언트 송신 `T1`, 서버 수신 `T2`, 서버 송신 `T3`,
-클라이언트 수신 `T4`. 여기서 두 값을 뽑아낸다.
+NTP measures four times — client send `T1`, server receive `T2`, server send `T3`, client receive `T4`. From
+these it pulls two values.
 
 ```
-오프셋 θ = ((T2 − T1) + (T3 − T4)) / 2
-왕복 지연 δ = (T4 − T1) − (T3 − T2)
+offset θ = ((T2 − T1) + (T3 − T4)) / 2
+round-trip delay δ = (T4 − T1) − (T3 − T2)
 ```
 
-`X-TIMESTAMP-MAP` 과 견주면 차이가 선명해진다.
+Set beside `X-TIMESTAMP-MAP` and the difference is sharp.
 
 | | X-TIMESTAMP-MAP | NTP |
 |---|---|---|
-| 대응점을 얻는 방법 | 패키저가 **선언**한다(대역 내 전달) | 왕복으로 **측정**한다 |
-| 지연 항 | 없음 — 대응은 패키징 시점에 이미 확정 | 필수 — 측정 자체가 채널을 통과하므로 |
-| 미지수 | `b` 하나 | `θ`, `δ` 둘 |
-| 성립 조건 | 두 축의 클럭이 같다(`a = 1`) | 왕복 경로의 **지연이 대칭**이다 |
-| 그 조건이 깨지면 | 시간에 비례해 자막이 밀린다 | 오프셋 추정이 비대칭분의 절반만큼 편향된다 |
+| How the correspondence point is obtained | the packager **declares** it (in-band delivery) | **measured** by round-trip |
+| Delay term | none — the correspondence is already fixed at packaging time | required — because the measurement itself passes through the channel |
+| Unknowns | one, `b` | two, `θ`, `δ` |
+| Holding condition | the two axes' clocks are the same (`a = 1`) | the round-trip path's **delay is symmetric** |
+| If that condition breaks | the subtitle slips in proportion to time | the offset estimate is biased by half the asymmetry |
 
-마지막 두 행이 요점이다. **두 시스템 모두 검증할 수 없는 가정 하나를 대가로 미지수를
-줄인다.** NTP 는 경로 비대칭을 측정할 방법이 없고, `X-TIMESTAMP-MAP` 은 클럭 속도비를
-적을 자리가 없다. 가정을 없애려면 대응점이나 측정이 더 필요하고, 그것은 프로토콜을
-무겁게 만든다.
+The last two rows are the point. **Both systems reduce the unknowns at the price of one unverifiable assumption.**
+NTP has no way to measure the path asymmetry, and `X-TIMESTAMP-MAP` has no slot to write the clock-speed ratio. To
+remove the assumption you need more correspondence points or measurements, and that makes the protocol heavier.
 
-### 27.5.2 스케일이 1 이 아닌 실제 사례
+### 27.5.2 Real cases where the scale is not 1
 
-`a ≠ 1` 은 이론적 가능성이 아니라 흔한 현실이다.
+`a ≠ 1` is not a theoretical possibility but a common reality.
 
-| 사례 | 두 축 | 스케일 `a` | 어떻게 다루는가 |
+| Case | The two axes | Scale `a` | How it is handled |
 |---|---|---|---|
-| NTSC 영상 | 실시간 초 vs 29.97fps 타임코드 | `1000/1001 ≈ 0.999001` | **drop-frame timecode** — 프레임이 아니라 **프레임 번호**를 건너뛰어 표기를 실시간에 붙잡아 둔다 |
-| 오디오 클럭 드리프트 | 캡처 카드의 48kHz vs 시스템 시계 | 1 ± 수십 ppm | 리샘플링으로 흡수하거나 주기적으로 재동기 |
-| 서버 로그 상관 | 두 기계의 로컬 시계 | 1 ± 20–100ppm(수정 발진기) | NTP 가 오프셋과 **주파수**를 함께 추정해 보정 |
-| 임베디드 센서 융합 | 센서 클럭 vs 호스트 클럭 | 1 ± 수백 ppm | 대응점을 계속 모아 선형 회귀로 `a`, `b` 를 갱신 |
+| NTSC video | real-time seconds vs 29.97fps timecode | `1000/1001 ≈ 0.999001` | **drop-frame timecode** — skip not frames but **frame numbers** to hold the notation onto real time |
+| audio clock drift | a capture card's 48kHz vs the system clock | 1 ± tens of ppm | absorb by resampling or re-sync periodically |
+| server-log correlation | two machines' local clocks | 1 ± 20–100ppm (a crystal oscillator) | NTP estimates the offset and **frequency** together and corrects |
+| embedded sensor fusion | sensor clock vs host clock | 1 ± hundreds of ppm | keep gathering correspondence points and update `a`, `b` by linear regression |
 
-세 번째 행의 크기 감각을 붙여 둔다. 100ppm 은 **하루에 8.64초**다
-(`100e-6 × 86400`). 두 서버의 로그를 시각으로 정렬해 사건 순서를 재구성하려는 사람은,
-NTP 가 없으면 하루 뒤에 8초짜리 착각을 하게 된다. 그리고 8초는 대부분의 사건 상관에서
-**순서를 뒤집기에 충분한 크기**다.
+Attach the size sense of the third row. 100ppm is **8.64 seconds a day** (`100e-6 × 86400`). Someone trying to
+align two servers' logs by time to reconstruct an event order comes, without NTP, to make an 8-second
+misunderstanding after a day. And 8 seconds is **large enough to reverse the order** in most event correlations.
 
-첫 번째 행은 특히 교훈적이다. drop-frame timecode 는 `a ≠ 1` 을 **프레임을 버려서**
-해결하지 않는다 — 버리는 것은 번호이고 영상은 온전하다. 스케일 문제를 평행이동
-문제로 되돌리려는 시도이며, 그 대가로 "타임코드 값과 프레임 수가 일대일이 아니다"라는
-평생 가는 혼란을 남겼다.
+The first row is especially instructive. Drop-frame timecode solves `a ≠ 1` not by **throwing away frames** — what
+it throws away is numbers and the video is intact. It is an attempt to return a scale problem to a translation
+problem, and at the price it left the lifelong confusion "the timecode value and the frame count are not
+one-to-one."
 
-### 27.5.3 공통 시계를 포기하는 길
+### 27.5.3 The path of giving up a common clock
 
-두 축을 아핀 대응으로 잇는 것이 유일한 답은 아니다. 물리 시계를 아예 쓰지 않고
-**인과 순서**만 다루는 길이 있다.
+Joining two axes by an affine correspondence is not the only answer. There is a path that does not use a physical
+clock at all and handles only **causal order.**
 
-> **용어** — **논리 시계(logical clock)**: 물리 시각 대신 사건의 **선후 관계**만
-> 기록하는 카운터. Lamport 시계, 벡터 시계가 대표적이다.
+> **Term** — **logical clock**: a counter recording only the **before-after relationship** of events instead of
+> physical time. Lamport clocks, vector clocks are representative.
 
-| 접근 | 무엇을 답하는가 | 무엇을 못 하는가 |
+| Approach | What it answers | What it cannot do |
 |---|---|---|
-| 아핀 대응(이 장·NTP) | "이 사건은 몇 시에 일어났는가" | 클럭 가정이 깨지면 조용히 틀린다 |
-| 논리 시계 | "이 사건이 저 사건보다 먼저인가" | 실제 경과 시간을 말하지 못한다 |
-| 혼합(하이브리드 논리 시계) | 둘 다 근사적으로 | 물리 시계 오차의 상한을 알아야 한다 |
+| affine correspondence (this chapter·NTP) | "at what time did this event happen" | quietly wrong if the clock assumption breaks |
+| logical clock | "is this event before that event" | cannot tell the actual elapsed time |
+| hybrid (hybrid logical clock) | both, approximately | must know the upper bound of the physical clock error |
 
-자막 정렬에서 논리 시계는 쓸 수 없다. **"자막이 대사보다 먼저"만으로는 화면에 언제
-띄울지 정할 수 없기 때문**이다. 물리 시각이 본질적으로 필요한 문제와 순서만 필요한
-문제를 가르는 것이, 분산 시스템 설계에서 먼저 해야 할 판단이다.
+In subtitle alignment a logical clock cannot be used. **Because "the subtitle is before the line" alone cannot
+set when to put it on screen.** Dividing a problem that essentially needs physical time from one that needs only
+order is a judgment to make first in distributed-system design.
 
-### 27.5.4 같은 구조의 목록
+### 27.5.4 A list of the same structure
 
-| 영역 | 축 A | 축 B | 대응점을 주는 것 | `a = 1` 인가 |
+| Domain | Axis A | Axis B | What gives the correspondence point | Is `a = 1` |
 |---|---|---|---|---|
-| HLS 자막 | WebVTT 로컬 시각 | MPEG-TS 90kHz | `X-TIMESTAMP-MAP` | 예(규격이 전제) |
-| 컨테이너 다중화 | 오디오 샘플 번호 | 영상 PTS | 각 스트림의 time_base | 예(같은 STC 기준) |
-| 분산 추적 | 서비스 A 의 span 시각 | 서비스 B 의 span 시각 | NTP 로 맞춘 벽시계 | 대체로(오차 존재) |
-| 포렌식 로그 상관 | 방화벽 로그 시각 | 엔드포인트 로그 시각 | 기준 시계(있다면) | 종종 아님 |
-| 금융 거래 감사 | 거래소 시각 | 참가자 시각 | 규제가 요구하는 동기(예: 최대 편차 상한) | 강제됨 |
-| 자막 재사용 | 원본 자막 시각 | 다른 판본의 영상 | 없음 — **사람이 맞춘다** | 아닐 수 있음(판본별 편집 차이) |
+| HLS subtitle | WebVTT local time | MPEG-TS 90kHz | `X-TIMESTAMP-MAP` | yes (the spec presupposes) |
+| container multiplexing | audio sample number | video PTS | each stream's time_base | yes (same STC reference) |
+| distributed tracing | service A's span time | service B's span time | the wall clock matched by NTP | mostly (error exists) |
+| forensic log correlation | firewall log time | endpoint log time | a reference clock (if any) | often not |
+| financial-transaction audit | exchange time | participant time | a synchronization regulation requires (e.g. a max-deviation cap) | enforced |
+| subtitle reuse | original subtitle time | a different edition's video | none — **a human matches it** | may not be (per-edition editing differences) |
 
-마지막 행이 이 장의 문제를 거꾸로 비춘다. 다른 판본(감독판·방송판)의 영상에 자막을
-붙이면 **평행이동으로도 안 맞는다** — 중간에 잘려 나간 장면이 있으면 대응이 **구간별로
-다른 아핀 변환**, 즉 조각난 대응이 되기 때문이다. 이 저장소는 그런 경우를 다루지 않고,
-다룰 수 있다고 주장하지도 않는다.
+The last row reflects this chapter's problem in reverse. Attach a subtitle to a different edition's video
+(director's cut·broadcast cut) and **even translation does not match** — if there is a scene cut out in the
+middle, the correspondence becomes a **per-segment different affine transform**, i.e. a chopped correspondence.
+This repository does not handle such a case and does not claim it can.
 
 ---
 
-## 27.6 보안 — 시각 매핑은 신뢰 경계 밖의 값이다
+## 27.6 Security — the time mapping is a value outside the trust boundary
 
-### 27.6.1 이 헤더는 누가 쓰는가
+### 27.6.1 Who writes this header
 
-`X-TIMESTAMP-MAP` 은 **자막 조각의 본문 안에 들어 있는 텍스트**다. 즉 자막 세그먼트를
-내보내는 쪽이 무엇이든 쓸 수 있고, 그 값을 검증할 상위 권위가 없다. 제14장에서 본 것과
-같은 구조다 — **자기 신고 메타데이터**이며, HLS 에는 자막 트랙과 영상 트랙을 묶어
-주는 서명이나 무결성 결합이 없다.
+`X-TIMESTAMP-MAP` is **text inside a subtitle piece's body.** That is, whatever emits the subtitle segment can
+write it, and there is no higher authority to verify that value. The same structure as seen in Chapter 14 —
+**self-reported metadata**, and HLS has no signature or integrity binding tying the subtitle track and the video
+track.
 
-값을 통제할 수 있는 주체를 열거하면 이렇다.
+Enumerate the actors who can control the value and it is this.
 
-| 주체 | 왜 값을 바꿀 수 있는가 |
+| Actor | Why they can change the value |
 |---|---|
-| 원 서버·패키저 | 값을 만드는 쪽이다. 실수든 고의든 |
-| CDN·중간 캐시 | 응답 본문을 다시 쓸 수 있는 위치에 있다 |
-| 평문 HTTP 경로의 중간자 | 자막 세그먼트는 대개 작고 텍스트라 수정이 쉽다 |
-| 자막 파일을 갈아 끼우는 쪽 | 트랙 URI 만 다른 자막으로 바꿔도 같은 결과가 난다 |
+| the origin server·packager | it is the side making the value. mistake or intent |
+| CDN·intermediate cache | it is in a position to rewrite the response body |
+| a man-in-the-middle on a plaintext HTTP path | a subtitle segment is usually small and text so it is easy to modify |
+| the side swapping the subtitle file | swap only the track URI for a different subtitle and the same result comes |
 
-### 27.6.2 잘못된 매핑이 만드는 것
+### 27.6.2 What a wrong mapping makes
 
-바이트 무결성 관점에서 보면 **아무 일도 일어나지 않았다.** 자막 파일은 온전하고,
-영상도 온전하고, 해시도 다 맞는다. 어긋난 것은 둘 사이의 관계뿐이다.
+From the byte-integrity view **nothing happened.** The subtitle file is intact, the video is intact, and the
+hashes all match. What went off is only the relationship between the two.
 
-| 조작 | 관측되는 결과 | 바이트 검사로 잡히는가 |
+| Manipulation | Observed result | Caught by a byte check |
 |---|---|---|
-| 오프셋 소량(수 초) | 자막이 장면과 어긋난다 — **대사가 다른 인물에게 붙는다** | 아니오 |
-| 오프셋 대량(영상 길이 초과) | 자막이 통째로 사라진 것과 같다 | 아니오 |
-| 오프셋을 음수로 크게 | 큐가 앞으로 밀려 잘리거나 뭉개진다 | 아니오 |
-| 헤더 제거 | 보정이 일어나지 않는다 — **정상으로 보이는 미보정** | 아니오 |
+| a small offset (a few seconds) | the subtitle goes off from the scene — **the line attaches to a different character** | no |
+| a large offset (exceeding the video length) | the same as the subtitle vanishing whole | no |
+| a large negative offset | the cues are pushed forward and cut or mashed | no |
+| header removal | no correction happens — **a non-correction that looks normal** | no |
 
-첫 행이 가장 다루기 어렵다. **텍스트를 한 글자도 바꾸지 않고 의미를 바꾸는 조작**이며,
-자막이 통역·법정 기록·교육 자료로 쓰이는 맥락에서는 그 자체가 내용 위조에 해당한다.
-그런데 자막 파일의 서명을 아무리 검증해도 잡히지 않는다 — 서명 대상이 **파일**이지
-**파일과 영상의 관계**가 아니기 때문이다.
+The first row is the hardest to handle. **A manipulation that changes the meaning without changing a single
+character of the text**, and in a context where the subtitle is used for interpretation·court records·educational
+material, that itself amounts to content forgery. And however much you verify the subtitle file's signature it is
+not caught — because the signature target is the **file**, not the **relationship between the file and the
+video.**
 
-> **무결성 검사는 검사 대상으로 지정된 것만 지킨다. 두 자원 사이의 관계는 어느 쪽의
-> 해시에도 들어 있지 않다.**
+> **An integrity check protects only what is designated as the check target. The relationship between two
+> resources is in neither one's hash.**
 
-### 27.6.3 코드가 하는 방어와 하지 않는 방어
+### 27.6.3 The defense the code does and does not do
 
-| 방어 | 위치 | 막는 것 |
+| Defense | Location | What it blocks |
 |---|---|---|
-| 음수 `MPEGTS` 거부 | [`subtitles.py:208-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L208-L210) | 부호 있는 값으로 해석되게 만드는 입력. 규격상 33비트 부호 없는 값이므로 음수는 무효다 |
-| 정수 파싱 실패 시 `None` | [`subtitles.py:205-207`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L205-L207) | 정수로 읽히지 않는 값. 다만 정규식이 `-?\d+` 만 잡아 오므로 이 분기는 현재 도달하지 않는다 — `MPEGTS:1e9` 는 `1` 로 잘려 매칭된다(실측) |
-| 헤더 없으면 `None` | [`subtitles.py:200-202`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L200-L202) | 근거 없는 추정. 보정하지 않는 쪽으로 퇴화한다 |
-| 결과의 교차 검증 | [`report.py:431-440`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431-L440) | **적용된 오프셋이 타당한지**를 영상 길이와 대조 |
-| 기준선을 실측이 아닌 선언값으로 | [`report.py:339-342`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L339-L342) | 밀린 자막이 스스로 기준을 끌고 가는 자기 참조(제38장) |
+| reject a negative `MPEGTS` | [`subtitles.py:208-210`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L208-L210) | input made to be interpreted as a signed value. by spec it is a 33-bit unsigned value so a negative is invalid |
+| `None` on integer-parse failure | [`subtitles.py:205-207`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L205-L207) | a value not readable as an integer. only, since the regex captures only `-?\d+`, this branch is currently unreached — `MPEGTS:1e9` is cut to `1` and matched (measured) |
+| `None` if no header | [`subtitles.py:200-202`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L200-L202) | a baseless guess. degenerates to the non-correcting side |
+| cross-validate the result | [`report.py:431-440`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431-L440) | whether the applied offset **makes sense**, against the video length |
+| baseline from the declared value, not the measurement | [`report.py:339-342`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L339-L342) | self-reference where a slipped subtitle drags its own reference (Chapter 38) |
 
-앞의 셋은 **입력 위생**이고, 마지막 둘이 진짜 방어다. 값이 형식적으로 정상이면 —
-`MPEGTS:5528090` 은 완벽히 정상적인 33비트 값이다 — 입력 검사로는 거를 수 없다.
-잡히는 지점은 오직 **결과가 말이 되는지 보는 곳**이다.
+The first three are **input hygiene**, and the last two are the real defense. If the value is formally normal —
+`MPEGTS:5528090` is a perfectly normal 33-bit value — an input check cannot filter it. The spot it is caught is
+only **where you see whether the result makes sense.**
 
 ```python
 # report.py:431-440
             elif good and video_len > 0:
                 strayed = [r for r in good if r.last_cue > video_len + 5.0 or r.first_cue < -0.5]
                 if strayed:
-                    # 원인이 출처마다 다르다. HLS 트랙은 정렬 매핑을 잘못 적용한 것이고,
-                    # 사이드카는 애초에 다른 영상의 자막을 집어온 것이다.
+                    # the cause differs by source. an HLS track applied the alignment mapping wrong,
+                    # a sidecar picked up a subtitle of a different video in the first place.
                     cause = (
-                        "이름이 다른 영상의 자막일 가능성 — --sub-name 확인"
+                        "possibly a subtitle for a differently-named video — check --sub-name"
                         if all(r.sidecar for r in strayed)
-                        else "X-TIMESTAMP-MAP 정렬 실패 의심"
+                        else "suspect X-TIMESTAMP-MAP alignment failure"
                     )
 ```
 
-**한 값이 두 원인을 가리킬 수 있으므로 원인을 출처로 갈라 적는다.** 같은 증상(자막이
-영상 범위 밖)에 대해 HLS 트랙이면 매핑 실패를, sidecar 면 다른 영상의 자막을 의심하라고
-말한다. 진단 메시지가 조사 방향을 바꾸는 지점이다.
+**Since one value can point at two causes, the cause is split and written by source.** For the same symptom (the
+subtitle out of the video range), if it is an HLS track it says suspect a mapping failure, and if a sidecar,
+suspect a subtitle of a different video. It is the spot where the diagnostic message changes the investigation
+direction.
 
-### 27.6.4 검출은 대칭이 아니다 — 실측
+### 27.6.4 Detection is not symmetric — measured
 
-여기서 실측으로 확인한 비대칭을 적어 둔다. §27.6.2 의 세 번째 행, 즉 **오프셋이 음수인
-경우**를 만들어 보았다. `MPEGTS` 는 정상 범위에 두고 `LOCAL` 만 크게 잡으면 된다.
+Here I write the asymmetry confirmed by measurement. I made §27.6.2's third row, i.e. **the case where the offset
+is negative.** Keep `MPEGTS` in the normal range and set only `LOCAL` large.
 
 ```
 X-TIMESTAMP-MAP=LOCAL:00:01:00.000,MPEGTS:128090
 → offset = 1.423222 − 1.423222 − 60 = −60.000
 ```
 
-두 경로의 결과가 **서로 달랐다.**
+The two paths' results **differed from each other.**
 
-| 경로 | 산출물의 자막 시각 | 리포트 판정 | 종료 코드 |
+| Path | The output's subtitle time | Report verdict | Exit code |
 |---|---|---|---|
-| sidecar | 모든 큐가 `00:00:00.000 --> 00:00:00.000` | **WARN** — "최소 커버리지 0% — xx 0.0–0.0s" | 0 |
-| 내장(`.mkv`) | 자막 0.0–29.0s, **영상이 60.023s 로 이동** | **PASS** — "내장 자막 0.0–29.0s vs 영상 30.0s" | 0 |
+| sidecar | every cue `00:00:00.000 --> 00:00:00.000` | **WARN** — "min coverage 0% — xx 0.0–0.0s" | 0 |
+| embed (`.mkv`) | subtitle 0.0–29.0s, **the video moved to 60.023s** | **PASS** — "embedded subtitle 0.0–29.0s vs video 30.0s" | 0 |
 
-두 경로 모두 **FAIL 을 내지 못했다.** 이유가 각각 다르다.
+Both paths **failed to give a FAIL.** The reasons differ.
 
-- **sidecar** — `shift` 의 `total = max(0.0, total)`([`subtitles.py:227`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L227))가 음수 시각을
-  0 으로 자른다. 그래서 리포트의 `first_cue < -0.5` 조건은 **원리적으로 성립할 수 없다.**
-  모든 큐가 0 으로 뭉개진 결과는 커버리지 0% 라는 다른 검사에 WARN 으로 걸릴 뿐이다.
-- **내장** — ffmpeg 이 `-itsoffset -60.000` 을 적용해 자막 타임스탬프가 음수가 되자,
-  먹싱 단계에서 **파일 전체를 +60초 이동**시켰다. 산출물의 영상 첫 프레임이 60.023초에
-  놓이고 컨테이너 길이가 90.023초가 되었다. 자막과 영상의 **상대 관계는 요청대로**지만
-  파일 전체가 밀렸다. 그런데 리포트는 자막의 절대 시각(0.0–29.0s)과 **플레이리스트
-  선언 길이**(30.0s)를 비교하므로, 이 이상을 보지 못하고 PASS 를 낸다.
+- **sidecar** — `shift`'s `total = max(0.0, total)` ([`subtitles.py:227`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L227)) cuts a negative time to 0. So the
+  report's `first_cue < -0.5` condition **cannot hold in principle.** The result of every cue being mashed to 0
+  only catches on a different check, coverage 0%, as WARN.
+- **embed** — ffmpeg applied `-itsoffset -60.000` and the subtitle timestamps went negative, so at the muxing
+  stage it **moved the whole file by +60 seconds.** The output's video first frame sat at 60.023 seconds and the
+  container length became 90.023 seconds. The **relative relationship** of subtitle and video is as requested but
+  the whole file slipped. And since the report compares the subtitle's absolute time (0.0–29.0s) with the
+  **playlist-declared length** (30.0s), it does not see this anomaly and gives a PASS.
 
-두 번째 항목은 제38장이 다루는 **기준선 문제의 또 다른 얼굴**이다. 선언 길이를 기준으로
-삼은 결정은 자기 참조 오염을 막는 데는 옳았지만, **산출물의 시작 시각이 0 이 아닌 경우**는
-그 기준으로 잡히지 않는다. 기준선 하나가 모든 종류의 이탈을 덮지는 못한다.
+The second item is **another face of the baseline problem** Chapter 38 covers. The decision to take the declared
+length as the baseline was right for blocking self-reference contamination, but **the case where the output's
+start time is not 0** is not caught by that baseline. One baseline does not cover every kind of straying.
 
-정리하면 이렇다.
+Organized it is this.
 
-> **뒤로 밀린 자막은 FAIL 로 잡히고, 앞으로 밀린 자막은 잡히지 않는다.**
-> 이것은 설계된 비대칭이 아니라 두 구현 세부(0 클램프, 먹서의 음수 회피)가 만든
-> 우연한 결과다.
+> **A subtitle slipped backward is caught as FAIL, and a subtitle slipped forward is not caught.**
+> This is not a designed asymmetry but an incidental result two implementation details made (the 0 clamp, the
+> muxer's negative avoidance).
 
-제28장 §28.5.2 가 같은 비대칭을 **훨씬 큰 원인**(33비트 래핑, 오차 26.5시간)에서
-판정 코드로부터 유도해 둔다. 여기 적은 것은 그 유도의 **종단 실행 확인**이며, 그 장이
-"측정하지 않았다"고 남긴 내장 경로 쪽 동작이 이번 실측에서 채워진 부분이다 — 큰 음수
-`-itsoffset` 은 자막을 자르는 대신 **파일 전체를 미는 것**으로 나타났다.
+Chapter 28 §28.5.2 derives the same asymmetry from the verdict code, from a **much larger cause** (33-bit
+wrapping, error 26.5 hours). What is written here is the **end-to-end execution confirmation** of that derivation,
+and the embed-path behavior that chapter left as "not measured" is the part filled in by this measurement — a
+large negative `-itsoffset` appeared as **moving the whole file** instead of cutting the subtitle.
 
-### 27.6.5 방어자 관점
+### 27.6.5 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **송출 사업자** | 자막 조각마다 `X-TIMESTAMP-MAP` 을 정확히 실어 보낸다. 빠뜨리면 클라이언트가 각자 추정하게 되고, 그 추정은 재생기마다 다르다. 자막과 영상이 **같은 패키징 배치**에서 나오게 해 두 축의 기준을 일치시킨다 |
-| **재생기·클라이언트 구현자** | 매핑 값을 신뢰 경계 밖 입력으로 다룬다. 범위 검사 후, **결과가 영상 길이 안에 드는지** 반드시 교차 검증한다. 검증 실패 시 자막을 버리지 말고 **미보정 상태로 표시하고 그 사실을 알린다** — 조용한 보정이 조용한 오류가 된다 |
-| **검증 도구 제작자** | 기준선을 측정 대상과 독립적으로 잡는다(제38장). 그리고 **양방향으로 테스트한다** — §27.6.4 의 음수 방향처럼, 한쪽만 고정한 테스트는 반대 방향의 구멍을 통과시킨다(제37장) |
-| **포렌식·감사자** | 시각 매핑 자체가 조작 대상이라는 것을 전제한다. 로그 상관에서 타임스탬프 조작(timestomping)은 증거를 지우지 않고 **순서를 바꾼다**. 원본 시각과 정규화된 시각을 함께 보존해야 되돌릴 수 있다 |
-| **콘텐츠 검토자** | 자막 정합성은 **파일 무결성 검사로 확인되지 않는다.** 재생해서 눈으로 보는 검사가 여전히 필요한 영역이 있다 |
+| **delivery operator** | carry `X-TIMESTAMP-MAP` accurately in every subtitle piece. omit it and the client guesses on its own, and that guess differs per player. make the subtitle and video come from the **same packaging batch** to match the two axes' references |
+| **player·client implementer** | treat the mapping value as input outside the trust boundary. after a range check, always cross-validate **whether the result falls within the video length.** on validation failure do not throw away the subtitle but **display it uncorrected and notify that fact** — a quiet correction becomes a quiet error |
+| **verification-tool maker** | take the baseline independently of the measurement target (Chapter 38). and **test in both directions** — like §27.6.4's negative direction, a test fixing only one side passes the hole in the opposite direction (Chapter 37) |
+| **forensic·auditor** | presuppose the time mapping itself is a manipulation target. in log correlation, timestomping does not erase evidence but **changes the order.** you must preserve the original time and the normalized time together to undo it |
+| **content reviewer** | subtitle consistency **is not confirmed by a file-integrity check.** there is a domain where a check by playing and seeing with the eye is still needed |
 
-### 27.6.6 반대 방향 — 이 계산이 흘리는 것
+### 27.6.6 The reverse direction — what this computation leaks
 
-오프셋 값은 리포트 JSON 에 `timestamp_offset_sec` 로 기록된다
-([`report.py:375`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L375), [`report.py:492`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L492)). 이 값에는 `video_pts0` 가 들어 있고, 그것은
-**패키저가 고른 시작 좌표**다. 이번 실측에서 그 값은 영상 1.423222초 / 오디오
-1.400000초였는데, 1.4초라는 시작점은 ffmpeg 의 mpegts muxer 기본값이다. 즉 이 숫자는
-**어떤 도구로 패키징했는지에 대한 약한 지문**이 된다.
+The offset value is recorded in the report JSON as `timestamp_offset_sec` ([`report.py:375`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L375), [`report.py:492`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L492)). This
+value contains `video_pts0`, and that is the **start coordinate the packager chose.** In this measurement that
+value was video 1.423222 seconds / audio 1.400000 seconds, and the 1.4-second start point is ffmpeg's mpegts
+muxer default. That is, this number becomes a **weak fingerprint of which tool was used to package.**
 
-위험도는 낮다. 그러나 원칙은 제12장과 같다 — **진단을 위해 남기는 값에 어떤 정보가
-따라오는지는 남기기 전에 한 번 따져 볼 일이다.** 여기서는 진단 가치가 훨씬 크므로
-남기는 쪽이 옳다고 판단한다.
-
----
-
-## 27.7 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **기준점이 미세하게 어긋나 있다.** 코드는 `first_pts`(영상 v:0 의 첫 패킷 PTS)를
-  기준으로 삼는데, ffmpeg 이 입력을 재배치할 때 쓰는 것은 **컨테이너 시작 시각**(모든
-  스트림 중 가장 이른 것)이다. 실측 픽스처에서 영상 1.423222초 / 오디오 1.400000초로
-  **23.2ms** 차이가 났고, 그만큼 자막이 이르게 놓인다. 산출물의 영상 첫 프레임이
-  0.023초에 놓이는 것으로 확인된다. 크기가 작아 실사용에서 문제가 되지 않을 뿐,
-  **계통 오차이지 잡음이 아니다.** 패키저가 오디오·영상 시작 간격을 크게 잡으면 커진다.
-- **대응점을 첫 조각에서만 읽는다.** [`cli.py:280`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L280) 은 자막 플레이리스트의 첫 세그먼트만
-  받아 헤더를 읽고, 그 오프셋을 트랙 전체에 적용한다. `EXT-X-DISCONTINUITY` 로 타임라인이
-  끊기거나 90kHz 클럭이 래핑하면(제28장) 대응은 **구간별로 다른 아핀 변환**이 되고,
-  하나의 오프셋으로는 뒷부분이 틀린다. **이 경우를 재현해 확인하지 못했다** — 자막이
-  달린 불연속 스트림 픽스처가 없다.
-- **`a ≠ 1` 은 검출조차 하지 않는다.** 두 축의 클럭 속도가 다른 스트림을 만나면 이
-  코드는 시작 부분만 맞추고 끝으로 갈수록 벌어지는 자막을 만든다. 조각마다 대응점을
-  모아 회귀시키면 검출할 수 있지만, 현재 그런 코드는 없다. 규격상 일어나지 않아야 하는
-  일이라는 것이 유일한 근거다.
-- **음수 오프셋이 FAIL 로 잡히지 않는다.** §27.6.4 의 실측이다. `first_cue < -0.5`
-  조건은 `shift` 의 0 클램프 때문에 sidecar 경로에서 절대 참이 될 수 없고, 내장 경로는
-  파일 전체가 이동해 버려 검사를 비껴간다. 고치는 방향은 둘이다 — `shift` 가 음수 시각을
-  자르는 대신 결과를 보고하게 하거나, 리포트가 **산출물의 시작 시각**까지 기준선에
-  포함하는 것이다. 어느 쪽도 아직 하지 않았다.
-- **두 경로가 공유하는 것은 오프셋뿐이다.** sidecar 경로만 `dedupe` 를 거치므로 내장
-  자막에는 경계 중복 큐가 남는다(실측: 6큐 대 9큐). "두 경로가 같은 결과를 낸다"는
-  진술은 **정렬에 한해** 참이다.
-- **1밀리초 불감대가 두 곳에 각각 적혀 있다.** [`subtitles.py:223`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L223) 과
-  [`subtitles.py:364`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L364) 에 같은 `0.001` 이 리터럴로 들어 있다. 지금은 일치하지만 한쪽만
-  바꾸면 두 경로가 갈린다 — 오프셋 계산은 공유했는데 그 계산을 **쓸지 말지의 기준**은
-  공유하지 않았다.
-- **ffmpeg 의 매핑 미적용을 한 버전에서만 확인했다.** 8.1.1 에서만 측정했고, 마스터
-  입력 실험은 `-map 0:s:0` 로 자막만 뽑는 사용법이라 일반 재생 경로와 같다고 단정할 수
-  없다. 상류가 이 동작을 바꾸면 이 저장소의 보정은 **이중 적용**이 되어 자막이 오히려
-  두 배로 밀린다 — 그때 무엇으로 알아챌지는 정해 두지 않았다.
-- **규격 원문의 절 번호를 대조하지 않았다.** `X-TIMESTAMP-MAP` 의 형식과 의미는 코드와
-  실측으로 확인했지만, RFC 8216 의 해당 조항 번호는 이 장에서 원문과 맞춰 보지 않아
-  달지 않았다. 부록 B(규격 원문 대조표)에서 확정할 사항이다.
+The risk is low. But the principle is the same as Chapter 12 — **what information follows a value left for
+diagnosis is worth weighing once before leaving it.** Here the diagnostic worth is much greater so leaving it is
+judged right.
 
 ---
 
-## 27.8 요약
+## 27.7 Limits and open questions
 
-1. 자막 파일과 영상은 **각자의 시간축**을 갖는다. 자막 조각은 자기 시각 0 에서 시작하고,
-   영상 타임라인은 패키저가 고른 임의의 PTS 에서 시작한다(실측 128,090 tick = 1.423222초).
-   둘을 잇는 규칙이 없으면 온전한 자막과 온전한 영상을 합쳐도 틀린 결과가 나온다.
-2. `X-TIMESTAMP-MAP=LOCAL:…,MPEGTS:…` 는 **대응점 하나**를 선언하는 대응표다. HLS 가 이
-   형식을 고른 이유는 조각 하나만으로 정렬이 가능해야 하기 때문이며(LIVE 중간 합류),
-   동시에 원본 자막 파일을 다시 쓰지 않아도 되기 때문이다.
-3. 두 시간축을 잇는 일반형은 **아핀 변환** `V = a·S + b` 다. 두 축이 같은 물리적 초를
-   세므로 `a = 1` 이고, **평행이동만 남는다.** 그래서 대응점 하나로 충분하다 —
-   그리고 헤더 형식에 대응점이 하나만 들어간다는 사실 자체가 그 가정의 선언이다.
-4. `offset = mpegts/90000 − video_pts0 − local_sec` 의 세 항은 **세 개의 원점**에 하나씩
-   대응한다. `mpegts/90000` 은 대응점의 영상 축 좌표, `video_pts0` 는 출력 축 원점의
-   위치, `local_sec` 은 큐 자신이 이미 담고 있는 몫이다.
-5. **ffmpeg 은 이 매핑을 적용하지 않는다**(실측: `MPEGTS` 만 60초 다른 두 트랙의 추출
-   결과가 큐 시각까지 동일). 그래서 sidecar 경로는 추출 후 `shift` 로 파일을 고치고,
-   내장 경로는 `-itsoffset` 으로 ffmpeg 에 넘긴다.
-6. **두 경로가 다른 것은 적용 방법이지 계산이 아니다.** `_subtitle_offsets` 한 곳에서
-   계산해 트랙별 표로 넘기므로, 식이 틀리면 두 경로가 함께 틀린다 — 한쪽만 조용히
-   어긋나는 일이 없다. 이것이 중복 구현과 공유를 가르는 지점이다.
-7. 시각 매핑은 **신뢰 경계 밖의 값**이다. 잘못된 매핑은 자막 텍스트를 한 글자도 바꾸지
-   않고 의미를 바꾸며, **어느 파일의 해시로도 잡히지 않는다.** 잡히는 지점은 결과를
-   영상 길이와 대조하는 교차 검증뿐이고, 그 검증조차 §27.6.4 에서 본 대로 방향에 따라
-   비대칭이다.
-8. 같은 문제 구조가 분산 시스템 전반에 있다. NTP 는 대응점을 **측정**해야 하므로 지연
-   항이 추가로 필요하고, 두 시스템 모두 **검증할 수 없는 가정 하나**(클럭 동일 / 지연
-   대칭)를 대가로 미지수를 줄인다.
+Written honestly.
+
+- **The reference point is slightly off.** The code takes `first_pts` (the first-packet PTS of video v:0) as the
+  reference, but what ffmpeg uses when rearranging the input is the **container start time** (the earliest of all
+  streams). In the measured fixture it was video 1.423222 seconds / audio 1.400000 seconds, a **23.2ms**
+  difference, and the subtitle sits that much early. It is confirmed by the output's video first frame sitting at
+  0.023 second. It is small so it is not a problem in real use, but **it is a systematic error, not noise.** It
+  grows if the packager sets a large gap between audio and video start.
+- **The correspondence point is read only from the first piece.** [`cli.py:280`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L280) receives only the subtitle
+  playlist's first segment, reads the header, and applies that offset to the whole track. If the timeline breaks
+  with `EXT-X-DISCONTINUITY` or the 90kHz clock wraps (Chapter 28), the correspondence becomes a **per-segment
+  different affine transform** and the later part is wrong with one offset. **I could not reproduce and confirm
+  this case** — there is no discontinuity-stream fixture with subtitles.
+- **`a ≠ 1` is not even detected.** Meet a stream where the two axes' clock speeds differ and this code makes a
+  subtitle that matches only at the start and widens toward the end. Gathering correspondence points per piece and
+  regressing could detect it, but there is no such code now. That it must not happen by spec is the only basis.
+- **A negative offset is not caught as FAIL.** §27.6.4's measurement. The `first_cue < -0.5` condition can never
+  be true on the sidecar path because of `shift`'s 0 clamp, and the embed path dodges the check because the whole
+  file moves. There are two directions to fix — have `shift` report the result instead of cutting the negative
+  time, or have the report include even the **output's start time** in the baseline. Neither is done yet.
+- **What the two paths share is only the offset.** Only the sidecar path goes through `dedupe` so boundary-
+  duplicate cues remain in the embedded subtitle (measured: 6 cues vs 9). The statement "the two paths give the
+  same result" is true **for alignment only.**
+- **The 1-millisecond deadzone is written in two places each.** [`subtitles.py:223`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L223) and [`subtitles.py:364`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L364)
+  have the same `0.001` as a literal. They match now but change one and the two paths diverge — the offset
+  computation was shared but the **criterion of whether to use that computation** was not shared.
+- **ffmpeg's non-application of the mapping was confirmed on one version only.** It was measured only on 8.1.1,
+  and the master-input experiment is a use pulling only the subtitle with `-map 0:s:0` so it cannot be asserted the
+  same as the general playback path. If the upstream changes this behavior, this repository's correction becomes a
+  **double application** and the subtitle is slipped twice as much — what to notice that by is not set.
+- **The spec's own clause numbers were not cross-checked.** `X-TIMESTAMP-MAP`'s form and meaning were confirmed by
+  code and measurement, but the relevant RFC 8216 clause number was not matched against the original in this
+  chapter so it is not attached. It is a matter to settle in Appendix B (the spec cross-reference table).
 
 ---
 
-**다음 장** — 이 장의 코드에는 설명하지 않고 지나간 세 줄이 있다.
-`if mpegts < 0: return None` 과 그 위의 주석 "33비트 부호 없는 값이 규격이라 음수는
-무효다"가 그것이다. 33비트라는 폭은 약 26.5시간마다 클럭이 0 으로 되돌아온다는 뜻이고,
-그 되돌아옴은 이 장에서 세운 아핀 대응을 한 지점에서 무너뜨린다. 제28장은 그 래핑과,
-신뢰할 수 없는 입력에 범위 검사를 두지 않으면 무엇이 무너지는지를 다룬다 — 이 저장소의
-테스트가 **"음수로 만들면 안 된다"**는 주석을 결함 주입 코드에 남겨 둔 이유이기도 하다.
+## 27.8 Summary
+
+1. A subtitle file and video have **each their own time axis.** A subtitle piece starts at its own time 0, and the
+   video timeline starts at an arbitrary PTS the packager chose (measured 128,090 tick = 1.423222 seconds).
+   Without a rule joining the two, merge an intact subtitle and an intact video and a wrong result comes out.
+2. `X-TIMESTAMP-MAP=LOCAL:…,MPEGTS:…` is a correspondence table declaring **one correspondence point.** The reason
+   HLS chose this form is that alignment must be possible with one piece alone (LIVE mid-stream join), and at the
+   same time that the original subtitle file need not be rewritten.
+3. The general form joining two time axes is the **affine transform** `V = a·S + b`. Since the two axes count the
+   same physical second, `a = 1` and **only translation is left.** So one correspondence point is enough — and the
+   fact itself that only one correspondence point fits the header form is the declaration of that assumption.
+4. The three terms of `offset = mpegts/90000 − video_pts0 − local_sec` correspond to the **three origins**, one
+   each. `mpegts/90000` is the correspondence point's video-axis coordinate, `video_pts0` is where the output
+   axis's origin sits, and `local_sec` is the share the cue itself already holds.
+5. **ffmpeg does not apply this mapping** (measured: the extraction results of two tracks differing only by
+   `MPEGTS` 60 seconds are identical down to the cue times). So the sidecar path fixes the file with `shift` after
+   extraction, and the embed path hands it to ffmpeg with `-itsoffset`.
+6. **What the two paths differ in is the application method, not the computation.** Since it is computed in one
+   place, `_subtitle_offsets`, and handed over as a per-track table, if the formula is wrong the two paths are
+   wrong together — there is no one path quietly going off. This is the spot dividing duplicate implementation
+   from sharing.
+7. The time mapping is a **value outside the trust boundary.** A wrong mapping changes the meaning without
+   changing a single character of the subtitle text, and **is caught by neither file's hash.** The spot it is
+   caught is only the cross-validation against the video length, and even that validation is asymmetric by
+   direction as seen in §27.6.4.
+8. The same problem structure is throughout distributed systems. NTP must **measure** the correspondence point so
+   it additionally needs a delay term, and both systems reduce the unknowns at the price of **one unverifiable
+   assumption** (clock sameness / delay symmetry).
+
+---
+
+**Next chapter** — this chapter's code has three lines passed over without explanation. That is `if mpegts < 0:
+return None` and the comment above it, "a 33-bit unsigned value is the spec so a negative is invalid." The width
+of 33 bits means the clock returns to 0 about every 26.5 hours, and that return collapses the affine
+correspondence this chapter set up at one spot. Chapter 28 covers that wrapping, and what collapses if you do not
+put a range check on untrusted input — it is also why this repository's test left the comment **"must not make it
+negative"** in the defect-injection code.

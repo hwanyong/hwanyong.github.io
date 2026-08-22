@@ -1,53 +1,51 @@
 ---
-untranslated: ko
-title: "스트림과 파일"
-description: "두 존재론"
-date: 2026-08-15
+title: "Stream and File"
+description: "Two ontologies"
+date: 2026-05-20
 version: '1.0'
 tags: ['streaming', 'foundations']
 thumbnail: /images/lecture/thumb/hls-recon-01-stream-vs-file.svg
 ---
-## 1.0 이 장에서 답할 것
+## 1.0 What this chapter answers
 
-1. `ffmpeg -i master.m3u8 -c copy out.mp4` 가 종료 코드 0 을 냈을 때, 그것은 무엇을 보증하는가
-2. 6초가 통째로 빠졌는데 총 재생 길이가 왜 정상과 같은가
-3. 스트림과 파일은 무엇이 다르기에, 변환 과정에서 무엇이 사라지는가
-4. 재조립과 검증은 왜 난이도가 다른가 — 한쪽은 명령 한 줄이고 다른 쪽은 열 가지 검사인가
+1. When `ffmpeg -i master.m3u8 -c copy out.mp4` exits 0, what does that guarantee?
+2. Six seconds are gone entirely, so why does the total playback length match a clean run?
+3. What is different about a stream and a file, such that something is lost in the conversion?
+4. Why are reassembly and verification different in difficulty — one a single command, the other ten checks?
 
 ---
 
-## 1.1 문제 — 성공을 자칭하는 명령
+## 1.1 The problem — a command that calls itself a success
 
-이 교재가 다루는 도구(`hls-recon`)의 존재 이유는 README 의 첫 절이 명령 한 줄로 제시한다.
+The reason the tool this course studies (`hls-recon`) exists is stated by the first section of its README in a single command.
 
 ```bash
 # README.md:17-19
-ffmpeg -i master.m3u8 -c copy out.mp4     # 받아진다. 그러나 —
+ffmpeg -i master.m3u8 -c copy out.mp4     # it downloads. But —
 ```
 
-> `README.md:21-30` — 이 명령은 세그먼트가 HTTP 404 로 빠져도 **조용히 건너뛰고 exit 0
-> 으로 끝난다.** 총 재생 길이도 그대로다 — MPEG-TS 세그먼트는 절대 표시 시각(PTS)을
-> 품고 있어 중간 조각이 사라져도 뒤 조각의 시각이 원래대로 유지되기 때문이다.
+> `README.md:21-30` — this command **silently skips** a segment that drops out with an HTTP 404 and
+> **exits 0.** The total playback length is unchanged too — an MPEG-TS segment carries an absolute
+> presentation timestamp (PTS), so even when a middle piece disappears, the timestamps of the pieces
+> behind it stay where they were.
 >
 > ```
-> 6초 세그먼트 1개 결손 → ffmpeg 종료 코드 0, 출력 길이 30.03s (정상과 동일)
->                      → 실제로는 5.99s – 12.02s 구간이 통째로 비어 있음
+> one 6s segment missing → ffmpeg exit code 0, output length 30.03s (identical to clean)
+>                        → in reality the 5.99s – 12.02s span is entirely empty
 > ```
 
-주장이 강하므로 직접 재현한다. 필요한 것은 `ffmpeg` 과 `python3` 뿐이고 외부 서버는
-쓰지 않는다.
+The claim is strong, so reproduce it directly. All you need is `ffmpeg` and `python3`; no external server.
 
-> **용어** — **HLS(HTTP Live Streaming)**: 영상을 수 초 단위 조각으로 나누어 평범한
-> HTTP GET 으로 내려보내고, 그 조각들의 목록을 텍스트 파일(M3U8 플레이리스트)로
-> 가리키는 전송 방식. RFC 8216 이 규정한다.
+> **Term** — **HLS (HTTP Live Streaming)**: a delivery method that splits video into pieces of a few
+> seconds each, sends them over ordinary HTTP GETs, and points to the list of those pieces with a text
+> file (an M3U8 playlist). Specified by RFC 8216.
 >
-> **미디어 세그먼트(media segment)**: 그 조각 하나. 이 실습에서는 6초짜리 MPEG-TS
-> 파일 다섯 개다.
+> **Media segment**: one of those pieces. In this lab it is five 6-second MPEG-TS files.
 
-### 1.1.1 재현
+### 1.1.1 Reproduction
 
 ```bash
-# 30초 테스트 패턴을 6초 × 5 세그먼트 HLS 로 만든다 (tests/run.sh:37-44 와 같은 방식)
+# make a 30-second test pattern as 6s × 5-segment HLS (same approach as tests/run.sh:37-44)
 ffmpeg -v error -y \
   -f lavfi -i "testsrc2=size=640x360:rate=30:duration=30" \
   -f lavfi -i "sine=frequency=440:duration=30" \
@@ -57,7 +55,7 @@ ffmpeg -v error -y \
 ffmpeg -v error -y -i source.mp4 -c copy -f hls -hls_time 6 -hls_playlist_type vod \
   -hls_segment_filename "plain/seg%03d.ts" plain/index.m3u8
 
-# 결손본 — 두 번째 세그먼트만 없앤다. 플레이리스트는 손대지 않는다
+# damaged copy — remove only the second segment. Leave the playlist untouched
 cp -R plain damaged && rm damaged/seg001.ts
 
 python3 -m http.server 8991 --bind 127.0.0.1 &
@@ -65,160 +63,158 @@ ffmpeg -v error -y -i "http://127.0.0.1:8991/plain/index.m3u8"   -c copy good.mp
 ffmpeg -v error -y -i "http://127.0.0.1:8991/damaged/index.m3u8" -c copy naive.mp4
 ```
 
-플레이리스트를 그대로 두었으므로 `seg001.ts` 요청은 **HTTP 404** 를 받는다. 그럼에도
-두 명령은 아무 말 없이 끝난다.
+Because the playlist was left as is, the request for `seg001.ts` receives an **HTTP 404**. And yet both
+commands finish without a word.
 
 ```
 plain   exit=0
 damaged exit=0
 ```
 
-측정값(ffmpeg 8.1.1, macOS):
+Measurements (ffmpeg 8.1.1, macOS):
 
-| 관측 지표 | 정상본 `good.mp4` | 결손본 `naive.mp4` | 결함에 반응하는가 |
+| Observed metric | clean `good.mp4` | damaged `naive.mp4` | Does it respond to the fault? |
 |---|---|---|---|
-| ffmpeg 종료 코드 | `0` | `0` | **아니오** |
-| stderr 출력 | 없음 | 없음 | **아니오** |
-| `format=duration` | `30.023401` | `30.023401` | **아니오** — 한 자리도 다르지 않다 |
-| 컨테이너가 열리는가 | 열림 | 열림 | **아니오** |
-| 끝까지 디코드되는가 | 성공 | 성공 | **아니오** |
-| `avg_frame_rate` | `30/1` | `24/1` | 예 — 그러나 기준선이 없다 |
-| `nb_frames` | `900` | `720` | 예 — 그러나 기준선이 없다 |
-| `format=size` | `7,899,819` | `6,319,406` | 예 — 그러나 기준선이 없다 |
+| ffmpeg exit code | `0` | `0` | **No** |
+| stderr output | none | none | **No** |
+| `format=duration` | `30.023401` | `30.023401` | **No** — not one digit differs |
+| Does the container open? | opens | opens | **No** |
+| Does it decode to the end? | success | success | **No** |
+| `avg_frame_rate` | `30/1` | `24/1` | Yes — but there is no baseline |
+| `nb_frames` | `900` | `720` | Yes — but there is no baseline |
+| `format=size` | `7,899,819` | `6,319,406` | Yes — but there is no baseline |
 
-> **용어** — **종료 코드(exit status)**: 프로세스가 종료하며 부모에게 남기는 정수.
-> POSIX 관례상 `0` 이 성공이다. 셸의 `&&`, CI 파이프라인의 단계 진행이 이 값 하나로
-> 갈린다.
+> **Term** — **exit status**: the integer a process leaves to its parent as it terminates. By POSIX
+> convention `0` is success. A shell's `&&` and a CI pipeline's step progression turn on this one value.
 
-### 1.1.2 "기준선이 없다"가 핵심이다
+### 1.1.2 "There is no baseline" is the crux
 
-크기·프레임 수·평균 프레임률은 분명히 달라진다. 그런데 이 셋은 **검증에 쓸 수 없다.**
-비교할 대상이 없기 때문이다.
+Size, frame count, and average frame rate clearly do change. And yet these three **cannot be used for
+verification** — because there is nothing to compare them against.
 
-HLS 플레이리스트가 대조 기준이 될 양으로 선언하는 것은 다음이 전부다.
+Everything the HLS playlist declares as a quantity that could serve as a reference is the following.
 
 ```
-#EXT-X-TARGETDURATION:6      ← 세그먼트 최대 길이
-#EXTINF:6.000000,            ← 세그먼트별 길이. 5개 합 = 30.00s
-#EXT-X-ENDLIST               ← 목록이 완결됐다는 표시
+#EXT-X-TARGETDURATION:6      ← maximum segment length
+#EXTINF:6.000000,            ← per-segment length. sum of 5 = 30.00s
+#EXT-X-ENDLIST               ← marks the list as complete
 ```
 
-**프레임 수도 해시도 규격에 없다.** 바이트 수는 세그먼트를 한 파일의 바이트 범위로
-지정하는 `EXT-X-BYTERANGE` 를 쓸 때만 선언된다. 세그먼트가 별개 파일인 이 스트림에서
-받는 쪽이 사전에 알 수 있는 유일한 양은 **길이**다. 그리고 길이야말로 이 결함이
-건드리지 않는 유일한 양이다.
+**Neither frame count nor a hash is in the spec.** A byte count is declared only when `EXT-X-BYTERANGE`
+is used, which addresses a segment as a byte range within one file. In this stream, where each segment
+is a separate file, the only quantity the receiver can know in advance is **length**. And length is the
+one quantity this fault does not touch.
 
-> 매니페스트가 선언하는 단 하나의 기준선이, 하필 결함에 대해 완전히 둔감한 양이다.
+> The single baseline the manifest declares happens to be the quantity completely insensitive to the fault.
 
-`avg_frame_rate` 는 사정이 더 나쁘다. 정상본은 `30/1`, 결손본은 `24/1` 로 읽힌다 —
-ffprobe 가 **파일 자신의 프레임 수와 길이로부터** 평균을 다시 계산하기 때문이다
-(720 ÷ 30.023401 ≈ 23.98 → `24/1`). 즉 프레임 수와 평균 프레임률은 서로 독립이 아니라
-한쪽이 다른 쪽에서 유도된 값이고, 결손이 나면 **둘이 함께 움직여** 서로를 상쇄한다.
+`avg_frame_rate` is worse off. The clean copy reads `30/1`, the damaged copy `24/1` — because ffprobe
+**recomputes** the average **from the file's own frame count and length** (720 ÷ 30.023401 ≈ 23.98 →
+`24/1`). That is, frame count and average frame rate are not independent; one is derived from the other,
+and when loss occurs **the two move together** and cancel each other out.
 
-> **측정 대상이 측정 기준을 함께 끌고 가면 그 검사는 항상 통과한다.**
+> **When the thing being measured drags its own measuring standard along, that check always passes.**
 
-이 저장소가 자막 검사에서 같은 함정을 명시적으로 피한 이유가 그것이다 — 자막을
-컨테이너에 내장하면 전체 duration 이 자막 끝까지 늘어나므로, 실측 길이를 기준선으로
-삼으면 밀린 자막이 스스로 기준을 끌고 가 검사가 항상 통과한다([`report.py:339-342`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L339-L342)).
-그래서 기준선은 **플레이리스트 선언 길이**다. 제38장의 주제다.
+That is exactly why this repository explicitly avoids the same trap in its subtitle check — embedding
+subtitles into the container stretches the total duration out to the end of the subtitles, so if you
+take the measured length as the baseline, a shifted subtitle drags the baseline itself along and the
+check always passes ([`report.py:339-342`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L339-L342)).
+So the baseline is the **playlist's declared length**. That is the subject of Chapter 38.
 
 ---
 
-## 1.2 원리 — 스트림과 파일은 다른 존재다
+## 1.2 The principle — a stream and a file are different beings
 
-문제의 뿌리는 ffmpeg 의 결함이 아니다. **스트림과 파일이 서로 다른 종류의 대상**이라는
-데 있다.
+The root of the problem is not a defect in ffmpeg. It is that **a stream and a file are different kinds
+of object.**
 
-| | 스트림 | 파일 |
+| | Stream | File |
 |---|---|---|
-| 정체 | 시간 순서를 가진 **사건의 열** | 한 시점의 **상태 하나** |
-| 개수 | `n` 개의 HTTP 트랜잭션 (이 예에서 5) | 1 |
-| 끝 | 내부에 없다 — `#EXT-X-ENDLIST` 라는 **별도 선언**이 알려 준다 | 크기가 곧 끝이다 |
-| 완결성 | 정의되지 않는다. "지금까지 온 것"만 있다 | 파일 크기와 구조로 판정 가능 |
-| 실패 | 사건 단위로 일어난다 (404 하나, 지연 하나) | 파일 단위로만 보인다 |
-| 재현 | 불가능 — 두 번째 요청은 다른 응답을 받을 수 있다 | 가능 — 같은 바이트를 다시 읽는다 |
-| 관측 | 흘러가는 동안에만 | 언제든지 |
+| Identity | a **sequence of events** with a temporal order | a **single state** at one instant |
+| Count | `n` HTTP transactions (5 in this example) | 1 |
+| End | not inside it — a **separate declaration**, `#EXT-X-ENDLIST`, announces it | the size is the end |
+| Completeness | undefined. there is only "what has arrived so far" | decidable from file size and structure |
+| Failure | happens per event (one 404, one delay) | visible only per file |
+| Reproducibility | impossible — a second request may get a different response | possible — reread the same bytes |
+| Observability | only while it flows | at any time |
 
-마지막 행이 이 장의 전부다.
+The last row is the whole of this chapter.
 
-![스트림에서 파일로 — 변환이 버리는 것](/images/lecture/hls-recon/01-stream-to-file.svg)
+![From stream to file — what the conversion throws away](/images/lecture/hls-recon/01-stream-to-file.svg)
 
-*그림 1-1 — 스트림은 다섯 번의 수신 사건이고 파일은 하나의 상태다. 수신마다 관측되던
-상태 코드·지연·해시는 연결·먹싱을 통과하는 순간 산출물 어디에도 남지 않는다.*
+*Figure 1-1 — a stream is five receive events, a file is one state. The status code, latency, and hash
+observed at each receipt are nowhere in the output the moment they pass through concatenation and muxing.*
 
-`-c copy` 는 **무손실**이다 — 재인코딩이 없으므로 영상 바이트는 한 비트도 바뀌지
-않는다. 그런데도 이 변환은 손실적이다. **잃는 것이 영상이 아니라 관측 정보**이기
-때문이다.
+`-c copy` is **lossless** — with no re-encoding, not one bit of the video bytes changes. And yet this
+conversion is lossy. Because **what is lost is not the video but the observation information.**
 
-- `seg001` 에 대한 요청이 404 였다는 사실
-- 그 요청이 재시도되었다는 사실
-- 각 세그먼트의 도착 시각과 SHA-256
+- the fact that the request for `seg001` was a 404
+- the fact that the request was retried
+- each segment's arrival time and SHA-256
 
-이 셋은 산출물 `naive.mp4` 안에 표현될 자리가 없다. MP4 컨테이너에 "이 파일은
-다섯 조각 중 넷으로 만들어졌다"를 적는 표준 상자(box)가 없고, 있더라도 그것을 적는
-주체는 결손을 알고 있던 도구 자신이다.
+These three have nowhere to be represented inside the output `naive.mp4`. There is no standard box in the
+MP4 container to write "this file was made from four of five pieces," and even if there were, the party
+writing it would be the very tool that knew about the loss.
 
-> **파일은 자신이 어떻게 만들어졌는지 기록하지 않는다.** 따라서 수신 계층의 사실을
-> 사후에 파일에서 복원하려는 시도는 원리적으로 실패한다. 기록하려면 **변환이 일어나는
-> 그 자리에서** 해야 한다.
+> **A file does not record how it was made.** Therefore an attempt to recover the facts of the receive
+> layer from the file after the fact fails in principle. To record them, you must do it **at the very
+> place the conversion happens.**
 
-이것이 `hls-recon` 이 재조립 자체는 ffmpeg 에 위임하면서도([`assemble.py:1-6`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L1-L6)) 수신은
-직접 하는 이유다. README 는 이 설계를 한 줄로 요약한다.
+This is why `hls-recon` delegates the reassembly itself to ffmpeg ([`assemble.py:1-6`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L1-L6)) yet does the receiving
+itself. The README summarizes this design in one line.
 
-> `README.md:32-34` — hls-recon 은 재조립 자체는 ffmpeg 에 위임하고, **ffmpeg 가
-> 알려주지 않는 것만** 따로 계측한다: 세그먼트별 HTTP 결과와 지연, MPEG-TS 연속성
-> 카운터, 재조립본의 타임라인 결손.
+> `README.md:32-34` — hls-recon delegates the reassembly itself to ffmpeg, and separately instruments
+> **only what ffmpeg does not report**: per-segment HTTP outcome and latency, the MPEG-TS continuity
+> counter, and timeline gaps in the reassembled output.
 
 ---
 
-## 1.3 왜 총 길이가 결손을 감추는가
+## 1.3 Why the total length hides the loss
 
-수신 계층을 놓쳤다 치자. 파일만 남았을 때 6초 구멍을 볼 수 있는가. 여기서
-**절대 시각**이라는 두 번째 원리가 나온다.
+Suppose we missed the receive layer. With only the file left, can you see the 6-second hole? Here the
+second principle, **the absolute timestamp**, comes in.
 
-> **용어** — **PTS(Presentation Time Stamp, 표시 시각)**: 이 프레임을 언제 화면에
-> 내보내야 하는지를 나타내는 값. MPEG-TS 에서는 **90kHz 클럭 기준의 33비트 부호 없는
-> 정수**로 실린다. 중요한 것은 이것이 **직전 프레임으로부터의 간격이 아니라 타임라인
-> 위의 절대 좌표**라는 점이다.
+> **Term** — **PTS (Presentation Time Stamp)**: a value indicating when this frame should be presented
+> on screen. In MPEG-TS it is carried as a **33-bit unsigned integer on a 90kHz clock**. What matters is
+> that this is **not an interval from the previous frame but an absolute coordinate on the timeline.**
 
-두 설계를 비교하면 차이가 분명해진다.
+Comparing two designs makes the difference clear.
 
-| 시각 표현 | 조각 하나가 사라지면 |
+| Time representation | when one piece disappears |
 |---|---|
-| **상대 간격** (앞 프레임으로부터 +Δ) | 뒤가 전부 앞으로 당겨진다 → **총 길이가 6초 줄어든다** |
-| **절대 좌표** (PTS, MPEG-TS 의 방식) | 뒤 조각의 좌표가 그대로다 → **총 길이가 변하지 않는다** |
+| **relative interval** (+Δ from the previous frame) | everything behind is pulled forward → **the total length shrinks by 6 seconds** |
+| **absolute coordinate** (PTS, the MPEG-TS way) | the coordinates of the pieces behind stay put → **the total length does not change** |
 
-MPEG-TS 는 절대 좌표를 쓴다. 여러 수신기가 임의 지점에서 스트림에 합류해도 같은 시각
-해석에 도달해야 하기 때문이다(방송 출신 포맷의 요구사항이다). 그 성질이 재생에는
-미덕이고 검증에는 함정이 된다.
+MPEG-TS uses absolute coordinates. Multiple receivers joining the stream at arbitrary points must still
+arrive at the same interpretation of time (a requirement of a format born in broadcast). That property
+is a virtue for playback and a trap for verification.
 
-![총 길이는 같고 중간이 비어 있다](/images/lecture/hls-recon/01-timeline-hole.svg)
+![The total length is the same and the middle is empty](/images/lecture/hls-recon/01-timeline-hole.svg)
 
-*그림 1-2 — 결손본에서도 `seg002` 의 PTS 는 12.02s 그대로다. 뒤 조각이 앞으로
-당겨지지 않으므로 총 길이는 정상본과 완전히 같고, 결손은 오직 타임라인 위의 구멍으로만
-드러난다.*
+*Figure 1-2 — even in the damaged copy, `seg002`'s PTS is still 12.02s. Because the pieces behind are
+not pulled forward, the total length is exactly the same as the clean copy, and the loss shows up only
+as a hole on the timeline.*
 
-### 1.3.1 그러나 언제나 그런 것은 아니다
+### 1.3.1 But it is not always so
 
-이 명제는 **중간 결손**에 한정된다. 같은 실험을 첫·마지막 세그먼트로 옮기면 결과가
-달라진다.
+This proposition is limited to a **middle loss**. Move the same experiment to the first or last segment
+and the result changes.
 
-| 빠진 세그먼트 | ffmpeg 종료 코드 | 출력 길이 | 총 길이로 잡히는가 |
+| Missing segment | ffmpeg exit code | output length | caught by total length? |
 |---|---|---|---|
-| 없음 (정상) | `0` | `30.023401` | — |
-| `seg001` (중간) | `0` | `30.023401` | **아니오** |
-| `seg000` (첫) | `0` | `24.000000` | 예 |
-| `seg004` (마지막) | `0` | `24.032653` | 예 |
+| none (clean) | `0` | `30.023401` | — |
+| `seg001` (middle) | `0` | `30.023401` | **No** |
+| `seg000` (first) | `0` | `24.000000` | Yes |
+| `seg004` (last) | `0` | `24.032653` | Yes |
 
-경계 결손은 타임라인의 양 끝을 잘라내므로 길이에 그대로 나타나고, 이 저장소의
-**길이 정합** 검사가 잡는다 — 선언 길이 30.00s 와의 드리프트가 `TARGETDURATION`(6s)
-이상이면 FAIL 이다([`report.py:262-278`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L262-L278)).
+Boundary loss cuts off one end of the timeline, so it appears directly in the length, and this
+repository's **length-consistency** check catches it — if the drift from the declared 30.00s is at least
+`TARGETDURATION` (6s), it is a FAIL ([`report.py:262-278`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L262-L278)).
 
 ```python
 # report.py:264-272
         drift = media.duration - declared_duration
         drift_pct = abs(_pct(drift, declared_duration))
-        # 한 세그먼트 이상 어긋났으면 구간 결손으로 본다.
+        # if off by at least one segment, treat it as an interval loss.
         if target_duration and abs(drift) >= target_duration:
             verdict = FAIL
         elif drift_pct > 0.5:
@@ -227,33 +223,36 @@ MPEG-TS 는 절대 좌표를 쓴다. 여러 수신기가 임의 지점에서 스
             verdict = PASS
 ```
 
-**즉 총 길이 검사가 잡는 것은 눈에도 잘 띄는 결손이고, 놓치는 것은 눈에 안 띄는
-결손이다.** 검사의 사각이 하필 가장 발견하기 어려운 사례와 겹친다.
+**In other words, what the total-length check catches is the loss that is easy to spot, and what it
+misses is the loss that is invisible.** The check's blind spot coincides with exactly the hardest case
+to find.
 
 ---
 
-## 1.4 코드 — 무엇을 대신 관측하는가
+## 1.4 The code — what to observe instead
 
-총 길이가 무력하다면 대안은 하나다. **총량이 아니라 분포를 본다.** 인접 프레임의
-표시 시각 간격을 전부 훑어 비정상적으로 벌어진 곳을 찾는다.
+If the total length is powerless, there is one alternative. **Look at the distribution, not the total.**
+Sweep through all the presentation-time intervals of adjacent frames and find where they open up
+abnormally.
 
 ```python
 # probe.py:191-198
 def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
-    """영상 트랙의 표시 시각을 훑어 결손 구간을 찾는다.
+    """Sweep the presentation times of the video track to find loss intervals.
 
-    총 길이 비교로는 중간 세그먼트 유실을 잡을 수 없다. MPEG-TS 세그먼트는
-    절대 PTS(표시 시각)를 담고 있어서, 한 조각이 빠져도 뒤 조각의 시각이
-    원래대로 유지되어 총 길이가 그대로이기 때문이다. 결손은 총량이 아니라
-    타임라인의 구멍으로 나타나므로 인접 프레임 간격을 직접 본다.
+    A total-length comparison cannot catch a lost middle segment. An MPEG-TS segment
+    carries an absolute PTS (presentation time), so even when a piece is missing the
+    timestamps of the pieces behind it stay put and the total length is unchanged.
+    Loss shows up not as a total but as a hole in the timeline, so look at adjacent
+    frame intervals directly.
     """
 ```
 
-핵심 계산은 열 줄이다.
+The core computation is ten lines.
 
 ```python
 # probe.py:222-233
-    # B-프레임이 있으면 패킷 순서가 표시 순서와 다르므로 시각 기준으로 정렬한다.
+    # if there are B-frames, packet order differs from display order, so sort by time.
     times.sort()
     deltas = [b - a for a, b in zip(times, times[1:])]
     ordered = sorted(deltas)
@@ -267,59 +266,59 @@ def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
     return scan
 ```
 
-여기서 결정 셋을 짚는다. 셋 다 "이렇게 하지 않으면 무엇이 깨지는가"로 읽어야 한다.
+Here are three decisions to note. Read all three as "what breaks if you do not do this."
 
-| 결정 | 하지 않으면 |
+| Decision | if you do not |
 |---|---|
-| `times.sort()` — 시각 기준 정렬 | `ffprobe` 는 패킷을 **저장 순서**로 내놓는다. B-프레임이 있으면 표시 순서와 다르므로 간격에 **음수가 섞이고**, 그 잡음이 중앙값과 임계값을 함께 왜곡한다. 표시 순서로는 존재하지 않는 구멍이 만들어지기도 한다 |
-| `median` — 평균이 아니라 중앙값 | 결손 구간 자체가 표본 안에 있다. 평균을 쓰면 6초짜리 이상치가 기준선을 끌어올려 임계값이 함께 커지고, **결손이 스스로를 정상으로 만든다** (§1.1.2 의 함정과 같은 구조다) |
-| `max(floor, median * factor)` — 바닥값 0.4초 | 30fps 에서 중앙값의 3배는 0.1초다. 바닥값이 없으면 프레임 한두 개 누락이나 가변 프레임률의 정상적인 흔들림이 전부 결손으로 보고된다. 실제로 이 실습에서도 채택된 임계값은 `median × 3 = 100ms` 가 아니라 **바닥값 400ms** 였다 |
+| `times.sort()` — sort by time | `ffprobe` emits packets in **storage order**. With B-frames that differs from display order, so **negative values mix into** the intervals, and that noise distorts both the median and the threshold. It can even fabricate holes that do not exist in display order |
+| `median` — median, not mean | the loss interval itself is in the sample. Using the mean lets a 6-second outlier pull the baseline up so the threshold grows with it, and **the loss makes itself look normal** (the same structure as the trap in §1.1.2) |
+| `max(floor, median * factor)` — a floor of 0.4s | at 30fps, three times the median is 0.1s. Without a floor, a one- or two-frame dropout or the normal jitter of a variable frame rate all get reported as loss. In fact the threshold adopted in this lab was not `median × 3 = 100ms` but the **floor of 400ms** |
 
-판정은 `report.py` 가 맡는다. 결손 건수를 그대로 FAIL 로 올리지 않고 한 가지 예외를
-둔다.
+The verdict is `report.py`'s job. It does not raise the loss count straight to FAIL; it makes one
+exception.
 
 ```python
 # report.py:303-313
-    # 5) 타임라인 연속성 — 총 길이가 맞아도 중간이 비어 있을 수 있다
+    # 5) timeline continuity — even if the total length matches, the middle can be empty
     if gaps is not None and gaps.ok:
         if gaps.gaps:
             worst = max(gaps.gaps, key=lambda g: g.length)
             where = ", ".join(f"{g.start:.2f}~{g.end:.2f}s" for g in gaps.gaps[:3])
-            more = f" 외 {len(gaps.gaps) - 3}건" if len(gaps.gaps) > 3 else ""
-            # 플레이리스트가 EXT-X-DISCONTINUITY 로 예고한 불연속이면 의도된 이음매일 수 있다.
+            more = f" and {len(gaps.gaps) - 3} more" if len(gaps.gaps) > 3 else ""
+            # if the playlist announced the discontinuity with EXT-X-DISCONTINUITY, it may be an intended seam.
             intended = discontinuities >= len(gaps.gaps)
             rep.add(
-                "타임라인 연속성",
+                "timeline continuity",
                 WARN if intended else FAIL,
 ```
 
-플레이리스트가 스스로 `EXT-X-DISCONTINUITY` 로 예고한 불연속(광고 삽입 등)이면 의도된
-이음매일 수 있으므로 WARN 으로 낮춘다. **규격이 허용한 예외를 모르는 검사기는 오탐을
-쏟아내고, 오탐을 쏟아내는 검사기는 쓰이지 않는다.**
+If it is a discontinuity the playlist itself announced with `EXT-X-DISCONTINUITY` (ad insertion, etc.),
+it may be an intended seam, so it is lowered to WARN. **A checker ignorant of the exceptions the spec
+allows pours out false positives, and a checker that pours out false positives goes unused.**
 
-### 1.4.1 같은 결손에 대한 두 도구의 판정
+### 1.4.1 Two tools' verdicts on the same loss
 
-앞의 결손본을 `hls-recon` 에 그대로 물리면 이렇게 나온다.
+Feed the earlier damaged copy straight into `hls-recon` and it comes out like this.
 
 ```
-  [2/3] 복호화 · 전송 무결성 분석
-    ✗ seg#1 수신 실패: HTTP 404 File not found
+  [2/3] Decryption · transport integrity analysis
+    ✗ seg#1 receive failed: HTTP 404 File not found
 
-  검증 결과: FAIL — 결함 검출
+  Verification result: FAIL — fault detected
 
-  ✓ 플레이리스트       세그먼트 5개, 선언 길이 30.00s, TARGETDURATION 6s, 암호화 없음
-  ✗ 세그먼트 수신      1/5개 실패 (HTTP [404]) — 재조립본에 결손 구간 발생
-  ✓ 응답 지연          TTFB p50 2ms / p95 2ms, 처리량 중앙값 4320.7 Mbps
-  ✓ 페이로드 유효성    전량 미디어 컨테이너로 확인 (선두 바이트 검사)
-  ✓ 세그먼트 고유성    SHA-256 전량 상이
-  ! TS 무결성          CC 불연속 5건(패킷 유실)
-  ✓ 길이 정합          실측 30.02s vs 선언 30.00s (드리프트 +0.02s / 0.08%)
-  ✓ 스트림 구성        h264 Constrained Baseline 640x360 @24fps 1577kbps + aac 1ch 44100Hz 102kbps
-  ✗ 타임라인 연속성    결손 1건 / 합계 6.03s (최대 6.03s) @ 5.99~12.02s
-  ✓ 전체 디코드        끝까지 오류 없이 디코드
+  ✓ Playlist            5 segments, declared length 30.00s, TARGETDURATION 6s, no encryption
+  ✗ Segment receipt     1/5 failed (HTTP [404]) — loss interval in the reassembled output
+  ✓ Response latency    TTFB p50 2ms / p95 2ms, throughput median 4320.7 Mbps
+  ✓ Payload validity    all confirmed as media containers (leading-byte check)
+  ✓ Segment uniqueness  all SHA-256 distinct
+  ! TS integrity        5 CC discontinuities (packet loss)
+  ✓ Length consistency  measured 30.02s vs declared 30.00s (drift +0.02s / 0.08%)
+  ✓ Stream composition  h264 Constrained Baseline 640x360 @24fps 1577kbps + aac 1ch 44100Hz 102kbps
+  ✗ Timeline continuity 1 loss / total 6.03s (max 6.03s) @ 5.99~12.02s
+  ✓ Full decode         decoded to the end with no errors
 ```
 
-종료 코드는 `2` 다.
+The exit code is `2`.
 
 ```python
 # cli.py:651-652
@@ -327,255 +326,258 @@ def _exit_code(verdict: str) -> int:
     return {report.PASS: 0, report.WARN: 0, report.FAIL: 2}[verdict]
 ```
 
-위 출력이 낸 검사 열 개 중 이 결함에 반응한 것은 **셋**이고, FAIL 을 낸 것은
-**둘**이다. 각 항목이 무엇을 잡는지는 README 의 검증 항목표(`README.md:336-350`)에 있다.
+Of the ten checks the output above produced, **three** responded to this fault, and **two** returned
+FAIL. What each item catches is in the README's verification table (`README.md:336-350`).
 
-| 검사 | 이 결손에 대한 판정 | 관측 위치 |
+| Check | verdict on this loss | observed where |
 |---|---|---|
-| 플레이리스트 | 정보 | 매니페스트 |
-| **세그먼트 수신** | **FAIL** | **수신 중에만 — 파일에는 흔적이 없다** |
-| 응답 지연 | PASS | 수신 중에만 |
-| 페이로드 유효성 | PASS | 수신 중에만 |
-| 세그먼트 고유성 | PASS | 수신 중에만 |
-| TS 무결성 | WARN (CC 불연속 5건) | 수신 중에만 |
-| 길이 정합 | **PASS** ← 무력 | 산출물 |
-| 스트림 구성 | PASS | 산출물 |
-| **타임라인 연속성** | **FAIL** | **산출물 — 사후에도 관측 가능** |
-| 전체 디코드 | **PASS** ← 무력 | 산출물 |
+| Playlist | info | the manifest |
+| **Segment receipt** | **FAIL** | **only during receipt — no trace in the file** |
+| Response latency | PASS | only during receipt |
+| Payload validity | PASS | only during receipt |
+| Segment uniqueness | PASS | only during receipt |
+| TS integrity | WARN (5 CC discontinuities) | only during receipt |
+| Length consistency | **PASS** ← powerless | the output |
+| Stream composition | PASS | the output |
+| **Timeline continuity** | **FAIL** | **the output — observable even after the fact** |
+| Full decode | **PASS** ← powerless | the output |
 
-> **용어** — **continuity counter(연속성 카운터)**: MPEG-TS 패킷 헤더의 4비트 필드로,
-> PID 별로 페이로드를 실은 패킷마다 0–15 를 순환하며 1씩 증가한다. 값이 건너뛰면 그
-> 사이 패킷이 유실됐다는 뜻이다([`tsanalyze.py:104-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L104-L119)). 4비트뿐이므로 정확히 16의
-> 배수만큼 유실되면 검출되지 않는다 — 제18장의 주제다.
+> **Term** — **continuity counter**: a 4-bit field in the MPEG-TS packet header that, per PID, cycles
+> 0–15 and increments by 1 on each packet carrying payload. If the value skips, it means a packet in
+> between was lost ([`tsanalyze.py:104-119`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L104-L119)). Being only 4 bits, a loss of exactly a multiple of 16 goes
+> undetected — the subject of Chapter 18.
 
-이 표에서 읽어야 할 것 셋.
+Three things to read from this table.
 
-1. **일곱 개 검사가 정상본과 똑같은 판정을 냈다.** 검사를 많이 두는 것이 아니라 결함에
-   민감한 검사를 두는 것이 검증이다. 검사 개수는 커버리지가 아니다.
-2. **결손을 FAIL 로 잡은 둘 중 하나는 사후에 재현할 수 없다.** `세그먼트 수신` 은 그
-   순간 404 를 본 프로세스만 알 수 있고, `TS 무결성` 도 세그먼트 원본 바이트가 있어야
-   한다 — 산출물은 MP4 라 TS 패킷 헤더가 남아 있지 않다. 그림 1-1 이 말한 정보 소실이
-   그대로 나타난다. **파일만 건네받은 사람이 쓸 수 있는 것은 `타임라인 연속성`
-   하나뿐이다.**
-3. **`전체 디코드` 가 PASS 라는 것이 특히 중요하다.** 재조립본은 처음부터 끝까지 오류
-   없이 디코드된다. "열린다"와 "옳다"는 다른 명제다.
+1. **Seven checks returned the same verdict as on the clean copy.** Verification is not having many
+   checks but having checks sensitive to the fault. The number of checks is not coverage.
+2. **One of the two that caught the loss as FAIL cannot be reproduced after the fact.** `Segment receipt`
+   can only be known by the process that saw the 404 at that instant, and `TS integrity` too needs the
+   segment's original bytes — the output is MP4, so no TS packet header remains. The information loss
+   Figure 1-1 described appears exactly. **The only thing usable by someone handed only the file is
+   `Timeline continuity`.**
+3. **That `Full decode` is PASS is especially important.** The reassembled copy decodes from start to
+   finish with no error. "It opens" and "it is correct" are different propositions.
 
-### 1.4.2 이 사실 자체를 테스트로 못박는다
+### 1.4.2 Nail this very fact down as a test
 
-"ffmpeg 단독은 놓친다"는 것은 이 도구의 존재 근거이므로, 주장으로 두지 않고 회귀
-테스트로 고정한다.
+That "ffmpeg alone misses it" is the reason this tool exists, so rather than leave it as a claim, it is
+fixed as a regression test.
 
 ```bash
 # tests/run.sh:512-522
-# ffmpeg 단독으로는 같은 결손을 놓친다는 사실 자체를 고정한다.
-head_ "[4/4] 대조군 — ffmpeg 단독은 결손을 놓친다"
+# fix down the very fact that ffmpeg alone misses the same loss.
+head_ "[4/4] Control — ffmpeg alone misses the loss"
 set +e
 ffmpeg -v error -y -i "$BASE/damaged/index.m3u8" -c copy "$WORK/out/naive.mp4" >/dev/null 2>&1
 naive=$?
 set -e
 if [[ $naive -eq 0 ]]; then
-  ok "ffmpeg 단독 exit 0 — 결손을 보고하지 않음 (도구가 필요한 이유)"
+  ok "ffmpeg alone exit 0 — does not report the loss (the reason the tool is needed)"
 else
-  printf '  \033[33m·\033[0m ffmpeg 가 exit %s 로 실패 — 환경에 따라 다를 수 있음\n' "$naive"
+  printf '  \033[33m·\033[0m ffmpeg failed with exit %s — may vary by environment\n' "$naive"
 fi
 ```
 
-`else` 분기가 이 코드에서 가장 정직한 부분이다. **비교 대상이 개선되면 이 테스트가
-알려 준다** — 상류 ffmpeg 이 언젠가 결손을 보고하기 시작하면 이 도구의 존재 이유
-일부가 사라지고, 그 사실이 즉시 드러난다. 대조군 설계는 제36장에서 다시 다룬다.
+The `else` branch is the most honest part of this code. **If the comparison target improves, this test
+tells you** — if upstream ffmpeg one day starts reporting the loss, part of this tool's reason for
+existing disappears, and that fact surfaces immediately. Control-group design is revisited in Chapter 36.
 
 ---
 
-## 1.5 일반화 — 재조립과 검증은 왜 난이도가 다른가
+## 1.5 Generalization — why reassembly and verification differ in difficulty
 
-교재 서두의 문제 진술은 두 문장이었다(`00-curriculum.md:15-16`).
+The problem statement at the head of the course was two sentences (`00-curriculum.md:15-16`).
 
-> 웹 서버가 조각으로 흘려보내는 영상을, 로컬 디스크의 파일 하나로 되돌릴 수 있는가.
-> 되돌렸다면 그것이 원본과 같다는 것을 어떻게 아는가.
+> Can you turn the video a web server sends out in pieces back into a single file on local disk?
+> If you did, how do you know it is the same as the original?
 
-두 문장의 난이도가 다른 이유를 이제 형식적으로 쓸 수 있다.
+We can now write formally why the two sentences differ in difficulty.
 
-| | 재조립(reassembly) | 검증(verification) |
+| | reassembly | verification |
 |---|---|---|
-| 답할 명제의 논리 형태 | **존재 명제** — "이 바이트들을 이을 수 있다" | **전칭 부정 명제** — "빠진 것이 하나도 없다" |
-| 성공의 증거 | 산출물 자체가 증거다 | 산출물은 증거가 아니다. 별도로 만들어야 한다 |
-| 필요한 입력 | 받은 바이트 | 받은 바이트 + **받았어야 할 것에 대한 독립적 진술** |
-| 관측 가능 시점 | 사후에도 가능 | 상당 부분 **수신 중에만** |
-| 실패의 양상 | 시끄럽다 — 파일이 열리지 않는다 | 조용하다 — 파일이 열린다 |
-| 실패 판정 비용 | 한 번의 통과 | 검사마다 별도 통과 (갭 스캔은 `ffprobe` 재실행) |
-| 위임 가능성 | 가능 — ffmpeg 이 해 준다 | 위임하면 **위임받은 쪽의 침묵까지 상속**한다 |
-| 종료 조건 | 파일이 만들어지면 끝 | 끝이 없다 — "이 검사로는 못 잡음"이 최선의 결론 |
+| Logical form of the proposition | an **existential** — "these bytes can be joined" | a **universal negative** — "not one thing is missing" |
+| Evidence of success | the output itself is the evidence | the output is not evidence. it must be produced separately |
+| Required input | the bytes received | the bytes received + **an independent statement of what should have been received** |
+| When observable | possible even after the fact | largely **only during receipt** |
+| Mode of failure | loud — the file does not open | quiet — the file opens |
+| Cost of judging failure | one pass | a separate pass per check (the gap scan reruns `ffprobe`) |
+| Delegability | possible — ffmpeg does it | delegate and you **inherit the silence of the delegate too** |
+| Termination condition | done once the file is made | there is no end — "this check can't catch it" is the best conclusion |
 
-세 번째 행이 결정적이다. **검증은 "받은 것"만으로는 성립하지 않는다.** 받았어야 할
-것에 대한 진술이 어딘가에서 와야 하고, 그 진술이 받은 것과 **독립적**이어야 한다.
-HLS 에서 그 진술은 플레이리스트다 — 세그먼트 개수와 각 세그먼트의 길이. 그것이 전부다.
+The third row is decisive. **Verification does not hold with "what was received" alone.** A statement of
+what should have been received must come from somewhere, and that statement must be **independent** of
+what was received. In HLS that statement is the playlist — the number of segments and the length of each.
+That is all.
 
-> **용어** — **테스트 오라클(test oracle)**: 어떤 실행 결과가 옳은지 그른지 판정해 주는
-> 독립적 근거. 오라클이 없으면 "테스트를 돌렸다"가 "검증했다"를 뜻하지 않는다. 이
-> 저장소가 적어 둔 문장이 그것이다 — "검증 도구가 PASS 만 낸다면 아무것도 검증하지
-> 못하는 것과 같다"(`README.md:355`, 같은 취지가 `tests/run.sh:6-7`). 제34장의 주제다.
+> **Term** — **test oracle**: an independent basis that decides whether a given execution result is right
+> or wrong. Without an oracle, "I ran a test" does not mean "I verified." That is the sentence this
+> repository wrote down — "if the verification tool only ever produces PASS, it is the same as verifying
+> nothing" (`README.md:355`, same intent in `tests/run.sh:6-7`). The subject of Chapter 34.
 
-### 1.5.1 이 도메인 밖에서 같은 구조
+### 1.5.1 The same structure outside this domain
 
-"작업이 성공을 자칭했지만 결과가 불완전하다"는 구조는 스트리밍 고유의 것이 아니다.
+The structure "the operation called itself a success but the result is incomplete" is not unique to
+streaming.
 
-| 영역 | 성공을 자칭하는 신호 | 그 신호가 보증하지 **않는** 것 | 실제 근거 |
+| Domain | signal that calls itself success | what that signal does **not** guarantee | the real basis |
 |---|---|---|---|
-| 파일 복사 (`cp`·`rsync`) | 종료 코드 0 | 원본과 바이트 동일 | 체크섬 대조 (`rsync -c`) |
-| 데이터베이스 복제 | 복제 지연 0 | 행 단위 동일성 | 테이블 체크섬 비교 |
-| 로그 수집 | 수집기 무오류 | 이벤트 유실 없음 | 시퀀스 번호·발신 카운터 대조 |
-| 백업 | "백업 작업 완료" | 복원 가능함 | 실제 복원 리허설 |
-| 패키지 설치 | `exit 0` | 아티팩트가 진짜다 | 서명·해시 검증 |
-| CI 캐시 복원 | 캐시 적중 | 캐시 내용의 완전성 | 매니페스트 대조 |
-| 메시지 큐 소비 | ack 완료 | 모든 메시지 처리 | 오프셋 연속성 |
-| **이 장** | ffmpeg `exit 0` + 총 길이 일치 | **타임라인 연속성** | **PTS 갭 스캔** |
+| File copy (`cp`·`rsync`) | exit code 0 | byte-identical to the original | checksum comparison (`rsync -c`) |
+| Database replication | replication lag 0 | row-level identity | table checksum comparison |
+| Log collection | collector no-error | no event loss | sequence number · sender counter comparison |
+| Backup | "backup job complete" | restorable | an actual restore rehearsal |
+| Package install | `exit 0` | the artifact is genuine | signature · hash verification |
+| CI cache restore | cache hit | completeness of the cache contents | manifest comparison |
+| Message queue consume | ack complete | all messages processed | offset continuity |
+| **This chapter** | ffmpeg `exit 0` + total length matches | **timeline continuity** | **PTS gap scan** |
 
-각 행의 왼쪽 열은 전부 **작업이 자기 자신에 대해 하는 진술**이다. 오른쪽 열은 전부
-**작업 밖에서 온 기준선과의 대조**다. 이 구분이 검증의 정의에 가깝다.
+The left column of every row is a **statement the operation makes about itself.** The right column is
+every **comparison against a baseline that came from outside the operation.** This distinction is close
+to the definition of verification.
 
-일반 규칙으로 쓰면 이렇다.
+Written as a general rule:
 
-> 관측 지표 `M` 과 결함 `D` 에 대해 `M(정상) = M(D가 있는 결과)` 이면, `M` 은 `D` 에
-> 대한 검증이 아니다. **아무리 정밀하게 측정해도 그렇다.** 총 길이는 소수 여섯째
-> 자리까지 같았다.
+> For an observed metric `M` and a fault `D`, if `M(clean) = M(result with D)`, then `M` is not a
+> verification of `D`. **However precisely you measure.** The total length matched to the sixth decimal.
 
-정밀도와 민감도는 다른 축이다. 여덟 자리를 재는 것이 검증이 아니라, **결함에 반응하는
-양을 고르는 것**이 검증이다.
+Precision and sensitivity are different axes. Measuring eight digits is not verification; **choosing a
+quantity that responds to the fault** is.
 
 ---
 
-## 1.6 보안 — 조용한 성공이 만드는 것
+## 1.6 Security — what a quiet success creates
 
-> **용어** — **침묵 실패(silent failure)**: 작업의 일부가 실패했는데도 상위 계층에는
-> 성공으로 보고되어, 실패가 관측 지점에 도달하지 못하는 상태.
+> **Term** — **silent failure**: a state in which part of an operation failed yet is reported to the
+> upper layer as a success, so the failure never reaches the observation point.
 
-침묵 실패는 편의 문제가 아니라 보안 문제다. 왜 그런지와, 방어자가 무엇을 할 수 있는지를
-차례로 본다.
+Silent failure is not a convenience issue but a security issue. We look in turn at why, and at what a
+defender can do.
 
-### 1.6.1 부분 전달이 원시 연산이 된다
+### 1.6.1 Partial delivery becomes a primitive
 
-수신 파이프라인이 결손을 보고하지 않으면, **"영상의 특정 구간만 제거한다"** 는 조작이
-파이프라인 밖에서 가능해진다. **TLS 를 종단하는 지점**(CDN 엣지, 기업 프록시, 오리진
-앞단의 어떤 계층이든)은 특정 세그먼트 요청만 골라 404·403 으로 돌려주면 되고, 종단하지
-않는 경로 위의 공격자도 그 요청의 연결만 반복해서 끊어 재시도를 전부 실패시키면 같은
-결과에 이른다. 재인코딩도, 서명 위조도, 복호화도 필요 없다. **응답 하나를 없애는
-것으로 끝난다.**
+If the receive pipeline does not report the loss, the manipulation of **"remove only a particular span
+of the video"** becomes possible outside the pipeline. **A point that terminates TLS** (a CDN edge, a
+corporate proxy, any layer in front of the origin) need only return 404·403 for a chosen segment request,
+and an attacker on a path that does not terminate TLS can reach the same result by repeatedly cutting
+just that request's connection so every retry fails. No re-encoding, no signature forgery, no decryption.
+**It ends with removing one response.**
 
-| 상황 | 조작 | 침묵 실패가 만드는 결과 |
+| Situation | manipulation | what silent failure creates |
 |---|---|---|
-| 증거·감사 영상 보관 | 특정 구간 세그먼트만 응답 실패 | 총 길이가 맞으므로 온전한 사본으로 접수된다 |
-| 감시 카메라 아카이빙 | 저장 중 일부 조각 유실 | "30분 녹화 완료" — 실제로는 6분이 비어 있다 |
-| 규제 준수 기록(방송·금융 통화) | 특정 발언 구간 제거 | 파일 단위 검사로는 흔적이 없다 |
-| 광고 재생 검증 | 광고 구간만 유실 | 재생 로그상 정상 집행 |
-| CDN 캐시 오염 | 일부 세그먼트에 오류 페이지가 캐싱됨 | `200` + 정상 헤더 → 총 길이 유지 (제5·14장) |
+| Evidence · audit video retention | fail only a particular span's segment | the total length matches, so it is accepted as an intact copy |
+| Surveillance camera archiving | some pieces lost during storage | "30 minutes recorded" — 6 minutes are actually empty |
+| Regulatory records (broadcast · financial calls) | remove a particular utterance span | a per-file check leaves no trace |
+| Ad playback verification | only the ad span is lost | the playback log shows normal delivery |
+| CDN cache poisoning | an error page is cached for some segments | `200` + normal headers → total length preserved (Chapters 5 · 14) |
 
-공통점은 하나다. **조작 비용이 낮고 탐지 비용이 높다.** 조작은 응답 하나를 없애는
-것이고, 탐지는 타임라인 전체를 훑는 것이다.
+The common thread is one. **The cost of manipulation is low and the cost of detection is high.**
+Manipulation is removing one response; detection is sweeping the whole timeline.
 
-### 1.6.2 HTTPS 는 이 문제를 풀지 않는다 — 범주가 다르다
+### 1.6.2 HTTPS does not solve this — it is a different category
 
-흔한 오해를 먼저 끊어 둔다. TLS 는 **각 응답의 무결성**을 보증한다. 응답 본문 한
-바이트가 변조되면 그 연결에서 검출된다. 그러나 TLS 가 보증하지 **않는** 것이 있다.
+Cut off a common misconception first. TLS guarantees **the integrity of each response.** If one byte of
+a response body is tampered with, it is detected on that connection. But there is what TLS does **not**
+guarantee.
 
-| 축 | 정확한 이름 | TLS 가 보증하는가 |
+| Axis | precise name | does TLS guarantee it? |
 |---|---|---|
-| 이 응답의 바이트가 서버가 보낸 그대로인가 | 무결성(integrity) | **예** |
-| 이 응답이 그 서버에서 온 것인가 | 진정성(authenticity) | **예** |
-| 응답 **집합**이 빠짐없는가 — `n` 개를 요청했는데 `n` 개가 다 왔는가 | 완전성(completeness) | **아니오** |
-| 요청 자체가 도달했는가 | 가용성(availability) | **아니오** — 요청을 막는 것은 프로토콜 위반이 아니다 |
+| Are this response's bytes exactly as the server sent them | integrity | **Yes** |
+| Did this response come from that server | authenticity | **Yes** |
+| Is the **set** of responses complete — you asked for `n`, did all `n` arrive | completeness | **No** |
+| Did the request itself arrive | availability | **No** — blocking a request is not a protocol violation |
 
-**전송 계층의 무결성과 애플리케이션 산출물의 완전성은 다른 축이다.** HTTP 는 무상태이고
-(제4장), 각 요청은 서로를 모른다. "다섯 개 중 넷만 왔다"는 어떤 개별 트랜잭션에도
-표현되지 않는다. 그 판정은 **다섯이라는 것을 아는 계층**, 즉 플레이리스트를 읽은
-애플리케이션에서만 가능하다.
+**Integrity at the transport layer and completeness of the application output are different axes.** HTTP
+is stateless (Chapter 4) and each request knows nothing of the others. "Only four of five arrived" is
+represented in no individual transaction. That judgment is possible only in the **layer that knows there
+are five** — the application that read the playlist.
 
-### 1.6.3 방어자 관점 — 무엇을 해야 하는가
+### 1.6.3 The defender's view — what to do
 
-우회 경로만 나열하고 끝내지 않는다. 역할별로 실제로 할 수 있는 일이 다르다.
+We do not just list bypass paths and stop. What each role can actually do differs.
 
-| 역할 | 해야 할 것 | 하지 말아야 할 것 |
+| Role | what to do | what not to do |
 |---|---|---|
-| **스트리밍 서비스 운영자** | 세그먼트 단위 접근 로그를 남기고 재생 로그와 대조한다. 서버가 보낸 개수와 클라이언트가 받은 개수를 맞춰 볼 수 있는 유일한 위치다 | 총 길이·재생 완료율만으로 송출 품질을 결론짓기 |
-| **파이프라인 작성자** | 도구가 **무엇을 보증하는지** 문서를 읽고, 보증하지 않는 축마다 별도 검사를 붙인다. 종료 코드는 도구의 자기 신고다 | `cmd && next` 로 파이프라인을 잇고 검증했다고 여기기 |
-| **CI·릴리스 담당** | 아티팩트에 "PASS 했다"가 아니라 "**어떤 결함을 잡을 수 있는** 검사를 돌렸다"를 남긴다. 결함 주입으로 검사기의 정탐률을 먼저 고정한다(제35장) | 검사기가 한 번도 FAIL 을 낸 적 없다는 사실을 품질의 근거로 삼기 |
-| **증거·아카이브 관리자** | 파일 해시는 **취득 이후의 변조**만 잡는다. 취득 시점의 완전성은 취득 시점에만 기록할 수 있다 — 수신 로그를 산출물과 함께 보관한다 | 사후에 해시를 떠 놓고 무결성을 확보했다고 여기기 |
-| **보안 도구 사용자** | 스캐너의 PASS 를 "**이 스캐너로는 못 잡음**"으로 읽는다. 미탐률을 모르는 도구의 PASS 는 정보량이 0 이다 | PASS 를 안전의 증거로 보고하기 |
+| **Streaming service operator** | keep per-segment access logs and compare against playback logs. it is the only place you can reconcile the count the server sent against the count the client received | conclude delivery quality from total length · playback-completion rate alone |
+| **Pipeline author** | read the docs for **what the tool guarantees** and attach a separate check per axis it does not guarantee. an exit code is the tool's self-report | join a pipeline with `cmd && next` and consider it verified |
+| **CI · release owner** | record on the artifact not "it PASSed" but "a check **capable of catching some fault** was run." fix the checker's true-positive rate first with fault injection (Chapter 35) | take the fact that the checker has never once FAILed as evidence of quality |
+| **Evidence · archive manager** | a file hash catches only **tampering after acquisition.** completeness at acquisition time can be recorded only at acquisition time — keep receive logs alongside the output | take a hash after the fact and consider integrity secured |
+| **Security tool user** | read a scanner's PASS as "**this scanner can't catch it.**" a PASS from a tool whose miss rate you do not know carries zero information | report a PASS as evidence of safety |
 
-네 번째 행이 이 장의 원리를 가장 직접적으로 옮긴 것이다. **파일에 대한 사후 해시는
-"이 파일이 그때 그 파일이다"만 말한다. "그때 그 파일이 옳았다"는 말하지 않는다.**
-그림 1-1 의 정보 소실은 암호로 메워지지 않는다.
-
----
-
-## 1.7 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **재현값이 README 와 소수 둘째 자리에서 다르다.** README 는 `30.03s`, 본 장의 재현은
-  `30.023401s` 다. 인코더 버전 차이로 보이며 요점(정상본과 결손본이 **서로** 같다)은
-  영향받지 않는다. 그러나 교재가 인용하는 실측값이 환경에 따라 흔들린다는 사실 자체는
-  기록해 둔다.
-- **ffmpeg 이 `exit 0` 을 내는 것은 버전·옵션 의존이다.** 8.1.1 에서 확인했다.
-  `-xerror` 같은 옵션이나 다른 버전에서는 달라질 수 있고, `tests/run.sh:518-522` 도
-  그 가능성을 열어 두고 실패 시 경고만 낸다. "ffmpeg 이 부실하다"가 아니라 **"재생기의
-  기본값은 견고성이지 엄격성이 아니다"** 로 읽어야 한다. 재생기가 조각 하나에 멈춰
-  서면 그것대로 쓸 수 없는 도구다.
-- **`r_frame_rate` 를 쓰지 않았다.** 이 재현에서 `r_frame_rate` 는 결손본에서도
-  `30/1` 로 유지됐으므로 `30 × 30.02 ≈ 900` 과 실측 `720` 을 대조하면 결손을 알아낼 수
-  있었다. 그러나 이 값은 ffprobe 의 휴리스틱이고 가변 프레임률 소스에서는 의미가 없으며,
-  **결손 위치를 알려주지 못한다.** 이 저장소는 쓰지 않는다. 다른 스트림에서 이 지표가
-  얼마나 견고한지는 측정하지 않았다.
-- **하나의 결함 유형, 하나의 스트림으로 얻은 결과다.** 6초 세그먼트 하나가 통째로
-  빠지는 사례만 재현했다. 세그먼트 내부 일부만 잘린 경우, 여러 세그먼트가 흩어져
-  빠진 경우, 오디오만 빠진 경우는 이 장에서 측정하지 않았다.
-- **`gap_scan` 의 임계값 이하 결손은 잡히지 않는다.** 임계값은
-  `max(0.4, 프레임간격중앙값 × 3)` 이므로, 30fps 스트림에서 0.4초 미만의 구멍은
-  검출되지 않는다. 프레임 몇 개 단위의 유실은 이 검사의 사각이다 —
-  전송 계층의 continuity counter 검사가 그 영역을 일부 덮지만 그쪽에도 고유한
-  미탐 구간이 있다(제18장).
-- **"파일은 자신이 어떻게 만들어졌는지 기록하지 않는다"는 이 파이프라인에 한정된
-  진술이다.** 원리적으로 그런 기록을 담는 형식은 만들 수 있다(예: 산출물에 수신
-  매니페스트를 동봉하는 방식). 다만 그 기록을 만드는 주체가 결손을 알고 있던 도구
-  자신이므로, **자기 신고라는 성질은 그대로 남는다.** 신뢰의 이동일 뿐 제거가 아니다.
-- **§1.6.1 의 공격 경로는 추론이지 실측이 아니다.** 이 장에서 실제로 측정한 것은
-  "로컬 서버에서 파일 하나를 지웠을 때 무슨 일이 일어나는가"뿐이다. TLS 경로 위의
-  선택적 차단이 실제 CDN 환경에서 얼마나 쉬운지, 재시도 정책([`fetch.py:196-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L196-L206))이
-  그것을 얼마나 흡수하는지는 재현하지 않았다.
-- **`EXT-X-DISCONTINUITY` 예외의 완결성은 검증하지 않았다.** [`report.py:310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L310) 은 선언된
-  불연속 수가 검출된 결손 수 이상이면 WARN 으로 낮춘다. 이 규칙은 **개수만 비교하고
-  위치는 비교하지 않는다** — 선언된 이음매가 하나 있고 전혀 다른 위치에 진짜 결손이
-  하나 생기면 WARN 으로 내려간다. 이 저장소의 회귀 테스트는 이 조합을 다루지 않는다.
+The fourth row is the most direct transfer of this chapter's principle. **A hash taken of a file after
+the fact says only "this file is that file from back then." It does not say "that file back then was
+correct."** The information loss in Figure 1-1 is not filled in by cryptography.
 
 ---
 
-## 1.8 요약
+## 1.7 Limits and open questions
 
-1. `ffmpeg -c copy` 는 세그먼트가 404 로 빠져도 **종료 코드 0** 을 내고, 출력의 총
-   재생 길이는 정상본과 **소수 여섯째 자리까지 같다.** 컨테이너도 열리고 끝까지
-   디코드된다. 결함에 반응하는 신호가 하나도 없다.
-2. 이유는 **PTS 가 절대 좌표**이기 때문이다. 중간 조각이 사라져도 뒤 조각의 시각이
-   당겨지지 않으므로 총 길이가 유지된다. 결손은 **총량이 아니라 타임라인의 구멍**으로만
-   나타난다.
-3. **HLS 가 선언하는 유일한 기준선은 길이**이고, 그것이 하필 이 결함에 둔감한 양이다.
-   프레임 수·해시는 규격에 없고, 바이트 수는 `EXT-X-BYTERANGE` 세그먼트에서만 선언된다.
-4. 스트림은 **사건의 열**이고 파일은 **상태 하나**다. `-c copy` 는 영상에 대해
-   무손실이지만 **관측 정보에 대해서는 손실적**이다. 상태 코드·지연·해시는 산출물에
-   남을 자리가 없다.
-5. 그래서 **재조립과 검증은 난이도가 다르다.** 재조립은 존재 명제이고 산출물이 곧
-   증거다. 검증은 전칭 부정 명제이고, 받은 것과 **독립적인 기준선**이 별도로 필요하며,
-   상당 부분은 수신 중에만 관측 가능하다.
-6. 열 개 검사 중 이 결손에 반응한 것은 셋(FAIL 둘·WARN 하나)이고, 나머지 일곱은
-   정상본과 똑같은 판정을 냈다. FAIL 둘 중 하나(`세그먼트 수신`)는 **사후에 재현할 수
-   없다.** 파일만 건네받은 사람이 쓸 수 있는 것은 타임라인 갭 스캔 하나다.
-7. 보안 관점에서 침묵 실패는 **"응답 하나를 지우는 것"을 특정 구간 제거라는 조작으로
-   바꿔 준다.** TLS 는 각 응답의 무결성을 보증하지만 **응답 집합의 완전성**은 보증하지
-   않는다 — 다른 축이다.
-8. 검증의 최소 조건은 정밀도가 아니라 **민감도**다. `M(정상) = M(결손)` 인 지표는
-   아무리 정밀해도 검증이 아니다.
+Written down honestly.
+
+- **The reproduced value differs from the README at the second decimal.** The README is `30.03s`, this
+  chapter's reproduction is `30.023401s`. It appears to be an encoder-version difference, and the point
+  (that the clean and damaged copies equal **each other**) is unaffected. Still, the very fact that the
+  measured value the course cites wobbles by environment is recorded.
+- **ffmpeg exiting `exit 0` is version- and option-dependent.** Confirmed on 8.1.1. It can change with
+  an option like `-xerror` or a different version, and `tests/run.sh:518-522` leaves that possibility
+  open and only warns on failure. Read it not as "ffmpeg is flimsy" but as **"a player's default is
+  robustness, not strictness."** A player that halts on one piece would be its own unusable tool.
+- **`r_frame_rate` was not used.** In this reproduction `r_frame_rate` stayed `30/1` even in the damaged
+  copy, so comparing `30 × 30.02 ≈ 900` against the measured `720` could have revealed the loss. But this
+  value is ffprobe's heuristic, meaningless on variable-frame-rate sources, and **it cannot tell you the
+  loss location.** This repository does not use it. How robust this metric is on other streams was not
+  measured.
+- **These are results from one fault type, one stream.** Only the case of one 6-second segment missing
+  entirely was reproduced. A case where only part of a segment's interior is cut, where several segments
+  are lost scattered, or where only audio is missing, was not measured in this chapter.
+- **A loss below `gap_scan`'s threshold is not caught.** The threshold is `max(0.4, median frame
+  interval × 3)`, so on a 30fps stream a hole under 0.4 seconds is not detected. A loss on the order of a
+  few frames is this check's blind spot — the transport-layer continuity-counter check covers part of
+  that region, but it has its own miss interval too (Chapter 18).
+- **"A file does not record how it was made" is a statement limited to this pipeline.** In principle a
+  format that carries such a record can be made (e.g., enclosing a receive manifest with the output).
+  Only, since the party making that record is the very tool that knew about the loss, **the
+  self-reporting property remains.** It is a shift of trust, not its removal.
+- **The attack path in §1.6.1 is inference, not measurement.** What this chapter actually measured is
+  only "what happens when you delete one file on a local server." How easy selective blocking on a TLS
+  path is in a real CDN environment, and how much the retry policy ([`fetch.py:196-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L196-L206)) absorbs it,
+  was not reproduced.
+- **The completeness of the `EXT-X-DISCONTINUITY` exception was not verified.** [`report.py:310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L310) lowers to
+  WARN if the number of declared discontinuities is at least the number of detected losses. This rule
+  **compares only the count, not the position** — if there is one declared seam and one real loss at an
+  entirely different position, it drops to WARN. This repository's regression tests do not cover this
+  combination.
 
 ---
 
-**다음 장** — 그렇다면 애초에 왜 영상을 조각내고 텍스트 목록으로 가리키는가. 이 장이
-드러낸 "사건의 열"이라는 구조는 HTTP 라는 파일 전송용 프로토콜 위에서 실시간 재생을
-흉내내기 위한 타협의 산물이다. 제2장은 ABR(적응 비트레이트)과 HLS 의 발명을 따라가며,
-이 구조가 무엇을 얻고 무엇을 포기했는지를 본다.
+## 1.8 Summary
+
+1. `ffmpeg -c copy` returns **exit code 0** even when a segment drops out with a 404, and the output's
+   total playback length is **identical to the sixth decimal** to the clean copy. The container opens and
+   it decodes to the end. There is not a single signal that responds to the fault.
+2. The reason is that **PTS is an absolute coordinate.** Even when a middle piece disappears, the
+   timestamps of the pieces behind are not pulled forward, so the total length is preserved. Loss appears
+   **not as a total but only as a hole in the timeline.**
+3. **The only baseline HLS declares is length**, and that happens to be the quantity insensitive to this
+   fault. Frame count and hash are not in the spec, and a byte count is declared only for
+   `EXT-X-BYTERANGE` segments.
+4. A stream is a **sequence of events**, a file is a **single state**. `-c copy` is lossless for the
+   video but **lossy for the observation information.** Status codes, latency, and hashes have nowhere to
+   remain in the output.
+5. That is why **reassembly and verification differ in difficulty.** Reassembly is an existential and the
+   output is the evidence. Verification is a universal negative, needs a separate **baseline independent**
+   of what was received, and is largely observable only during receipt.
+6. Of the ten checks, three responded to this loss (two FAIL · one WARN), and the other seven returned
+   the same verdict as on the clean copy. One of the two FAILs (`Segment receipt`) **cannot be reproduced
+   after the fact.** The only thing usable by someone handed only the file is the timeline gap scan.
+7. From a security view, silent failure **turns "deleting one response" into the manipulation of removing
+   a particular span.** TLS guarantees the integrity of each response but not the **completeness of the
+   set of responses** — a different axis.
+8. The minimum condition for verification is not precision but **sensitivity.** A metric where
+   `M(clean) = M(loss)` is not verification, however precise.
+
+---
+
+**Next chapter** — then why chop the video into pieces and point to them with a text list in the first
+place? The "sequence of events" structure this chapter revealed is the product of a compromise for
+mimicking real-time playback over HTTP, a protocol meant for file transfer. Chapter 2 follows the
+invention of ABR (adaptive bitrate) and HLS, and sees what this structure gained and what it gave up.

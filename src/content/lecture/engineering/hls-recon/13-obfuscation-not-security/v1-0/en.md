@@ -1,29 +1,29 @@
 ---
-untranslated: ko
-title: "난독화는 보안이 아니다"
-description: "packed JS 와 신뢰 경계"
-date: 2026-08-16
+title: "Obfuscation Is Not Security"
+description: "Packed JS and the trust boundary"
+date: 2026-06-17
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-13-obfuscation-not-security.svg
 ---
-## 13.0 이 장에서 답할 것
+## 13.0 What this chapter answers
 
-1. 플레이어 페이지의 `eval(function(p,a,c,k,e,d){…})` 는 무엇인가 — 암호인가 압축인가
-2. 그것을 되돌리는 절차는 무엇이며, 왜 파이썬 `int(x, base)` 로는 안 되는가
-3. 정규식 플래그 하나(`re.ASCII`)를 빼면 무엇이 조용히 깨지는가
-4. **원격에서 받은 스크립트를 파싱만 하고 실행하지 않는다는 결정은 무엇을 사는가**
-5. 난독화는 보안 통제인가 — 아니라면 무엇으로 계상해야 하는가
+1. What is the player page's `eval(function(p,a,c,k,e,d){…})` — encryption or compression?
+2. What is the procedure to reverse it, and why does Python's `int(x, base)` not work?
+3. If you remove one regex flag (`re.ASCII`), what quietly breaks?
+4. **What does the decision to only parse and not execute a script received from remote buy?**
+5. Is obfuscation a security control — if not, what should it be booked as?
 
-네 번째가 이 장의 중심이다. 앞의 셋은 그 결정을 이해하기 위한 준비이고, 다섯째는
-그 결정의 반대편에 있는 사람 — **난독화를 배포하는 쪽** — 의 이야기다.
+The fourth is this chapter's center. The first three are preparation to understand that decision, and the
+fifth is the story of the person on the opposite side of that decision — **the side that deploys the
+obfuscation.**
 
 ---
 
-## 13.1 문제 — 저장할 이름이 스크립트 한 겹 안에 있다
+## 13.1 The problem — the name to save is inside one layer of script
 
-제9장에서 회차 하나를 열기까지의 요청 사슬 네 단계를 확인했다. 그 사슬의 2단계에서
-받는 것은 플레이어 페이지의 HTML 이다. 그 안에는 이런 모양의 스크립트가 들어 있다.
+In Chapter 9 we confirmed the four-stage request chain to open one episode. What is received at stage 2 of
+that chain is the player page's HTML. Inside it is a script of this shape.
 
 ```
 <script>eval(function(p,a,c,k,e,d){e=function(c){return(c<a?'':e(parseInt(c/a)))+
@@ -32,142 +32,139 @@ thumbnail: /images/lecture/thumb/hls-recon-13-obfuscation-not-security.svg
 file|https|cdn|example|hls|abc|master|m3u8|title|01|mkv'.split('|'),0,{}))</script>
 ```
 
-읽을 수 없다. 그런데 이 안에 이 저장소가 필요로 하는 값 하나가 들어 있다 —
-**사이트가 정한 정식 파일 이름**이다.
+Unreadable. And yet inside it is one value this repository needs — **the official filename the site set.**
 
 ```python
 # series.py:303-309
 def _name_of(settings: str, episode: Episode, width: int) -> str:
-    """저장할 파일 이름(확장자 없음).
+    """The filename to save (no extension).
 
-    플레이어 설정의 `title` 이 사이트가 정한 정식 이름이다(`그렌라간01.mkv`).
-    자막 파일도 같은 이름으로 놓이므로 이 이름을 따르는 편이 짝이 맞는다.
-    설정을 읽지 못했을 때만 목록의 제목으로 물러선다.
+    The player settings' `title` is the official name the site set (`그렌라간01.mkv`).
+    The subtitle file is placed by the same name, so following this name keeps the pair matched.
+    Fall back to the list's title only when the settings could not be read.
     """
 ```
 
-왜 목록에 실린 제목을 쓰지 않고 굳이 이 값을 캐는가. **자막 파일이 같은 이름으로
-놓이기 때문**이다. 영상과 자막의 이름이 어긋나면 재생기가 짝을 찾지 못한다. 즉 이
-값은 파일 하나의 이름이 아니라 **영상·자막 한 쌍을 묶는 키**다.
+Why cut out this value rather than use the title in the list? **Because the subtitle file is placed by the
+same name.** If the video's and subtitle's names go off, the player cannot find the pair. That is, this value
+is not one file's name but **the key that binds the video·subtitle pair.**
 
-여기서 갈림길이 생긴다. 저 스크립트를 되돌려야 하는데, 방법이 둘이다.
+Here a fork arises. That script must be reversed, and there are two ways.
 
-| 방법 | 하는 일 | 필요한 것 |
+| Way | What it does | What it needs |
 |---|---|---|
-| **A. 실행한다** | JS 엔진에 넘겨 `eval` 시키고 결과를 읽는다 | Node.js · `js2py` · `PyExecJS` 같은 실행기 |
-| **B. 파싱한다** | 압축의 규칙을 알아내 문자열 치환으로 되돌린다 | 정규식과 표 하나 |
+| **A. execute it** | hand it to a JS engine and `eval` it and read the result | an executor like Node.js · `js2py` · `PyExecJS` |
+| **B. parse it** | figure out the compression rule and reverse it by string substitution | a regex and one table |
 
-A 가 압도적으로 쉽다. 한 줄이면 된다. 이 저장소는 B 를 택했고, 그 선택의 근거가
-이 장의 주제다. 먼저 **되돌릴 수 있다는 것** 부터 확인한다.
+A is overwhelmingly easier. It takes one line. This repository chose B, and the basis for that choice is this
+chapter's subject. First confirm **that it can be reversed.**
 
 ---
 
-## 13.2 원리 — 사전 압축이지 암호가 아니다
+## 13.2 The principle — dictionary compression, not encryption
 
-### 13.2.1 무엇인지 부르는 이름
+### 13.2.1 The name for what it is
 
-> **용어** — **packed JS**: 자바스크립트 소스를 낱말 사전 + 색인으로 치환해 크기를
-> 줄인 뒤, 복원 함수와 함께 한 줄로 묶어 `eval` 에 넘기는 형식. 가장 널리 쓰인 구현이
-> **Dean Edwards Packer** 이고, 복원 함수의 인자 이름을 따 `p,a,c,k,e,d` 패커라고도
-> 부른다.
+> **Term** — **packed JS**: a format that substitutes JavaScript source with a word dictionary + indices to
+> shrink the size, then bundles it with a restore function into one line handed to `eval`. The most widely
+> used implementation is the **Dean Edwards Packer**, also called the `p,a,c,k,e,d` packer after the restore
+> function's argument names.
 
-> **용어** — **사전 압축(dictionary compression)**: 입력에서 반복되는 조각을 사전에
-> 한 번만 저장하고, 본문에서는 그 사전의 위치(색인)를 가리켜 전체 길이를 줄이는 압축
-> 방식. LZ78 계열이 대표적이며, packed JS 는 그 아이디어를 낱말 단위로 쓴 것이다.
+> **Term** — **dictionary compression**: a compression method that stores a repeated piece from the input in
+> a dictionary once and, in the body, points at that dictionary's position (index) to shrink the total
+> length. The LZ78 family is representative, and packed JS uses that idea at the word level.
 
-> **용어** — **기수 표기(radix notation, 진법 표기)**: 정수를 밑수 `b` 의 거듭제곱
-> 합으로 적는 표기. 자릿수마다 `0 … b−1` 범위의 기호를 배정한다. 10진법의 `0-9`,
-> 16진법의 `0-9 a-f` 가 같은 규칙의 특수한 경우다.
+> **Term** — **radix notation**: writing an integer as a sum of powers of a base `b`. Each digit is assigned a
+> symbol from the range `0 … b−1`. Decimal's `0-9` and hex's `0-9 a-f` are special cases of the same rule.
 
-### 13.2.2 압축의 구조
+### 13.2.2 The structure of the compression
 
-압축하는 쪽이 하는 일은 세 단계다.
+What the compressing side does is three steps.
 
-1. 소스를 낱말(`\b\w+\b`) 단위로 자른다.
-2. 처음 나온 순서대로 낱말 사전을 만든다 — `var`, `player`, `new`, `Playerjs`, …
-3. 본문의 각 낱말을 **그 사전 색인의 기수 표기**로 바꿔 넣는다.
+1. Cut the source into words (`\b\w+\b`).
+2. Make a word dictionary in first-appearance order — `var`, `player`, `new`, `Playerjs`, …
+3. Replace each word in the body with **the radix notation of its dictionary index.**
 
-앞의 예에서 `var` 는 사전 0번이므로 `0`, `player` 는 1번이므로 `1`, `title` 은 13번
-이므로 `d`(13을 62진법으로 적은 것), `01` 은 14번이므로 `e` 가 된다. 결과가 이렇다.
+In the earlier example `var` is dictionary #0 so `0`, `player` is #1 so `1`, `title` is #13 so `d` (13 written
+in base 62), `01` is #14 so `e`. The result is this.
 
 ```
-원본  : var player = new Playerjs({"id":"player", … "title":"그렌라간01.mkv"});
-본문  : 0 1 = 2 3({"4":"1", … "d":"그렌라간e.f"});
-사전  : var|player|new|Playerjs|id|file|https|cdn|example|hls|abc|master|m3u8|title|01|mkv
+original : var player = new Playerjs({"id":"player", … "title":"그렌라간01.mkv"});
+body     : 0 1 = 2 3({"4":"1", … "d":"그렌라간e.f"});
+dict     : var|player|new|Playerjs|id|file|https|cdn|example|hls|abc|master|m3u8|title|01|mkv
 ```
 
-**사전이 본문과 함께 실려 온다.** 이 한 문장이 다음 절 전체를 결정한다.
+**The dictionary comes carried along with the body.** This one sentence determines the whole next section.
 
-![packed JS 호출의 네 부분과 복원 절차 네 단계](/images/lecture/hls-recon/13-unpack-anatomy.svg)
+![The four parts of a packed JS call and the four steps of the restore procedure](/images/lecture/hls-recon/13-unpack-anatomy.svg)
 
-*그림 13-1 — packed JS 호출의 네 부분과 복원 절차 네 단계*
+*Figure 13-1 — the four parts of a packed JS call and the four steps of the restore procedure*
 
-되돌리는 쪽은 그림의 ①–④를 그대로 거꾸로 밟으면 된다. 새로 알아내야 할 정보가
-하나도 없다 — 진법도, 사전도, 본문도 전부 같은 문자열 안에 있다.
+The reversing side just retraces the figure's ①–④ in reverse. There is not a single piece of new information
+to figure out — the base, the dictionary, and the body are all inside the same string.
 
-### 13.2.3 왜 `int(x, base)` 를 쓸 수 없는가
+### 13.2.3 Why you cannot use `int(x, base)`
 
-②단계는 "`e` 라는 글자를 62진법 한 자리로 읽어 14를 얻는다"이다. 파이썬에는 그런
-함수가 이미 있다.
+Step ② is "read the letter `e` as one base-62 digit to get 14." Python already has such a function.
 
 ```
 >>> int("e", 36)
 14
 ```
 
-그런데 packed JS 의 진법은 대개 62 다. 사전 낱말이 36개를 넘으면 36진법으로는 한
-자리에 다 담기지 않아 표기가 길어지고, 압축률이 떨어지기 때문이다. 그래서 패커는
-대문자까지 자릿수로 동원해 62진법을 쓴다. 그 순간 표준 라이브러리가 끊긴다.
+But packed JS's base is usually 62. If the dictionary words exceed 36, base 36 cannot fit them in one digit so
+the notation gets longer and the compression ratio drops. So the packer mobilizes uppercase letters as digits
+too and uses base 62. At that moment the standard library cuts off.
 
 ```
 >>> int("e", 62)
 ValueError: int() base must be >= 2 and <= 36, or 0
 ```
 
-> **파이썬 `int(x, base)` 의 밑수 상한은 36 이다.** `0-9` 와 대소문자를 구별하지 않는
-> `a-z` 로 36개가 한계이고, 그 이상의 자릿수 기호를 표준이 정하지 않는다.
+> **The upper bound of Python `int(x, base)`'s base is 36.** `0-9` and case-insensitive `a-z` make 36 the
+> limit, and the standard does not define digit symbols beyond that.
 
-상한이 36인 이유는 임의적이지 않다. 37 이상이 되려면 대소문자를 구별해야 하는데,
-그러면 `int("A", 16)` 이 지금처럼 10을 주는 관례와 충돌한다. 표준은 **대소문자를
-같게 보는 쪽**을 택했고, 그 대가로 36에서 멈췄다.
+The reason the bound is 36 is not arbitrary. To go to 37 or more you must distinguish case, and then it
+conflicts with the convention that `int("A", 16)` gives 10 as it does now. The standard chose **the side that
+treats case as the same**, and at the price stopped at 36.
 
-따라서 62진법을 읽으려면 **자릿수 표를 직접 두는 수밖에 없다.** 표만 있으면 변환은
-초등적이다 — 자리마다 `n = n × base + 자릿값`.
+Therefore to read base 62 there is **no choice but to keep a digit table yourself.** With the table the
+conversion is elementary — `n = n × base + digit value` per digit.
 
-### 13.2.4 이것은 암호가 아니다
+### 13.2.4 This is not encryption
 
-암호와 압축을 가르는 기준은 겉모습이 아니라 **복원에 필요한 정보가 어디 있는가**다.
+The criterion that divides encryption and compression is not the appearance but **where the information needed
+to restore is.**
 
-| | 사전 압축(packed JS) | 대칭 암호(AES-128) |
+| | dictionary compression (packed JS) | symmetric encryption (AES-128) |
 |---|---|---|
-| 복원에 필요한 것 | 진법 + 사전 | 키 |
-| 그것이 어디 있는가 | **같은 문자열 안** | 별도 채널(`EXT-X-KEY` URI) |
-| 상대가 모르는 것 | 없다 | 키 |
-| 되돌리는 비용 | 표기 변환 — 입력 길이에 비례 | 키가 없으면 2¹²⁸ 시도 |
-| 못 되돌릴 조건 | 형식을 모를 때뿐 | 키를 모를 때 |
+| What is needed to restore | the base + the dictionary | the key |
+| Where it is | **inside the same string** | a separate channel (`EXT-X-KEY` URI) |
+| What the other party does not know | nothing | the key |
+| The cost of reversing | notation conversion — proportional to input length | 2¹²⁸ attempts without the key |
+| The condition it cannot be reversed | only when the format is unknown | when the key is unknown |
 
-마지막 행이 핵심이다. packed JS 가 저항하는 유일한 대상은 **형식을 모르는 상대**다.
-그런데 그 형식은 공개돼 있고, 무엇보다 **모든 브라우저가 알아야 한다** — 알지 못하면
-사이트가 동작하지 않는다. 제25장에서 AES-128 을 두고 다시 만날 논점이 여기서 처음
-나온다.
+The last row is the crux. The only thing packed JS resists is **a party that does not know the format.** But
+that format is public, and above all **every browser must know it** — not knowing it, the site does not work.
+The argument we will meet again over AES-128 in Chapter 25 first appears here.
 
 ---
 
-## 13.3 코드 — `unpack` 을 한 줄씩
+## 13.3 The code — `unpack`, line by line
 
-### 13.3.1 전체
+### 13.3.1 The whole
 
 ```python
 # series.py:224-255
 def unpack(text: str) -> str:
-    """packed JS(`eval(function(p,a,c,k,e,d){…})`)를 원래 소스로 되돌린다.
+    """Reverse packed JS (`eval(function(p,a,c,k,e,d){…})`) to the original source.
 
-    플레이어 설정은 이 압축 안에 들어 있다. 압축은 자주 쓰이는 낱말을 사전에 모으고
-    본문에서는 사전 번호를 진법 표기로 참조하는 방식이라, 번호를 낱말로 되돌리면
-    원본이 나온다. 진법이 36 을 넘으므로(대개 62) 파이썬 `int(x, base)` 는 쓸 수
-    없고 자릿수 표를 직접 둔다.
+    The player settings are inside this compression. The compression gathers frequent words into
+    a dictionary and references the dictionary number in the body by radix notation, so turning the
+    number back into a word gives the original. Since the base exceeds 36 (usually 62), Python
+    `int(x, base)` cannot be used and a digit table is kept directly.
 
-    되돌리지 못하면 빈 문자열을 준다 — 실행하지 않고 읽기만 한다.
+    If it cannot be reversed, give an empty string — do not execute, only read.
     """
     m = _PACKED_RE.search(text)
     if not m:
@@ -188,15 +185,15 @@ def unpack(text: str) -> str:
         i = decode(mo.group(0))
         return words[i] if i is not None and i < len(words) and words[i] else mo.group(0)
 
-    # 사전 참조는 ASCII 낱말이다. 파이썬 기본 \w 는 한글도 포함하므로 ASCII 로 묶는다.
+    # a dictionary reference is an ASCII word. Python's default \w includes Korean too, so bind to ASCII.
     out = re.sub(r"\b\w+\b", swap, payload, flags=re.ASCII)
     return out.replace("\\/", "/")
 ```
 
-서른두 줄이다. 그중 실제 복원 논리는 `decode` 일곱 줄과 `swap` 두 줄, 그리고 마지막
-`re.sub` 한 줄 — **열 줄**이다.
+Thirty-two lines. Of them the actual restore logic is `decode`'s seven lines, `swap`'s two lines, and the last
+`re.sub`'s one line — **ten lines.**
 
-### 13.3.2 형식을 잡는 정규식
+### 13.3.2 The regex that catches the format
 
 ```python
 # series.py:218
@@ -208,77 +205,77 @@ _PACKED_RE = re.compile(r"}\('(?P<payload>.*?)',(?P<base>\d+),\d+,'(?P<words>.*?
 _ALPHABET = string.digits + string.ascii_lowercase + string.ascii_uppercase
 ```
 
-정규식이 걸어 잡는 지점은 함수 본문이 끝나고 **호출이 시작되는** `}(` 다. 그 뒤로
-네 값이 순서대로 온다.
+The spot the regex catches on is the `}(` where the function body ends and **the call begins.** After it come
+four values in order.
 
-| 캡처 | 패커의 인자 | 이 코드가 쓰는가 |
+| Capture | The packer's argument | Does this code use it? |
 |---|---|---|
-| `payload` | `p` — 색인으로 치환된 본문 | 쓴다 |
-| `base` | `a` — 진법 | 쓴다 (`int(...)`) |
-| `\d+` (이름 없음) | `c` — 사전 크기 | **쓰지 않는다** |
-| `words` | `k` — `'\|'` 로 이은 사전 | 쓴다 |
+| `payload` | `p` — the body substituted with indices | uses |
+| `base` | `a` — the base | uses (`int(...)`) |
+| `\d+` (unnamed) | `c` — the dictionary size | **does not use** |
+| `words` | `k` — the dictionary joined by `'\|'` | uses |
 
-`c`(사전 크기)를 이름 없이 흘려보내는 것이 작은 설계 판단이다. **자기 신고된 개수를
-믿는 대신 실제 사전 길이(`len(words)`)로 경계를 검사**한다(`swap` 의 `i < len(words)`).
-선언된 길이와 실제 길이가 어긋난 입력에서 색인이 범위를 벗어나는 경로가 아예 없다.
-제5장에서 본 "자기 신고 값은 판단의 근거가 아니다"가 여기서도 그대로 적용된다.
+Letting `c` (the dictionary size) pass unnamed is a small design judgment. **Instead of trusting the
+self-reported count, it checks the boundary with the actual dictionary length (`len(words)`)** (`swap`'s `i <
+len(words)`). On an input where the declared length and the actual length go off, there is no path at all for
+the index to go out of range. "A self-reported value is not a basis for judgment" seen in Chapter 5 applies
+here too.
 
-`_ALPHABET` 은 `0-9`, `a-z`, `A-Z` 순서다. **base64 의 알파벳 순서(`A-Za-z0-9+/`)와
-다르다.** 패커가 36 미만은 `toString(36)` 으로, 36 이상은 문자 코드 계산으로 만들기
-때문에 이 순서가 된다. 순서를 잘못 잡으면 복원이 실패하는 것이 아니라 **엉뚱한 낱말로
-조용히 바뀐다** — 검출하기 가장 어려운 종류의 오류다.
+`_ALPHABET` is `0-9`, `a-z`, `A-Z` in order. **Different from base64's alphabet order (`A-Za-z0-9+/`).**
+Because the packer makes under-36 with `toString(36)` and 36-and-above with a character-code computation, this
+order results. Get the order wrong and the restore does not fail but **quietly changes into a wrong word** —
+the kind of error hardest to detect.
 
-### 13.3.3 `re.ASCII` — 플래그 하나가 지우는 것
+### 13.3.3 `re.ASCII` — what one flag erases
 
 ```python
 # series.py:253-254
-    # 사전 참조는 ASCII 낱말이다. 파이썬 기본 \w 는 한글도 포함하므로 ASCII 로 묶는다.
+    # a dictionary reference is an ASCII word. Python's default \w includes Korean too, so bind to ASCII.
     out = re.sub(r"\b\w+\b", swap, payload, flags=re.ASCII)
 ```
 
-이 한 줄이 이 장에서 가장 실용적인 부분이다. 이유는 **압축한 쪽과 같은 규칙으로
-잘라야 하기 때문**이다.
+This one line is the most practical part of this chapter. The reason is **you must cut by the same rule as the
+side that compressed.**
 
-자바스크립트의 `\w` 는 언제나 `[A-Za-z0-9_]` — ASCII 뿐이다. 반면 **파이썬 3 의 `\w`
-는 기본이 유니코드**여서 한글·한자·키릴 문자까지 포함한다. 즉 두 언어의 `\b\w+\b` 는
-같은 문자열을 **다른 곳에서 끊는다.**
+JavaScript's `\w` is always `[A-Za-z0-9_]` — ASCII only. Python 3's `\w`, by contrast, **is Unicode by
+default**, including Korean·Chinese·Cyrillic characters. That is, the two languages' `\b\w+\b` **cut the same
+string at different places.**
 
-한글 제목이 든 본문 조각에서 무슨 일이 생기는지 보자.
+See what happens on a body fragment with a Korean title.
 
-![같은 정규식이 두 곳에서 끊긴다](/images/lecture/hls-recon/13-token-boundary.svg)
+![The same regex cuts at two places](/images/lecture/hls-recon/13-token-boundary.svg)
 
-*그림 13-2 — 같은 정규식이 두 곳에서 끊긴다 — 플래그 하나가 회차 번호를 지운다*
+*Figure 13-2 — the same regex cuts at two places — one flag erases the episode number*
 
-패커는 JS 규칙으로 `그렌라간01` 을 `그렌라간` + `01` 로 끊고 `01` 만 색인 `e` 로
-바꿨다. 되돌릴 때 파이썬 기본 규칙을 쓰면 `그렌라간e` 가 **한 덩어리 토큰**이 되고,
-그 안의 `그` 는 자릿수 표에 없으므로 `decode` 가 `None` 을 돌려준다. `swap` 은
-원문을 그대로 남긴다. 결과가 `그렌라간e.mkv` 다.
+The packer, by the JS rule, cut `그렌라간01` into `그렌라간` + `01` and changed only `01` to the index `e`. On
+reversing, use Python's default rule and `그렌라간e` becomes **one lump token**, and the `그` inside it is not
+in the digit table so `decode` returns `None`. `swap` leaves the original as is. The result is `그렌라간e.mkv`.
 
-**예외도, 경고도 없다.** 복원은 "성공"했고 `_JS_TITLE_RE` 도 값을 찾는다. 다만
-회차 번호가 사라져 있을 뿐이다.
+**No exception, no warning.** The restore "succeeded" and `_JS_TITLE_RE` finds a value too. Only, the episode
+number has disappeared.
 
-§13.4 에서 재현한 실측값이다.
+A measurement reproduced in §13.4.
 
-| 원본 `title` | `flags=re.ASCII` | 플래그 없음(대조군) |
+| Original `title` | `flags=re.ASCII` | no flag (control) |
 |---|---|---|
 | `그렌라간01.mkv` | `그렌라간01.mkv` | `그렌라간e.mkv` |
 | `그렌라간02.mkv` | `그렌라간02.mkv` | `그렌라간e.mkv` |
 | `그렌라간03.mkv` | `그렌라간03.mkv` | `그렌라간e.mkv` |
 
-오른쪽 열 셋이 **전부 같다.** 회차별로 달랐어야 할 이름이 하나로 뭉개진다. `_name_of`
-가 확장자를 떼면 세 회차 모두 `그렌라간` + 색인 글자 하나가 되고, 같은 파일에 차례로
-덮어써진다. 27화를 받았는데 파일이 하나 남는 실패다.
+The three right-column values are **all the same.** Names that should have differed per episode collapse into
+one. Once `_name_of` strips the extension, all three episodes become `그렌라간` + one index letter, and they
+overwrite the same file in turn. A failure where you received 27 episodes but one file remains.
 
-> 왜 셋이 같은 글자가 되는가 — 색인은 **그 페이지 안에서의 등장 순서**다. 회차마다
-> 페이지 뼈대가 같으면 회차 번호가 놓이는 자리도 같으므로 색인이 같아진다. 즉
-> 이 충돌은 우연이 아니라 **템플릿이 같을 때의 정상 동작**이다.
+> Why do the three become the same letter — the index is **the appearance order within that page.** If the
+> page skeleton is the same per episode, the spot the episode number sits at is also the same so the index is
+> the same. That is, this collision is not a coincidence but **normal behavior when the template is the same.**
 
-한 줄 요약은 이렇다.
+The one-line summary is this.
 
-> **역변환은 정변환과 같은 토큰 규칙을 써야 한다. 규칙이 어긋나면 변환이 실패하는
-> 것이 아니라, 부분적으로 성공한 것처럼 보이는 결과가 나온다.**
+> **The reverse transform must use the same token rule as the forward transform. When the rule goes off, the
+> transform does not fail but produces a result that looks partially successful.**
 
-### 13.3.4 `decode` 의 두 방어
+### 13.3.4 `decode`'s two defenses
 
 ```python
 # series.py:240-247
@@ -292,23 +289,22 @@ _ALPHABET = string.digits + string.ascii_lowercase + string.ascii_uppercase
         return n
 ```
 
-일곱 줄에 검사가 둘 들어 있다.
+Seven lines with two checks in them.
 
-| 검사 | 막는 것 | 없으면 |
+| Check | What it blocks | Without it |
 |---|---|---|
-| `i < 0` | 표에 없는 글자(`_`, 한글, 기호) | `find` 가 준 `-1` 이 자릿값이 되어 음수 색인이 생긴다 |
-| `i >= base` | **그 진법에서 유효하지 않은 자릿수** | 36진법 본문에 섞인 `A`(표에서 36)가 36으로 읽혀 엉뚱한 낱말로 바뀐다 |
+| `i < 0` | a letter not in the table (`_`, Korean, a symbol) | the `-1` `find` gave becomes a digit value and a negative index arises |
+| `i >= base` | **a digit not valid in that base** | an `A` (36 in the table) mixed into base-36 body is read as 36 and changed into a wrong word |
 
-둘째가 덜 뻔하다. `_ALPHABET` 은 62글자로 고정이지만 `base` 는 응답이 정한다. 표의
-크기와 실제 진법이 다를 수 있고, 그 차이를 메우는 것이 이 한 줄이다. **표를 상수로
-두고 진법을 입력에서 읽는 구조에서는 둘 사이의 정합성 검사가 반드시 필요하다.**
+The second is less obvious. `_ALPHABET` is fixed at 62 letters but `base` is set by the response. The table's
+size and the actual base can differ, and this one line fills that gap. **In a structure that keeps the table
+constant and reads the base from the input, a consistency check between the two is essential.**
 
-두 검사 모두 실패 시 `None` 을 주고, `swap` 은 원문을 남긴다. 즉 **되돌리지 못한
-토큰은 손대지 않는다.** 이것은 패커의 동작과도 일치한다 — 패커도 사전 칸이 비어
-있으면 색인 표기를 그대로 남기게 되어 있고, `swap` 의 `and words[i]` 가 그 경우를
-받는다.
+Both checks give `None` on failure, and `swap` leaves the original. That is, **a token that could not be
+reversed is not touched.** This matches the packer's behavior too — the packer also leaves the index notation
+as is when a dictionary slot is empty, and `swap`'s `and words[i]` catches that case.
 
-### 13.3.5 복원 실패의 값은 빈 문자열이다
+### 13.3.5 The value of a restore failure is an empty string
 
 ```python
 # series.py:234-236
@@ -317,18 +313,18 @@ _ALPHABET = string.digits + string.ascii_lowercase + string.ascii_uppercase
         return ""
 ```
 
-형식을 못 잡으면 예외가 아니라 빈 문자열이다. 이것이 방치가 아니라 **계산된
-선택**이라는 근거는, 같은 모듈이 다른 값에 대해서는 정반대로 행동한다는 데 있다.
+If it cannot catch the format it is not an exception but an empty string. The basis that this is not neglect
+but a **calculated choice** is that the same module behaves the opposite for other values.
 
-| 얻지 못한 값 | 이 코드의 반응 | 앵커 | 근거 |
+| The value not obtained | This code's reaction | Anchor | Basis |
 |---|---|---|---|
-| 플레이어 iframe 주소 | **예외** | [`series.py:263`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L263) | 없으면 이후 전부 불가능 |
-| 재생 소스 응답이 JSON 이 아님 | **예외**(서버 문구를 그대로 실어) | [`series.py:292-294`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L292-L294) | 그 문구가 곧 거절 사유다 |
-| 응답에 재생 주소가 없음 | **예외** | [`series.py:298`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L298) | 받을 대상이 없다 |
-| 플레이어 설정(packed JS) | **빈 문자열** | [`series.py:236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L236) | 이름은 대체 가능하다 |
+| the player iframe address | **exception** | [`series.py:263`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L263) | without it everything after is impossible |
+| the playback-source response is not JSON | **exception** (carrying the server's message as is) | [`series.py:292-294`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L292-L294) | that message is itself the refusal reason |
+| no playback address in the response | **exception** | [`series.py:298`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L298) | there is nothing to receive |
+| the player settings (packed JS) | **empty string** | [`series.py:236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L236) | the name is substitutable |
 
-마지막 행만 다르다. 그 이유는 `unpack` 의 결과가 어디로 흘러가는지를 보면 정확히
-드러난다. `settings` 는 `resolve` 안에서 딱 두 번 등장한다.
+Only the last row differs. The reason shows exactly by seeing where `unpack`'s result flows. `settings`
+appears exactly twice inside `resolve`.
 
 ```python
 # series.py:278
@@ -340,9 +336,9 @@ _ALPHABET = string.digits + string.ascii_lowercase + string.ascii_uppercase
     return Play(playlist_url=link, name=_name_of(settings, episode, fallback_width), referer=origin + "/")
 ```
 
-**재생 주소는 `settings` 에서 오지 않는다.** `link` 는 XHR 응답 JSON 의
-`securedLink`/`videoSource` 에서 온다([`series.py:296`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L296)). `settings` 가 결정하는 것은
-`name` 하나뿐이고, 그 `name` 에는 대체 경로가 준비돼 있다.
+**The playback address does not come from `settings`.** `link` comes from the XHR response JSON's
+`securedLink`/`videoSource` ([`series.py:296`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L296)). What `settings` decides is only `name`, and that `name` has an
+alternative path prepared.
 
 ```python
 # series.py:310-316
@@ -355,28 +351,28 @@ _ALPHABET = string.digits + string.ascii_lowercase + string.ascii_uppercase
     return sanitize(f"{base} {episode.number:0{width}d}")
 ```
 
-`settings` 가 빈 문자열이면 `_JS_TITLE_RE.search("")` 가 `None` 이고, 목록에서 얻은
-회차 제목 + 0 채운 화수로 물러선다. 제31·32장에서 다룰 `sanitize` 가 양쪽 경로
-끝에 똑같이 붙어 있는 것도 같은 설계다 — **어느 경로로 왔든 파일명 규칙은 한 곳에서
-적용된다.**
+If `settings` is an empty string, `_JS_TITLE_RE.search("")` is `None`, and it falls back to the episode title
+obtained from the list + the zero-padded episode number. That `sanitize`, covered in Chapters 31·32, is
+attached identically at the end of both paths is the same design — **whichever path it came from, the filename
+rule is applied in one place.**
 
-> **원칙** — **실패 시 반환값은 그 값의 소비자가 정한다.** 대체 경로가 있는 값은
-> 부드럽게 물러서고(fail-soft), 대체 경로가 없는 값은 즉시 멈춘다(fail-fast).
-> 모듈 전체에 한 가지 실패 정책을 강요하면 둘 중 하나는 반드시 틀린다.
+> **Principle** — **the return value on failure is decided by that value's consumer.** A value with an
+> alternative path fails soft, and a value with no alternative path fails fast. Force one failure policy on the
+> whole module and one of the two is necessarily wrong.
 
-`unpack` 이 예외를 던졌다면 사이트가 패커를 바꾸는 날 **도구 전체가 죽는다.** 이름만
-덜 예쁘면 되는 일에 전면 중단으로 대응하는 셈이다. 반대로 재생 주소가 없는데
-빈 문자열로 넘어갔다면, 0바이트 파일을 만들어 놓고 성공을 보고했을 것이다.
+Had `unpack` thrown an exception, **the whole tool dies the day the site changes its packer.** It would answer
+with a full halt to a matter where only the name being less pretty is at stake. Conversely, had it passed on
+an empty string when there is no playback address, it would have made a 0-byte file and reported success.
 
 ---
 
-## 13.4 실습 — 압축과 복원을 로컬에서 재현
+## 13.4 Lab — reproduce compression and restore locally
 
-외부 사이트 없이 전 과정을 확인할 수 있다. 필요한 것은 `python3` 와 이 저장소뿐이다.
-**압축하는 쪽을 직접 만들어 보는 것**이 이 절의 요점이다 — 압축기를 스무 줄로 쓸 수
-있다는 사실 자체가 §13.7 의 결론이다.
+You can confirm the whole process with no external site. All you need is `python3` and this repository.
+**Making the compressing side yourself** is this section's point — the very fact that a compressor can be
+written in twenty lines is §13.7's conclusion.
 
-### 13.4.1 압축기
+### 13.4.1 The compressor
 
 ```python
 import re, string
@@ -384,7 +380,7 @@ _ALPHABET = string.digits + string.ascii_lowercase + string.ascii_uppercase
 BASE = 62
 
 def enc(n: int) -> str:
-    """패커의 자릿수 표기 — 0-9 a-z A-Z."""
+    """The packer's digit notation — 0-9 a-z A-Z."""
     if n == 0:
         return _ALPHABET[0]
     out = ""
@@ -399,11 +395,11 @@ def pack(src: str) -> tuple[str, list[str]]:
         if w not in index:
             index[w] = len(words); words.append(w)
         return enc(index[w])
-    # 자바스크립트의 \w 는 ASCII 뿐이다 — 압축하는 쪽의 규칙이 여기서 정해진다.
+    # JavaScript's \w is ASCII only — the compressing side's rule is set here.
     return re.sub(r"\b\w+\b", tok, src, flags=re.ASCII), words
 ```
 
-### 13.4.2 왕복 검증
+### 13.4.2 Round-trip verification
 
 ```python
 from hlsrecon.series import unpack
@@ -414,85 +410,83 @@ SRC = ('var player = new Playerjs({"id":"player",'
 payload, words = pack(SRC)
 dic = "|".join(words)
 blob = f"}}('{payload}',{BASE},{len(words)},'{dic}'.split('|'),0,{{}}))"
-assert unpack(blob) == SRC          # 왕복 일치 — 통과한다
+assert unpack(blob) == SRC          # round-trip match — passes
 ```
 
-실행하면 통과한다. 본문과 사전은 이렇게 나온다.
+Run it and it passes. The body and dictionary come out like this.
 
 ```
-본문: 0 1 = 2 3({"4":"1","5":"6://7.8/9/a/b.c","d":"그렌라간e.f"});
-사전: var|player|new|Playerjs|id|file|https|cdn|example|hls|abc|master|m3u8|title|01|mkv
+body: 0 1 = 2 3({"4":"1","5":"6://7.8/9/a/b.c","d":"그렌라간e.f"});
+dict: var|player|new|Playerjs|id|file|https|cdn|example|hls|abc|master|m3u8|title|01|mkv
 ```
 
-### 13.4.3 대조군 — 플래그를 뺀 복원
+### 13.4.3 Control — the restore with the flag removed
 
-`unpack` 을 복사해 `flags=re.ASCII` 만 지운 변형을 만들어 같은 입력에 물리면
-§13.3.3 의 표가 재현된다. 회차 번호만 바꾼 세 입력에서 세 결과가 전부
-`그렌라간e.mkv` 로 같아진다.
+Copy `unpack`, make a variant with only `flags=re.ASCII` removed, and feed it the same input and §13.3.3's
+table reproduces. On three inputs differing only in the episode number, the three results all become the same
+`그렌라간e.mkv`.
 
-> **이 실습이 확인하는 것과 하지 않는 것.** 확인하는 것은 "같은 자릿수 표와 같은 토큰
-> 규칙을 쓰면 왕복이 정확히 성립한다"이다. 확인하지 **않는** 것은 "실제 Dean Edwards
-> Packer 의 출력이 이 자릿수 표를 쓴다"이다 — 압축·복원 양쪽에 같은 표를 썼으므로
-> 이 실험은 내부 일관성만 보인다. 규약 자체의 검증은 §13.8 에 한계로 적어 둔다.
+> **What this lab confirms and does not.** What it confirms is "using the same digit table and the same token
+> rule, the round trip holds exactly." What it does **not** confirm is "the actual Dean Edwards Packer's
+> output uses this digit table" — since the same table was used on both compression·restore, this experiment
+> shows only internal consistency. Verifying the convention itself is left as a limit in §13.8.
 
 ---
 
-## 13.5 코드 — 파싱은 하되 실행하지 않는다
+## 13.5 The code — parse but do not execute
 
-### 13.5.1 두 방법의 진짜 차이
+### 13.5.1 The real difference between the two ways
 
-§13.1 의 갈림길로 돌아온다. A(실행)와 B(파싱)의 차이는 코드 길이가 아니다.
+Back to §13.1's fork. The difference between A (execute) and B (parse) is not code length.
 
-![같은 바이트열, 두 개의 경계](/images/lecture/hls-recon/13-trust-boundary.svg)
+![The same byte sequence, two boundaries](/images/lecture/hls-recon/13-trust-boundary.svg)
 
-*그림 13-3 — 같은 바이트열, 두 개의 경계 — 데이터로 두는가 코드로 올리는가*
+*Figure 13-3 — the same byte sequence, two boundaries — keep it as data or raise it to code*
 
-> **용어** — **신뢰 경계(trust boundary)**: 서로 다른 신뢰 수준의 두 영역이 맞닿는
-> 지점. 경계를 넘어오는 데이터는 검증 대상이며, 경계를 어디에 긋느냐가 곧 "무엇을
-> 검증해야 하는가"를 정한다.
+> **Term** — **trust boundary**: the point where two regions of different trust levels meet. Data crossing the
+> boundary is a validation target, and where you draw the boundary sets "what must be validated."
 
-경계를 긋는 기준은 **데이터의 출처가 아니라 그 데이터가 얻는 능력**이다. 두 방법이
-원격 문자열에 부여하는 능력을 나열하면 이렇다.
+The criterion for drawing the boundary is **not the data's source but the capability that data gets.** Listing
+the capabilities the two ways grant a remote string, it is this.
 
-| | B. 파싱한다 (이 저장소) | A. 실행한다 (`eval` 계열) |
+| | B. parse (this repository) | A. execute (`eval` family) |
 |---|---|---|
-| 원격 문자열이 할 수 있는 일 | 사전 색인이 되는 것 | 자바스크립트 전부 |
-| 도달 가능한 자원 | `words` 리스트 한 개 | 파일 시스템 · 네트워크 · 환경변수 · 자식 프로세스 |
-| 최악의 결과 | 잘못된 파일 이름 | **임의 코드 실행(RCE)** |
-| 상대가 공격자로 바뀌면 | 이름이 이상해진다 | 이쪽 계정으로 무엇이든 한다 |
-| 추가 의존성 | 없음(표준 라이브러리) | JS 실행기 — 그 자체가 공격면 |
+| What the remote string can do | become a dictionary index | all of JavaScript |
+| Reachable resources | one `words` list | the file system · network · environment variables · child processes |
+| Worst outcome | a wrong filename | **arbitrary code execution (RCE)** |
+| If the other party turns attacker | the name gets weird | does anything under this account |
+| Additional dependency | none (standard library) | a JS executor — itself an attack surface |
 
-마지막 행이 실무에서 자주 빠진다. `js2py`·`PyExecJS`·Node 하위 프로세스 중 무엇을
-쓰든, **원격 코드를 실행하기 위해 도입한 실행기 자체가 새 공격면**이 된다.
-제15장에서 본 구조 — 무언가를 하려고 방어를 완화하는 — 가 여기서는 의존성의 형태로
-반복된다.
+The last row is often missed in practice. Whatever you use among `js2py`·`PyExecJS`·a Node subprocess, **the
+executor introduced to run remote code is itself a new attack surface.** The structure seen in Chapter 15 —
+relaxing a defense to do something — repeats here in the form of a dependency.
 
-### 13.5.2 이 코드가 원격 문자열에 허용한 연산의 전부
+### 13.5.2 The entirety of operations this code permits on a remote string
 
-`unpack` 안에서 원격 문자열이 관여하는 연산을 남김없이 적으면 다음 넷이다.
+Writing out, with nothing left, the operations a remote string is involved in inside `unpack`, it is these
+four.
 
-| 연산 | 코드 | 원격이 통제하는 것 | 원격이 통제하지 못하는 것 |
+| Operation | Code | What the remote controls | What the remote does not control |
 |---|---|---|---|
-| 정규식 매칭 | `_PACKED_RE.search(text)` | 매칭 여부 | 정규식 자체(상수) |
-| 정수 변환 | `int(m.group("base"))` | 진법 값 | 변환 대상 자릿수 표 |
-| 리스트 색인 | `words[i]` | 색인 값 | 리스트 내용도 원격이지만 **문자열뿐** |
-| 문자열 치환 | `re.sub(..., swap, payload, ...)` | 치환 결과 문자열 | 치환 규칙 |
+| regex matching | `_PACKED_RE.search(text)` | whether it matches | the regex itself (constant) |
+| integer conversion | `int(m.group("base"))` | the base value | the digit table converted against |
+| list indexing | `words[i]` | the index value | the list content is remote too but **strings only** |
+| string substitution | `re.sub(..., swap, payload, ...)` | the substitution-result string | the substitution rule |
 
-**속성 접근도, 동적 호출도, 임포트도, 파일·소켓 접근도 없다.** 문자열이 문자열로
-바뀌고 끝난다. 이것이 "파싱만 한다"의 실제 내용이다.
+**No attribute access, no dynamic call, no import, no file·socket access.** A string turns into a string and
+that is all. This is the actual content of "only parse."
 
-한 가지 더 확인해 둘 것이 있다. 원격이 정한 `base` 가 `int()` 에 들어가는데, 정규식이
-`(?P<base>\d+)` 로 제한하므로 여기 오는 것은 반드시 십진 숫자열이다. 다만 길이 제한이
-없어 **아주 긴 숫자열이 오면 `int()` 가 오래 걸릴 수 있다.** 파이썬 3.11 이상(및 그
-이전 계열의 보안 릴리스)은 정수 변환 자릿수 상한(기본 4300)을 두어 이 경로를 막지만,
-그것이 없는 빌드에서는 막히지 않는다. 이 저장소에서 실측하지는 않았으며, 관측 가능한
-최악은 지연이지 코드 실행이 아니다 — **경계를 어디에 그었는지가 최악의 크기를
-정한다**는 점이 여기서도 그대로다.
+There is one more thing to confirm. The `base` the remote set goes into `int()`, and since the regex limits it
+to `(?P<base>\d+)`, what comes here is necessarily a decimal digit string. Only, with no length limit, **a very
+long digit string could make `int()` slow.** Python 3.11 and up (and security releases of earlier lines) put an
+integer-conversion digit cap (default 4300) blocking this path, but a build without it is not blocked. It was
+not measured in this repository, and the observable worst is a delay, not code execution — **where you drew the
+boundary sets the size of the worst** applies here as is.
 
-### 13.5.3 무엇을 플레이어로 인정하는가 — 선택도 신뢰 결정이다
+### 13.5.3 What to accept as the player — the choice is a trust decision too
 
-파싱만 하기로 해도, **어떤 문서를 받아 파싱할지 고르는 일**이 남는다. 회차 페이지에는
-광고·소셜 위젯 등 여러 `<iframe>` 이 들어 있다.
+Even choosing to only parse, **the choice of which document to receive and parse** remains. The episode page
+has several `<iframe>`s — ads·social widgets, etc.
 
 ```python
 # series.py:258-263
@@ -501,222 +495,221 @@ def _player_url(page: str, url: str) -> str:
         absolute = urljoin(url, src)
         if _PLAYER_RE.match(absolute):
             return absolute
-    raise ValueError(f"회차 페이지에서 플레이어 iframe 을 찾지 못했다: {url}")
+    raise ValueError(f"could not find the player iframe in the episode page: {url}")
 ```
 
 ```python
 # series.py:216-217
-# 플레이어 주소는 `<호스트>/video/<해시>` 꼴이다. 광고·소셜 iframe 과 구분하는 근거.
+# the player address is of the shape `<host>/video/<hash>`. the basis for distinguishing ad·social iframes.
 _PLAYER_RE = re.compile(r"^https?://[^/]+/video/(?P<hash>[0-9A-Za-z]{8,})/?$")
 ```
 
-세 가지가 이 여섯 줄에 들어 있다.
+Three things are in these six lines.
 
-1. **위치가 아니라 모양으로 고른다.** "첫 번째 iframe" 이 아니라 `/video/<8자 이상
-   영숫자>` 형태에 맞는 것을 고른다. 위치로 골랐다면 페이지 상단에 광고 iframe 하나가
-   추가되는 순간 도구가 광고 서버를 파싱하러 간다.
-2. **모양에 맞는 것이 없으면 예외다.** 아무거나 집어 진행하지 않는다. §13.3.5 표의
-   첫 행이 이 줄이다.
-3. **`urljoin` 으로 절대화한 뒤에 검사한다.** 상대 경로 `//evil.example/video/abcdefgh`
-   같은 입력이 검사 전에 절대 주소로 확정된다. 제7장에서 본 "변환은 경계에서 한 번"이
-   여기서는 **정규화 후 검증** 순서로 나타난다. 순서가 반대면 검사를 통과한 문자열이
-   나중에 다른 주소로 해석된다.
+1. **Choose by shape, not position.** Not "the first iframe" but the one matching `/video/<8+ alphanumerics>`.
+   Had it chosen by position, the moment one ad iframe is added at the page top the tool goes to parse the ad
+   server.
+2. **If there is none matching the shape it is an exception.** It does not grab any and proceed. It is the
+   first row of §13.3.5's table.
+3. **Check after absolutizing with `urljoin`.** An input like the relative path `//evil.example/video/abcdefgh`
+   is fixed to an absolute address before the check. "Transform once at the boundary" seen in Chapter 7 appears
+   here as the **normalize-then-verify** order. Reverse the order and a string that passed the check is later
+   interpreted as a different address.
 
-그러나 정직하게 — **호스트는 검사하지 않는다.** 모양만 맞으면 어느 호스트든 받아
-파싱한다. 사용자가 스스로 주소를 준 클라이언트 도구에서는 위협 모델상 문제가 아니지만,
-같은 코드가 서버 측 수집기에 있으면 **서버 측 요청 위조(SSRF)** 다. §13.8 에 한계로
-남긴다.
+But honestly — **it does not check the host.** As long as the shape matches, it receives and parses any host.
+In a client tool where the user gave the address themselves it is not a problem by threat model, but the same
+code in a server-side collector is **server-side request forgery (SSRF).** Left as a limit in §13.8.
 
 ---
 
-## 13.6 일반화 — 데이터를 코드로 올리는 지점
+## 13.6 Generalization — the point where data is raised to code
 
-이 장의 원리는 packed JS 와 아무 상관이 없다. 일반형은 이렇다.
+This chapter's principle has nothing to do with packed JS. The general form is this.
 
-> **파싱(parse)과 평가(evaluate)는 다른 일이다. 원격 입력에 대해 전자는 피할 수 없고
-> 후자는 언제나 선택이며, 후자를 고르는 순간 입력을 만든 쪽이 이쪽의 권한을 얻는다.**
+> **Parse and evaluate are different jobs. For remote input the former is unavoidable and the latter is always
+> a choice, and the moment you choose the latter, the side that made the input gets this side's authority.**
 
-같은 구조가 나타나는 곳을 나열한다. 각 행의 왼쪽은 "짧고 편한 방법", 오른쪽은 "능력을
-제한하는 방법"이다.
+List where the same structure appears. Each row's left is "the short, convenient way," the right "the way that
+limits the capability."
 
-| 영역 | 데이터를 코드로 올리는 호출 | 상대가 얻는 능력 | 능력을 제한하는 대안 |
+| Domain | The call raising data to code | The capability the other party gets | The alternative that limits the capability |
 |---|---|---|---|
-| 자바스크립트 | `eval` · `new Function` | 페이지 컨텍스트 전부 | JSON 파싱 후 표 조회 |
-| 파이썬 | `eval` · `exec` | 인터프리터 전부 | `ast.literal_eval` |
-| 파이썬 직렬화 | `pickle.loads` | 임의 코드 실행 | JSON · 스키마 기반 포맷 |
-| YAML | `yaml.load`(기본 Loader) | 임의 객체 생성 | `yaml.safe_load` |
-| 자바 직렬화 | `ObjectInputStream.readObject` | 가젯 체인 → RCE | 스키마 기반 직렬화 |
-| 템플릿 | 사용자 문자열을 템플릿 **소스**로 | 서버 측 템플릿 주입(SSTI) | 템플릿은 고정, 데이터만 주입 |
-| SQL | 질의 문자열 접합 | 임의 질의 | 바인딩 파라미터 |
-| XML | 외부 엔티티를 허용하는 파서 | 파일 읽기(XXE) · 엔티티 폭탄 | 엔티티 비활성 파서 |
-| 셸 | `shell=True` 로 문자열 실행 | 명령 주입 | 인자 배열로 직접 실행 |
+| JavaScript | `eval` · `new Function` | all of the page context | JSON parse then table lookup |
+| Python | `eval` · `exec` | all of the interpreter | `ast.literal_eval` |
+| Python serialization | `pickle.loads` | arbitrary code execution | JSON · a schema-based format |
+| YAML | `yaml.load` (default Loader) | arbitrary object creation | `yaml.safe_load` |
+| Java serialization | `ObjectInputStream.readObject` | a gadget chain → RCE | schema-based serialization |
+| templates | a user string as the template **source** | server-side template injection (SSTI) | fix the template, inject only data |
+| SQL | query-string concatenation | an arbitrary query | bind parameters |
+| XML | a parser allowing external entities | file read (XXE) · entity bomb | an entity-disabled parser |
+| shell | executing a string with `shell=True` | command injection | execute directly with an argument array |
 
-> **용어** — **역직렬화 취약점(deserialization vulnerability)**: 직렬화된 데이터를
-> 객체로 복원하는 과정에서, 데이터가 지정한 타입의 생성자·마법 메서드가 호출되어
-> 공격자가 고른 코드 경로가 실행되는 문제. `pickle` 과 자바 직렬화가 대표적이다.
+> **Term** — **deserialization vulnerability**: a problem where, in restoring serialized data to an object, the
+> constructor·magic method of the type the data specified is called and a code path the attacker chose runs.
+> `pickle` and Java serialization are representative.
 
-마지막 행을 제외한 모두가 "**형식을 해석하는 일**"과 "**형식이 지시하는 동작을
-수행하는 일**"이 한 함수에 묶여 있어서 생긴다. 분리하면 사라진다.
+All but the last row arise because "**interpreting the format**" and "**performing the action the format
+directs**" are bundled in one function. Split them and it disappears.
 
-이 저장소 안에도 같은 판단이 한 번 더 있다. 교재의 도식을 검사하는 도구는 SVG 를
-XML 로 파싱해야 하는데, 그 파서에 외부 엔티티 처리 능력이 있으면 도식 파일 하나가
-로컬 파일을 읽어낼 수 있다.
+Inside this repository there is one more of the same judgment. The tool checking the course's diagrams must
+parse SVG as XML, and if that parser has external-entity handling, one diagram file can read a local file.
 
 ```python
 # tools/check_svg.py:29-39
-try:  # 외부 엔티티·엔티티 폭탄 방어. 없으면 아래 DTD 거부로 대신한다.
+try:  # external-entity·entity-bomb defense. without it, the DTD rejection below substitutes.
     from defusedxml import ElementTree as ET  # type: ignore
     _DEFUSED = True
 except ImportError:
     import xml.etree.ElementTree as ET  # noqa: N817
     _DEFUSED = False
 
-# 이 교재의 도식은 DTD·엔티티를 쓰지 않는다. 그런 선언이 있다면 우리가 만든
-# 파일이 아니거나 손을 탄 것이므로, 파싱하기 전에 거부한다 — defusedxml 이
-# 없는 환경에서 XXE·billion-laughs 로 들어가는 유일한 경로가 여기다.
+# this course's diagrams do not use DTD·entities. if such a declaration is there, it is not a file we
+# made or has been tampered with, so reject before parsing — this is the only path to XXE·billion-laughs
+# in an environment without defusedxml.
 DTD_DECL = re.compile(r"<!(?:DOCTYPE|ENTITY)\b", re.I)
 ```
 
-`unpack` 과 판단이 같다 — **파싱은 하되 파서에 여분의 능력을 주지 않는다.** 그리고
-방어를 한 겹이 아니라 두 겹으로 둔 것(`defusedxml` 이 없으면 DTD 선언 자체를 거부)이
-제15장에서 말한 "층 사이의 결합을 만들지 않는다"의 실행이다.
+The judgment is the same as `unpack`'s — **parse but do not give the parser extra capability.** And that the
+defense is placed in two layers, not one (reject the DTD declaration itself if `defusedxml` is absent), is the
+execution of "do not make a coupling between layers" stated in Chapter 15.
 
 ---
 
-## 13.7 보안 — security through obscurity 의 정확한 위치
+## 13.7 Security — the exact location of security through obscurity
 
-### 13.7.1 무엇이 문제인지 정확히 말하기
+### 13.7.1 Saying precisely what the problem is
 
-> **용어** — **security through obscurity(모호성에 의한 보안)**: 설계·구현·데이터
-> 형식을 상대가 모른다는 가정 위에 안전성을 세우는 방식.
+> **Term** — **security through obscurity**: a way of building security on the assumption that the other party
+> does not know the design·implementation·data format.
 
-> **용어** — **Kerckhoffs 원리**: 암호 체계는 **키를 제외한 모든 것이 공개되어도**
-> 안전해야 한다는 설계 원칙(1883). 뒤집으면, 비밀로 유지할 수 있는 것은 교체 가능한
-> 작은 값(키)뿐이고 알고리즘은 비밀로 유지될 수 없다는 관찰이다.
+> **Term** — **Kerckhoffs's principle**: the design principle that a cryptosystem must be secure **even if
+> everything except the key is public** (1883). Inverted, it is the observation that the only thing that can be
+> kept secret is a small replaceable value (the key), and the algorithm cannot be kept secret.
 
-packed JS 를 이 원리에 대보면 위반 지점이 정확히 한 곳이다.
+Hold packed JS against this principle and the violation point is exactly one place.
 
-| Kerckhoffs 가 요구하는 것 | packed JS 의 상태 |
+| What Kerckhoffs requires | packed JS's state |
 |---|---|
-| 비밀은 키에 담긴다 | **키가 없다** |
-| 알고리즘은 공개돼도 안전하다 | 알고리즘이 공개되면 복원이 자명해진다 |
-| 비밀은 교체 가능하다 | 교체하려면 **모든 클라이언트를 동시에 바꿔야 한다** |
-| 비밀은 소수에게만 배포된다 | **접속하는 모든 브라우저에 배포된다** |
+| the secret is in the key | **there is no key** |
+| the algorithm is secure even public | if the algorithm is public the restore is self-evident |
+| the secret is replaceable | to replace it you must **change every client at once** |
+| the secret is distributed only to a few | **it is distributed to every browser that connects** |
 
-마지막 행이 결정적이다. 브라우저는 이 스크립트를 실행해야 하므로 **복원에 필요한 모든
-것을 반드시 받는다.** 클라이언트가 실행할 수 있는 것은 클라이언트가 읽을 수 있다.
-"보내되 못 읽게 한다"는 요구는 이 구조에서 성립하지 않는다.
+The last row is decisive. Since the browser must execute this script, it **necessarily receives everything
+needed to restore.** What a client can execute a client can read. The requirement "send it but make it
+unreadable" does not hold in this structure.
 
-### 13.7.2 그렇다고 무가치하지는 않다
+### 13.7.2 That said, it is not worthless
 
-여기서 흔한 과잉 교정이 일어난다. "난독화는 의미 없다"는 문장은 틀렸다. 정확히
-계량하면 이렇다.
+Here a common over-correction happens. The sentence "obfuscation is meaningless" is wrong. Measured precisely,
+it is this.
 
-| 질문 | 답 |
+| Question | Answer |
 |---|---|
-| 무엇을 **막는가** | 아무것도 막지 못한다 |
-| 무엇을 **올리는가** | 자동화 비용. 스크래퍼가 정규식 하나로 값을 긁던 것을, 형식을 파악하고 복원기를 쓰게 만든다 |
-| 얼마나 올리는가 | 알려진 패커면 **거의 0**(공개 복원기가 있다). 자체 변형이면 사람이 형식을 읽는 시간만큼 |
-| 누구를 늦추는가 | 소박한 자동 수집기와 형식을 모르는 분석자 |
-| 누구를 못 늦추는가 | 브라우저 개발자도구를 여는 사람 — 실행된 뒤의 값은 그대로 보인다 |
-| 무엇에 의존하는가 | "상대가 이 형식을 모른다"는 검증 불가능한 가정 |
+| What does it **block** | it blocks nothing |
+| What does it **raise** | automation cost. what a scraper scraped with one regex, it makes them figure out the format and use a restorer |
+| How much does it raise | for a known packer, **nearly 0** (a public restorer exists). for a custom variant, by the time a person reads the format |
+| Whom does it slow | a naive automatic collector and an analyst who does not know the format |
+| Whom does it not slow | someone who opens browser devtools — the value after execution is visible as is |
+| What does it depend on | the unverifiable assumption "the other party does not know this format" |
 
-그래서 이 교재의 정식화는 다음과 같다.
+So this course's formulation is as follows.
 
-> **난독화는 지연(delay)이지 통제(control)가 아니다. 지연은 그 시간 안에 작동하는
-> 다른 무언가가 있을 때만 값을 가진다.**
+> **Obfuscation is a delay, not a control. A delay has value only when there is something else working within
+> that time.**
 
-지연 자체를 값으로 계상하려면 짝이 필요하다. 예컨대 형식을 자주 바꾸면서 서버 측에서
-이상 접근을 탐지·차단하는 운영과 결합할 때 난독화는 "탐지가 작동할 시간"을 번다.
-혼자 서 있으면 그 시간에 아무 일도 일어나지 않으므로 값이 0 에 수렴한다.
+To book a delay itself as value needs a pair. For example, when combined with operations that frequently change
+the format while detecting·blocking anomalous access on the server side, obfuscation buys "time for detection
+to work." Standing alone, nothing happens in that time so the value converges to 0.
 
-### 13.7.3 난독화가 치르는 비용 — 실제 통제를 끈다
+### 13.7.3 The cost obfuscation pays — it turns off an actual control
 
-값을 재려면 비용도 재야 한다. 그리고 이 경우 비용 항목 하나가 **보안 통제**다.
+To measure the value you must measure the cost too. And in this case one cost item is a **security control.**
 
-packed JS 는 `eval`(또는 `new Function`)을 요구한다. 그런데 그것을 허용하려면 페이지의
-**콘텐츠 보안 정책(CSP)** 에 `script-src 'unsafe-eval'` 을 넣어야 한다.
+Packed JS requires `eval` (or `new Function`). But to allow that you must put `script-src 'unsafe-eval'` in the
+page's **Content Security Policy (CSP).**
 
-> **용어** — **CSP(Content Security Policy, 콘텐츠 보안 정책)**: 페이지가 어떤 출처의
-> 스크립트·스타일·이미지를 실행·적재할 수 있는지 서버가 응답 헤더로 선언하는 브라우저
-> 강제 정책. XSS 의 영향을 줄이는 실제 통제다.
+> **Term** — **CSP (Content Security Policy)**: a browser-enforced policy the server declares in a response
+> header on what origin's script·style·image the page may execute·load. It is an actual control that reduces
+> the impact of XSS.
 
-| 항목 | 성격 | 이 거래에서 |
+| Item | Nature | In this trade |
 |---|---|---|
-| packed JS 난독화 | 통제가 아님(지연) | **얻는다** |
-| CSP `unsafe-eval` 금지 | 실제 통제(XSS 완화) | **잃는다** |
+| packed JS obfuscation | not a control (a delay) | **gained** |
+| CSP `unsafe-eval` ban | an actual control (XSS mitigation) | **lost** |
 
-**통제가 아닌 것을 얻기 위해 통제인 것을 끈다.** 제15장에서 본 구조가 그대로
-반복되는데, 차이가 하나 있다. 제15장에서는 비용을 제3자(클라이언트)가 치렀지만
-**여기서는 비용을 자기 자신이 치른다.** 자기 페이지의 XSS 완화가 약해진다.
+**You turn off a control to get a non-control.** The structure seen in Chapter 15 repeats as is, with one
+difference. In Chapter 15 the cost was paid by a third party (the client), but **here the cost is paid by
+oneself.** Your own page's XSS mitigation is weakened.
 
-나머지 비용도 적어 둔다.
+The other costs, noted too.
 
-| 비용 | 내용 |
+| Cost | Content |
 |---|---|
-| 오류 관측 불가 | 스택 트레이스가 한 줄로 뭉개져 운영 중 오류 보고가 무의미해진다 |
-| 첫 실행 지연 | 복원 함수가 매 적재마다 돌아야 한다 |
-| 감사 불가 | 제3자 보안 심사·확장 프로그램이 페이지 동작을 확인할 수 없다 |
+| unobservable errors | the stack trace collapses into one line so error reports in operation become meaningless |
+| first-execution delay | the restore function must run on every load |
+| unauditable | a third-party security review·extension cannot confirm the page behavior |
 
-### 13.7.4 방어자 관점
+### 13.7.4 The defender's view
 
-이 절이 없으면 이 장은 우회의 설명으로 끝난다. 역할별로 나눈다.
+Without this section this chapter ends as an explanation of the bypass. Split by role.
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **서비스 운영자** | 난독화를 통제 목록에 올리지 않는다. **난독화가 있든 없든 인가 결정이 같아야 한다.** 실제 통제는 서버 측 인가 — 세션·구독 상태별 권한 확인, 짧은 수명의 서명 URL(제11장), 회차별 접근 기록, 속도 제한이다 |
-| **프런트엔드 개발자** | 난독화를 위해 `unsafe-eval` 을 켜는 거래를 명시적으로 계산해 적는다. 계산하지 않으면 그것은 거래가 아니라 사고다 |
-| **보안 심사자** | "난독화되어 있으므로 안전"이라는 항목을 통제 목록에서 삭제한다. 위협 모델에 **"클라이언트에 배포된 코드와 데이터는 전부 공개"** 를 전제로 넣고 다시 본다 |
-| **도구·클라이언트 구현자** | 원격 코드를 평가하지 않는다. 되돌리지 못하면 빈 값을 주고, 그 값을 쓸지 말지는 상위가 결정하게 한다 |
-| **사고 대응자** | 난독화된 스크립트를 만나면 실행하지 말고 정적 복원부터 한다. 분석을 위해 실행하는 순간 분석자가 첫 피해자가 된다 |
+| **service operator** | do not put obfuscation on the control list. **the authorization decision must be the same with or without obfuscation.** the actual control is server-side authorization — permission checks by session·subscription state, short-lived signed URLs (Chapter 11), per-episode access records, rate limiting |
+| **frontend developer** | explicitly calculate and write down the trade of turning on `unsafe-eval` for obfuscation. do not calculate it and it is not a trade but an accident |
+| **security reviewer** | delete the item "safe because obfuscated" from the control list. put into the threat model the premise **"all code and data deployed to the client is public"** and look again |
+| **tool·client implementer** | do not evaluate remote code. if it cannot be reversed give an empty value, and let the upper layer decide whether to use it |
+| **incident responder** | on meeting an obfuscated script, do not execute it but restore statically first. the moment you execute it for analysis, the analyst becomes the first victim |
 
-가장 실용적인 검사는 이 한 문장이다.
+The most practical check is this one sentence.
 
-> **"난독화를 전부 걷어내고 소스를 공개해도 이 시스템이 안전한가?"**
-> 답이 "아니오"라면, 안전을 떠받치던 것은 난독화가 아니라 **없는 인가 검사**였다.
+> **"Is this system safe even if you strip all obfuscation and publish the source?"**
+> If the answer is "no," what propped up the safety was not the obfuscation but **the missing authorization
+> check.**
 
-이 질문이 특히 아픈 자리는 "주소를 아무도 모르니 괜찮다"는 종류의 엔드포인트다.
-난독화가 숨겨 주던 것은 주소이고, 주소는 비밀로 유지되지 않는다.
+Where this question especially stings is the kind of endpoint "it's fine because no one knows the address."
+What the obfuscation hid was the address, and an address is not kept secret.
 
 ---
 
-## 13.8 한계와 미해결
+## 13.8 Limits and open questions
 
-정직하게 적어 둔다. 이 장에서 **실측한 것과 추론한 것**의 경계다.
+Noted honestly. This is the boundary of **what was measured and what was inferred** in this chapter.
 
-- **자릿수 표의 규약을 실제 패커 출력으로 대조하지 못했다.** §13.4 의 왕복 실험은
-  압축·복원 양쪽에 같은 `_ALPHABET` 을 썼으므로 **내부 일관성만** 보인다.
-  "0-9 a-z A-Z 순서가 Dean Edwards Packer 의 규약"이라는 서술은 이 세션에서 검증되지
-  않았다. 확정하려면 실제 패커가 만든 출력 하나를 놓고 대조해야 한다.
-- **`re.ASCII` 반례는 합성 입력으로 재현했다.** §13.3.3 의 표는 이 장에서 만든
-  압축기로 만든 입력에서 얻은 값이다. 실제 사이트 응답으로 재현한 것이 아니다.
-  다만 재현 조건(한글 뒤에 ASCII 색인이 붙는 문자열)은 코드 주석과
-  [`series.py:306`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L306) 의 예시(`그렌라간01.mkv`)가 가리키는 상황과 같다.
-- **`_PACKED_RE` 는 패커의 한 변종만 잡는다.** 사전 구분자가 `|` 가 아니거나, 문자열을
-  `String.fromCharCode` 로 조립하거나, 배열 회전을 섞은 변종은 잡지 못한다. 그 경우
-  빈 문자열이 되어 **조용히 대체 이름으로 내려간다.** 로그도 남지 않는다 — 사용자는
-  파일 이름이 평소와 다르다는 것으로만 알 수 있다. 개선 여지가 분명한 지점이다.
-- **`out.replace("\\/", "/")` 는 전체 문자열 치환이다.** 복원된 소스 안에 `\/` 가 문자
-  그대로 필요한 자리(정규식 리터럴 등)가 있으면 함께 바뀐다. 이 코드는 `title` 하나만
-  읽으므로 현재 영향이 없지만, 이 함수를 범용 복원기로 쓰면 틀린다.
-- **진법이 62 를 넘는 패커는 완전히 되돌리지 못한다.** 표에 없는 자릿수를 포함한
-  토큰은 원문으로 남는다. **틀리게 되돌리지는 않는다**는 점은 코드에서 확인되지만
-  (`decode` 의 `i < 0` 분기), 실제로 그런 패커를 만나 확인한 것은 아니다.
-- **`_PLAYER_RE` 는 주소의 모양만 본다.** 호스트는 페이지가 정한 대로 따라간다.
-  사용자가 주소를 직접 주는 클라이언트 도구라는 현재 위협 모델에서는 문제가 아니지만,
-  같은 형태가 서버 측 수집기에 있으면 SSRF 다. 호스트 allowlist 는 없다.
-- **난독화의 지연 효과를 정량화하지 못했다.** §13.7.2 의 "알려진 패커면 거의 0" 같은
-  서술은 정성적 판단이며 측정값이 아니다. 제15장의 기준을 이 장에도 적용하면, 이
-  주장들은 **근거를 요구받아야 하는 문장**이다.
+- **The digit table's convention could not be compared against actual packer output.** §13.4's round-trip
+  experiment used the same `_ALPHABET` on both compression·restore, so it shows **only internal consistency.**
+  The statement "the 0-9 a-z A-Z order is the Dean Edwards Packer's convention" was not verified in this
+  session. To confirm it you would put an actual packer's output side by side and compare.
+- **The `re.ASCII` counterexample was reproduced with synthetic input.** §13.3.3's table is a value obtained on
+  input made by this chapter's compressor. It was not reproduced with an actual site response. But the
+  reproduction condition (a string with an ASCII index attached after Korean) is the same as the situation the
+  code comment and [`series.py:306`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L306)'s example (`그렌라간01.mkv`) point at.
+- **`_PACKED_RE` catches only one variant of the packer.** A variant where the dictionary separator is not `|`,
+  or the string is assembled with `String.fromCharCode`, or an array rotation is mixed in, is not caught. In
+  that case it becomes an empty string and **quietly drops to the alternative name.** No log remains either —
+  the user can only know it by the filename being different from usual. A point with clear room for improvement.
+- **`out.replace("\\/", "/")` is a whole-string substitution.** If a spot inside the restored source needs `\/`
+  as literal characters (a regex literal, etc.), it is changed too. This code reads only `title` so there is no
+  impact now, but use this function as a general restorer and it is wrong.
+- **A packer with a base over 62 cannot be fully reversed.** A token containing a digit not in the table remains
+  as the original. That it **does not reverse wrongly** is confirmed in the code (`decode`'s `i < 0` branch),
+  but it was not confirmed by meeting such a packer.
+- **`_PLAYER_RE` looks only at the address's shape.** The host follows whatever the page set. In the current
+  threat model of a client tool where the user gives the address it is not a problem, but the same form in a
+  server-side collector is SSRF. There is no host allowlist.
+- **The delay effect of obfuscation could not be quantified.** Statements like §13.7.2's "for a known packer,
+  nearly 0" are qualitative judgments, not measured values. Apply Chapter 15's standard to this chapter and
+  these claims are **sentences that should be asked for a basis.**
 
-### 13.8.1 이 장의 세 함수에는 회귀 테스트가 없다
+### 13.8.1 The three functions of this chapter have no regression test
 
-가장 큰 공백이라 따로 적는다. 회귀 테스트는 재생 소스 해석을 통째로 대역으로
-갈아끼운다.
+Noted separately as the biggest gap. The regression test swaps the playback-source resolution wholesale with a
+stand-in.
 
 ```python
 # tests/run.sh:443-449
-# 재생 소스 해석만 대역으로 바꾼다 — 사이트가 없어도 그 뒤 경로는 진짜로 돈다.
+# swap only the playback-source resolution with a stand-in — with no site, the path after runs for real.
 def fake_resolve(ep, fetcher, width=2):
     return series.Play(
         playlist_url=f"{base}/master-subs.m3u8", name=f"메움{ep.number:02d}", referer=f"{base}/"
@@ -725,51 +718,49 @@ def fake_resolve(ep, fetcher, width=2):
 series.resolve = fake_resolve
 ```
 
-대역 자체는 옳은 선택이다 — 외부 사이트에 의존하는 테스트는 회귀 테스트가 될 수 없다.
-그러나 그 결과로 `unpack` · `_player_url` · `_name_of` 는 **한 번도 실행되지 않는다.**
-§13.4 의 실습이 사실상 이 함수들의 유일한 검증이며, 그것은 테스트가 아니라 문서다.
-제34장(테스트 오라클)의 관점에서 보면 이 세 함수에 대한 회귀 테스트의 현재 정탐률은
-**0** 이다.
+The stand-in itself is the right choice — a test depending on an external site cannot be a regression test. But
+as a result `unpack` · `_player_url` · `_name_of` **are never executed once.** §13.4's lab is effectively these
+functions' only verification, and that is documentation, not a test. From Chapter 34's (test oracle) viewpoint,
+the current true-positive rate of the regression test for these three functions is **0.**
 
-고칠 방법은 어렵지 않다. `unpack` 은 순수 함수이고 입력을 §13.4 의 압축기로 만들 수
-있으므로, 외부 의존 없는 단위 테스트가 성립한다 — 특히 **한글이 섞인 입력**을 고정해
-두면 §13.3.3 의 반례가 회귀로 붙잡힌다. 이 저장소가 아직 하지 않은 일이다.
-
----
-
-## 13.9 요약
-
-1. packed JS 는 **암호가 아니라 사전 압축**이다. 복원에 필요한 진법·사전·본문이 전부
-   같은 문자열 안에 실려 온다. 상대가 모르는 값이 하나도 없으므로 복원 비용은 입력
-   길이에 비례할 뿐이다.
-2. 복원은 네 단계다 — 토큰 자르기 → 기수 표기를 정수로 → 정수를 사전 색인으로 →
-   낱말로 치환. 실제 논리는 열 줄이다.
-3. **파이썬 `int(x, base)` 의 밑수 상한은 36 이다.** 대소문자를 같게 보는 관례 때문에
-   그 이상을 표준이 정하지 않는다. 62진법을 읽으려면 자릿수 표를 직접 두어야 하고,
-   그 표의 순서는 base64 와 다르다.
-4. **`re.ASCII` 를 빼면 역변환이 압축과 다른 곳에서 끊긴다.** 자바스크립트의 `\w` 는
-   ASCII 뿐이지만 파이썬 3 의 기본 `\w` 는 한글을 포함한다. 그 결과 회차 번호가
-   복원되지 않고, 페이지 뼈대가 같은 회차들이 **같은 파일 이름으로 뭉개진다.**
-   예외도 경고도 없다.
-5. **이 코드는 원격 스크립트를 파싱만 하고 실행하지 않는다.** 원격 문자열에 허용된
-   연산은 정규식 매칭·정수 변환·리스트 색인·문자열 치환 넷뿐이다. `eval` 하는 구현은
-   같은 목적을 한 줄로 달성하지만, 그 대가로 **상대 서버가 이쪽 프로세스의 실행
-   권한을 얻는다.**
-6. **실패 시 반환값은 값의 소비자가 정한다.** 대체 경로가 있는 이름은 빈 문자열로
-   물러서고([`series.py:236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L236)), 대체 경로가 없는 재생 주소는 즉시 예외다
-   (`series.py:263,292-294,298`). 한 모듈이 두 정책을 쓰는 것이 옳다.
-7. **난독화는 지연이지 통제가 아니다.** Kerckhoffs 원리 위반 지점이 정확히 한 곳이다 —
-   비밀이 키가 아니라 형식에 있고, 그 형식은 모든 클라이언트에 배포된다. 무가치하지는
-   않지만(자동화 비용을 올린다), **보안 통제로 계상하면 그 자리에 있어야 할 서버 측
-   인가가 비어 있게 된다.**
-8. 난독화는 공짜가 아니다. `eval` 을 요구하므로 CSP `unsafe-eval` 을 켜게 만든다 —
-   **통제가 아닌 것을 얻으려고 통제인 것을 끄는 거래**이며, 제15장과 달리 비용을 자기
-   자신이 치른다.
+The way to fix it is not hard. `unpack` is a pure function and its input can be made with §13.4's compressor,
+so a unit test with no external dependency holds — in particular, fixing **a Korean-mixed input** catches
+§13.3.3's counterexample as a regression. Something this repository has not yet done.
 
 ---
 
-**다음 장** — 이 장의 난독화는 값을 **읽기 어렵게** 만드는 시도였다. 다음 장의
-주제는 값을 **다른 것처럼 보이게** 만드는 시도다. 영상 세그먼트가 `.html` 이라는
-이름과 `text/html` 이라는 선언을 달고 오는 관행이 그것이다. 두 장의 공통점은
-**받는 쪽이 자기 신고를 믿지 않을 때만 정확해진다**는 것이고, 차이점은 제14장의
-위장에는 실행 위험이 없다는 것이다 — 그래서 방어의 형태도 달라진다.
+## 13.9 Summary
+
+1. Packed JS is **not encryption but dictionary compression.** The base·dictionary·body needed to restore all
+   come carried in the same string. There is not a single value the other party does not know, so the restore
+   cost is only proportional to input length.
+2. The restore is four steps — cut tokens → radix notation to integer → integer to dictionary index →
+   substitute the word. The actual logic is ten lines.
+3. **The upper bound of Python `int(x, base)`'s base is 36.** Because of the convention of treating case as the
+   same, the standard does not define beyond it. To read base 62 you must keep a digit table directly, and that
+   table's order differs from base64.
+4. **Remove `re.ASCII` and the reverse transform cuts at a different place than the compression.** JavaScript's
+   `\w` is ASCII only, but Python 3's default `\w` includes Korean. As a result the episode number is not
+   restored, and episodes with the same page skeleton **collapse into the same filename.** No exception, no
+   warning.
+5. **This code only parses the remote script and does not execute it.** The operations permitted on the remote
+   string are only four — regex matching·integer conversion·list indexing·string substitution. An `eval`
+   implementation achieves the same goal in one line but at the price of **the peer server getting execution
+   authority over this side's process.**
+6. **The return value on failure is decided by the value's consumer.** A name with an alternative path falls
+   back to an empty string ([`series.py:236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L236)), and a playback address with no alternative path is an immediate
+   exception (`series.py:263,292-294,298`). One module using two policies is correct.
+7. **Obfuscation is a delay, not a control.** The Kerckhoffs-principle violation point is exactly one place —
+   the secret is in the format, not a key, and that format is distributed to every client. It is not worthless
+   (it raises automation cost), but **book it as a security control and the server-side authorization that
+   should be there is left empty.**
+8. Obfuscation is not free. It requires `eval` so it makes you turn on CSP `unsafe-eval` — **a trade turning
+   off a control to get a non-control**, and unlike Chapter 15 the cost is paid by oneself.
+
+---
+
+**Next chapter** — this chapter's obfuscation was an attempt to make a value **hard to read.** The next
+chapter's subject is an attempt to make a value **look like something else.** It is the practice of a video
+segment arriving with the name `.html` and the declaration `text/html`. What the two chapters share is that
+they **become accurate only when the receiving side does not trust the self-report**, and the difference is
+that Chapter 14's disguise has no execution risk — so the form of defense differs too.

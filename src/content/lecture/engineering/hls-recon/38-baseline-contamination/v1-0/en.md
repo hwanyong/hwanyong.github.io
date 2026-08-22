@@ -1,340 +1,338 @@
 ---
-untranslated: ko
-title: "기준선 오염과 판정 보류"
-description: "알 수 없음과 통과를 구별하기"
-date: 2026-08-20
+title: "Baseline Contamination and the Withheld Verdict"
+description: "Distinguishing unknown from pass"
+date: 2026-08-16
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-38-baseline-contamination.svg
 ---
-## 38.0 이 장에서 답할 것
+## 38.0 What this chapter answers
 
-1. 어떤 구조가 검사를 **결코 실패할 수 없게** 만드는가
-2. 기준선은 어디서 와야 하는가 — 무엇이 기준선의 자격인가
-3. 기준선이 성립하지 않는 실행에서는 무엇을 출력해야 하는가
-4. `PASS` 라는 기호는 정확히 무엇을 뜻해야 하는가
+1. What structure makes a check **never able to fail?**
+2. Where must the baseline come from — what qualifies as a baseline?
+3. What must be output on a run where the baseline does not hold?
+4. What exactly should the symbol `PASS` mean?
 
-제34장은 **"정탐률을 모르는 도구의 PASS 는 정보가 아니다"** 까지 갔다. 이 장은 그
-다음 두 걸음이다. 하나는 **정탐률이 구조적으로 0 인 검사** — 측정하지 않아서 모르는
-것이 아니라, 코드의 배치 때문에 원리적으로 실패할 수 없는 검사다. 다른 하나는
-**정탐률이라는 말 자체가 성립하지 않는 조건** — 검사의 전제가 무너진 실행이다.
+Chapter 34 went as far as **"the PASS of a tool whose true-positive rate is unknown is not information."** This
+chapter is the next two steps. One is a **check whose true-positive rate is structurally 0** — not unknown for
+lack of measurement, but a check that in principle cannot fail because of how the code is arranged. The other is a
+**condition where the very phrase "true-positive rate" does not hold** — a run whose premise has collapsed.
 
-두 문제의 처방은 정반대 방향처럼 보이지만 뿌리가 같다. 첫째는 "검사가 실패할 수
-있게 만들라"이고, 둘째는 "검사할 수 없으면 검사하지 말라"이다. 둘을 잇는 것은
-**`PASS` 가 무엇을 주장하는 기호인가**라는 하나의 질문이다.
+The prescriptions for the two problems look opposite, but their root is the same. The first is "make the check
+able to fail," and the second is "if you cannot check, do not check." What joins them is one question — **what
+does `PASS` assert as a symbol.**
 
 ---
 
-## 38.1 문제 — 결함을 넣었는데 검사가 통과한다
+## 38.1 The problem — a defect is put in and the check passes
 
-### 38.1.1 재현
+### 38.1.1 Reproduction
 
-제35장의 결함 주입 5번을 다시 꺼낸다. 자막 트랙의 `X-TIMESTAMP-MAP` 기준을 60초
-어긋나게 만든 스트림이다. 영상은 30초, 자막 큐는 0–29초에 놓여 있는데, 어긋난
-매핑을 그대로 적용하면 자막이 60–89초로 밀린다.
+Bring out fault injection #5 from Chapter 35 again. It is a stream whose subtitle track's `X-TIMESTAMP-MAP`
+standard is knocked 60 seconds off. The video is 30 seconds and the subtitle cues sit at 0–29 seconds, but apply
+the off mapping as-is and the subtitles push out to 60–89 seconds.
 
-> **용어** — **`X-TIMESTAMP-MAP`**: WebVTT 세그먼트 선두에 오는 HLS 확장 헤더로,
-> 자막의 로컬 시각(`LOCAL:`)과 영상의 MPEG-TS 표시 시각(`MPEGTS:`, 90kHz 단위)을
-> 잇는 대응점을 준다. 이 매핑에서 정렬 오프셋이 나온다(제27장).
+> **Term** — **`X-TIMESTAMP-MAP`**: an HLS extension header at the head of a WebVTT segment, giving the
+> correspondence point that joins the subtitle's local time (`LOCAL:`) with the video's MPEG-TS presentation time
+> (`MPEGTS:`, in 90 kHz units). The alignment offset comes out of this mapping (Chapter 27).
 
-이 스트림을 **자막을 컨테이너에 내장하는 방식**으로 받으면 도구는 이렇게 보고한다.
-아래는 이 장을 쓰면서 로컬에서 실제로 실행한 출력이다.
+Receive this stream in the **way that embeds the subtitle into the container** and the tool reports as follows.
+Below is the output actually run locally while writing this chapter.
 
 ```
-  ✗ 길이 정합          실측 89.00s vs 선언 30.00s (드리프트 +59.00s / 196.67%)
-  ✓ 자막 내장          1/1개 트랙 내장 (xx), 코덱 subrip, X-TIMESTAMP-MAP 정렬 1트랙 보정
-  ✗ 자막 타임라인      내장 자막 60.0~89.0s vs 영상 30.0s — 영상 범위를 벗어남, X-TIMESTAMP-MAP 정렬 실패 의심
+  ✗ length consistency  measured 89.00s vs declared 30.00s (drift +59.00s / 196.67%)
+  ✓ subtitle embed      1/1 track embedded (xx), codec subrip, X-TIMESTAMP-MAP alignment 1 track corrected
+  ✗ subtitle timeline   embedded subtitle 60.0~89.0s vs video 30.0s — out of video range, X-TIMESTAMP-MAP alignment failure suspected
 ```
 
-산출물의 실측 duration 을 직접 재 보면 이렇다.
+Measure the artifact's actual duration directly and it is this.
 
 ```
 $ ffprobe -v error -show_entries format=duration -of csv=p=0 badembed.mkv
 89.000000
 ```
 
-**영상은 30초인데 파일은 89초다.** 자막 트랙의 마지막 큐가 89초에서 끝나므로,
-컨테이너의 전체 길이가 거기까지 늘어난 것이다.
+**The video is 30 seconds but the file is 89 seconds.** The subtitle track's last cue ends at 89 seconds, so the
+container's whole length stretched out to there.
 
-### 38.1.2 여기서 갈림길이 하나 생긴다
+### 38.1.2 Here one fork appears
 
-"자막이 영상 범위를 벗어났는가"를 판정하려면 **영상의 길이**가 필요하다. 그 값을
-어디서 가져올 것인가. 두 후보가 있고, 둘 다 그럴듯하다.
+To judge "did the subtitle go out of the video range" you need the **video's length.** Where will you get that
+value. There are two candidates, and both are plausible.
 
-| 후보 | 값 | 그럴듯한 이유 |
+| Candidate | Value | Why plausible |
 |---|---|---|
-| **A — 플레이리스트가 선언한 길이** | `30.00s` | 규격이 정한 값이다(`#EXTINF` 합계) |
-| **B — 산출물에서 잰 실측 duration** | `89.00s` | 실제로 만들어진 파일의 진짜 길이다 |
+| **A — the length the playlist declared** | `30.00s` | the value the spec set (the `#EXTINF` sum) |
+| **B — the measured duration taken from the artifact** | `89.00s` | the real length of the actually-made file |
 
-직관적으로는 B 가 더 정확해 보인다. 선언은 자기 신고 값이고 실측은 실제니까
-(제5장에서 배운 대로라면 더욱). **그런데 B 를 고르는 순간 이 검사는 죽는다.**
+Intuitively B looks more accurate. A declaration is a self-reported value and a measurement is real (all the more
+if you learned Chapter 5). **But the moment you pick B, this check dies.**
 
-### 38.1.3 기준선만 바꿔 본 결과
+### 38.1.3 The result of changing only the baseline
 
-계측치는 그대로 두고 기준선만 A ↔ B 로 바꿔 판정 함수(`report.build`)를 두 번
-호출했다. 실행 결과다.
+Leaving the measured values as-is and swapping only the baseline A ↔ B, I called the verdict function
+(`report.build`) twice. The run result.
 
 ```
-플레이리스트 선언 길이 30.00s   → FAIL  | 내장 자막 60.0~89.0s vs 영상 30.0s — 영상 범위를 벗어남, …
-실측 duration (기준선 오염)     → PASS  | 내장 자막 60.0~89.0s vs 영상 89.0s
+playlist declared length 30.00s    → FAIL  | embedded subtitle 60.0~89.0s vs video 30.0s — out of video range, …
+measured duration (baseline contaminated)  → PASS  | embedded subtitle 60.0~89.0s vs video 89.0s
 ```
 
-**같은 계측치, 같은 판정 규칙, 같은 코드다.** 기준선을 어디서 가져오는가 한 줄이
-달랐을 뿐인데 `FAIL` 이 `PASS` 로 뒤집힌다.
+**Same measured values, same verdict rule, same code.** Only the one line of where the baseline is taken from
+differed, and `FAIL` flips to `PASS`.
 
-![기준선 오염 — 자막이 스스로 기준선을 끌고 간다](/images/lecture/hls-recon/38-baseline-contamination.svg)
+![Baseline contamination — the subtitle drags the baseline itself](/images/lecture/hls-recon/38-baseline-contamination.svg)
 
-*그림 38-1 — 기준선 오염 — 자막이 스스로 기준선을 끌고 간다*
+*Figure 38-1 — baseline contamination — the subtitle drags the baseline itself*
 
 ---
 
-## 38.2 원리 — 자기 참조 검증
+## 38.2 The principle — self-referential verification
 
-### 38.2.1 오염의 대수
+### 38.2.1 The algebra of contamination
 
-기호를 정리하면 왜 이런 일이 벌어지는지가 산수 두 줄로 끝난다.
+Organize the symbols and why this happens ends in two lines of arithmetic.
 
-- `V` — 영상이 끝나는 시각
-- `S` — 자막 마지막 큐가 끝나는 시각
-- `ε` — 판정 여유 (이 코드에서는 `5.0`초)
+- `V` — the time the video ends
+- `S` — the time the subtitle's last cue ends
+- `ε` — the verdict margin (`5.0` seconds in this code)
 
-컨테이너의 실측 duration 은 그 안에 든 모든 스트림을 덮어야 하므로
+The container's measured duration must cover every stream inside it, so
 
 ```
 D = max(V, S)
 ```
 
-이고, 판정 규칙은 "자막 끝이 기준선보다 `ε` 이상 넘어갔는가"다.
+and the verdict rule is "did the subtitle end exceed the baseline by `ε` or more."
 
-기준선을 **A(선언 길이 = V)** 로 두면 판정식은 `S > V + ε` 이다. 정상이면 거짓,
-자막이 밀리면 참 — 규칙이 의도한 대로 작동한다.
+Put the baseline at **A (declared length = V)** and the verdict expression is `S > V + ε`. False when normal, true
+when the subtitle is pushed out — the rule works as intended.
 
-기준선을 **B(실측 = D)** 로 두면 판정식은 `S > max(V, S) + ε` 가 된다. 경우를 나눈다.
+Put the baseline at **B (measured = D)** and the verdict expression becomes `S > max(V, S) + ε`. Split by case.
 
-| 경우 | `max(V, S)` | 판정식 | 결과 |
+| Case | `max(V, S)` | Verdict expression | Result |
 |---|---|---|---|
-| `S ≤ V` (정상) | `V` | `S > V + ε` → 거짓 | PASS — 옳다 |
-| `S > V` (**결함**) | `S` | `S > S + ε` → **항상 거짓** | PASS — **틀렸다** |
+| `S ≤ V` (normal) | `V` | `S > V + ε` → false | PASS — correct |
+| `S > V` (**defect**) | `S` | `S > S + ε` → **always false** | PASS — **wrong** |
 
-두 번째 행이 전부다. `ε` 이 0 이든 5 든 1000 이든 `S > S + ε` 는 참이 될 수 없다.
-**이 검사는 어떤 결함에도 실패하지 않는다.**
+The second row is everything. Whether `ε` is 0 or 5 or 1000, `S > S + ε` cannot become true. **This check does not
+fail on any defect.**
 
-### 38.2.2 결함의 크기와 오염의 크기가 정확히 같다
+### 38.2.2 The size of the defect and the size of the contamination are exactly equal
 
-부등호가 아슬아슬하게 빗나가는 것이 아니다. 자막이 60초 밀리면 기준선도 정확히
-60초 밀리고, 600초 밀리면 기준선도 600초 밀린다. **신호와 잡음이 같은 원천에서
-나와 완전히 상쇄된다.**
+The inequality does not just narrowly miss. Push the subtitle 60 seconds and the baseline shifts exactly 60
+seconds; push 600 seconds and the baseline shifts 600 seconds. **The signal and the noise come from the same
+source and cancel completely.**
 
-여기서 더 고약한 성질이 나온다. 오염은 **검출 대상이 존재할 때에만 발생한다.**
-`S ≤ V` 인 정상 케이스에서는 `D = V` 이므로 기준선 B 와 A 가 같은 값이다. 즉
+Here a nastier property comes out. Contamination **arises only when the detection target exists.** In a normal
+case with `S ≤ V`, `D = V` so baselines B and A are the same value. That is,
 
-> **정상 입력으로는 이 결함을 절대 발견할 수 없다.**
+> **This defect can never be found with a normal input.**
 
-정상 스트림으로 아무리 돌려도 A 와 B 는 같은 값을 내므로 코드 리뷰에서도, 통합
-테스트에서도 차이가 드러나지 않는다. 차이가 나타나는 유일한 입력이 **결함이 있는
-입력**인데, 바로 그 입력에서 검사가 침묵한다. 실측으로 확인한 값이 이렇다.
+Run a normal stream however many times and A and B give the same value, so neither code review nor integration
+test reveals the difference. The only input where the difference appears is a **defective input**, and on exactly
+that input the check falls silent. The values confirmed by measurement are these.
 
-| 스트림 | 영상 끝 `V` | 자막 끝 `S` | 컨테이너 실측 `D` | A 와 B 의 차이 |
+| Stream | Video end `V` | Subtitle end `S` | Container measured `D` | Difference of A and B |
 |---|---|---|---|---|
-| 정상 자막 · 내장 | 30.02s | 29.0s | **30.02s** | 없음 |
-| 어긋난 자막 · 내장 | 30.02s | 89.0s | **89.00s** | **59초** |
+| normal subtitle · embedded | 30.02s | 29.0s | **30.02s** | none |
+| misaligned subtitle · embedded | 30.02s | 89.0s | **89.00s** | **59s** |
 
-### 38.2.3 이름 — 자기 참조 검증
+### 38.2.3 The name — self-referential verification
 
-> **용어** — **기준선(baseline)**: 판정 규칙이 관측값과 견주는 대조값. "무엇에
-> 비추어 이상하다고 말하는가"에 답하는 값이다.
+> **Term** — **baseline**: the reference value the verdict rule weighs the observed value against. The value that
+> answers "against what do we call it abnormal."
 
-> **용어** — **기준선 오염(baseline contamination)**: 검사가 측정하려는 대상이
-> 기준선의 값에 영향을 주어, 기준선이 관측값을 따라 움직이는 상태.
+> **Term** — **baseline contamination**: a state where the target the check tries to measure influences the
+> baseline's value, so the baseline moves along with the observed value.
 
-이 상태에 놓인 검사를 이 교재는 **자기 참조 검증(self-referential verification)** 이라
-부른다 — 관측값과 기준선이 같은 원천에서 나와, 검사가 사실상 자기 자신과 자기
-자신을 비교하는 형태다. 널리 합의된 명칭이 아니므로 이 교재의 명명임을 밝혀 둔다.
-정착된 이름이 있는 인접 개념은 통계학의 **순환 분석(circular analysis)** — 같은
-자료로 가설을 고르고 그 가설을 검정하는 오류 — 이다.
+A check in this state this course calls **self-referential verification** — a form where the observed value and
+the baseline come from the same source, so the check in effect compares itself with itself. It is not a widely
+agreed name, so I note it is this course's naming. The adjacent concept that has a settled name is statistics'
+**circular analysis** — the error of choosing a hypothesis from the same data and testing that hypothesis on it.
 
-여기서 이 장의 첫 번째 명제가 나온다.
+Here comes this chapter's first proposition.
 
-> **측정 대상이 측정 기준에 영향을 주면 그 검증은 무효다.**
+> **If the measurement target influences the measurement standard, that verification is void.**
 
-무효라는 말이 중요하다. "정확도가 떨어진다"가 아니라 **정탐률이 0** 이라는 뜻이다.
-검사 항목은 리포트에 그대로 인쇄되고, 초록색 `✓` 가 찍히고, 통과 개수에 1 을
-더한다. 겉으로는 검사가 하나 더 있는 것처럼 보이는데 실제로는 **아무것도 검사하지
-않는 줄 하나**가 있는 것이다.
+The word void matters. Not "accuracy drops" but **the true-positive rate is 0.** The check item prints in the
+report as-is, a green `✓` is stamped, and 1 is added to the pass count. On the surface it looks like one more
+check exists while in reality there is **a line that checks nothing.**
 
-### 38.2.4 제34장과 무엇이 다른가
+### 38.2.4 What differs from Chapter 34
 
-제34장 §34.7 은 정탐률이 0 인 도구의 출력이 0비트를 나른다는 것을 정보이론으로
-정리했다. 이 장은 그 상태에 이르는 **또 하나의 경로**를 다룬다. 둘의 차이가 실무에서
-중요하다.
+Chapter 34 §34.7 organized with information theory that the output of a tool whose true-positive rate is 0 carries
+0 bits. This chapter treats **another path** that reaches that state. The difference of the two matters in
+practice.
 
-| | 제34장 | 제38장 §38.1–38.3 |
+| | Chapter 34 | Chapter 38 §38.1–38.3 |
 |---|---|---|
-| 정탐률이 0 인 이유 | 도구가 그 결함을 볼 능력이 없다 | 검사는 결함을 보지만 **판정식이 참이 될 수 없다** |
-| 코드에서 보이는가 | 검사 항목이 아예 없다 — 눈에 띈다 | 검사 항목이 있고 잘 작동하는 것처럼 보인다 |
-| 발견 방법 | 결함 주입으로 미탐을 센다 | 결함 주입 + **기준선의 출처 추적** |
-| 정직한 표현 | "이 결함은 검출 범위 밖이다" | 표현할 방법이 없다 — **잘못된 주장을 한다** |
+| Why the true-positive rate is 0 | the tool has no ability to see that defect | the check sees the defect but **the verdict expression cannot become true** |
+| Is it visible in the code | there is no check item at all — conspicuous | the check item exists and looks to work fine |
+| How to find it | inject a defect and count misses | inject a defect + **trace the baseline's origin** |
+| The honest expression | "this defect is outside the detection range" | there is no way to express it — **it makes a wrong assertion** |
 
-마지막 행이 이 절의 요점이다. 능력이 없는 검사는 없다고 말하면 되지만, 오염된
-검사는 **있다고 말하면서 없는 것**이다. 문서·리포트·회귀 테스트가 모두 그 검사를
-"있는 것"으로 세므로 다음 사람은 그 자리에 통제가 있다고 믿는다.
+The last row is this section's point. A check with no ability can just say it has none, but a contaminated check
+**says it has one while it has none.** The document, report, and regression test all count that check as "present,"
+so the next person believes there is a control at that spot.
 
-### 38.2.5 기준선의 자격 요건
+### 38.2.5 The qualifications of a baseline
 
-오염을 피하려면 기준선이 갖춰야 할 조건을 명시할 수 있다.
+To avoid contamination the conditions a baseline must meet can be made explicit.
 
-| 요건 | 뜻 | 이 코드에서 |
+| Requirement | Meaning | In this code |
 |---|---|---|
-| **독립성** | 측정 대상이 바뀌어도 기준선은 바뀌지 않는다 | 선언 길이는 플레이리스트에서 오고 산출물과 무관하다 |
-| **선행성** | 측정 이전에 확정된다 | `#EXTINF` 는 다운로드 전에 파싱된다 |
-| **관측 가능성** | 판정 시점에 실제로 손에 있다 | [`playlist.py:172-175`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L172-L175) 가 계산해 둔다 |
-| **표현 가능성** | 성립하지 않을 때 "없다"고 말할 수 있다 | 표본 실행에서 성립하지 않음을 안다 → §38.4 |
+| **independence** | even if the measurement target changes, the baseline does not | the declared length comes from the playlist and is unrelated to the artifact |
+| **antecedence** | it is fixed before the measurement | `#EXTINF` is parsed before download |
+| **observability** | it is actually in hand at the moment of verdict | [`playlist.py:172-175`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L172-L175) has computed it |
+| **expressibility** | when it does not hold, it can say "none" | the sample run knows it does not hold → §38.4 |
 
-여기서 조심할 것 하나. **독립성은 신뢰성이 아니다.** 선언 길이도 결국 서버가 준
-값이고, 서버가 거짓말하면 기준선이 틀린다(제5장). 독립성이 보증하는 것은
-"측정 대상이 기준선을 움직이지 못한다"는 것뿐이다. 이 한계는 §38.9 에서 다시 짚는다.
+One caution here. **Independence is not reliability.** The declared length is also in the end a value the server
+gave, and if the server lies the baseline is wrong (Chapter 5). What independence guarantees is only that "the
+measurement target cannot move the baseline." This limit is revisited in §38.9.
 
 ---
 
-## 38.3 코드 — 기준선을 어디서 가져오는가
+## 38.3 The code — where the baseline is taken from
 
-### 38.3.1 결정이 주석과 함께 한 줄에 있다
+### 38.3.1 The decision is on one line with a comment
 
 ```python
 # report.py:337-343
-    # 6) 자막 — 추출 성공 여부와 영상 타임라인과의 정합
+    # 6) subtitle — extraction success and consistency with the video timeline
     #
-    # 기준선은 실측 duration 이 아니라 플레이리스트 선언 길이다. 자막을 컨테이너에
-    # 내장하면 자막 끝까지 전체 duration 이 늘어나므로, 실측을 기준으로 삼으면
-    # 밀린 자막이 스스로 기준을 끌고 가 검사가 항상 통과해 버린다.
+    # The baseline is the playlist declared length, not the measured duration. Embedding the subtitle
+    # into the container stretches the whole duration to the subtitle's end, so taking the measured value
+    # as the standard lets a pushed-out subtitle drag the standard itself and the check always passes.
     video_len = declared_duration or (media.duration if media and media.ok else 0.0)
     if subs and (subs.results or subs.embedded or subs.embed_tracks or subs.extra):
 ```
 
-세 줄짜리 주석이 §38.2 전체를 담고 있다. 이 저장소의 주석이 **실측한 실패의
-기록**이라는 것이 이 대목에서 가장 잘 드러난다 — "이렇게 하면 된다"가 아니라
-**"실측을 기준으로 삼으면 검사가 항상 통과해 버린다"** 는 반례로 적혀 있다.
+The three-line comment holds all of §38.2. That this repository's comments are a **record of a measured failure**
+shows best right here — not "do it this way" but written as a counterexample, **"take the measured value as
+standard and the check always passes."**
 
-`declared_duration` 의 출처는 플레이리스트다.
+`declared_duration`'s origin is the playlist.
 
 ```python
 # playlist.py:172-175
     @property
     def declared_duration(self) -> float:
-        """EXTINF 선언값의 합계 — 실측 duration 과 대조할 기준선."""
+        """The sum of EXTINF declared values — the baseline to compare against the measured duration."""
         return sum(s.duration for s in self.segments)
 ```
 
-`#EXTINF` 는 세그먼트마다 붙는 재생 길이 선언이고, 그 합계는 **산출물이 만들어지기
-전에** 확정된다. §38.2.5 의 독립성·선행성이 여기서 성립한다.
+`#EXTINF` is a playback-length declaration attached per segment, and its sum is fixed **before the artifact is
+made.** §38.2.5's independence·antecedence hold here.
 
-### 38.3.2 `or` 폴백이 남긴 것
+### 38.3.2 What the `or` fallback left
 
-한 줄을 더 뜯어본다.
+Tear apart one more line.
 
 ```python
 video_len = declared_duration or (media.duration if media and media.ok else 0.0)
 ```
 
-`declared_duration` 이 0 이면 실측으로 내려간다. 즉 **오염된 기준선이 폴백 경로로
-살아 있다.** 이 설계를 옹호할 근거와 비판할 근거가 둘 다 있다.
+If `declared_duration` is 0 it descends to the measured value. That is, **the contaminated baseline lives on
+through the fallback path.** There is a basis both to defend and to criticize this design.
 
-| | 근거 |
+| | Basis |
 |---|---|
-| **옹호** | 선언 길이가 0 인 플레이리스트(`#EXTINF` 누락·파싱 실패)에서도 검사를 아예 잃지 않는다. 그런 입력에서는 자막이 내장되지 않았을 가능성이 높아 오염이 실제로는 일어나지 않는다 |
-| **비판** | 그 판단이 코드 어디에도 적혀 있지 않다. 폴백이 발동하는 조건과 그때 오염 가능성이 있는지는 **독자가 재구성해야 한다**. §38.2.2 대로 이 결함은 정상 입력으로는 드러나지 않으므로, 폴백 경로는 회귀로 고정되지도 않는다 |
+| **defense** | even in a playlist with declared length 0 (`#EXTINF` missing·parse failure) the check is not lost entirely. In such an input the subtitle is likely not embedded, so contamination does not actually happen |
+| **criticism** | that judgment is written nowhere in the code. The condition under which the fallback fires and whether there is contamination risk then **the reader must reconstruct.** Per §38.2.2 this defect does not reveal itself with a normal input, so the fallback path is not fixed by a regression either |
 
-이 교재의 판단은 **비판 쪽**이다. `0.0` 이 "값 없음"을 겸하는 것이 문제의 뿌리다.
-값 없음을 `None` 으로 표현하고 그때는 §38.5 의 판정 보류로 내려가는 것이 §38.2.5 의
-**표현 가능성** 요건에 맞는다. 다만 이 저장소는 그렇게 하고 있지 않으며, 그 사실을
-여기에 적어 둔다.
+This course's judgment is the **criticism side.** That `0.0` doubles as "no value" is the root of the problem.
+Expressing no-value as `None` and descending in that case to §38.5's withheld verdict fits §38.2.5's
+**expressibility** requirement. Only, this repository does not do so, and I record that fact here.
 
-### 38.3.3 오염은 기준선에만 오지 않는다
+### 38.3.3 Contamination does not come only to the baseline
 
-같은 산출물에서 두 값을 뽑으면 **어느 쪽이 오염되는지는 검사의 배치에 따라 달라진다.**
-바로 위에 있는 「길이 정합」 검사가 그 반대 사례다.
+Pull two values from the same artifact and **which side is contaminated depends on the check's arrangement.** The
+"length consistency" check right above is the opposite case.
 
 ```python
-# report.py:262-278 (발췌)
+# report.py:262-278 (excerpt)
     if media and media.ok:
         drift = media.duration - declared_duration
 ```
 
-여기서는 선언 길이가 기준선이고 **실측이 측정 대상**이다. 방향이 옳다. 그런데
-자막을 내장하면 그 측정 대상 쪽이 오염된다. 실측한 세 실행을 나란히 놓으면 이렇다.
+Here the declared length is the baseline and **the measured value is the measurement target.** The direction is
+correct. But embed the subtitle and that measurement-target side is contaminated. Put the three measured runs side
+by side and it is this.
 
-| 실행 | 길이 정합 결과 | 실제 상태 | 판정의 성격 |
+| Run | length-consistency result | actual state | nature of the verdict |
 |---|---|---|---|
-| 정상 자막 · 내장 | `PASS` 실측 30.02s vs 선언 30.00s | 정상 | 옳다 |
-| 어긋난 자막 · 내장 | `FAIL` 실측 89.00s vs 선언 30.00s | 자막이 결함 | **결론은 맞고 진단은 틀렸다** — 영상 길이가 틀렸다고 말하지만 영상은 멀쩡하다 |
-| 표본 실행 · 내장 | `FAIL` 실측 29.00s vs 선언 6.00s | **정상** | **오탐** |
+| normal subtitle · embedded | `PASS` measured 30.02s vs declared 30.00s | normal | correct |
+| misaligned subtitle · embedded | `FAIL` measured 89.00s vs declared 30.00s | subtitle is defective | **conclusion right, diagnosis wrong** — it says the video length is off but the video is fine |
+| sample run · embedded | `FAIL` measured 29.00s vs declared 6.00s | **normal** | **false positive** |
 
-두 번째 행을 "운 좋게 잡았다"고 넘기면 안 된다. 그 FAIL 은 **영상 길이가 어긋났다**고
-주장하는데 영상은 정확히 30.02초다. 리포트를 읽는 사람은 세그먼트 결손을 찾으러
-가고, 거기에는 아무것도 없다. **틀린 이유로 옳은 결론에 도달한 판정은 다음 사람의
-시간을 쓴다.**
+Do not pass over the second row as "caught by luck." That FAIL **asserts the video length is off** while the video
+is exactly 30.02 seconds. The person reading the report goes hunting for a segment loss, and there is nothing
+there. **A verdict that reaches a right conclusion for a wrong reason spends the next person's time.**
 
-일반화하면 이렇다.
+Generalized, it is this.
 
-> **측정 대상과 측정 기준을 같은 산출물에서 뽑으면, 무엇이 오염될지는 우연이 정한다.**
-> 근본 처방은 값을 고르는 것이 아니라 **경로를 분리하는 것**이다.
+> **Pull the measurement target and the measurement standard from the same artifact, and chance decides which is
+> contaminated.**
+> The fundamental prescription is not to choose the value but to **separate the paths.**
 
-### 38.3.4 경로마다 오염 여부가 다르다
+### 38.3.4 Contamination differs by path
 
-자막을 어떻게 산출하느냐에 따라 오염이 발생하기도 하고 안 하기도 한다. 실측이다.
+Depending on how the subtitle is produced, contamination happens or does not. Measured.
 
-| 자막 처리 | 산출물 | 컨테이너 실측 duration | 오염 |
+| Subtitle handling | Artifact | Container measured duration | Contamination |
 |---|---|---|---|
-| 별도 파일(sidecar) — `.srt` 로 뽑는다 | `badsub.mp4` | **30.02s** | 없음 — 자막이 컨테이너 밖에 있다 |
-| 컨테이너 내장 — `--sub-embed` | `badembed.mkv` | **89.00s** | **있음** |
+| separate file (sidecar) — pulled as `.srt` | `badsub.mp4` | **30.02s** | none — the subtitle is outside the container |
+| container embed — `--sub-embed` | `badembed.mkv` | **89.00s** | **present** |
 
-**같은 결함, 같은 검사, 다른 오염.** 별도 파일 경로에서는 기준선을 실측으로 잘못
-잡아도 결함이 잡힌다(89.0 > 30.02 + 5.0). 그래서 이 버그는 **한쪽 경로에서만
-드러난다.**
+**Same defect, same check, different contamination.** On the separate-file path, even taking the baseline
+wrongly as the measured value catches the defect (89.0 > 30.02 + 5.0). So this bug **reveals itself on only one
+path.**
 
-### 38.3.5 그래서 회귀 테스트가 두 번 넣는다
+### 38.3.5 So the regression test puts it in twice
 
 ```bash
 # tests/run.sh:500-510
-# 내장 모드에서도 같은 결함을 잡아야 한다. 자막을 컨테이너에 넣으면 전체 duration 이
-# 자막 끝까지 늘어나므로, 기준선을 실측으로 잡으면 이 검사는 항상 통과해 버린다.
+# In embed mode too the same defect must be caught. Putting the subtitle into the container stretches the whole
+# duration to the subtitle's end, so taking the baseline as the measured value makes this check always pass.
 ELOG="$WORK/out/badembed.log"
 set +e
 "$RECON" "$BASE/master-badsub.m3u8" -o "$WORK/out/badembed.mkv" --subs all --sub-embed \
   --no-decode-check --no-gap-scan >"$ELOG" 2>&1
 ecode=$?
 set -e
-grep -q '자막 타임라인.*영상 범위를 벗어남' "$ELOG" \
-  && ok "자막 타임스탬프 어긋남 검출 (내장)" || bad "자막 타임스탬프 어긋남 미검출 (내장)"
-[[ $ecode -eq 2 ]] && ok "내장 자막 결함 종료 코드 2" || bad "내장 자막 결함 종료 코드: $ecode"
+grep -q 'subtitle timeline.*out of video range' "$ELOG" \
+  && ok "detects a subtitle timestamp mismatch (embedded)" || bad "missed a subtitle timestamp mismatch (embedded)"
+[[ $ecode -eq 2 ]] && ok "embedded subtitle defect exit code 2" || bad "embedded subtitle defect exit code: $ecode"
 ```
 
-제35장 §35.4.7 이 "같은 결함을 두 번 넣는 유일한 항목"으로 소개한 그 자리다. 이제
-왜 두 번인지가 정확해진다 — **바로 앞 `tests/run.sh:489-498` 의 별도 파일 케이스는
-기준선이 오염돼도 통과한다.** 오염을 검출하는 회귀는 내장 케이스뿐이고, 그것을
-빼면 §38.3.1 의 한 줄을 실측으로 되돌려도 테스트는 전부 초록이다.
+This is the spot Chapter 35 §35.4.7 introduced as "the only item that puts the same defect in twice." Now why
+twice becomes exact — **the separate-file case right before it (`tests/run.sh:489-498`) passes even with the
+baseline contaminated.** The regression that detects contamination is only the embed case, and remove it and
+reverting §38.3.1's one line to the measured value leaves every test green.
 
-여기서 회귀 테스트 설계의 일반 원칙이 하나 나온다.
+Here a general principle of regression-test design comes out.
 
-> **설계 결정을 지키는 회귀는 그 결정이 틀렸을 때 실제로 붉어지는 입력이어야 한다.**
-> 결정을 주석으로만 지키면 다음 사람이 "실측이 더 정확한데?"라고 고치고, 테스트는
-> 62개 전부 통과한다.
+> **A regression that guards a design decision must be an input that actually goes red when that decision is
+> wrong.**
+> Guard the decision with only a comment and the next person fixes it to "but the measured value is more
+> accurate," and all 62 tests pass.
 
 ---
 
-## 38.4 문제 둘 — 기준선이 아예 성립하지 않는 실행
+## 38.4 Problem two — a run where the baseline does not hold at all
 
-### 38.4.1 `--limit` 표본 실행
+### 38.4.1 The `--limit` sample run
 
-이 도구에는 앞 N개 세그먼트만 받아 빠르게 확인하는 옵션이 있다.
+This tool has an option to receive only the first N segments and check quickly.
 
 ```bash
 # README.md:62-63
-# 앞 20개 세그먼트만 빠르게 표본 검증
+# Quickly sample-verify only the first 20 segments
 hls-recon https://cdn.example/master.m3u8 -o sample.mp4 --limit 20
 ```
 
-자르는 지점은 세그먼트 목록이고, 기준선은 잘린 목록에서 다시 계산된다.
+The cut point is the segment list, and the baseline is recomputed from the cut list.
 
 ```python
 # cli.py:414-415
@@ -342,64 +340,66 @@ hls-recon https://cdn.example/master.m3u8 -o sample.mp4 --limit 20
     declared = sum(s.duration for s in segs)
 ```
 
-**여기까지는 일관적이다.** 영상도 잘리고 기준선도 같이 잘린다. 문제는 자막이다.
+**Up to here it is consistent.** The video is cut and the baseline is cut along with it. The problem is the
+subtitle.
 
-### 38.4.2 자막은 잘리지 않는다
+### 38.4.2 The subtitle is not cut
 
-자막 트랙은 별도 플레이리스트이고 `--limit` 은 영상 세그먼트 목록에만 적용된다.
-자막은 전체가 온다. 그래서 표본 실행에서는 이런 배치가 만들어진다.
+The subtitle track is a separate playlist, and `--limit` applies only to the video segment list. The subtitle
+comes whole. So in the sample run this arrangement is made.
 
-| | 전체 실행 | `--limit 1` 표본 실행 |
+| | full run | `--limit 1` sample run |
 |---|---|---|
-| 영상 | 0.0 – 30.0s | **0.0 – 6.0s** |
-| 자막 | 0.0 – 29.0s | 0.0 – 29.0s (그대로) |
-| 판정식 `S > V + 5` | `29.0 > 35.0` → 거짓 | `29.0 > 11.0` → **참** |
-| 그대로 판정하면 | PASS | **FAIL** |
+| video | 0.0 – 30.0s | **0.0 – 6.0s** |
+| subtitle | 0.0 – 29.0s | 0.0 – 29.0s (unchanged) |
+| verdict expr `S > V + 5` | `29.0 > 35.0` → false | `29.0 > 11.0` → **true** |
+| judged as-is | PASS | **FAIL** |
 
-**정상 스트림인데 FAIL 이 나온다.** 게다가 이것은 우연히 일어나는 오탐이 아니다.
-자막 길이가 표본 길이보다 길기만 하면 **반드시** 벗어나므로, 표본 실행에서 이 검사는
-§38.2 와 정확히 대칭인 상태에 있다 — 이번에는 **정탐률이 0 이 아니라 정탐률이
-무의미하다**. 판정식이 입력의 성질이 아니라 실행 옵션을 재고 있기 때문이다.
+**It is a normal stream but FAIL comes out.** And this is not a false positive that happens by chance. As long as
+the subtitle length is longer than the sample length it **necessarily** goes out, so in the sample run this check
+is in a state exactly symmetric to §38.2 — this time **the true-positive rate is not 0 but the true-positive rate
+is meaningless.** Because the verdict expression measures the run option, not the input's property.
 
-> **용어** — **표본 실행**: 대상 전체가 아니라 그 일부만 처리하는 실행. 여기서는
-> 플레이리스트 앞 N개 세그먼트만 받는 `--limit` 실행을 가리킨다.
+> **Term** — **sample run**: a run that processes not the whole target but only part of it. Here it refers to the
+> `--limit` run that receives only the first N segments of the playlist.
 
-### 38.4.3 선택지는 셋이다
+### 38.4.3 There are three choices
 
-| 선택 | 결과 | 문제 |
+| Choice | Result | Problem |
 |---|---|---|
-| ① 그대로 판정한다 | 정상 스트림에 FAIL | 오탐. `--limit` 을 쓰면 항상 붉으므로 사람이 검사 자체를 무시하게 된다(제22장의 경보 피로) |
-| ② 표본이면 자막 길이도 잘라서 비교한다 | 그럴듯하지만 틀렸다 | 자막을 어디서 자를지가 곧 "정렬이 맞다"는 가정이다. **검사하려는 것을 가정에 넣는 것** — §38.2 와 같은 순환이다 |
-| ③ 검사하지 않고 **그 사실을 출력한다** | 이 코드의 선택 | 결과 어휘에 값이 하나 더 필요하다 |
+| ① judge as-is | FAIL on a normal stream | false positive. Use `--limit` and it is always red, so people come to ignore the check itself (Chapter 22's alert fatigue) |
+| ② if sampled, cut the subtitle length too and compare | plausible but wrong | where to cut the subtitle is itself the assumption "the alignment is right." **Putting what you want to check into the assumption** — the same circle as §38.2 |
+| ③ do not check and **output that fact** | this code's choice | the result vocabulary needs one more value |
 
-②가 매력적이라서 위험하다. "표본이니까 자막도 앞 6초만 보자"는 처리는 **자막이
-영상과 정렬돼 있다고 전제해야** 성립하는데, 그 전제가 바로 이 검사가 확인하려던
-것이다. 순환은 §38.2 의 오염과 같은 종류의 오류이고, 형태만 다르다.
+② is dangerous because it is attractive. The handling "since it is a sample, look at only the first 6 seconds of
+the subtitle too" holds only if you **presuppose the subtitle is aligned with the video**, and that presupposition
+is exactly what this check was going to confirm. The circle is the same kind of error as §38.2's contamination,
+differing only in form.
 
 ---
 
-## 38.5 코드 — 판정 보류
+## 38.5 The code — the withheld verdict
 
-### 38.5.1 전제 검사가 판정 규칙보다 먼저 온다
+### 38.5.1 The premise check comes before the verdict rule
 
 ```python
 # report.py:421-430
-            # 자막 시각이 영상 길이를 벗어나면 X-TIMESTAMP-MAP 정렬이 어긋난 것이다.
-            # --limit 로 앞부분만 받은 실행은 예외다 — 영상만 잘리고 자막은 온전히
-            # 오므로 반드시 벗어난다. 기준선이 성립하지 않는 검사는 하지 않는다.
+            # If the subtitle time goes out of the video length, the X-TIMESTAMP-MAP alignment is off.
+            # A run that took only the front part via --limit is the exception — only the video is cut and
+            # the subtitle comes whole so it necessarily goes out. A check whose baseline does not hold is not done.
             if good and sampled:
                 rep.add(
-                    "자막 타임라인",
+                    "subtitle timeline",
                     PASS,
-                    f"판정 보류 — 영상이 앞 {video_len:.1f}s 만 받아진 표본이라 "
-                    f"자막 전체 길이({max(r.last_cue for r in good):.1f}s)와 견줄 기준선이 없다",
+                    f"verdict withheld — the video is a sample with only the first {video_len:.1f}s received "
+                    f"so there is no baseline to compare against the subtitle's whole length ({max(r.last_cue for r in good):.1f}s)",
                 )
 ```
 
-주석 마지막 문장이 이 절의 전부다 — **"기준선이 성립하지 않는 검사는 하지 않는다."**
+The comment's last sentence is all of this section — **"a check whose baseline does not hold is not done."**
 
-구조에서 눈여겨볼 것은 **조건의 순서**다. `sampled` 분기가 `if` 에 있고, 실제 판정
-규칙은 그 뒤 `elif` 에 있다([`report.py:431`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431)).
+What to note in the structure is the **order of the conditions.** The `sampled` branch is in the `if`, and the
+actual verdict rule is in the `elif` after it ([`report.py:431`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L431)).
 
 ```python
 # report.py:431-432
@@ -407,101 +407,99 @@ hls-recon https://cdn.example/master.m3u8 -o sample.mp4 --limit 20
                 strayed = [r for r in good if r.last_cue > video_len + 5.0 or r.first_cue < -0.5]
 ```
 
-전제 검사와 판정 규칙이 **같은 `if/elif` 사슬에 있고 전제가 앞에 있다.** 이것이
-설계다. 전제를 판정 규칙 안쪽에 두면(예: `strayed` 를 계산한 뒤 "표본이면 무시")
-계산은 이미 일어난 뒤이고, 나중에 누군가 그 값을 다른 곳에서 쓰기 시작하면 전제가
-새어 나간다.
+The premise check and the verdict rule are **in the same `if/elif` chain and the premise is in front.** This is
+the design. Put the premise inside the verdict rule (e.g. compute `strayed` then "if sampled, ignore") and the
+computation has already happened, and when later someone starts using that value elsewhere the premise leaks out.
 
-![판정 규칙보다 먼저 오는 전제 게이트](/images/lecture/hls-recon/38-unknown-vs-pass.svg)
+![The premise gate that comes before the verdict rule](/images/lecture/hls-recon/38-unknown-vs-pass.svg)
 
-*그림 38-2 — 판정 규칙보다 먼저 오는 전제 게이트*
+*Figure 38-2 — the premise gate that comes before the verdict rule*
 
-### 38.5.2 `sampled` 는 어디서 오는가
+### 38.5.2 Where `sampled` comes from
 
-전제의 참·거짓은 계측이 아니라 **실행 조건**에서 온다. 그래서 판정 함수가 스스로
-알아낼 수 없고, 호출자가 알려 준다.
+The premise's truth comes not from measurement but from the **run condition.** So the verdict function cannot find
+it out on its own, and the caller tells it.
 
 ```python
 # cli.py:639
         sampled=bool(args.limit and mode == "segments"),
 ```
 
-`mode == "segments"` 조건이 붙은 이유는 `--limit` 이 그 모드에서만 실제로 적용되기
-때문이다. ffmpeg 에 통째로 위임하는 `remux` 모드에서는 무시되고, 사용자에게 그
-사실을 알린다([`cli.py:589-590`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L589-L590)). **옵션이 지정됐다는 것과 옵션이 효과를 냈다는 것은
-다른 사실이고, 전제는 후자를 봐야 한다.**
+The reason the `mode == "segments"` condition is attached is that `--limit` actually applies only in that mode. In
+the `remux` mode that delegates wholesale to ffmpeg it is ignored, and the user is told that fact
+([`cli.py:589-590`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L589-L590)). **That an option was specified and that an option took effect are different facts, and the
+premise must look at the latter.**
 
-### 38.5.3 실측 출력
+### 38.5.3 The measured output
 
-정상 스트림에 `--limit 1` 을 걸어 실행한 결과다.
+The result of running a normal stream with `--limit 1`.
 
 ```
-  ✓ 플레이리스트       세그먼트 1개, 선언 길이 6.00s, TARGETDURATION 6s, 암호화 없음
-  ✓ 세그먼트 수신      1개 전량 1회 수신, 1.6 MB
-  ✓ TS 무결성          8,663 패킷 / PID 5종, 손실 0
-  ! 길이 정합          실측 6.04s vs 선언 6.00s (드리프트 +0.04s / 0.62%)
-  ✓ 자막 추출          1개 전량 추출 (ko 6큐) — 경계 중복 3큐 제거, 본문에 섞인 조각 헤더 4건 정제
-  ✓ 자막 타임라인      판정 보류 — 영상이 앞 6.0s 만 받아진 표본이라 자막 전체 길이(29.0s)와 견줄 기준선이 없다
+  ✓ playlist            1 segment, declared length 6.00s, TARGETDURATION 6s, no encryption
+  ✓ segment receive     1 all received once, 1.6 MB
+  ✓ TS integrity        8,663 packets / 5 PIDs, 0 loss
+  ! length consistency  measured 6.04s vs declared 6.00s (drift +0.04s / 0.62%)
+  ✓ subtitle extract    1 all extracted (ko 6 cues) — 3 boundary-duplicate cues removed, 4 fragment headers mixed in the body cleaned
+  ✓ subtitle timeline   verdict withheld — the video is a sample with only the first 6.0s received so there is no baseline to compare against the subtitle's whole length (29.0s)
 ```
 
-문장이 **왜 보류인지와 무엇이 없는지를 함께 말한다.** "판정 보류"만 찍고 마는 것과
-다르다. 읽는 사람은 이 줄만 보고 "전체 실행으로 다시 돌리면 판정된다"까지 안다.
+The sentence **says together why it is withheld and what is missing.** It is different from stamping only "verdict
+withheld." The reader knows from this line alone as far as "run it again as a full run and it is judged."
 
-곁가지로 하나 더 보인다 — 「길이 정합」이 `!`(WARN)다. 6.04 대 6.00 의 상대 드리프트가
-0.62% 로 임계 0.5% 를 넘었다. 표본이 작을수록 상대 지표가 흔들린다는 제22장의
-논점이고, **표본 실행이 자막 검사 하나만 흔드는 것이 아니라는 신호**이기도 하다.
+One side branch shows too — "length consistency" is `!` (WARN). The relative drift of 6.04 vs 6.00 is 0.62%,
+exceeding the 0.5% threshold. It is Chapter 22's point that the smaller the sample, the more a relative metric
+shakes, and it is also **a signal that the sample run shakes not only the one subtitle check.**
 
-### 38.5.4 회귀로 고정한다
+### 38.5.4 Fixed by regression
 
 ```bash
 # tests/run.sh:296-303
-# --limit 표본은 영상만 잘리므로 자막 타임라인 검사의 기준선이 성립하지 않는다.
+# A --limit sample cuts only the video, so the subtitle-timeline check's baseline does not hold.
 set +e
-"$RECON" "$BASE/plain/index.m3u8" -o "$WORK/out/표본01.mp4" --limit 1 \
-  --sub-guess --sub-origin "$BASE" --sub-name 에피소드01 --sub-format srt \
+"$RECON" "$BASE/plain/index.m3u8" -o "$WORK/out/sample01.mp4" --limit 1 \
+  --sub-guess --sub-origin "$BASE" --sub-name episode01 --sub-format srt \
   --no-decode-check --no-gap-scan >"$WORK/out/sidecar4.log" 2>&1
 set -e
-grep -q '자막 타임라인.*판정 보류' "$WORK/out/sidecar4.log" \
-  && ok "표본 실행에서 타임라인 판정 보류" || bad "표본인데 타임라인을 판정함"
+grep -q 'subtitle timeline.*verdict withheld' "$WORK/out/sidecar4.log" \
+  && ok "withholds the timeline verdict in a sample run" || bad "judged the timeline though it is a sample"
 ```
 
-실패 메시지가 `bad "표본인데 타임라인을 판정함"` 이라는 점이 중요하다. 이 단언은
-**"FAIL 이 나오지 않았다"를 확인하는 것이 아니라 "판정하지 않았다"를 확인한다.**
-`PASS` 가 나와도 그것이 판정된 PASS 라면 이 테스트는 붉어진다.
+That the failure message is `bad "judged the timeline though it is a sample"` matters. This assertion **confirms
+not "a FAIL did not come out" but "it did not judge."** Even if `PASS` comes out, if it is a judged PASS this test
+goes red.
 
-제37장의 양방향 고정이 오탐과 미탐을 함께 못박았다면, 이 단언은 **세 번째 방향**을
-못박는다 — 판정 자체가 일어나지 않았는지.
+If Chapter 37's bidirectional fixing pinned the false positive and the false negative together, this assertion
+pins a **third direction** — whether the verdict itself did not happen.
 
-### 38.5.5 이렇게 하지 않으면 무엇이 깨지는가
+### 38.5.5 What breaks if this is not done
 
-전제 게이트를 빼면 §38.4.2 의 표대로 정상 스트림이 FAIL 을 낸다. 그 결과는 리포트
-한 줄에서 끝나지 않는다.
+Remove the premise gate and, per §38.4.2's table, a normal stream gives FAIL. That result does not end at one line
+of the report.
 
-| 층위 | 게이트가 없을 때 |
+| Layer | When there is no gate |
 |---|---|
-| 리포트 | 정상 스트림에 `✗ 자막 타임라인` |
-| 종료 코드 | `FAIL` → `exit 2`([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)) |
-| CI | `--limit` 을 쓰는 빠른 검증 잡이 **항상 실패**한다 |
-| 사람 | "표본 돌리면 원래 자막이 빨개요"라는 지식이 팀에 쌓인다 — 그다음부터 그 줄은 아무도 안 본다 |
+| report | `✗ subtitle timeline` on a normal stream |
+| exit code | `FAIL` → `exit 2` ([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)) |
+| CI | the fast-verify job that uses `--limit` **always fails** |
+| people | the knowledge "run a sample and the normal subtitle goes red" piles up in the team — from then no one looks at that line |
 
-마지막 행이 진짜 비용이다. 오탐은 검사 하나를 잃는 것으로 끝나지 않고 **읽는 습관을
-망가뜨린다**(제22장의 경보 피로). 그리고 습관이 망가진 뒤에는 진짜 FAIL 도 같은
-줄에서 무시된다.
+The last row is the real cost. A false positive does not end at losing one check but **wrecks the reading habit**
+(Chapter 22's alert fatigue). And once the habit is wrecked, a real FAIL is ignored on the same line too.
 
 ---
 
-## 38.6 세 값으로는 부족하다 — `PASS` 로 실려 나가는 보류
+## 38.6 Three values are not enough — a withholding that ships out as `PASS`
 
-### 38.6.1 결과 어휘
+### 38.6.1 The result vocabulary
 
-이 도구의 판정 어휘는 셋이다.
+This tool's verdict vocabulary is three.
 
 ```python
 # report.py:15
 PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
 ```
 
-그리고 항목 판정은 리포트 전체 판정으로 접힌다.
+And the per-item verdict folds into the whole-report verdict.
 
 ```python
 # report.py:84-90
@@ -514,233 +512,233 @@ PASS, WARN, FAIL = "PASS", "WARN", "FAIL"
         return PASS
 ```
 
-**여기에 "판정하지 않음"에 해당하는 값이 없다.** 그래서 §38.5.1 의 코드는 보류를
-`PASS` 로 실어 보내고, 사람이 읽는 문자열에만 "판정 보류"라고 적는다.
+**There is no value here for "did not judge."** So §38.5.1's code ships the withholding as `PASS`, and writes
+"verdict withheld" only in the human-read string.
 
-### 38.6.2 기계가 읽는 쪽에서는 구별이 사라진다
+### 38.6.2 On the machine-read side the distinction vanishes
 
-리포트는 JSON 으로도 나간다(`--report`). 표본 실행의 JSON 을 실제로 뽑으면 이렇다.
+The report also goes out as JSON (`--report`). Pull the sample run's JSON for real and it is this.
 
 ```json
 {
-  "name": "자막 타임라인",
+  "name": "subtitle timeline",
   "verdict": "PASS",
-  "detail": "판정 보류 — 영상이 앞 6.0s 만 받아진 표본이라 자막 전체 길이(29.0s)와 견줄 기준선이 없다"
+  "detail": "verdict withheld — the video is a sample with only the first 6.0s received so there is no baseline to compare against the subtitle's whole length (29.0s)"
 }
 ```
 
-`verdict` 필드만 읽는 소비자 — 대시보드, 집계 스크립트, 상위 파이프라인 — 에게 이
-줄은 **판정된 PASS 와 완전히 같다.** 구별하려면 `detail` 문자열을 매칭해야 하고,
-그것은 §35.4.7 이 지적한 "한 글자 차이에 의존하는 단언"과 같은 취약함이다.
+To the consumer that reads only the `verdict` field — a dashboard, an aggregation script, an upper pipeline — this
+line is **completely the same as a judged PASS.** To distinguish it you must match the `detail` string, and that
+is the same fragility as §35.4.7's "an assertion depending on a one-character difference."
 
-### 38.6.3 그래서 무엇이 깨지는가
+### 38.6.3 So what breaks
 
-| 소비자 | 보는 값 | 잘못 읽는 내용 |
+| Consumer | The value it sees | What it misreads |
 |---|---|---|
-| 사람 (터미널) | `✓ … 판정 보류 — …` | 구별된다 — 문장이 말해 준다 |
-| 집계 스크립트 | `verdict == "PASS"` | **"자막 타임라인 검사를 통과했다"** |
-| 대시보드 통과율 | PASS 1건 | 검사 커버리지가 실제보다 높게 잡힌다 |
-| 다음 사람의 결정 | "표본 실행도 자막 검사를 한다" | 표본 실행을 전체 실행의 대체로 쓴다 |
+| person (terminal) | `✓ … verdict withheld — …` | distinguished — the sentence tells |
+| aggregation script | `verdict == "PASS"` | **"the subtitle-timeline check passed"** |
+| dashboard pass rate | 1 PASS | check coverage is counted higher than real |
+| next person's decision | "the sample run does the subtitle check too" | uses the sample run as a substitute for the full run |
 
-마지막 행이 이 절의 결론이다. **보류를 통과로 접으면, 그 접힘은 리포트에서 끝나지
-않고 다음 사람의 의사결정으로 흘러간다.** 이 도구는 사람이 읽는 채널에서는 구별을
-지켰고 기계가 읽는 채널에서는 지키지 못했다. 절반만 지킨 구별이다.
+The last row is this section's conclusion. **Fold a withholding into a pass and that fold does not end at the
+report but flows into the next person's decision.** This tool kept the distinction on the human-read channel and
+failed to keep it on the machine-read channel. A distinction kept only halfway.
 
-여기서 이 장의 두 번째 명제가 나온다.
+Here comes this chapter's second proposition.
 
-> **알 수 없음(unknown)과 통과(pass)를 구별하지 못하는 결과 어휘는,
-> 그 구별을 지키려는 코드가 있어도 결국 구별을 잃는다.**
-> 구별은 **표현할 수 있는 곳에서만** 지켜진다.
+> **A result vocabulary that cannot distinguish unknown from pass loses the distinction in the end even if there
+> is code trying to keep it.**
+> A distinction is kept **only where it can be expressed.**
 
 ---
 
-## 38.7 일반화
+## 38.7 Generalization
 
-### 38.7.1 자기 참조 검증은 어디에나 있다
+### 38.7.1 Self-referential verification is everywhere
 
-§38.2 의 형태 — **측정 대상이 기준선을 움직인다** — 는 도메인을 가리지 않는다.
+§38.2's form — **the measurement target moves the baseline** — does not pick a domain.
 
-| 사례 | 측정 대상 | 오염된 기준선 | 검사가 통과하는 이유 |
+| Case | Measurement target | Contaminated baseline | Why the check passes |
 |---|---|---|---|
-| **이 장** | 자막 끝 시각 | 컨테이너 실측 duration | duration 이 `max(영상, 자막)` 이라 자막이 밀면 같이 밀린다 |
-| **스냅샷 테스트 자동 갱신** | 현재 출력 | 직전 실행 출력으로 갱신된 골든 파일 | 회귀가 곧 새 기준이 되어 영원히 통과 |
-| **정적 분석 baseline 파일** | 새 경고 | 기존 경고를 담아 둔 baseline | 새 경고를 baseline 에 추가하면 항상 초록 |
-| **성능 예산 "지난 배포 대비"** | 번들 크기·응답 시간 | 직전 배포의 값 | 매 배포 1% 씩 나빠지면 영구 통과. 절대 예산이 없으면 표류를 못 잡는다 |
-| **이상 탐지의 이동 평균** | 현재 트래픽 | 최근 N일 평균(이상 트래픽 포함) | 서서히 올리면 기준선이 따라 올라가 임계 미도달 |
-| **LLM 자기 평가** | 모델 출력 | 같은 모델이 매긴 점수 | 출력의 편향이 채점의 편향과 같은 원천에서 온다 |
-| **재고 실사** | 창고의 실제 수량 | 장부 수량을 보면서 센다 | 세는 사람이 기대값을 알면 관측이 기대에 끌려간다 |
+| **this chapter** | subtitle end time | container measured duration | duration is `max(video, subtitle)` so pushing the subtitle pushes it too |
+| **snapshot test auto-update** | current output | the golden file updated to the previous run's output | the regression becomes the new standard and passes forever |
+| **static-analysis baseline file** | new warnings | the baseline holding existing warnings | add a new warning to the baseline and it is always green |
+| **performance budget "vs last deploy"** | bundle size·response time | the previous deploy's value | worsen 1% each deploy and it passes forever. With no absolute budget you cannot catch the drift |
+| **anomaly detection's moving average** | current traffic | the last N-day average (including anomalous traffic) | raise it slowly and the baseline rises along, never reaching the threshold |
+| **LLM self-evaluation** | model output | a score given by the same model | the output's bias comes from the same source as the scoring's bias |
+| **inventory count** | the actual quantity in the warehouse | counting while looking at the book quantity | if the counter knows the expected value the observation is pulled toward the expectation |
 
-가운데 세 행은 특히 흔하다. 셋 다 **"기준선을 자동으로 갱신한다"** 는 편의 기능이
-오염의 통로다. 자동 갱신은 노이즈를 줄이는 대신 신호도 같이 지운다.
+The middle three rows are especially common. All three have the convenience feature **"auto-update the baseline"**
+as the channel of contamination. Auto-update reduces noise but erases the signal along with it.
 
-처방도 공통이다.
+The prescription is common too.
 
-> **기준선은 측정과 다른 경로에서, 측정 이전에 온다.**
-> 자동 갱신이 필요하면 갱신을 **사람의 승인**으로 막거나, 절대 기준을 함께 둔다.
+> **The baseline comes from a different path than the measurement, before the measurement.**
+> If auto-update is needed, block the update with **human approval**, or place an absolute standard alongside.
 
-이 저장소의 선택이 그 형태다 — 기준선은 플레이리스트(다른 경로)에서, 다운로드
-이전에(선행) 온다.
+This repository's choice is that form — the baseline comes from the playlist (a different path), before download
+(antecedent).
 
-### 38.7.2 `unknown` 은 `pass` 가 아니다
+### 38.7.2 `unknown` is not `pass`
 
-두 번째 명제는 결과 어휘의 문제다. 성숙한 규격들은 이 구별을 **타입에 넣어** 둔다.
+The second proposition is a result-vocabulary problem. Mature specs put this distinction **into the type.**
 
-| 체계 | 통과 | **알 수 없음 / 해당 없음** | 실패 |
+| System | pass | **unknown / not applicable** | fail |
 |---|---|---|---|
-| **SARIF 2.1.0** (정적 분석 결과 교환 형식) | `pass` | `notApplicable`, `open`, `review`, `informational` | `fail` |
-| **TAP** (Test Anything Protocol) | `ok` | `# SKIP` · `# TODO` 지시자 | `not ok` |
-| **JUnit XML · pytest** | 성공 | `skipped`, `xfail` | `failure`, `error` |
-| **OCSP** (인증서 폐기 상태 조회) | `good` | **`unknown`** | `revoked` |
-| **DNSSEC 검증** | `secure` | `insecure`, `indeterminate` | `bogus` |
-| **SQL 삼값 논리** | `TRUE` | **`UNKNOWN`**(NULL 비교) | `FALSE` |
-| **컴플라이언스 감사** | 유효(effective) | **`N/A`**, 미검사(not tested) | 예외(exception) |
-| **의료 검사** | 음성 | 판정 불가(inconclusive)·검체 부적합 | 양성 |
-| **HTTP 상태 코드** | 2xx | — **없다** | 4xx·5xx |
+| **SARIF 2.1.0** (static-analysis result exchange format) | `pass` | `notApplicable`, `open`, `review`, `informational` | `fail` |
+| **TAP** (Test Anything Protocol) | `ok` | `# SKIP` · `# TODO` directives | `not ok` |
+| **JUnit XML · pytest** | success | `skipped`, `xfail` | `failure`, `error` |
+| **OCSP** (certificate revocation status query) | `good` | **`unknown`** | `revoked` |
+| **DNSSEC validation** | `secure` | `insecure`, `indeterminate` | `bogus` |
+| **SQL three-valued logic** | `TRUE` | **`UNKNOWN`** (NULL comparison) | `FALSE` |
+| **compliance audit** | effective | **`N/A`**, not tested | exception |
+| **medical test** | negative | inconclusive · unsuitable specimen | positive |
+| **HTTP status codes** | 2xx | — **none** | 4xx·5xx |
 
-마지막 행이 제5장의 주제였다. HTTP 에는 "요청은 처리했지만 결과를 보증하지 않는다"를
-말할 코드가 없고, 그래서 200 하나가 온갖 의미를 뒤집어쓴다.
+The last row was Chapter 5's subject. HTTP has no code to say "the request was processed but the result is not
+guaranteed," and so the one 200 takes on all sorts of meanings.
 
-> **용어** — **삼값 논리(three-valued logic)**: 참·거짓에 더해 **미결정(unknown)** 을
-> 셋째 값으로 두는 논리 체계. SQL 의 `NULL` 비교가 대표적이며, `NULL = NULL` 은
-> 참도 거짓도 아닌 `UNKNOWN` 이다.
+> **Term** — **three-valued logic**: a logic system that, on top of true·false, places **undetermined (unknown)**
+> as a third value. SQL's `NULL` comparison is representative, and `NULL = NULL` is neither true nor false but
+> `UNKNOWN`.
 
-핵심은 값이 하나 더 있다는 것이 아니라 **접힘의 규칙을 명시하게 만든다**는 데 있다.
-삼값을 이값으로 접을 때 `UNKNOWN` 을 어느 쪽으로 보낼지는 반드시 정해야 하는
-결정이고, 그 결정이 곧 **fail-open 이냐 fail-closed 냐**다.
+The core is not that there is one more value but that it **forces the fold rule to be made explicit.** When folding
+three values into two, which side to send `UNKNOWN` is a decision that must be made, and that decision is exactly
+**fail-open or fail-closed.**
 
-| 접는 방향 | 이름 | 적절한 곳 | 부적절한 곳 |
+| Fold direction | Name | Where appropriate | Where inappropriate |
 |---|---|---|---|
-| `UNKNOWN → 통과` | **fail-open**(개방 실패) | 가용성이 안전보다 중요한 곳 | 접근 통제, 폐기 확인, 취약점 판정 |
-| `UNKNOWN → 실패` | **fail-closed**(폐쇄 실패) | 접근 통제, 무결성 검증 | 오탐 비용이 매우 큰 관측 도구 |
-| 접지 않고 유지 | — | 리포트·감사 산출물 | 즉시 이분 결정이 필요한 실행 경로 |
+| `UNKNOWN → pass` | **fail-open** | where availability matters more than safety | access control, revocation check, vulnerability verdict |
+| `UNKNOWN → fail` | **fail-closed** | access control, integrity verification | an observation tool where a false positive is very costly |
+| keep unfolded | — | report·audit artifacts | an execution path that needs an immediate binary decision |
 
-이 도구는 셋째 줄을 택해야 하는 자리에 있다 — 리포트는 사람이 읽고 결정하는
-산출물이므로 접을 이유가 없다. 그런데 §38.6 에서 봤듯 기계 채널에서는 첫째 줄로
-접히고 있다. **의도한 설계와 실제 표현이 어긋난 지점**이다.
+This tool is at the spot that should choose the third row — a report is an artifact a human reads and decides on,
+so there is no reason to fold. Yet as seen in §38.6 the machine channel folds to the first row. **A spot where the
+intended design and the actual expression are off.**
 
 ---
 
-## 38.8 보안 — "검사하지 않음"과 "취약점 없음"
+## 38.8 Security — "not checked" and "no vulnerability"
 
-### 38.8.1 스캔 리포트의 0건
+### 38.8.1 The 0 findings of a scan report
 
-취약점 스캔에서 "발견 0건"에 이르는 경로는 하나가 아니다.
+The path to "0 findings" in a vulnerability scan is not one.
 
-| 실제로 일어난 일 | 리포트에 남는 것 | 옳은 표현 |
+| What actually happened | What is left in the report | The right expression |
 |---|---|---|
-| 인증에 실패해 로그인 뒤를 보지 못함 | 발견 0건 | **미검사** — 인증 필요 영역 커버리지 0% |
-| 대상 호스트가 응답하지 않음 | 취약점 없음 | **도달 실패** |
-| 플러그인이 그 제품·버전을 모름 | 발견 0건 | **해당 규칙 없음** |
-| 파서가 새 문법에서 죽어 분석 대상 0개 | 결과 0건 → 초록 | **분석 실패** |
-| 자산 목록에 서버가 빠져 있음 | 그 서버가 리포트에 없음 | **범위 밖** |
-| 스캔 시간이 초과돼 절반만 훑음 | 훑은 절반의 결과 | **부분 검사** |
-| 진짜로 검사했고 취약점이 없음 | 발견 0건 | 통과 |
+| authentication failed, could not see past login | 0 findings | **not checked** — auth-required area coverage 0% |
+| the target host did not respond | no vulnerability | **unreachable** |
+| the plugin does not know that product·version | 0 findings | **no applicable rule** |
+| the parser died on new syntax, 0 analysis targets | 0 results → green | **analysis failure** |
+| the server is missing from the asset list | that server is not in the report | **out of scope** |
+| the scan timed out, swept only half | the result of the swept half | **partial check** |
+| genuinely checked and there is no vulnerability | 0 findings | pass |
 
-**일곱 줄이 리포트에서 같은 문장으로 나온다.** 마지막 줄만이 "통과"이고 나머지
-여섯은 전부 `UNKNOWN` 인데, 어휘에 `UNKNOWN` 이 없으면 여섯이 하나로 접힌다.
+**Seven lines come out as the same sentence in the report.** Only the last line is "pass" and the other six are all
+`UNKNOWN`, but with no `UNKNOWN` in the vocabulary the six fold into one.
 
-제34장 §34.8 이 **탐지기의 침묵**을 다뤘다면 이 절은 그 침묵이 리포트에서 **긍정
-문장으로 번역되는 단계**를 다룬다. 침묵은 정보가 없는 상태지만, "취약점 없음"은
-적극적인 주장이다. **없는 정보를 있는 주장으로 바꾸는 번역이 여기서 일어난다.**
+If Chapter 34 §34.8 treated **the detector's silence**, this section treats the stage where that silence is
+**translated into an affirmative sentence** in the report. Silence is a state of no information, but "no
+vulnerability" is an active assertion. **The translation that turns absent information into a present assertion
+happens here.**
 
-### 38.8.2 위협 모델 — 접힘을 노린다
+### 38.8.2 Threat model — aiming at the fold
 
-공격자 입장에서 검사 로직을 뚫는 것과 검사를 `UNKNOWN` 으로 만드는 것은 비용이
-다르다.
+From an attacker's stance, breaking the check logic and making the check `UNKNOWN` differ in cost.
 
-| 목표 | 필요한 능력 | 남는 흔적 |
+| Goal | Ability needed | Trace left |
 |---|---|---|
-| 탐지 규칙을 우회하는 새 기법 | 높음 | 시도가 로그에 남을 수 있다 |
-| **검사를 `UNKNOWN` 으로 만들기** | **낮음 — 응답을 끊거나 느리게 하면 된다** | **없음. 리포트는 초록이다** |
+| a new technique to bypass the detection rule | high | the attempt may be left in a log |
+| **making the check `UNKNOWN`** | **low — cut the response or slow it** | **none. The report is green** |
 
-가장 잘 알려진 사례가 **OCSP soft-fail** 이다.
+The best-known case is **OCSP soft-fail.**
 
-> **용어** — **OCSP(Online Certificate Status Protocol, 온라인 인증서 상태
-> 프로토콜)**: 제시된 TLS 인증서가 폐기되었는지를 발급 기관에 실시간으로 묻는
-> 프로토콜. 응답은 `good` · `revoked` · `unknown` 셋이다.
+> **Term** — **OCSP (Online Certificate Status Protocol)**: a protocol that asks the issuing authority in real
+> time whether the presented TLS certificate has been revoked. The response is one of `good` · `revoked` ·
+> `unknown`.
 
-> **용어** — **soft-fail(연성 실패)**: 폐기 상태를 확인하지 못했을 때 연결을 막지
-> 않고 그대로 진행하는 정책. 반대는 hard-fail 이다.
+> **Term** — **soft-fail**: a policy that, when the revocation status could not be confirmed, does not block the
+> connection but proceeds. The opposite is hard-fail.
 
-구조를 보면 이 장의 두 명제가 그대로 나온다. 응답이 오지 않는 것은 `UNKNOWN` 이고,
-soft-fail 은 그것을 `good` 으로 접는다. 그러면 **인증서를 폐기당한 쪽은 OCSP 응답
-경로를 막기만 하면 폐기를 무력화한다.** 폐기 확인이라는 통제가 존재하고, 코드가
-돌고, 결과가 `good` 으로 나오는데, 실제로 확인된 것은 아무것도 없다.
+Look at the structure and this chapter's two propositions come out as-is. No response arriving is `UNKNOWN`, and
+soft-fail folds it to `good`. Then **the side whose certificate was revoked neutralizes the revocation just by
+blocking the OCSP response path.** The control called revocation check exists, the code runs, the result comes out
+`good`, and yet nothing was actually confirmed.
 
-이 교재는 그 경로를 실행하는 방법을 다루지 않는다. 다루는 것은 **왜 그 정책이
-그렇게 되었고 방어자가 무엇을 바꿨는가**다. 브라우저들이 간 방향은 `UNKNOWN` 을
-어느 쪽으로 접을지 다시 고르는 것이 아니라 **`UNKNOWN` 이 생기지 않는 구조로
-옮기는 것**이었다 — 서버가 응답을 미리 첨부하는 OCSP stapling, 폐기 목록을
-클라이언트에 미리 배포하는 방식 등. 삼값 문제의 가장 좋은 해법은 종종 **셋째 값이
-발생하지 않게 설계를 바꾸는 것**이다.
+This course does not treat how to execute that path. What it treats is **why that policy came to be and what the
+defender changed.** The direction browsers went was not to re-choose which way to fold `UNKNOWN` but **to move to a
+structure where `UNKNOWN` does not arise** — OCSP stapling where the server pre-attaches the response, distributing
+the revocation list to the client in advance, and so on. The best solution to a three-value problem is often **to
+change the design so the third value does not occur.**
 
-### 38.8.3 컴플라이언스에서 `N/A` 와 `PASS` 를 나누는 이유
+### 38.8.3 Why compliance separates `N/A` and `PASS`
 
-감사 체계는 이 구별을 오래전에 타입으로 넣었다. 통제 항목의 결과는 최소한 넷이다.
+Audit systems put this distinction into the type long ago. A control item's result is at minimum four.
 
-| 결과 | 뜻 | 이 항목이 사라지면 |
+| Result | Meaning | If this item vanishes |
 |---|---|---|
-| **유효(effective)** | 통제가 존재하고 작동을 확인했다 | — |
-| **N/A** | 통제가 적용될 대상 자체가 없다(예: 카드 데이터를 저장하지 않음) | 없는 위험을 막았다고 주장하게 된다 |
-| **미검사(not tested)** | 대상은 있으나 이번 감사 범위 밖이었다 | **검사하지 않은 것이 통과로 집계된다** |
-| **예외(exception)** | 통제가 없거나 작동하지 않았다 | — |
+| **effective** | the control exists and its operation was confirmed | — |
+| **N/A** | there is no target for the control at all (e.g. does not store card data) | it comes to claim it blocked a risk that does not exist |
+| **not tested** | the target exists but was out of this audit's scope | **the unchecked is counted as pass** |
+| **exception** | the control is absent or did not work | — |
 
-`N/A` 와 미검사를 나누는 이유가 특히 중요하다. 둘 다 "검사 결과가 없음"이지만
-**후속 조치가 정반대**다. `N/A` 는 아무것도 할 필요가 없고, 미검사는 다음 주기에
-반드시 봐야 한다. 하나로 합치면 후속 조치의 근거가 사라진다.
+Why `N/A` and not-tested are separated is especially important. Both are "no check result," but the **follow-up is
+opposite.** `N/A` needs nothing done, and not-tested must be looked at in the next cycle. Merge them into one and
+the basis for the follow-up vanishes.
 
-이 저장소의 리포트에도 같은 구분이 필요한 자리가 있다. 「자막 타임라인」의 부재는
-경우에 따라 뜻이 다르다.
+This repository's report also has a spot that needs the same distinction. The absence of "subtitle timeline" means
+different things by case.
 
-| 상황 | 성격 | 현재 리포트 |
+| Situation | Nature | Current report |
 |---|---|---|
-| 자막을 요청하지 않음 | **N/A** — 검사 대상이 없다 | 항목이 아예 없다 |
-| 표본 실행 | **미검사** — 대상은 있으나 기준선이 없다 | `PASS` + "판정 보류" |
-| 전체 실행, 자막 정상 | 통과 | `PASS` |
+| subtitle not requested | **N/A** — there is no check target | the item is absent entirely |
+| sample run | **not tested** — the target exists but there is no baseline | `PASS` + "verdict withheld" |
+| full run, subtitle normal | pass | `PASS` |
 
-가운데 줄만 문장으로 구별되고, 첫 줄은 **항목의 부재**로 표현된다. 없는 항목을
-어떻게 읽어야 하는가는 제39장의 주제다.
+Only the middle line is distinguished by a sentence, and the first line is expressed as the **item's absence.** How
+to read an absent item is Chapter 39's subject.
 
-### 38.8.4 기준선 오염의 보안판
+### 38.8.4 The security edition of baseline contamination
 
-§38.2 의 오염은 공격 기법으로도 쓰인다. **적응형 기준선을 쓰는 탐지기**가 대상이다.
+§38.2's contamination is used as an attack technique too. The target is a **detector using an adaptive baseline.**
 
-> **용어** — **적응형 기준선(adaptive baseline)**: 최근 관측치로 정상 범위를 계속
-> 갱신하는 방식. 계절성·추세를 자동으로 흡수하는 대신, 갱신 창에 들어온 이상치가
-> 기준선 자체를 움직인다.
+> **Term** — **adaptive baseline**: a way of continually updating the normal range with recent observations.
+> Instead of absorbing seasonality·trend automatically, an outlier that entered the update window moves the
+> baseline itself.
 
-공격 트래픽을 임계 아래로 유지하면서 서서히 늘리면 기준선이 그것을 따라 올라간다.
-어느 시점의 관측치도 그 시점의 기준선을 넘지 않으므로 경보가 나지 않는다.
-**측정 대상이 기준선을 끌고 가는** 이 장의 구조 그대로다.
+Keep the attack traffic under the threshold while raising it slowly and the baseline rises to follow it. No
+observation at any moment exceeds that moment's baseline, so no alert fires. It is exactly this chapter's structure
+of **the measurement target dragging the baseline.**
 
-방어는 §38.7.1 의 처방과 같다.
+The defense is the same as §38.7.1's prescription.
 
-- 기준선 갱신 창에서 **이상으로 판정된 구간을 제외**한다(오염 차단)
-- 적응형 기준선과 **절대 임계**를 함께 둔다(표류 상한)
-- 기준선의 **변화 자체를 감시**한다 — 기준선이 한 달 새 3배가 됐다면 그것이 신호다
+- **Exclude the intervals judged anomalous** from the baseline update window (block contamination)
+- Place an **absolute threshold** alongside the adaptive baseline (a drift ceiling)
+- **Watch the baseline's change itself** — if the baseline tripled within a month, that is the signal
 
-### 38.8.5 방어자 관점
+### 38.8.5 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **도구 제작자** | 결과 어휘에 `UNKNOWN`·`N/A` 를 넣는다. 사람이 읽는 문자열에만 담고 기계 필드에서 `PASS` 로 접지 않는다 — 접힘은 반드시 소비자 쪽으로 새어 나간다 |
-| **스캐너 운영자** | 리포트 1면에 **커버리지**를 싣는다. 인증 성공 여부, 도달 실패 호스트 목록, 적용된 규칙 버전, 타임아웃 건수. 발견 0건은 이 넷이 함께 있어야 의미가 생긴다 |
-| **감사자** | "통과" 옆에 **무엇을 검사했는가**를 요구한다. 제15장의 원칙과 같다 — 측정 없는 주장은 검증 대상이지 근거가 아니다. 여기서는 한 걸음 더 나아간다: **범위 없는 통과는 주장조차 아니다** |
-| **탐지 엔지니어** | 적응형 기준선의 갱신 규칙을 문서화하고, 갱신 창에서 이상 구간을 제외한다. 기준선 자체를 지표로 감시한다 |
-| **PKI·클라이언트 구현자** | soft-fail 을 채택했다면 그것이 **의도한 위협 모델**임을 명시한다. 가능하면 `UNKNOWN` 이 발생하지 않는 구조(스테이플링·사전 배포)로 옮긴다 |
-| **개발팀** | 스냅샷·baseline 파일의 **자동 갱신을 CI 에서 금지**한다. 갱신은 사람이 승인하는 변경이어야 한다 |
-| **리포트를 받는 사람** | "이상 없음"을 볼 때마다 **"검사는 됐는가"** 를 먼저 묻는다. 이 질문에 답할 수 없는 리포트는 결론을 담고 있지 않다 |
+| **tool maker** | put `UNKNOWN`·`N/A` into the result vocabulary. Hold it in the human-read string only and do not fold it to `PASS` in the machine field — the fold necessarily leaks out to the consumer side |
+| **scanner operator** | put **coverage** on page 1 of the report. Auth success, the list of unreachable hosts, the applied rule version, the timeout count. "0 findings" gains meaning only with these four alongside |
+| **auditor** | require **what was checked** next to "pass." Same as Chapter 15's principle — an assertion without measurement is a verification target, not a basis. Here go one step further: **a pass without scope is not even an assertion** |
+| **detection engineer** | document the adaptive baseline's update rule, and exclude anomalous intervals from the update window. Watch the baseline itself as a metric |
+| **PKI·client implementer** | if you adopted soft-fail, make explicit that it is the **intended threat model.** If possible, move to a structure where `UNKNOWN` does not arise (stapling·pre-distribution) |
+| **development team** | **forbid auto-update of snapshot·baseline files in CI.** An update must be a change a human approves |
+| **the person receiving the report** | every time you see "no anomaly," first ask **"was it checked."** A report that cannot answer this question holds no conclusion |
 
 ---
 
-## 38.9 한계와 미해결
+## 38.9 Limits and open questions
 
-정직하게 적어 둔다. 이 절의 첫 두 항목은 이 장을 쓰면서 **실측으로 확인한 결함**이다.
+Written honestly. The first two items of this section are **defects confirmed by measurement** while writing this
+chapter.
 
-### 38.9.1 내장 경로에는 전제 게이트가 없다 — 실측
+### 38.9.1 The embed path has no premise gate — measured
 
-§38.5 의 판정 보류는 **별도 파일 경로에만** 있다. 자막을 컨테이너에 내장하는
-경로([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366))에는 `sampled` 조건이 없다.
+§38.5's withheld verdict is on **the separate-file path only.** The path that embeds the subtitle into the
+container ([`report.py:358-366`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L358-L366)) has no `sampled` condition.
 
 ```python
 # report.py:358-360
@@ -749,107 +747,102 @@ soft-fail 은 그것을 `good` 으로 접는다. 그러면 **인증서를 폐기
                 strayed = hi > video_len + 5.0 or lo < -0.5
 ```
 
-정상 스트림에 `--limit 1 --sub-embed` 를 걸어 실제로 돌린 결과다.
+The result of actually running a normal stream with `--limit 1 --sub-embed`.
 
 ```
-  ✗ 길이 정합          실측 29.00s vs 선언 6.00s (드리프트 +23.00s / 383.33%)
-  ✓ 자막 내장          1/1개 트랙 내장 (ko), 코덱 subrip
-  ✗ 자막 타임라인      내장 자막 0.0~29.0s vs 영상 6.0s — 영상 범위를 벗어남, X-TIMESTAMP-MAP 정렬 실패 의심
+  ✗ length consistency  measured 29.00s vs declared 6.00s (drift +23.00s / 383.33%)
+  ✓ subtitle embed      1/1 track embedded (ko), codec subrip
+  ✗ subtitle timeline   embedded subtitle 0.0~29.0s vs video 6.0s — out of video range, X-TIMESTAMP-MAP alignment failure suspected
 ```
 
-종료 코드 `2`. **결함이 없는 스트림에 FAIL 이 두 개 났다.** 두 오탐의 원인이 서로
-다르다는 점도 이 장의 요약이다 — 「자막 타임라인」은 전제 게이트가 없어서고,
-「길이 정합」은 §38.3.3 대로 **측정 대상이 오염**돼서다.
+Exit code `2`. **Two FAILs came out on a defect-free stream.** That the two false positives have different causes
+is also this chapter's summary — "subtitle timeline" is because there is no premise gate, and "length consistency"
+is because the **measurement target is contaminated** per §38.3.3.
 
-회귀 테스트에는 이 조합(`--limit` + `--sub-embed`)이 없다. §38.3.5 에서 말한 원칙이
-여기서는 지켜지지 않았다.
+The regression test has no such combination (`--limit` + `--sub-embed`). The principle stated in §38.3.5 was not
+kept here.
 
-### 38.9.2 보류가 기계 채널에서 `PASS` 로 나간다
+### 38.9.2 The withholding ships out as `PASS` on the machine channel
 
-§38.6 의 내용이다. 스키마에 값을 추가하는 변경이므로 JSON 소비자와의 호환을 함께
-정해야 한다. 이 교재는 방향만 적어 둔다 — `verdict` 에 `UNKNOWN`(또는 `N/A`)을
-추가하고, 전체 판정으로 접을 때의 규칙(`UNKNOWN` 은 `PASS` 로도 `FAIL` 로도 접지
-않고 별도 집계)을 명시하는 것. **이 변경은 이 장에서 구현하지 않았고 측정하지도
-않았다.**
+This is §38.6's content. It is a change that adds a value to the schema, so compatibility with JSON consumers must
+be decided together. This course writes only the direction — add `UNKNOWN` (or `N/A`) to `verdict`, and make
+explicit the rule when folding into the whole verdict (`UNKNOWN` folds to neither `PASS` nor `FAIL` but is
+aggregated separately). **This change was not implemented in this chapter, nor measured.**
 
-### 38.9.3 `sampled` 는 `--limit` 만 본다
+### 38.9.3 `sampled` looks at `--limit` only
 
-전제가 무너지는 다른 경로가 있을 수 있다. 마지막 세그먼트가 404 로 빠지면 영상이
-짧아지는데, 이때 기준선(선언 길이)은 줄지 않으므로 자막이 상대적으로 길어 보일 수
-있다. 다만 **이 시나리오는 확인하지 않았다.** 제21장에서 본 대로 중간 결손은 PTS 가
-절대 시각이라 총 길이를 유지하므로 영향이 없을 가능성이 크고, 끝 결손만 문제가 될
-텐데 그 경우 「세그먼트 수신」이 먼저 FAIL 을 내므로 실질적 영향이 작을 것이다.
-**이것은 추론이며 실측이 아니다.**
+There may be another path where the premise collapses. If the last segment drops with a 404 the video shortens,
+and then the baseline (declared length) does not shrink, so the subtitle may look relatively long. But **this
+scenario was not confirmed.** As seen in Chapter 21, a middle loss keeps the total length because PTS is an
+absolute time, so it likely has no effect, and only an end loss would be a problem — in which case "segment
+receive" gives a FAIL first, so the practical effect is likely small. **This is inference, not measurement.**
 
-### 38.9.4 기준선이 0 이면 검사가 항목째 사라진다
+### 38.9.4 If the baseline is 0 the check vanishes item and all
 
-표본이 아닌 실행에서 `video_len == 0` 이면 `elif good and video_len > 0` 이
-성립하지 않아 **「자막 타임라인」 항목 자체가 리포트에 나타나지 않는다.** 판정 보류는
-"검사하지 않았다"를 말하기라도 하는데, 이 경우는 그 말조차 없다. 없는 항목을 어떻게
-읽어야 하는가 — 제39장의 "없는 항목은 통과가 아니다"로 이어진다.
+In a non-sample run, if `video_len == 0` then `elif good and video_len > 0` does not hold, so **the "subtitle
+timeline" item itself does not appear in the report.** A withheld verdict at least says "did not check," but this
+case has not even that word. How to read an absent item — it leads into Chapter 39's "an absent item is not a
+pass."
 
-### 38.9.5 오염 여부를 코드가 검사하지 않는다
+### 38.9.5 The code does not check for contamination
 
-기준선의 독립성은 **사람이 고른 것**이지 구조가 강제하는 것이 아니다.
-`report.build` 는 `declared_duration` 과 `media` 를 둘 다 인자로 받고, 어느 검사가
-어느 쪽을 기준선으로 삼는지는 각 분기의 코드에 흩어져 있다. 새 검사를 추가하는
-사람이 §38.3.1 의 주석을 읽지 않으면 같은 실수가 재발하고, §38.2.2 대로 **정상
-입력으로는 드러나지 않는다.** 타입으로 분리하는 방법(기준선 값과 관측값을 다른
-타입으로 두어 뒤바꿔 쓰면 컴파일·검사 단계에서 걸리게 하는 것)이 있으나 이 저장소는
-쓰지 않는다.
+The baseline's independence is **something a human chose**, not something the structure enforces. `report.build`
+takes both `declared_duration` and `media` as arguments, and which check takes which as baseline is scattered
+across each branch's code. If the person adding a new check does not read §38.3.1's comment the same mistake
+recurs, and per §38.2.2 **it does not reveal itself with a normal input.** There is a way to separate by type
+(placing the baseline value and the observed value in different types so swapping them is caught at the
+compile·check stage), but this repository does not use it.
 
-### 38.9.6 여유값 `5.0` 초의 근거는 이 장의 범위 밖이다
+### 38.9.6 The basis for the `5.0`-second margin is outside this chapter's scope
 
-§38.2 의 논증은 `ε` 의 값과 무관하게 성립하므로 이 장에서는 다루지 않았다. 임계값
-자체의 설계는 제22장이다. 다만 오염된 기준선에서는 **`ε` 를 아무리 줄여도 검사가
-살아나지 않는다**는 점은 기억할 만하다 — 임계값 조정으로 고칠 수 없는 종류의 결함이
-있다.
+§38.2's argument holds regardless of `ε`'s value, so this chapter did not treat it. The design of the threshold
+itself is Chapter 22. Still, that on a contaminated baseline **the check does not come back to life however much
+you shrink `ε`** is worth remembering — there is a kind of defect that cannot be fixed by threshold adjustment.
 
-### 38.9.7 기준선의 독립성이 신뢰성을 뜻하지는 않는다
+### 38.9.7 A baseline's independence does not mean reliability
 
-`declared_duration` 은 산출물과 독립이지만 **여전히 서버가 준 값**이다(제5장). 송출
-측이 `#EXTINF` 를 틀리게 적으면 기준선이 통째로 틀리고, 그때 이 검사는 조용히
-잘못된 판정을 낸다. 독립성이 막는 것은 **측정 대상에 의한 오염**이지 **출처의
-부정확성**이 아니다. 이 도구는 후자를 「길이 정합」으로 교차 확인하지만, 그 검사
-역시 §38.3.3 대로 내장 경로에서 오염된다.
+`declared_duration` is independent of the artifact but **is still a value the server gave** (Chapter 5). If the
+sending side writes `#EXTINF` wrong the baseline is wrong wholesale, and then this check quietly gives a wrong
+verdict. What independence blocks is **contamination by the measurement target**, not **inaccuracy of the origin.**
+This tool cross-checks the latter with "length consistency," but that check too is contaminated on the embed path
+per §38.3.3.
 
 ---
 
-## 38.10 요약
+## 38.10 Summary
 
-1. **기준선 오염** — 검사가 측정하려는 대상이 기준선의 값에 영향을 주면, 기준선이
-   관측값을 따라 움직여 판정식이 참이 될 수 없다. 자막을 컨테이너에 내장하면
-   전체 duration 이 `max(영상 끝, 자막 끝)` 이 되므로, 실측을 기준선으로 삼으면
-   **밀린 자막이 스스로 기준선을 끌고 간다.**
-2. 실측으로 확인했다 — 같은 계측치에 기준선만 바꾸자 판정이 `FAIL` ↔ `PASS` 로
-   뒤집혔다. 그래서 이 코드의 기준선은 **플레이리스트가 선언한 길이**다
+1. **Baseline contamination** — if the target the check tries to measure influences the baseline's value, the
+   baseline moves along with the observed value and the verdict expression cannot become true. Embed the subtitle
+   into the container and the whole duration becomes `max(video end, subtitle end)`, so taking the measured value
+   as baseline lets **a pushed-out subtitle drag the baseline itself.**
+2. Confirmed by measurement — change only the baseline on the same measured values and the verdict flipped `FAIL`
+   ↔ `PASS`. So this code's baseline is **the length the playlist declared**
    ([`report.py:337-343`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L337-L343)).
-3. **오염은 결함이 있을 때에만 발생한다.** 정상 입력에서는 두 기준선이 같은 값이므로,
-   이 종류의 결함은 **정상 케이스로는 절대 드러나지 않는다.**
-4. 일반 명제: **측정 대상이 측정 기준에 영향을 주면 그 검증은 무효다.** 정확도가
-   떨어지는 것이 아니라 정탐률이 0 이다. 스냅샷 자동 갱신, 정적 분석 baseline 파일,
-   "지난 배포 대비" 성능 예산, 적응형 이상 탐지가 모두 같은 형태다.
-5. **판정 보류** — `--limit` 표본 실행에서는 영상만 잘리고 자막은 온전히 오므로
-   자막이 **반드시** 영상 범위를 벗어난다. 기준선이 성립하지 않는 조건이므로 검사를
-   하지 않고 그 사실을 출력한다([`report.py:421-430`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L421-L430)). 전제 게이트가 판정 규칙보다
-   **앞에** 온다.
-6. 게이트가 없으면 정상 스트림이 FAIL 을 내고 `--limit` 을 쓰는 CI 잡이 항상
-   실패한다. 더 큰 비용은 사람이 그 줄을 안 읽게 되는 것이다.
-7. **알 수 없음(unknown)과 통과(pass)를 구별하지 못하는 도구는 신뢰할 수 없다.**
-   검사할 수 없었던 것을 통과로 보고하면 `PASS` 라는 기호의 의미가 무너진다.
-   SARIF·TAP·OCSP·컴플라이언스 감사가 모두 이 구별을 타입에 넣어 둔 이유다.
-8. 보안에서 이 구별의 붕괴가 곧 취약점이 된다 — 스캔의 "검사하지 않음"이 "취약점
-   없음"으로 접히고, OCSP 의 `unknown` 이 `good` 으로 접힌다. **접힘의 방향을
-   정하는 것이 fail-open 이냐 fail-closed 냐이고, 가장 좋은 해법은 종종 셋째 값이
-   생기지 않는 구조로 옮기는 것**이다.
-9. 이 도구는 사람이 읽는 채널에서 구별을 지켰고 **기계가 읽는 채널에서는 잃었다**
-   (`verdict: "PASS"`). 그리고 내장 경로에는 전제 게이트가 아예 없어, 정상 스트림에
-   `--limit 1 --sub-embed` 를 걸면 FAIL 두 개와 종료 코드 2 가 나온다 — 실측이다.
+3. **Contamination arises only when there is a defect.** On a normal input the two baselines are the same value,
+   so this kind of defect **never reveals itself with a normal case.**
+4. General proposition: **if the measurement target influences the measurement standard, that verification is
+   void.** Not that accuracy drops but that the true-positive rate is 0. Snapshot auto-update, static-analysis
+   baseline files, "vs last deploy" performance budgets, and adaptive anomaly detection are all the same form.
+5. **The withheld verdict** — in a `--limit` sample run only the video is cut and the subtitle comes whole, so the
+   subtitle **necessarily** goes out of the video range. It is a condition where the baseline does not hold, so it
+   does not check and outputs that fact ([`report.py:421-430`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L421-L430)). The premise gate comes **before** the verdict
+   rule.
+6. With no gate a normal stream gives FAIL and the CI job that uses `--limit` always fails. The bigger cost is that
+   people come to not read that line.
+7. **A tool that cannot distinguish unknown from pass cannot be trusted.** Report what could not be checked as a
+   pass and the meaning of the symbol `PASS` collapses. It is why SARIF·TAP·OCSP·compliance audits all put this
+   distinction into the type.
+8. In security the collapse of this distinction is itself a vulnerability — a scan's "not checked" folds into "no
+   vulnerability," and OCSP's `unknown` folds into `good`. **Deciding the fold direction is fail-open or
+   fail-closed, and the best solution is often to move to a structure where the third value does not occur.**
+9. This tool kept the distinction on the human-read channel and **lost it on the machine-read channel**
+   (`verdict: "PASS"`). And the embed path has no premise gate at all, so putting `--limit 1 --sub-embed` on a
+   normal stream gives two FAILs and exit code 2 — measured.
 
 ---
 
-**다음 장** — 이 장까지 오면 검사 하나하나가 무엇을 주장하는 기호인지가 정리된다.
-남은 것은 그 기호들을 **하나의 결정으로 접는 규칙**이다. 항목 판정을 어떻게 모아
-리포트 전체의 판정을 만들고, 그것을 어떤 종료 코드로 내보내며, 이 장이 남긴
-"보류"와 "없는 항목"을 그 접힘에서 어떻게 다루는가. 제39장은 계측치가 결정이 되는
-마지막 단계를 다루며 이 교재를 닫는다.
+**Next chapter** — come this far and what each check asserts as a symbol is organized. What remains is the rule
+that **folds those symbols into one decision.** How the per-item verdicts are gathered to make the whole report's
+verdict, by what exit code it is sent out, and how the "withholding" and "absent item" this chapter left are
+handled in that fold. Chapter 39 treats the last stage where a measured value becomes a decision, and closes this
+course.

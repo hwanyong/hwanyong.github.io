@@ -1,175 +1,169 @@
 ---
-untranslated: ko
-title: "파일명이라는 인터페이스"
-description: "예약 문자와 이식성"
-date: 2026-08-19
+title: "The Filename as an Interface"
+description: "Reserved characters and portability"
+date: 2026-08-01
 version: '1.0'
 tags: ['streaming', 'portability']
 thumbnail: /images/lecture/thumb/hls-recon-32-filename-interface.svg
 ---
-## 32.0 이 장에서 답할 것
+## 32.0 What this chapter answers
 
-1. 파일명은 **누구를 위한 인터페이스**인가 — 이 문자열을 읽는 쪽이 몇 개인가
-2. 이 코드가 막는 문자는 무엇이고, 막지 **않으면** 무엇이 깨지는가
-3. 이름이 파일 사이의 **관계**를 표현할 때 어디서 어긋나는가
-4. 이름이 겹칠 때 왜 덮어쓰지 않는가
-5. **사용자 문자열이 경로가 되는 지점**에서 무엇을 검토해야 하는가
+1. A filename is **an interface for whom** — how many read this string?
+2. What characters does this code block, and what breaks if you do **not** block them?
+3. When a name expresses a **relationship** between files, where does it go off?
+4. When names collide, why not overwrite?
+5. **At the spot where a user string becomes a path**, what must be reviewed?
 
 ---
 
-## 32.1 문제 — 이름을 정하는 쪽은 우리가 아니다
+## 32.1 The problem — the side deciding the name is not us
 
-이 도구가 파일을 저장하려면 이름이 있어야 한다. 그 이름의 출처를 거슬러 올라가면
-셋 다 **코드 바깥**이다.
+For this tool to store a file it needs a name. Trace the source of that name and all three are **outside the
+code.**
 
-| 이름의 출처 | 앵커 | 정하는 주체 |
+| Source of the name | Anchor | Deciding actor |
 |---|---|---|
-| 시리즈 주소 끝의 조각, 비면 `<title>` 태그 | `series.py:194,201-208` | 원격 서버 |
-| 플레이어 설정 JS 안의 `title` 값 | [`series.py:310-316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L310-L316) | 원격 서버 |
-| `-o/--output` 으로 받은 파일 경로 | [`cli.py:662-665`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L662-L665) | 사람 |
+| the piece at the end of the series address, if empty the `<title>` tag | `series.py:194,201-208` | the remote server |
+| the `title` value inside the player-setting JS | [`series.py:310-316`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/series.py#L310-L316) | the remote server |
+| the file path received via `-o/--output` | [`cli.py:662-665`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L662-L665) | a human |
 
-앞의 둘이 중요하다. **파일 이름의 대부분을 원격 서버가 정한다.** 이 도구는 그 값을
-받아 그대로 디스크 경로로 만든다.
+The first two matter. **Most of the file name is decided by the remote server.** This tool takes that value and
+makes it into a disk path as-is.
 
 ```python
 # library.py:26-33
 def place(base: Path, name: str, ext: str, series: str = "") -> Path:
-    """`base/<시리즈>/<이름><확장자>` 를 만든다 (디렉터리는 만들지 않는다).
+    """Make `base/<series>/<name><ext>` (does not create the directory).
 
-    series 를 주면 그것을 폴더 이름으로 쓴다 — 사이트가 알려준 작품명이 파일명에서
-    유도한 것보다 정확하다(`천원돌파 그렌라간` vs `그렌라간`). 주지 않으면 파일명
-    끝의 화수를 떼어 시리즈를 가른다.
+    Give series and it is used as the folder name — the work title the site told is more accurate
+    than one derived from the file name (`천원돌파 그렌라간` vs `그렌라간`). Not given, the episode
+    number at the end of the file name is stripped to split the series.
     """
     return series_folder(base, series or series_of(name)) / (sanitize(name) + ext)
 ```
 
-마지막 한 줄에 **경로 성분이 둘** 있고 둘 다 바깥에서 왔다. 폴더 이름은 `series`,
-파일 이름은 `name` 이다.
+The last line has **two path components** and both came from outside. The folder name is `series`, the file name
+is `name`.
 
-실제로 나오는 제목을 하나 놓고 보자.
+Set one actual title down and look.
 
 ```
 천원돌파 그렌라간: 나선편 01
 ```
 
-콜론이 있다. 아무것도 하지 않고 이 문자열로 파일을 만들면 macOS 에서는 **만들어진다.**
-그리고 그 파일을 exFAT 외장 디스크로 복사하면 실패한다. Windows 로 옮겨도 실패한다.
+There is a colon. Do nothing and make a file with this string and on macOS it **is made.** And copy that file to
+an exFAT external disk and it fails. Move it to Windows and it fails.
 
-> **용어** — **exFAT(Extended File Allocation Table)**: 마이크로소프트가 만든 파일
-> 시스템. USB 외장 디스크·SD 카드의 사실상 기본 포맷이며, 파일명 규칙은 Windows 의
-> 것을 그대로 따른다.
+> **Term** — **exFAT (Extended File Allocation Table)**: a filesystem Microsoft made. It is the effective default
+> format of USB external disks·SD cards, and its filename rules follow Windows's as-is.
 
-제1장의 명제가 여기서 다시 나온다 — **만들어지는 것과 옳게 만들어지는 것은 다르다.**
-그리고 이 장의 특수한 사정은, 틀렸다는 사실이 **만든 자리에서는 절대 드러나지
-않는다**는 점이다.
+Chapter 1's proposition appears again here — **being made and being made correctly are different.** And this
+chapter's special circumstance is that the fact of being wrong **is never revealed at the spot where it was
+made.**
 
 ---
 
-## 32.2 원리 — 하나의 문자열, 세 개의 문법
+## 32.2 The principle — one string, three grammars
 
-> **용어** — **파일명(filename)**: 디렉터리 항목(directory entry)에서 아이노드를
-> 가리키는 문자열 키. **경로(path)의 한 성분**이며, 그 자체에는 경로 구분자가 들어갈
-> 수 없다. 경로 `a/b/c.mp4` 의 파일명은 `c.mp4` 하나다.
+> **Term** — **filename**: the string key pointing at an inode in a directory entry. It is **one component of a
+> path**, and cannot itself contain a path separator. The filename of the path `a/b/c.mp4` is only `c.mp4`.
 
-파일명이 어려운 이유는 이 문자열을 읽는 쪽이 하나가 아니기 때문이다.
+The reason a filename is hard is that the side reading this string is not one.
 
-![같은 문자열을 읽는 쪽이 셋이고 셋의 문법이 서로를 모른다](/images/lecture/hls-recon/32-three-roles.svg)
+![Three sides read the same string and the three grammars do not know each other](/images/lecture/hls-recon/32-three-roles.svg)
 
-*그림 32-1 — 같은 문자열을 읽는 쪽이 셋이고, 셋의 문법이 서로를 모른다*
+*Figure 32-1 — three sides read the same string, and the three grammars do not know each other*
 
-세 역할을 정리하면 이렇다.
+Organize the three roles and it is this.
 
-| 역할 | 소비자 | 문법 | 특수 문자 |
+| Role | Consumer | Grammar | Special characters |
 |---|---|---|---|
-| 사람이 읽는 이름 | 사용자 | 없음 — 뜻만 통하면 된다 | 없음 |
-| 파일 시스템의 키 | 커널, 파일 시스템 | 경로 문법 | `/`(POSIX) · `\` `:`(Windows) · `\x00` |
-| 셸·명령줄의 인자 | 셸, 스크립트, `exec` | 토큰 문법 | 공백 · `*` `?` `[` · `>` `<` `\|` · 선행 `-` |
+| a name a human reads | the user | none — the meaning just has to get through | none |
+| the filesystem's key | the kernel, the filesystem | path grammar | `/` (POSIX) · `\` `:` (Windows) · `\x00` |
+| the shell·command-line argument | the shell, scripts, `exec` | token grammar | whitespace · `*` `?` `[` · `>` `<` `\|` · leading `-` |
 
-세 문법은 **서로의 존재를 모른다.** 사람이 보기에 자연스러운 `그렌라간: 01/2화` 는
-파일 시스템에게는 경로 둘이고, 셸에게는 인자 둘이다.
+The three grammars **do not know of each other's existence.** `그렌라간: 01/2화`, natural to a human, is two paths
+to the filesystem and two arguments to the shell.
 
-여기서 이식성의 정의가 따라 나온다.
+From here comes the definition of portability.
 
-> **이식 가능한 이름의 집합 = 도달할 수 있는 모든 파일 시스템의 허용 집합의 교집합.**
+> **The set of portable names = the intersection of the allow sets of every filesystem it can reach.**
 
-그리고 **도달할 곳은 우리가 고르지 못한다.** 사용자가 받은 파일을 외장 디스크에
-옮기고, NAS 에 올리고, 압축해서 남에게 보낸다. 그 순간 이름은 우리가 테스트한 적
-없는 파일 시스템의 규칙 앞에 선다.
+And **where it will reach we do not choose.** The user moves the received file to an external disk, uploads it to
+a NAS, compresses it and sends it to someone. At that moment the name stands before the rules of a filesystem we
+have never tested.
 
-### 32.2.1 지금 이 파일 시스템은 거의 아무것도 막지 않는다
+### 32.2.1 This filesystem now blocks almost nothing
 
-APFS(macOS 기본)에서 실제로 만들어 본 결과다. 파이썬으로 각 이름의 파일을 만들고
-성공 여부만 기록했다.
+The result of actually making files on APFS (macOS default). I made a file for each name in Python and recorded
+only whether it succeeded.
 
-| 이름 | 결과 | 비고 |
+| Name | Result | Note |
 |---|---|---|
-| `a:b` | **만들어짐** | Windows·exFAT 에서는 불가 |
-| `a*b` `a?b` `a"b` `a<b` `a>b` `a\|b` | **만들어짐** | 전부 Windows 예약 문자 |
-| `a\b` | **만들어짐** | Windows 경로 구분자 |
-| `a\x01b` `a\tb` `a\nb` | **만들어짐** | 제어 문자 |
-| `name.` `name ` | **만들어짐** | Windows 에서 열 수 없는 이름 |
-| `a/b` | 실패 (`FileNotFoundError`) | 이름이 아니라 **경로**로 해석됨 |
-| `a\x00b` | 실패 (`ValueError`) | 파이썬이 경로 문자열에서 거부 |
+| `a:b` | **made** | not possible on Windows·exFAT |
+| `a*b` `a?b` `a"b` `a<b` `a>b` `a\|b` | **made** | all Windows reserved characters |
+| `a\b` | **made** | Windows path separator |
+| `a\x01b` `a\tb` `a\nb` | **made** | control characters |
+| `name.` `name ` | **made** | names unopenable on Windows |
+| `a/b` | fail (`FileNotFoundError`) | interpreted as a **path**, not a name |
+| `a\x00b` | fail (`ValueError`) | Python rejects it in the path string |
 
-**APFS 가 거부하는 것은 `/` 와 널 바이트 둘뿐이다.** 나머지는 전부 통과한다. 즉
-`_UNSAFE_RE` 가 막는 문자 중 **로컬에서 실제로 문제를 일으키는 것은 `/` 와 널 바이트
-둘뿐**이고, 나머지 여덟 종류는 **지금 이 기계에서는 아무 증상도 내지 않는다.**
+**What APFS rejects is only two — `/` and the null byte.** Everything else passes. That is, of the characters
+`_UNSAFE_RE` blocks, **only two actually cause a problem locally — `/` and the null byte** — and the other eight
+kinds **give no symptom on this machine now.**
 
-이것이 이식성 결함의 전형적 형태다.
+This is the typical form of a portability defect.
 
-> **만든 환경에서는 재현되지 않는다. 그래서 테스트로도 잡히지 않는다.**
+> **It is not reproduced in the environment it was made. So it is not caught by a test either.**
 
-`a/b` 의 실패 방식도 눈여겨볼 만하다. 예외가 "이름에 슬래시가 있다"가 아니라
-`FileNotFoundError` 다 — 파일 시스템은 그것을 **잘못된 이름으로 보지 않고 존재하지
-않는 디렉터리 `a` 아래의 파일 `b`** 로 읽었다. 이름이 조용히 경로가 된 것이다.
+`a/b`'s failure mode is worth noting too. The exception is not "there is a slash in the name" but
+`FileNotFoundError` — the filesystem read it **not as a wrong name but as a file `b` under a nonexistent directory
+`a`.** The name quietly became a path.
 
 ---
 
-## 32.3 코드 — `_UNSAFE_RE` 가 막는 문자와 그 근거
+## 32.3 The code — the characters `_UNSAFE_RE` blocks and their basis
 
 ```python
 # naming.py:23-26
-# 파일 이름에 쓸 수 없거나 쓰면 곤란한 문자.
-# '/' 는 경로 구분자, ':' 는 Finder 가 '/' 로 되돌려 보여주고 일부 도구가 드라이브
-# 구분자로 읽는다. 나머지는 Windows 예약 문자 — 외장 디스크가 exFAT 이면 걸린다.
+# Characters unusable or troublesome in a file name.
+# '/' is the path separator, ':' Finder shows back as '/' and some tools read it as a drive
+# separator. The rest are Windows reserved characters — catches if the external disk is exFAT.
 _UNSAFE_RE = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
 ```
 
-정규식 하나에 서로 다른 근거 넷이 겹쳐 있다. 하나씩 푼다.
+One regex has four different bases overlaid. Unpack them one by one.
 
-| 문자 | 어느 문법에서 특별한가 | 막지 않으면 무엇이 깨지는가 |
+| Character | In which grammar is it special | What breaks if not blocked |
 |---|---|---|
-| `/` | POSIX 경로 구분자 | 이름이 **경로 성분 둘**이 된다. `place()` 가 만드는 깊이가 제목 내용에 따라 늘어난다 — 즉 이름이 디렉터리 구조를 바꾼다 |
-| `\` | Windows 경로 구분자 | macOS 에서는 평범한 문자지만, 그 이름 그대로 Windows 로 옮기면 경로가 갈린다. 셸에서는 이스케이프 문자이기도 하다 |
-| `:` | HFS 시절 macOS 의 경로 구분자, Windows 의 드라이브·스트림 구분자 | Finder 표시가 `/` 로 뒤바뀌고, Windows 에서는 `C:` 형태의 드라이브 지정이나 NTFS 대체 데이터 스트림(`file.txt:hidden`)으로 읽힌다 |
-| `*` `?` | Windows 예약 문자, 그리고 **셸 글로브 메타문자** | `rm *.mp4` 같은 명령이 의도하지 않은 파일까지 잡는다. 이름 안의 `*` 가 다른 이름과 겹칠 수 있다 |
-| `"` `<` `>` `\|` | Windows 예약 문자, 그리고 셸의 인용·리다이렉션·파이프 | 이름을 명령줄에 그대로 옮겨 붙이면 파일이 잘리거나 명령이 실행된다 |
-| `\x00`–`\x1f` | 제어 문자 | `\x00` 은 C 문자열 종료자다(§32.7.2). `\n` 은 **파일 목록을 줄 단위로 처리하는 모든 파이프라인**을 깨뜨린다 — `ls \| while read f` 는 한 파일을 두 파일로 읽는다 |
+| `/` | POSIX path separator | the name becomes **two path components.** the depth `place()` makes grows with the title content — that is, the name changes the directory structure |
+| `\` | Windows path separator | an ordinary character on macOS, but move that name as-is to Windows and the path splits. it is also an escape character in the shell |
+| `:` | HFS-era macOS's path separator, Windows's drive·stream separator | the Finder display flips to `/`, and on Windows it reads as a drive designation like `C:` or an NTFS alternate data stream (`file.txt:hidden`) |
+| `*` `?` | Windows reserved characters, and **shell glob metacharacters** | a command like `rm *.mp4` catches unintended files too. the `*` in a name can collide with another name |
+| `"` `<` `>` `\|` | Windows reserved characters, and the shell's quote·redirect·pipe | paste the name onto the command line as-is and a file is truncated or a command is executed |
+| `\x00`–`\x1f` | control characters | `\x00` is the C string terminator (§32.7.2). `\n` breaks **every pipeline processing a file list line by line** — `ls \| while read f` reads one file as two |
 
-> **용어** — **대체 데이터 스트림(ADS, Alternate Data Stream)**: NTFS 가 한 파일에
-> 여러 개의 데이터 흐름을 붙일 수 있게 한 기능. `이름:스트림명` 형식으로 접근한다.
-> 파일 이름 안의 `:` 가 Windows 에서 위험한 이유가 이것이다.
+> **Term** — **Alternate Data Stream (ADS)**: a feature letting NTFS attach several data streams to one file.
+> Accessed in the form `name:streamname`. This is why a `:` in a file name is dangerous on Windows.
 
-> **용어** — **글로브(glob)**: 셸이 `*` `?` `[]` 를 파일 이름 패턴으로 확장하는 것.
-> 확장은 **명령이 실행되기 전에 셸이** 하므로, 프로그램은 자기가 받은 인자가 원래
-> 무엇이었는지 알 수 없다.
+> **Term** — **glob**: the shell expanding `*` `?` `[]` as a filename pattern. The expansion is done **by the
+> shell before the command runs**, so the program cannot know what its argument originally was.
 
-`:` 에 대해서는 정직하게 구분해 둔다. Windows·exFAT 쪽 근거는 규격에 적혀 있는
-것이고, **Finder 가 `:` 를 `/` 로 되돌려 보여준다는 부분은 이 저장소의 주석이 기록한
-실측**이다([`naming.py:24-25`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/naming.py#L24-L25)). 이 장을 쓰면서 POSIX 층에서 `a:b` 가 만들어진다는 것은
-확인했지만(§32.2.1), Finder 의 표시 층까지는 확인하지 않았다.
+About `:` distinguish honestly. The Windows·exFAT basis is written in the spec, and **the part that Finder shows
+`:` back as `/` is a measurement this repository's comment recorded** ([`naming.py:24-25`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/naming.py#L24-L25)). While writing this
+chapter I confirmed `a:b` is made at the POSIX layer (§32.2.1), but did not confirm up to Finder's display layer.
 
-### 32.3.1 왜 제거가 아니라 치환인가
+### 32.3.1 Why substitution and not removal
 
-`_UNSAFE_RE.sub("_", …)` — 문제 문자를 지우지 않고 `_` 로 **바꾼다.** 이유는 두 가지다.
+`_UNSAFE_RE.sub("_", …)` — it does not delete the problem character but **changes** it to `_`. The reasons are
+two.
 
-- **글자 수가 보존된다.** 사람이 `천원돌파 그렌라간_ 나선편 01` 을 보면 원래 무엇이
-  있었는지 짐작할 수 있다. 지워 버리면 `천원돌파 그렌라간 나선편 01` 이 되어 흔적이
-  사라진다.
-- **빈 이름으로 무너지지 않는다.** 제목이 `///` 라면 제거는 빈 문자열을 만든다.
+- **The character count is preserved.** A human seeing `천원돌파 그렌라간_ 나선편 01` can guess what was originally
+  there. Delete it and it becomes `천원돌파 그렌라간 나선편 01`, losing the trace.
+- **It does not collapse to an empty name.** If the title is `///`, removal makes an empty string.
 
-그러나 치환이 해결하지 못하는 것이 있고, 그것을 감추면 안 된다. **치환은 이름 충돌을
-만든다.**
+But there is something substitution does not solve, and it must not be hidden. **Substitution makes name
+collisions.**
 
 ```
 sanitize("a/b") → "a_b"
@@ -177,128 +171,125 @@ sanitize("a:b") → "a_b"
 sanitize("a?b") → "a_b"
 ```
 
-세 개의 서로 다른 제목이 하나의 이름이 된다. 이것은 부작용이 아니라 **정보를 잃는
-연산의 필연**이다. 서로 다른 입력을 같은 출력으로 보내는 함수는 단사(injective)가
-아니고, 단사가 아니면 충돌이 생긴다.
+Three different titles become one name. This is not a side effect but **an inevitability of an information-losing
+operation.** A function sending different inputs to the same output is not injective, and not injective means
+collisions arise.
 
-**이 손실의 대가는 아래 계층이 받는다.** §32.5 의 "덮어쓰지 않는다"가 바로 그
-받아내는 자리다. 정제 계층이 만든 충돌을 이동 계층이 사람에게 되돌려 묻는 구조다.
+**The price of this loss is received by the layer below.** §32.5's "does not overwrite" is exactly the spot that
+receives it. It is a structure where the tidy layer asks a human back about the collision the sanitize layer
+made.
 
-### 32.3.2 끝의 점과 공백 — 만든 자리에서는 보이지 않는 결함
+### 32.3.2 The trailing dot and space — a defect invisible at the spot it was made
 
 ```python
 # naming.py:120-130
 def sanitize(name: str) -> str:
-    """폴더·파일 이름으로 쓸 수 있게 다듬는다.
+    """Tidy so it can be used as a folder·file name.
 
-    macOS 파일 시스템은 한글을 자모 분리형(NFD)으로 저장하지만, 웹에서 받은 이름은
-    완성형(NFC)이다. 섞이면 눈에 같아 보이는 두 폴더가 생기므로 NFC 로 고정한다.
-    끝의 점·공백은 제거한다 — Windows 에서 열 수 없는 이름이 되고, 외장 디스크나
-    네트워크 공유로 옮길 때 그대로 문제가 된다.
+    The macOS filesystem stores Hangul in the jamo-separated form (NFD), but a name received from the web
+    is the composed form (NFC). Mixed, two folders that look the same arise, so fix it to NFC.
+    Remove trailing dots·spaces — they become names unopenable on Windows, and cause a problem as-is
+    when moved to an external disk or a network share.
     """
     s = _UNSAFE_RE.sub("_", unicodedata.normalize("NFC", name)).strip()
     s = s.rstrip(". ")
     return s or "untitled"
 ```
 
-NFC 정규화는 제31장의 주제이므로 여기서는 넘어가고, `rstrip(". ")` 을 본다.
+NFC normalization is Chapter 31's subject so I pass it here and look at `rstrip(". ")`.
 
-Windows 의 Win32 API 는 경로 성분 끝의 **점과 공백을 조용히 제거한다.** 그 결과
-두 방향 모두에서 문제가 생긴다.
+Windows's Win32 API **silently removes the dots and spaces at the end of a path component.** As a result a
+problem arises in both directions.
 
-| 방향 | 무슨 일이 일어나는가 |
+| Direction | What happens |
 |---|---|
-| Windows 에서 만들 때 | `보고서.` 로 만들려 해도 `보고서` 가 된다. 이름이 요청과 달라진다 |
-| macOS 에서 만든 것을 Windows 에서 열 때 | `보고서.` 라는 이름에 **Win32 경로로는 도달할 수 없다.** 파일은 보이는데 열리지 않는다 |
+| when making on Windows | try to make `보고서.` and it becomes `보고서`. the name differs from the request |
+| when opening on Windows what was made on macOS | a name `보고서.` **cannot be reached by a Win32 path.** the file is visible but does not open |
 
-그리고 §32.2.1 의 측정이 여기서 다시 의미를 갖는다 — **APFS 는 `name.` 도 `name ` 도
-아무 불평 없이 만든다.** 그러므로 이 결함은 개발 기계에서 절대 나타나지 않고,
-사용자가 파일을 옮긴 뒤에야 나타난다. `rstrip(". ")` 한 줄은 **다른 OS 에서 일어날
-일을 미리 갚아 두는 코드**다.
+And §32.2.1's measurement gains meaning again here — **APFS makes both `name.` and `name ` with no complaint.**
+So this defect never appears on the development machine and appears only after the user moves the file. The one
+line `rstrip(". ")` is **code that pays in advance for what will happen on another OS.**
 
-`.strip()` 이 앞쪽 공백까지 지우는 것도 같은 계열의 결정이다. 선행 공백은 이름순
-정렬에서 파일을 맨 앞으로 밀고, 사람이 이름을 복사해 옮길 때 조용히 사라진다 —
-**보이지 않으면서 동일성 판정을 바꾸는 문자**는 이름에 두지 않는다.
+That `.strip()` erases even leading whitespace is a decision of the same lineage. A leading space pushes the file
+to the front in name-order sorting, and quietly vanishes when a human copies the name to move it — **a character
+that changes the identity judgment while being invisible** is not put in a name.
 
-### 32.3.3 순서가 결과를 바꾸는 곳
+### 32.3.3 Where the order changes the result
 
-`sanitize` 는 다섯 단계를 **이 순서로** 밟는다.
+`sanitize` walks five stages **in this order.**
 
 ```
-NFC 정규화  →  예약 문자를 _ 로 치환  →  strip()  →  rstrip(". ")  →  빈 이름이면 untitled
+NFC normalize  →  substitute reserved characters with _  →  strip()  →  rstrip(". ")  →  untitled if empty name
 ```
 
-치환이 `strip()` 보다 **먼저** 오는 것이 관측 가능한 결과를 낳는다. 제어 문자는
-`\x00-\x1f` 범위에 들어 있으므로 이미 `_` 가 되어 있고, 그러면 `strip()` 이 지울 수
-있는 공백이 아니다. 실제로 측정하면 이렇다.
+That the substitution comes **before** `strip()` yields an observable result. Control characters are in the
+`\x00-\x1f` range so they are already `_`, and then they are not whitespace that `strip()` can erase. Actually
+measured it is this.
 
 ```
 sanitize("그렌라간01\n")  →  "그렌라간01_"
 sanitize("\t그렌라간")    →  "_그렌라간"
 ```
 
-HTML 에서 긁어온 제목의 끝에 개행이 붙는 일은 흔하다. 그 개행은 사라지지 않고
-**밑줄 하나로 남는다.** 이름이 깨지지는 않지만 의도한 결과는 아닐 것이다. §32.8 에
-한계로 적어 둔다.
+A title scraped from HTML commonly has a newline at the end. That newline does not vanish but **remains as one
+underscore.** The name does not break but it is probably not the intended result. Written as a limit in §32.8.
 
-`return s or "untitled"` 도 같은 성격의 마무리다. 제목이 `"..."` 나 `"   "` 라면 앞
-단계들을 거친 뒤 빈 문자열이 남는데, **빈 이름은 파일 시스템이 받지 않는다.** 여기서
-예외를 던지지 않고 대체 이름을 주는 이유는, 이 함수의 호출 지점이 전부 "이미 받은
-데이터를 저장하려는 순간"이기 때문이다. 이름을 못 정했다고 다 받아 놓은 영상을
-버리는 것은 비용이 맞지 않는다.
+`return s or "untitled"` is a finish of the same nature. If the title is `"..."` or `"   "` an empty string
+remains after the earlier stages, and **the filesystem does not accept an empty name.** The reason it does not
+throw an exception here but gives an alternative name is that this function's call sites are all "the moment of
+trying to store already-received data." Throwing away video already received because the name could not be set is
+a bad cost trade.
 
-### 32.3.4 이름을 정하는 자리는 하나다
+### 32.3.4 The spot deciding the name is one
 
 ```python
 # library.py:16-23
-# 시리즈 폴더로 묶을 대상. 자막 등 곁딸린 파일은 영상을 따라 움직인다.
+# Targets to gather into series folders. Sidecar files like subtitles move with the video.
 MEDIA_EXTS = frozenset({".mp4", ".mkv", ".ts", ".m4v", ".mov", ".webm", ".avi"})
 SIDECAR_EXTS = frozenset({".srt", ".vtt", ".ass", ".ssa", ".smi", ".sub", ".idx", ".json"})
 
 
 def series_folder(base: Path, series: str) -> Path:
-    """시리즈 폴더의 자리. 폴더 이름을 정하는 유일한 지점이다."""
+    """The spot for the series folder. The sole spot deciding the folder name."""
     return base / sanitize(series)
 ```
 
-주석의 마지막 문장이 이 절의 전부다 — **"폴더 이름을 정하는 유일한 지점이다."**
+The comment's last sentence is this section's whole — **"the sole spot deciding the folder name."**
 
-`naming.py` 의 모듈 독스트링도 같은 규율을 다른 대상에 적용한다.
+`naming.py`'s module docstring applies the same discipline to a different target.
 
 ```python
 # naming.py:3-6
-화수를 읽어야 하는 곳이 셋이다: 자막 파일명 후보(`name_variants`), 이웃 화수
-수집(`episode_names`), 시리즈 폴더 배치(`series_of`). 규칙이 흩어지면 어디선가는
-`그렌라간1` 과 `그렌라간01` 을 같은 작품으로 보고 어디선가는 다르게 보게 된다.
-그래서 화수를 읽는 정규식과 범위 표기 해석은 이 모듈에만 둔다.
+There are three places that must read the episode number: subtitle-filename candidates (`name_variants`),
+neighbor-episode gathering (`episode_names`), series-folder placement (`series_of`). If the rule scatters,
+somewhere `그렌라간1` and `그렌라간01` are seen as the same work and somewhere as different.
+So the episode-number regex and range-notation interpretation are kept only in this module.
 ```
 
-이것을 **단일 출처(SSOT, Single Source of Truth)** 원칙이라고 부른다. 여기서는
-정확성 문제로 서술돼 있지만, 같은 구조가 보안에서는 더 날카롭다.
+This is called the **SSOT (Single Source of Truth)** principle. Here it is narrated as an accuracy problem, but
+the same structure is sharper in security.
 
-> **정제·검증 지점이 둘 이상이면, 그중 하나는 반드시 갱신에서 빠진다. 빠진 그 경로가
-> 곧 우회 경로다.**
+> **If there are two or more sanitization·verification spots, one of them necessarily gets left out of updates.
+> That left-out path is itself the bypass path.**
 
-제7장(URL 정규화)의 "변환은 경계에서 한 번만"과 정확히 같은 규율이고, 제31장의
-"정규화한 뒤 검증한다"와도 같은 뿌리다. 실제로 이 저장소에서 `sanitize` 를 호출하는
-자리는 일곱뿐이다 — [`library.py:23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L23), [`library.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L33), [`library.py:77`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L77),
-`series.py:194,314,316`, 그리고 [`cli.py:891`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L891). 감사할 표면이 이만큼 좁다는 것이 SSOT 의
-실질적 이득이다.
+It is exactly the same discipline as Chapter 7's (URL normalization) "convert only once at the boundary," of the
+same root as Chapter 31's "verify after normalizing." Actually, the spots calling `sanitize` in this repository
+are only seven — [`library.py:23`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L23), [`library.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L33), [`library.py:77`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L77), `series.py:194,314,316`, and
+[`cli.py:891`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L891). That the surface to audit is this narrow is SSOT's practical benefit.
 
 ---
 
-## 32.4 코드 — 이름이 관계를 표현할 때: `sidecars` 의 점 하나
+## 32.4 The code — when the name expresses a relationship: the one dot of `sidecars`
 
-파일명은 파일 하나를 가리키는 데 그치지 않는다. **파일 사이의 관계**도 이름으로
-표현된다. 영상과 자막이 그렇다.
+A filename does not stop at pointing to one file. **A relationship between files** is also expressed by the name.
+Video and subtitle are so.
 
 ```python
 # library.py:43-54
 def sidecars(media: Path, files: list[Path]) -> list[Path]:
-    """영상과 짝인 곁파일. `영상01.srt`, `영상01.ko.srt` 처럼 이름이 이어진다.
+    """The sidecar files paired with the video. The names continue like `영상01.srt`, `영상01.ko.srt`.
 
-    점까지 포함해 견준다 — 그러지 않으면 `영상01` 의 곁파일을 찾을 때 `영상010`
-    의 것까지 끌려온다.
+    Compare including the dot — otherwise when finding `영상01`'s sidecars, `영상010`'s get dragged in too.
     """
     prefix = media.stem + "."
     return [
@@ -308,88 +299,88 @@ def sidecars(media: Path, files: list[Path]) -> list[Path]:
     ]
 ```
 
-> **용어** — **곁파일(sidecar file)**: 본체 파일 옆에 같은 이름으로 놓여 본체의
-> 보조 정보를 담는 파일. 여기서는 자막(`.srt`·`.vtt`)과 리포트(`.json`)다.
+> **Term** — **sidecar file**: a file placed beside the main file with the same name, holding the main file's
+> auxiliary info. Here it is subtitles (`.srt`·`.vtt`) and the report (`.json`).
 
-`media.stem + "."` 의 점 하나가 이 함수의 전부다. 실제로 재현하면 이렇다.
+The one dot of `media.stem + "."` is this function's whole. Actually reproduced it is this.
 
-| 파일 목록 | 점 없이 `startswith("영상01")` | 점까지 `startswith("영상01.")` |
+| File list | without the dot `startswith("영상01")` | with the dot `startswith("영상01.")` |
 |---|---|---|
-| `영상01.srt` | 잡힘 | 잡힘 |
-| `영상01.ko.srt` | 잡힘 | 잡힘 |
-| `영상010.srt` | **잡힘 (오답)** | 잡히지 않음 |
-| `영상010.ko.srt` | **잡힘 (오답)** | 잡히지 않음 |
+| `영상01.srt` | caught | caught |
+| `영상01.ko.srt` | caught | caught |
+| `영상010.srt` | **caught (wrong)** | not caught |
+| `영상010.ko.srt` | **caught (wrong)** | not caught |
 
-무엇이 깨지는가. `plan_tidy` 가 1화를 시리즈 폴더로 옮길 때 **10화의 자막까지 함께
-끌고 간다.** 그리고 `inventory.scan` 은 1화가 자막을 두 벌 가졌다고 보고, 10화는
-자막이 없다고 판단해 다시 받으러 간다. 파일 이동은 되돌리기 어려우므로 이 오답은
-디스크 위에 그대로 굳는다.
+What breaks. When `plan_tidy` moves episode 1 to the series folder it **drags episode 10's subtitle along too.**
+And `inventory.scan` sees episode 1 as having two subtitle sets and judges episode 10 as having no subtitle, going
+to re-receive it. File moves are hard to undo so this wrong answer hardens as-is on disk.
 
-### 32.4.1 원리 — 접두사는 경계가 아니다
+### 32.4.1 The principle — a prefix is not a boundary
 
-일반화하면 이렇다.
+Generalized it is this.
 
-> **가변 길이 토큰의 접두사 일치는 다음 토큰의 시작을 알 수 없으므로 항상 과다
-> 매칭한다. 경계를 만들려면 구분자를 접두사에 포함시켜야 한다.**
+> **A prefix match of variable-length tokens cannot know the start of the next token, so it always over-matches.
+> To make a boundary you must include the separator in the prefix.**
 
-`영상01` 은 `영상010` 의 접두사다. 화수 자릿수가 고정이 아니기 때문이다. 점을 붙이면
-`영상01.` 은 더 이상 `영상010…` 의 접두사가 아니다 — **구분자가 토큰의 끝을 증명한다.**
+`영상01` is a prefix of `영상010`. Because the episode-number digit count is not fixed. Attach the dot and `영상01.`
+is no longer a prefix of `영상010…` — **the separator proves the token's end.**
 
-같은 실수가 다른 옷을 입고 반복된다.
+The same mistake repeats in different clothes.
 
-| 상황 | 잘못된 검사 | 통과해 버리는 값 | 옳은 형태 |
+| Situation | The wrong check | The value that passes | The right form |
 |---|---|---|---|
-| 파일 짝짓기 | `name.startswith(stem)` | `영상010.srt` | `stem + "."` 로 견준다 |
-| 경로 봉쇄 | `path.startswith("/srv/public")` | `/srv/public-backup` | 성분 단위로 비교하거나 `/srv/public/` 로 견준다 |
-| 출처 검사 | `origin.startswith("https://example.com")` | `https://example.com.evil.net` | 파싱한 호스트를 **완전 일치**로 견준다 |
-| 도메인 검사 | `host.endswith("example.com")` | `notexample.com` | `host == d or host.endswith("." + d)` |
+| file pairing | `name.startswith(stem)` | `영상010.srt` | compare with `stem + "."` |
+| path containment | `path.startswith("/srv/public")` | `/srv/public-backup` | compare component-wise or with `/srv/public/` |
+| origin check | `origin.startswith("https://example.com")` | `https://example.com.evil.net` | compare the parsed host by **exact match** |
+| domain check | `host.endswith("example.com")` | `notexample.com` | `host == d or host.endswith("." + d)` |
 
-**파일 짝짓기에서는 자막 하나가 더 붙는 정도지만, 출처 검사에서는 인증 우회다.**
-원리는 하나이고 피해만 다르다.
+**In file pairing it is one extra subtitle attaching, but in an origin check it is authentication bypass.** The
+principle is one and only the damage differs.
 
-### 32.4.2 정규화가 필요한 자리와 필요 없는 자리
+### 32.4.2 Where normalization is needed and where it is not
 
-`sidecars` 는 문자열을 그대로 비교한다. 유니코드 정규화도, 대소문자 접기도 하지
-않는다. 제31장을 읽고 오면 이것이 결함처럼 보인다. 그러나 이 자리에서는 아니다.
+`sidecars` compares strings as-is. It does neither Unicode normalization nor case folding. After reading Chapter
+31 this looks like a defect. But at this spot it is not.
 
-**비교하는 두 문자열이 같은 출처에서 왔기 때문이다.** `media` 와 `files` 는 둘 다
-같은 `root.iterdir()` 결과다([`library.py:64-65`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L64-L65), [`inventory.py:181`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L181)). macOS 가 이름을
-NFD 로 돌려주면 양쪽 다 NFD 이고, 그러면 접두사 비교는 정확히 맞는다.
+**Because the two strings compared came from the same source.** `media` and `files` are both the same
+`root.iterdir()` result ([`library.py:64-65`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L64-L65), [`inventory.py:181`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L181)). If macOS returns names as NFD both are NFD, and then the
+prefix comparison matches exactly.
 
-반대편을 보면 대비가 분명해진다.
+Look at the opposite side and the contrast is clear.
 
 ```python
 # inventory.py:205-211
 def _key(s: str) -> str:
-    """견주기용 표기 — NFC 로 맞추고 공백·구분자를 없앤다.
+    """The comparison form — match to NFC and remove whitespace·separators.
 
-    macOS 파일 시스템은 한글을 자모 분리형(NFD)으로 돌려주고 사이트가 알려준
-    작품명은 완성형(NFC)이다. 정규화하지 않으면 눈에 같은 두 문자열이 어긋난다.
+    The macOS filesystem returns Hangul in the jamo-separated form (NFD) and the work title the site
+    told is the composed form (NFC). Without normalizing, two strings that look the same go off.
     """
     return re.sub(r"[\s._-]+", "", unicodedata.normalize("NFC", s)).casefold()
 ```
 
-`_key` 는 **디스크에서 온 파일명**과 **웹에서 온 작품명**을 견준다. 출처가 둘이므로
-표기 규칙도 둘이고, 그래서 정규화가 필수다.
+`_key` compares **a filename from disk** and **a work title from the web.** The sources are two so the notation
+rules are two, and so normalization is essential.
 
-> **정규화가 필요한지는 문자열의 내용이 아니라 출처가 결정한다. 같은 출처의 두
-> 문자열은 이미 같은 규칙을 따르고, 다른 출처의 두 문자열은 반드시 맞춰야 한다.**
+> **Whether normalization is needed is decided not by the string's content but by its source. Two strings from
+> the same source already follow the same rules, and two strings from different sources must necessarily be
+> matched.**
 
 ---
 
-## 32.5 코드 — 되돌릴 수 없는 연산은 사람에게 묻는다
+## 32.5 The code — an irreversible operation asks a human
 
-이름을 정하는 일이 끝나면 파일을 옮기는 일이 남는다. `plan_tidy` 와 `apply_tidy` 는
-그 일을 **둘로 쪼개 놓았다.**
+When deciding the name is done, moving the file remains. `plan_tidy` and `apply_tidy` **split that work into
+two.**
 
 ```python
 # library.py:57-87
 def plan_tidy(root: Path) -> list[Move]:
-    """폴더 바로 아래 흩어진 회차 파일을 시리즈 폴더로 모으는 계획을 세운다.
+    """Plan gathering episode files scattered right under the folder into series folders.
 
-    옮기는 것은 **같은 시리즈로 묶이는 회차가 둘 이상**인 영상뿐이다. 화수가 없는
-    파일(영화 한 편)이나 혼자뿐인 회차까지 폴더에 넣으면 파일 하나짜리 폴더만
-    늘어 오히려 찾기 어려워진다. 하위 폴더는 이미 정리된 것으로 보고 건드리지 않는다.
+    What is moved is only videos where **there are two or more episodes tying into the same series**.
+    Put even a file with no episode number (one movie) or a lone episode into a folder and only
+    single-file folders multiply, making it harder to find. Subfolders are seen as already tidied and not touched.
     """
     files = sorted(p for p in root.iterdir() if p.is_file() and not p.name.startswith("."))
     media = [f for f in files if f.suffix.lower() in MEDIA_EXTS]
@@ -397,7 +388,7 @@ def plan_tidy(root: Path) -> list[Move]:
     groups: dict[str, list[Path]] = {}
     for f in media:
         if split_episode(f.stem) is None:
-            continue  # 화수가 없다 — 시리즈의 한 회차라고 볼 근거가 없다
+            continue  # no episode number — no basis to see it as one episode of a series
         groups.setdefault(series_of(f.stem), []).append(f)
 
     moves: list[Move] = []
@@ -410,20 +401,20 @@ def plan_tidy(root: Path) -> list[Move]:
                 dest = folder / src.name
                 skip = ""
                 if dest.exists():
-                    skip = "같은 이름이 이미 있다"
+                    skip = "a file of the same name already exists"
                 elif folder.exists() and not folder.is_dir():
-                    skip = "같은 이름의 파일이 폴더 자리를 차지하고 있다"
+                    skip = "a file of the same name occupies the folder's spot"
                 moves.append(Move(src=src, dest=dest, skip=skip))
     return moves
 ```
 
-이 함수는 **파일 시스템을 한 글자도 바꾸지 않는다.** 반환값이 계획이다.
+This function **does not change the filesystem by a single letter.** The return value is a plan.
 
-> **용어** — **계획–적용 분리(plan/apply)**: 무엇을 할지 계산하는 단계와 실제로
-> 수행하는 단계를 분리하고, 그 사이에 사람의 확인을 두는 구조. Terraform 의
-> `plan`/`apply`, 패키지 관리자의 `--dry-run` 이 같은 형태다.
+> **Term** — **plan/apply separation**: a structure separating the stage computing what to do from the stage
+> actually doing it, with a human's confirmation between them. Terraform's `plan`/`apply` and a package manager's
+> `--dry-run` are the same form.
 
-### 32.5.1 건너뛰는 사유는 불리언이 아니라 문자열이다
+### 32.5.1 The skip reason is a string, not a boolean
 
 ```python
 # library.py:36-40
@@ -431,11 +422,11 @@ def plan_tidy(root: Path) -> list[Move]:
 class Move:
     src: Path
     dest: Path
-    skip: str = ""  # 비어 있지 않으면 옮기지 않는다 — 그 사유
+    skip: str = ""  # if not empty, do not move — the reason
 ```
 
-`skip` 이 `bool` 이었다면 `plan_tidy` 는 "옮길 수 없다"까지만 말할 수 있다. 문자열로
-둔 덕분에 그 값이 그대로 사람에게 간다.
+Had `skip` been a `bool`, `plan_tidy` could say only up to "cannot move." Thanks to keeping it a string, that
+value goes to a human as-is.
 
 ```python
 # cli.py:964-966
@@ -444,19 +435,19 @@ note = f"   ({mv.skip})" if mv.skip else ""
 _eprint(f"    {mark} {mv.src.name}{note}")
 ```
 
-**건너뛴 이유를 모르면 사용자가 고칠 수 없다.** "같은 이름이 이미 있다"와 "같은
-이름의 파일이 폴더 자리를 차지하고 있다"는 대응 방법이 전혀 다르다 — 앞은 중복 수신을
-확인하는 일이고, 뒤는 그 파일을 치우는 일이다.
+**Not knowing why it was skipped, the user cannot fix it.** "a file of the same name already exists" and "a file
+of the same name occupies the folder's spot" have entirely different responses — the former is confirming a
+duplicate receive, the latter is clearing that file away.
 
-### 32.5.2 덮어쓰지 않는 이유
+### 32.5.2 Why not overwrite
 
 ```python
 # library.py:90-104
 def apply_tidy(moves: list[Move]) -> tuple[int, int]:
-    """계획대로 옮긴다. 반환: (옮긴 수, 건너뛴 수).
+    """Move as planned. Returns: (moved count, skipped count).
 
-    건너뛴 항목은 그대로 둔다 — 덮어쓰면 되돌릴 수 없고, 이름이 겹친다는 것은
-    같은 회차를 두 번 받았다는 뜻이라 사람이 확인할 일이다.
+    Skipped items are left as-is — overwriting is irreversible, and that names collide means
+    the same episode was received twice, which is a human's matter to confirm.
     """
     done = skipped = 0
     for mv in moves:
@@ -469,213 +460,210 @@ def apply_tidy(moves: list[Move]) -> tuple[int, int]:
     return done, skipped
 ```
 
-근거가 주석에 두 줄로 적혀 있고, 둘은 성격이 다르다.
+The basis is written in two comment lines, and the two differ in nature.
 
-| 근거 | 성격 |
+| Basis | Nature |
 |---|---|
-| **덮어쓰면 되돌릴 수 없다** | 연산의 성질 — 가역성 |
-| **이름이 겹친다는 것은 같은 회차를 두 번 받았다는 뜻** | 도메인 지식 — 충돌의 의미 |
+| **overwriting is irreversible** | a property of the operation — reversibility |
+| **that names collide means the same episode was received twice** | domain knowledge — the meaning of the collision |
 
-앞의 근거를 일반화하면 이 절의 원칙이 된다.
+Generalize the former basis and it becomes this section's principle.
 
-| 연산 | 가역성 | 이 코드의 처리 |
+| Operation | Reversibility | This code's handling |
 |---|---|---|
-| 파일 이동 | 가역 — 반대로 옮기면 된다 | 자동으로 한다 |
-| 폴더 생성 | 가역 — 비었으면 지우면 된다 | 자동으로 한다 (`mkdir(parents=True, exist_ok=True)`) |
-| **덮어쓰기** | **비가역 — 원본은 사라진다** | **하지 않는다. 사유를 붙여 건너뛴다** |
-| 손상된 기존 파일 삭제 | 비가역 | 하지 않는다 — 사람에게 알리기만 한다([`cli.py:930-932`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L930-L932)) |
+| file move | reversible — move it back | does it automatically |
+| folder creation | reversible — delete it if empty | does it automatically (`mkdir(parents=True, exist_ok=True)`) |
+| **overwrite** | **irreversible — the original vanishes** | **does not do it. skips with a reason** |
+| deleting a damaged existing file | irreversible | does not do it — only notifies a human ([`cli.py:930-932`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L930-L932)) |
 
-> **되돌릴 수 있는 연산은 도구가 하고, 되돌릴 수 없는 연산은 사람이 결정한다.**
+> **A reversible operation the tool does, and an irreversible operation a human decides.**
 
-그리고 §32.3.1 의 실이 여기서 이어진다. **이름 충돌은 원래 없던 것이 `sanitize` 때문에
-생긴 것일 수도 있다** — `작품: 특별편` 과 `작품/특별편` 은 둘 다 `작품_ 특별편` …이
-아니라 각각 `작품_ 특별편` 과 `작품_특별편` 이 되지만, `작품:편` 과 `작품?편` 은
-정확히 같은 `작품_편` 이 된다. 위 계층이 잃은 정보를 아래 계층이 "사람에게 묻기"로
-받아낸다. **계층 사이의 책임 분담이 코드로 드러난 자리다.**
+And §32.3.1's thread connects here. **A name collision may be one that originally was not there but arose because
+of `sanitize`** — `작품: 특별편` and `작품/특별편` become `작품_ 특별편` and `작품_특별편` respectively, but `작품:편` and
+`작품?편` become exactly the same `작품_편`. What the upper layer lost, the lower layer receives by "asking a human."
+**It is the spot where the responsibility division between layers is revealed in code.**
 
-### 32.5.3 기본은 미리보기, 실행은 명시적으로
+### 32.5.3 The default is preview, running is explicit
 
 ```python
 # cli.py:968-971
 movable = sum(1 for m in moves if not m.skip)
 if not args.apply:
-    _eprint(f"\n  미리보기 — {movable}개를 옮길 수 있다. 실행하려면 --apply 를 붙일 것")
+    _eprint(f"\n  preview — {movable} can be moved. attach --apply to run")
     return 0
 ```
 
-기본값이 안전한 쪽이다. 그리고 회귀 테스트가 이 기본값 자체를 고정한다.
+The default is the safe side. And the regression test fixes this default itself.
 
 ```bash
 # tests/run.sh:323-325
 "$RECON" --tidy "$TIDY" >"$WORK/out/tidy1.log" 2>&1
 [[ -f "$TIDY/모아모아01.mp4" && ! -d "$TIDY/모아모아" ]] \
-  && ok "미리보기는 파일을 옮기지 않는다" || bad "--apply 없이 이동함"
+  && ok "preview does not move files" || bad "moved without --apply"
 ```
 
-충돌 회피도 마찬가지로 테스트가 붙어 있다.
+Collision avoidance has a test attached the same way.
 
 ```bash
 # tests/run.sh:335-339
-# 같은 이름이 이미 있으면 덮어쓰지 않는다 — 되돌릴 수 없는 손실이기 때문이다.
+# If a file of the same name already exists, do not overwrite — it is an irreversible loss.
 : >"$TIDY/모아모아01.mp4"; : >"$TIDY/모아모아02.mp4"
 "$RECON" --tidy "$TIDY" --apply >"$WORK/out/tidy3.log" 2>&1
-[[ -f "$TIDY/모아모아01.mp4" ]] && grep -q '같은 이름이 이미 있다' "$WORK/out/tidy3.log" \
-  && ok "이름 충돌은 건너뛴다" || bad "충돌인데 덮어씀"
+[[ -f "$TIDY/모아모아01.mp4" ]] && grep -q 'a file of the same name already exists' "$WORK/out/tidy3.log" \
+  && ok "name collision is skipped" || bad "overwrote on a collision"
 ```
 
-파일이 남아 있는지(`-f`)와 사유가 출력됐는지(`grep`)를 **둘 다** 본다. 파일만 확인하면
-"아무것도 하지 않는 구현"이 통과하고, 메시지만 확인하면 "메시지를 내고 덮어쓰는
-구현"이 통과한다. 제37장(양방향 고정)의 형태가 여기에도 있다.
+It looks at **both** whether the file remains (`-f`) and whether the reason was output (`grep`). Confirm only the
+file and an "implementation that does nothing" passes, confirm only the message and an "implementation that emits
+the message and overwrites" passes. The form of Chapter 37 (bidirectional fixing) is here too.
 
-### 32.5.4 검사와 실행 사이의 틈
+### 32.5.4 The gap between check and use
 
-정직하게 적어 둘 것이 있다. `dest.exists()` 검사는 `plan_tidy`([`library.py:82`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L82))에서
-일어나고, 실제 `rename` 은 `apply_tidy`([`library.py:102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L102))에서 일어난다. 그 사이에
-시간이 있다.
+There is something to write honestly. The `dest.exists()` check happens in `plan_tidy` ([`library.py:82`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L82)), and the
+actual `rename` happens in `apply_tidy` ([`library.py:102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L102)). Between them there is time.
 
-> **용어** — **TOCTOU(Time-Of-Check to Time-Of-Use, 검사 시점과 사용 시점의 불일치)**:
-> 검사한 상태가 사용 시점에도 그대로일 것이라고 가정해 생기는 결함. 그 틈에 상태가
-> 바뀌면 검사는 통과했는데 실행은 다른 대상에 가한다.
+> **Term** — **TOCTOU (Time-Of-Check to Time-Of-Use)**: a defect arising from assuming the checked state remains
+> the same at use time. If the state changes in that gap, the check passed but the action is applied to a
+> different target.
 
-그 틈에 다른 프로세스가 같은 이름의 파일을 만들면 어떻게 되는가. POSIX 의
-`rename(2)` 는 **대상이 이미 있으면 원자적으로 교체한다.** 파이썬의 `Path.rename` 은
-유닉스에서 이 동작을 그대로 노출하므로, 검사를 통과한 이동이 결국 **덮어쓴다.**
-`Path.replace` 로 바꿔도 결과는 같다 — 두 메서드의 차이는 Windows 에서만 나타난다.
+What happens if another process makes a file of the same name in that gap. POSIX's `rename(2)` **atomically
+replaces if the target already exists.** Python's `Path.rename` exposes this behavior as-is on Unix, so a move
+that passed the check ends up **overwriting.** Change to `Path.replace` and the result is the same — the two
+methods differ only on Windows.
 
-이 틈을 실제로 닫으려면 `os.link()` 로 먼저 걸어 보고(대상이 있으면 `EEXIST`) 원본을
-지우거나, `os.open(..., O_CREAT | O_EXCL)` 로 자리를 선점해야 한다. 이 도구는 단일
-사용자가 자기 다운로드 폴더에 한 번에 하나씩 돌리는 것을 전제하므로 현재 구조를
-유지하고 있지만, **전제가 코드에 적혀 있지 않다**는 점은 한계다.
+To actually close this gap you must first try `os.link()` (get `EEXIST` if the target exists) and delete the
+original, or preempt the spot with `os.open(..., O_CREAT | O_EXCL)`. This tool presupposes a single user running
+one at a time in their own download folder so it keeps the current structure, but that **the premise is not
+written in the code** is a limit.
 
 ---
 
-## 32.6 일반화 — 문자열이 다른 문법의 입력이 되는 지점
+## 32.6 Generalization — the spot where a string becomes input of another grammar
 
-이 장의 구조는 파일명에 한정되지 않는다. 공통 형태는 이렇다.
+This chapter's structure is not limited to filenames. The common form is this.
 
-> **어떤 문자열이 다른 문법의 입력이 되는 지점에서는, 그 문법의 특수 문자를 반드시
-> 처리해야 한다. 방법은 셋뿐이다 — 거부(reject) · 이스케이프(escape) · 치환(replace).**
+> **At the spot where some string becomes input of another grammar, that grammar's special characters must
+> necessarily be handled. There are only three ways — reject · escape · replace.**
 
-| 영역 | 사용자 문자열 | 무엇의 문법으로 들어가는가 | 처리하지 않으면 |
+| Domain | User string | Whose grammar it enters | If not handled |
 |---|---|---|---|
-| 파일 저장 | 제목, 업로드 파일명 | 경로 문법 | 경로 순회, 이식성 파괴 |
-| 셸 호출 | 파일명, 인자 | 셸 토큰 문법 | 명령 주입, 인자 주입(`-rf` 로 시작하는 이름) |
-| SQL | 검색어, 식별자 | SQL 문법 | SQL 인젝션 |
-| HTTP 응답 헤더 | 사용자 이름, 리다이렉트 대상 | 헤더 문법(CRLF) | 응답 분할(response splitting) |
-| 로그 | 임의 입력 | 줄 단위 로그 문법 | 로그 위조(log forging) — 가짜 로그 줄 주입 |
-| CSV 내보내기 | 셀 값 | 스프레드시트 수식 문법 | CSV 인젝션 (`=`, `+`, `-`, `@` 로 시작하는 값) |
-| 아카이브 해제 | 아카이브 안의 경로 | 경로 문법 | Zip Slip — 아카이브 밖으로 파일이 쓰인다 |
-| HTML 출력 | 임의 텍스트 | HTML 문법 | XSS |
+| file storage | title, uploaded filename | path grammar | path traversal, portability breakage |
+| shell call | filename, argument | shell token grammar | command injection, argument injection (a name starting with `-rf`) |
+| SQL | search term, identifier | SQL grammar | SQL injection |
+| HTTP response header | user name, redirect target | header grammar (CRLF) | response splitting |
+| log | arbitrary input | line-oriented log grammar | log forging — injecting a fake log line |
+| CSV export | cell value | spreadsheet formula grammar | CSV injection (a value starting with `=`, `+`, `-`, `@`) |
+| archive extraction | a path inside the archive | path grammar | Zip Slip — a file written outside the archive |
+| HTML output | arbitrary text | HTML grammar | XSS |
 
-각 행에서 왼쪽이 오른쪽 문법의 특수 문자를 담고 있으면 그 문법이 뒤틀린다. 이름이
-다를 뿐 구조는 하나다.
+In each row, if the left holds the right grammar's special characters that grammar is warped. The name differs
+but the structure is one.
 
-**세 처리 방법 중 무엇을 고르는가**는 대상 문법이 결정한다.
+**Which of the three handling methods to choose** is decided by the target grammar.
 
-| 방법 | 성립 조건 | 이 코드에서 |
+| Method | Holding condition | In this code |
 |---|---|---|
-| **거부** | 정상 입력이 그 문자를 쓰지 않을 때 | 쓸 수 없다 — 제목에 콜론은 흔하다. 거부하면 정상 콘텐츠를 못 받는다 |
-| **이스케이프** | 대상 문법에 이스케이프 표기가 있을 때 | **없다.** 파일 시스템은 `\/` 를 슬래시로 되돌려 주지 않는다 |
-| **치환** | 위 둘이 안 될 때의 유일한 선택 | 채택. 대가는 §32.3.1 의 이름 충돌 |
+| **reject** | when normal input does not use that character | cannot be used — a colon in a title is common. reject and you cannot receive normal content |
+| **escape** | when the target grammar has an escape notation | **there is none.** the filesystem does not turn `\/` back into a slash |
+| **replace** | the sole choice when the above two do not work | adopted. the price is §32.3.1's name collision |
 
-> **이스케이프 표기가 없는 문법에서는 치환이 유일한 선택이고, 치환은 반드시
-> 충돌을 만든다. 그 충돌을 어디서 받을지를 설계하는 것이 남은 일이다.**
+> **In a grammar with no escape notation, replacement is the sole choice, and replacement necessarily makes
+> collisions. Designing where to receive that collision is the remaining work.**
 
-HTML(`&lt;`)과 SQL(파라미터 바인딩)에는 이스케이프가 있고, 그래서 정보를 잃지 않는다.
-파일 시스템에는 없다. 이 차이가 파일명 문제를 유독 지저분하게 만드는 근본 원인이다.
+HTML (`&lt;`) and SQL (parameter binding) have escaping, and so lose no information. The filesystem does not. This
+difference is the root cause making the filename problem uniquely messy.
 
 ---
 
-## 32.7 보안 — 사용자 문자열이 경로가 되는 지점
+## 32.7 Security — the spot where a user string becomes a path
 
-![바깥에서 온 문자열이 관문 하나를 지나 경로가 된다](/images/lecture/hls-recon/32-name-boundary.svg)
+![A string from outside becomes a path through one gate](/images/lecture/hls-recon/32-name-boundary.svg)
 
-*그림 32-2 — 바깥에서 온 문자열이 관문 하나를 지나 경로가 된다*
+*Figure 32-2 — a string from outside becomes a path through one gate*
 
-이 도식의 왼쪽 열이 **신뢰 경계**다. §32.1 에서 확인했듯 파일 이름의 대부분은 원격
-서버가 정한다. 즉 여기서의 "사용자 제어 문자열"은 도구를 쓰는 사람이 아니라
-**상대편 서버가 제어하는 문자열**이다.
+This diagram's left column is the **trust boundary.** As confirmed in §32.1, most of a file name is decided by
+the remote server. That is, the "user-controlled string" here is not the person using the tool but **the string
+the counterpart server controls.**
 
-### 32.7.1 경로 순회 — 막히는 이유는 `..` 를 막아서가 아니다
+### 32.7.1 Path traversal — the reason it is blocked is not that `..` is blocked
 
-> **용어** — **경로 순회(path traversal / directory traversal)**: 입력에 `..` 나 경로
-> 구분자를 넣어 의도한 디렉터리 밖의 파일을 읽거나 쓰게 만드는 공격.
+> **Term** — **path traversal (directory traversal)**: an attack putting `..` or a path separator in input to
+> read or write a file outside the intended directory.
 
-원격 서버가 작품 제목을 `../../etc/passwd` 로 내려보냈다고 하자. 실제 결과는 이렇다.
+Say the remote server sent the work title down as `../../etc/passwd`. The actual result is this.
 
 ```
 sanitize("../../etc/passwd")  →  ".._.._etc_passwd"
 ```
 
-경로가 아니라 **이름 하나**가 됐다. 그런데 막힌 이유를 정확히 짚어야 한다.
+It became **one name**, not a path. But point out exactly why it was blocked.
 
-- `..` 는 걸러지지 않았다. `.._..` 로 그대로 남아 있다.
-- 막힌 것은 **구분자 `/` 가 `_` 로 치환됐기 때문**이다.
+- `..` was not filtered. It remains as-is as `.._..`.
+- What blocked it is that **the separator `/` was substituted with `_`.**
 
-`..` 는 그 자체로는 위험하지 않다. **구분자와 결합할 때만** 상위 디렉터리를 뜻한다.
-구분자가 없으면 `..` 는 그냥 점 두 개짜리 이름이다.
+`..` by itself is not dangerous. **Only when combined with a separator** does it mean the parent directory.
+Without a separator, `..` is just a two-dot name.
 
-여기에 우연이 하나 겹친다. 제목이 정확히 `".."` 라면 `rstrip(". ")` 이 점을 지워
-빈 문자열이 되고, `or "untitled"` 가 받는다. 즉 `sanitize("..")` 는 `"untitled"` 다.
-**그러나 이것은 경로 순회를 겨냥한 규칙이 아니라 Windows 이식성 규칙이 우연히 같은
-입력을 잡은 것**이다. 제15장의 용어를 빌리면 **우연한 방어(incidental defense)** 이고,
-누군가 "Windows 를 지원하지 않기로 했으니 `rstrip` 을 빼자"고 판단하는 순간 그 방어는
-사라진다 — **그리고 그 사실을 아무도 모른다.**
+Here one coincidence overlaps. If the title is exactly `".."`, `rstrip(". ")` erases the dots and it becomes an
+empty string, and `or "untitled"` receives it. That is, `sanitize("..")` is `"untitled"`. **But this is not a
+rule aimed at path traversal but the Windows-portability rule happening to catch the same input.** Borrowing
+Chapter 15's term it is an **incidental defense**, and the moment someone judges "we decided not to support
+Windows so let's remove `rstrip`" that defense vanishes — **and no one knows that fact.**
 
-방어 전략을 비교해 두면 이 코드가 고른 것의 성격이 분명해진다.
+Compare the defense strategies and the nature of what this code chose is clear.
 
-| 전략 | 하는 일 | 잡는 것 | 못 잡는 것 |
+| Strategy | What it does | What it catches | What it does not catch |
 |---|---|---|---|
-| **사전 정제** (이 코드) | 결합하기 **전에** 구분자를 없애 성분 하나임을 보장 | 깊이 증가, 상위 탈출 | 심볼릭 링크, 이미 존재하는 경로의 성질 |
-| **사후 검증** (`tests/gzip_server.py:22-25`) | 결합한 뒤 `resolve()` 해서 뿌리 안인지 확인 | 심볼릭 링크를 포함한 실제 도달 지점 | 뿌리 **안에서의** 깊이 증가는 허용한다 |
+| **pre-sanitization** (this code) | remove the separator **before** joining to guarantee one component | depth increase, escaping upward | symbolic links, the property of an existing path |
+| **post-verification** (`tests/gzip_server.py:22-25`) | after joining, `resolve()` and confirm it is inside the root | the actual reach point including symbolic links | permits depth increase **inside** the root |
 
-이 코드가 사전 정제를 고른 이유는 요구가 다르기 때문이다. 여기서 필요한 것은 "뿌리
-안이면 된다"가 아니라 **"경로 성분이 정확히 하나여야 한다"** 이다. 폴더 이름과 파일
-이름은 각각 한 성분이어야 하므로, 결합 후 검증으로는 요구를 표현할 수 없다.
+The reason this code chose pre-sanitization is that the requirement differs. What is needed here is not "inside
+the root is fine" but **"the path component must be exactly one."** The folder name and the file name must each be
+one component, so the requirement cannot be expressed by post-join verification.
 
-> **정제(sanitization)와 검증(validation)은 다른 일이다.** 정제는 값을 바꾸고 검증은
-> 값을 판정한다. 둘 다 필요한 경우가 흔하고, 하나만 하고 다른 것을 했다고 믿는 것이
-> 전형적인 실수다.
+> **Sanitization and validation are different jobs.** Sanitization changes the value and validation judges the
+> value. It is common for both to be needed, and believing you did one and thinking you did the other is a
+> typical mistake.
 
-### 32.7.2 널 바이트 절단
+### 32.7.2 Null-byte truncation
 
-> **용어** — **널 바이트 주입(null byte injection)**: C 문자열은 `\x00` 에서 끝나지만
-> 길이를 따로 갖는 언어(파이썬·자바 등)의 문자열은 그렇지 않다. 두 표현이 만나는
-> 경계에서 문자열이 **잘린다.**
+> **Term** — **null-byte injection**: a C string ends at `\x00`, but a string in a language holding the length
+> separately (Python·Java, etc.) does not. At the boundary where the two representations meet the string is
+> **truncated.**
 
-고전적 형태는 이렇다.
+The classic form is this.
 
 ```
-업로드 이름:  "shell.php\x00.jpg"
-고수준 검사:  확장자가 .jpg 다  → 통과
-저수준 저장:  C 문자열로 넘어가며 \x00 에서 잘림 → shell.php 로 저장
+upload name:     "shell.php\x00.jpg"
+high-level check: the extension is .jpg  → pass
+low-level store:  passing to a C string it is cut at \x00 → stored as shell.php
 ```
 
-**검사한 문자열과 실제로 쓰인 문자열이 다르다.** TOCTOU 와 같은 계열의 결함이지만
-원인이 시간이 아니라 **표현의 불일치**다.
+**The checked string and the actually-used string differ.** It is a defect of the same lineage as TOCTOU but the
+cause is not time but **a mismatch of representation.**
 
-이 코드에서 `\x00` 은 `\x00-\x1f` 범위에 들어 있어 `_` 로 치환된다(측정:
-`sanitize("ep01\x00.mp4")` → `"ep01_.mp4"`). 다만 정직하게 적으면, **현대 파이썬에서는
-이 치환이 없어도 절단은 일어나지 않는다.** 경로에 널 바이트가 있으면
-`ValueError: embedded null byte` 로 거부하기 때문이다(측정으로 확인). 즉 여기서
-`\x00` 치환의 실질적 효과는 **취약점 방어가 아니라 예외 방지**다.
+In this code `\x00` is in the `\x00-\x1f` range so it is substituted with `_` (measured: `sanitize("ep01\x00.mp4")`
+→ `"ep01_.mp4"`). Only, written honestly, **in modern Python the truncation does not happen even without this
+substitution.** Because if there is a null byte in the path it is rejected with `ValueError: embedded null byte`
+(confirmed by measurement). That is, `\x00` substitution's practical effect here is **not vulnerability defense
+but exception prevention.**
 
-그러나 그 안전은 파이썬 런타임 안에서만이다. 이 도구가 만든 이름은 곧 셸 스크립트로,
-`rsync` 로, C 로 짠 백업 도구로 넘어간다. **언어 경계를 넘는 순간 널 바이트의 의미는
-다시 살아난다.** 이름을 만드는 쪽에서 제거해 두는 것이 옳은 이유가 그것이다.
+But that safety is only inside the Python runtime. The name this tool makes soon passes to a shell script, to
+`rsync`, to a backup tool written in C. **The moment it crosses a language boundary the null byte's meaning
+revives.** That is why removing it at the name-making side is right.
 
-### 32.7.3 예약 장치명 — 이 코드가 다루지 않는 것
+### 32.7.3 Reserved device names — what this code does not handle
 
-Windows 에는 문자가 아니라 **이름 전체**가 예약된 것들이 있다.
+Windows has things where not a character but **the whole name** is reserved.
 
 ```
 CON  PRN  AUX  NUL  COM1…COM9  LPT1…LPT9
 ```
 
-이 이름들은 MS-DOS 시절 장치를 가리키던 것이고, 지금도 Win32 경로 해석에서 특별
-취급된다. 확장자를 붙여도 예약이 풀리지 않는다 — `CON.txt` 도 `CON` 이다.
+These names pointed at devices in the MS-DOS era, and are still specially treated in Win32 path interpretation.
+Attaching an extension does not unreserve them — `CON.txt` is also `CON`.
 
-이 코드는 이것을 다루지 않는다. 측정 결과다.
+This code does not handle this. The measurement.
 
 ```
 sanitize("CON")      →  "CON"
@@ -683,108 +671,102 @@ sanitize("PRN.txt")  →  "PRN.txt"
 sanitize("nul")      →  "nul"
 ```
 
-무엇이 깨지는가를 위협 모델로 정리한다.
+Organize what breaks in a threat model.
 
-| 항목 | 내용 |
+| Item | Content |
 |---|---|
-| 공격자가 할 수 있는 것 | 원격 페이지의 작품 제목을 `CON` 으로 만든다 |
-| 이 도구가 도는 환경 | macOS·Linux — 예약 장치명이 없으므로 **파일은 정상적으로 만들어진다** |
-| 실제 피해가 나는 시점 | 그 파일을 **Windows 로 옮길 때** — 압축 해제·복사가 실패하거나, 오래된 경로 해석 경로에서는 장치로 열린다 |
-| 피해의 크기 | 파일 하나를 옮기지 못하는 정도. 원격 코드 실행이나 정보 유출로 이어지는 경로는 확인되지 않았다 |
+| what the attacker can do | make a remote page's work title `CON` |
+| the environment this tool runs in | macOS·Linux — there are no reserved device names so **the file is made normally** |
+| when the actual damage happens | when moving that file **to Windows** — the unzip·copy fails, or on an old path-interpretation path it is opened as a device |
+| the damage size | up to being unable to move one file. a path leading to remote code execution or information leak was not confirmed |
 
-**피해가 작다는 것이 다루지 않는 이유가 될 수 있다. 다만 그 판단을 적어 두지 않으면
-"몰랐다"와 구별되지 않는다.** 고치려면 `sanitize` 끝에서 첫 점 앞의 부분을 대문자로
-바꿔 예약 목록과 대조하고, 걸리면 접미사(`_`)를 붙이면 된다 — 몇 줄이면 되지만
-지금 코드에는 없다.
+**A small damage can be a reason not to handle it. But if you do not write that judgment down, it is
+indistinguishable from "did not know."** To fix it, at `sanitize`'s end uppercase the part before the first dot,
+compare against the reserved list, and if it catches attach a suffix (`_`) — a few lines but not in the current
+code.
 
-### 32.7.4 접두사 검사가 인증 경로에 있을 때
+### 32.7.4 When a prefix check is on an authentication path
 
-§32.4.1 의 표를 보안 관점에서 다시 읽는다. `영상01` 이 `영상010` 의 접두사라는
-사실과, `https://example.com` 이 `https://example.com.evil.net` 의 접두사라는 사실은
-**같은 성질**이다. 구분자가 토큰의 끝을 증명하지 못하면 검사는 항상 과다 허용한다.
+Re-read §32.4.1's table from the security view. That `영상01` is a prefix of `영상010`, and that
+`https://example.com` is a prefix of `https://example.com.evil.net`, are the **same property.** If the separator
+cannot prove the token's end, the check always over-permits.
 
-`sidecars` 의 점 하나가 여기서 의미를 갖는다 — 이 저장소의 주석은 그 점을 자막
-오매칭으로 설명하지만, **같은 한 글자가 출처 검사에 있으면 인증 우회를 막는 코드**다.
+The one dot of `sidecars` gains meaning here — this repository's comment explains that dot as subtitle
+mis-matching, but **the same one character, on an origin check, is the code blocking authentication bypass.**
 
-### 32.7.5 방어자 관점
+### 32.7.5 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **도구·클라이언트 구현자** | 이름을 만드는 지점을 하나로 모은다(`series_folder` 의 "유일한 지점"). 감사할 함수가 하나여야 감사가 가능하다 |
-| **서버·플랫폼 구현자** | **업로드된 파일명을 저장 이름으로 쓰지 않는다.** 불투명 ID 로 저장하고 원본 이름은 메타데이터 칼럼에만 둔다. 표시할 때는 그 자리의 문법(HTML)에 맞춰 다시 이스케이프한다 |
-| **아카이브를 푸는 쪽** | 아카이브 안의 경로는 아카이브 작성자가 정한 값이다 — 성분별로 정제하고, 결합한 뒤 `resolve()` 로 **다시** 검증한다(Zip Slip) |
-| **이식 대상을 가진 쪽** | 최종 목적지의 파일 시스템 규칙을 기준으로 정한다. 개발 기계의 파일 시스템이 관대하면 결함은 **사용자 손에서만** 나타난다 |
-| **감사자** | "정제했다"와 "검증했다"를 구별해 묻는다. **어떤 문법을 대상으로 한 정제인지**, 그 문법이 정말 하나뿐인지(파일 시스템 + 셸 + 표시 층) |
+| **tool·client implementer** | gather the name-making spot into one (`series_folder`'s "sole spot"). the function to audit must be one for auditing to be possible |
+| **server·platform implementer** | **do not use the uploaded filename as the storage name.** store with an opaque ID and keep the original name only in a metadata column. when displaying, re-escape to match the grammar of that spot (HTML) |
+| **the archive-extracting side** | a path inside an archive is a value the archive author set — sanitize per component, and after joining verify **again** with `resolve()` (Zip Slip) |
+| **the side with a portability target** | decide by the final destination's filesystem rules. if the development machine's filesystem is lenient the defect appears **only in the user's hands** |
+| **auditor** | ask distinguishing "sanitized" and "validated." **which grammar the sanitization targeted**, and whether that grammar is really the only one (filesystem + shell + display layer) |
 
 ---
 
-## 32.8 한계와 미해결
+## 32.8 Limits and open questions
 
-정직하게 적어 둔다.
+Written honestly.
 
-- **예약 장치명을 다루지 않는다.** §32.7.3 에서 측정으로 확인했다. 피해가 작다고
-  판단해 그대로 두는 것과 몰라서 두는 것은 다르지만, **코드에는 그 판단이 적혀 있지
-  않다.**
-- **이름 길이 상한이 없다.** 이 장에서 APFS 에 대해 측정한 결과는 **문자 255개**가
-  경계였다 — 한글 255자(UTF-8 765바이트)는 통과하고 256자는 `ENAMETOOLONG` 이다.
-  반면 ext4 등 리눅스의 일반적인 파일 시스템은 **바이트 255개**가 상한으로 알려져
-  있고, 그렇다면 한글 제목은 85자(정확히 255바이트)까지 통과하고 86자에서 걸린다.
-  **이 리눅스 쪽 수치는 이 장에서 확인하지 못했다 — 추론이다.** 어느 쪽이든 긴 제목이
-  그대로 이름이 되는 현재 구조는
-  잘림·실패에 열려 있다.
-- **치환이 만드는 이름 충돌은 `place()` 경로에서 받아 주는 곳이 없다.** `plan_tidy` 는
-  충돌을 사유와 함께 건너뛰지만(§32.5.2), 새로 받는 경로에서 충돌을 확인하는 것은
-  시리즈 모드뿐이다([`cli.py:894-895`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L894-L895)). 단일 실행(`_run_single`)에는 그 확인이 없다.
-- **제어 문자가 이름 끝에 있으면 밑줄이 남는다.** 측정: `sanitize("그렌라간01\n")` →
-  `"그렌라간01_"`. 치환이 `strip()` 보다 먼저 오기 때문이다(§32.3.3). 무해하지만
-  의도한 결과로 보이지는 않는다.
-- **선행 점을 걸러내지 않는다.** `.hack//SIGN` 같은 제목은 `.hack__SIGN` 이 되어
-  POSIX 에서 **숨김 파일**이 된다. 그리고 `plan_tidy`([`library.py:64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L64))와
-  `inventory.scan`([`inventory.py:181`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L181))이 둘 다 `not p.name.startswith(".")` 로
-  거르므로, 이 이름의 파일들은 **정리에서도 재고 조사에서도 보이지 않는다.**
-  실제 스트림으로 재현한 사례는 없고 `sanitize` 의 출력으로만 확인했다.
-- **TOCTOU 창이 열려 있다.** §32.5.4. 단일 사용자 전제이며, 그 전제가 코드에 명시돼
-  있지 않다.
-- **부분 실패의 롤백이 없다.** `apply_tidy` 중간에 `rename` 이 예외를 던지면 일부만
-  옮겨진 상태로 남는다. 다만 `plan_tidy` 는 계획을 저장하지 않고 **매번 현재 상태에서
-  다시 세우므로**, 다시 실행하면 남은 것부터 이어서 옮긴다 — 완전한 트랜잭션은
-  아니지만 재실행이 안전하다.
-- **대소문자 등가성을 다루지 않는다.** APFS 는 기본 설정이 대소문자를 구별하지
-  않으므로 `Video01.mp4` 와 `video01.mp4` 는 같은 파일이지만, `sidecars` 의 문자열
-  비교는 다르게 본다. 파일 시스템의 동일성 판정과 코드의 동일성 판정이 어긋나는
-  지점이다. **이 저장소에서 실제로 문제가 된 사례는 확인하지 못했다.**
+- **It does not handle reserved device names.** Confirmed by measurement in §32.7.3. Leaving it because the damage
+  is judged small and leaving it out of ignorance are different, but **that judgment is not written in the code.**
+- **There is no name-length cap.** The result measured for APFS in this chapter had **255 characters** as the
+  boundary — 255 Hangul characters (UTF-8 765 bytes) pass and 256 characters is `ENAMETOOLONG`. Meanwhile a common
+  Linux filesystem like ext4 is known to have **255 bytes** as the cap, and if so a Hangul title passes up to 85
+  characters (exactly 255 bytes) and catches at 86. **This Linux figure was not confirmed in this chapter — it is
+  inference.** Either way, the current structure where a long title becomes the name as-is is open to
+  truncation·failure.
+- **The name collision substitution makes is not received anywhere on the `place()` path.** `plan_tidy` skips a
+  collision with a reason (§32.5.2), but confirming a collision on a newly-receiving path is only the series mode
+  ([`cli.py:894-895`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L894-L895)). The single run (`_run_single`) has no such confirmation.
+- **A control character at the name's end leaves an underscore.** Measured: `sanitize("그렌라간01\n")` →
+  `"그렌라간01_"`. Because the substitution comes before `strip()` (§32.3.3). Harmless but does not look like the
+  intended result.
+- **It does not filter a leading dot.** A title like `.hack//SIGN` becomes `.hack__SIGN` and is a **hidden file**
+  on POSIX. And since `plan_tidy` ([`library.py:64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L64)) and `inventory.scan` ([`inventory.py:181`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L181)) both filter with
+  `not p.name.startswith(".")`, files of this name **are invisible in tidying and in inventory both.** There is no
+  case reproduced with an actual stream and it was confirmed only by `sanitize`'s output.
+- **The TOCTOU window is open.** §32.5.4. It is a single-user premise, and that premise is not stated in the code.
+- **There is no rollback for a partial failure.** If a `rename` throws an exception mid-`apply_tidy` it is left
+  partially moved. Only, `plan_tidy` does not save the plan and **re-plans from the current state each time**, so
+  re-running continues moving from what remains — not a complete transaction but re-running is safe.
+- **It does not handle case equivalence.** APFS by default is case-insensitive so `Video01.mp4` and `video01.mp4`
+  are the same file, but `sidecars`'s string comparison sees them as different. It is the spot where the
+  filesystem's identity judgment and the code's identity judgment go off. **A case that actually became a problem
+  in this repository could not be confirmed.**
 
 ---
 
-## 32.9 요약
+## 32.9 Summary
 
-1. **파일 이름의 대부분을 원격 서버가 정한다**(`series.py:194,310-316`). 그 문자열이
-   `place()` 한 줄에서 경로 성분 둘이 된다([`library.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L33)). 여기가 신뢰 경계다.
-2. 파일명은 **세 역할이 겹친 인터페이스**다 — 사람이 읽는 이름, 파일 시스템의 키,
-   셸의 인자. 세 문법은 서로를 모르고, 이식 가능한 이름은 **그 교집합**이다.
-3. **APFS 가 거부하는 것은 `/` 와 널 바이트뿐이다**(측정). `_UNSAFE_RE` 가 막는
-   나머지는 개발 기계에서 아무 증상도 내지 않으므로 **테스트로 잡히지 않는다.**
-   이식성 결함의 전형이다.
-4. 끝의 점·공백 제거는 **다른 OS 에서 일어날 일을 미리 갚는 코드**다. Windows 는
-   그런 이름을 만들지도, 열지도 못한다.
-5. **이스케이프 표기가 없는 문법에서는 치환이 유일한 선택이고, 치환은 반드시 이름
-   충돌을 만든다.** 그 충돌을 `apply_tidy` 가 "덮어쓰지 않고 사유와 함께 건너뛰기"로
-   받는다 — 위 계층의 정보 손실을 아래 계층이 사람에게 되묻는 구조다.
-6. `sidecars` 의 점 하나는 **접두사가 경계가 아니라는 사실**을 다룬다. 같은 실수가
-   경로 봉쇄·출처 검사에 있으면 피해만 달라진다 — 자막 하나가 아니라 인증 우회다.
-7. **정규화가 필요한지는 문자열의 출처가 결정한다.** 같은 `iterdir()` 에서 온 두
-   이름은 표기가 이미 같고, 디스크와 웹에서 각각 온 두 이름은 반드시 맞춰야 한다
+1. **Most of the file name is decided by the remote server** (`series.py:194,310-316`). That string becomes two
+   path components in the one line `place()` ([`library.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L33)). Here is the trust boundary.
+2. A filename is **an interface where three roles overlap** — a name a human reads, the filesystem's key, the
+   shell's argument. The three grammars do not know each other, and a portable name is **their intersection.**
+3. **What APFS rejects is only `/` and the null byte** (measured). The rest `_UNSAFE_RE` blocks give no symptom on
+   the development machine so they are **not caught by a test.** It is typical of a portability defect.
+4. Removing the trailing dot·space is **code that pays in advance for what will happen on another OS.** Windows
+   can neither make nor open such a name.
+5. **In a grammar with no escape notation, replacement is the sole choice, and replacement necessarily makes name
+   collisions.** `apply_tidy` receives that collision by "not overwriting and skipping with a reason" — a
+   structure where the lower layer asks a human back about the upper layer's information loss.
+6. The one dot of `sidecars` handles **the fact that a prefix is not a boundary.** If the same mistake is in path
+   containment·origin check, only the damage differs — not one subtitle but authentication bypass.
+7. **Whether normalization is needed is decided by the string's source.** Two names from the same `iterdir()`
+   already have the same notation, and two names each from disk and web must necessarily be matched
    ([`inventory.py:205-211`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L205-L211)).
-8. 경로 순회가 막히는 이유는 `..` 를 막아서가 아니라 **구분자를 없애서**다. `".."`
-   자체를 `untitled` 로 보내는 것은 Windows 규칙의 부수 효과 — **우연한 방어**이며,
-   그 규칙이 사라지면 함께 사라진다.
-9. **정제와 검증은 다른 일이다.** 이 코드는 사전 정제를 골랐고 그것이 요구에 맞지만,
-   예약 장치명·길이 상한은 정제도 검증도 하지 않는다.
+8. The reason path traversal is blocked is not that `..` is blocked but that **the separator is removed.** Sending
+   `".."` itself to `untitled` is a side effect of the Windows rule — an **incidental defense**, and if that rule
+   vanishes it vanishes with it.
+9. **Sanitization and validation are different jobs.** This code chose pre-sanitization and it fits the
+   requirement, but reserved device names·the length cap it neither sanitizes nor validates.
 
 ---
 
-**다음 장** — 이 장의 `sanitize` 는 문자열을 **바꾸는** 규칙이었다. 제33장은 문자열을
-**가르는** 규칙, 즉 `EPISODE_RE` 를 다룬다. 부정 후방탐색 `(?<!\d)` 하나가 빠지면
-`Sky.Blue.2003` 이 줄기 `Sky.Blue.2` 와 화수 `003` 으로 갈리고, 영화 한 편이 존재하지
-않는 시리즈의 3화가 된다. 정규식 한 조각의 정확도가 어떻게 그대로 오분류율이 되는지,
-그리고 같은 종류의 실수가 인증 경로에 있을 때 무엇이 되는지를 본다.
+**Next chapter** — this chapter's `sanitize` was a rule that **changes** a string. Chapter 33 covers a rule that
+**splits** a string, i.e. `EPISODE_RE`. Omit one negative lookbehind `(?<!\d)` and `Sky.Blue.2003` splits into the
+stem `Sky.Blue.2` and the episode number `003`, and one movie becomes episode 3 of a nonexistent series. How the
+accuracy of one regex fragment becomes the misclassification rate as-is, and what the same kind of mistake becomes
+when it is on an authentication path, is what we see.

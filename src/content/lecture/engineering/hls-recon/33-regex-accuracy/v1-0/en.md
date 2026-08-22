@@ -1,28 +1,27 @@
 ---
-untranslated: ko
-title: "정규식의 정확도가 곧 오분류율"
-description: "(?<!\\d) 하나가 막는 것"
-date: 2026-08-19
+title: "A Regex's Accuracy Is the Misclassification Rate"
+description: "What one (?<!\\d) blocks"
+date: 2026-08-04
 version: '1.0'
 tags: ['streaming', 'portability']
 thumbnail: /images/lecture/thumb/hls-recon-33-regex-accuracy.svg
 ---
-## 33.0 이 장에서 답할 것
+## 33.0 What this chapter answers
 
-1. 파일 이름 끝의 숫자는 언제 화수이고 언제 화수가 아닌가
-2. `(?<!\d)` 가 없으면 **정확히** 무엇이 어떻게 깨지는가
-3. 네 그룹(`stem`·`sep`·`ep`·`unit`)은 각각 무엇을 지키는가. `.*?` 는 왜 비탐욕이어야 하는가
-4. 정답을 서버만 알고 있을 때, 이름을 맞히는 전략은 무엇인가
-5. 이 정규식은 ReDoS 에 안전한가 — 그 판단의 근거는 패턴인가 입력인가
+1. When is a number at the end of a file name an episode number and when is it not?
+2. Without `(?<!\d)`, **exactly** what breaks and how?
+3. What does each of the four groups (`stem`·`sep`·`ep`·`unit`) protect? Why must `.*?` be non-greedy?
+4. When only the server knows the answer, what is the strategy for guessing the name?
+5. Is this regex safe against ReDoS — is the basis for that judgment the pattern or the input?
 
-이 장의 수치는 모두 이 저장소의 코드를 그대로 돌려 얻었다. 재현 방법은 각 절에 적는다.
-확인하지 못한 것은 §33.8 에 모아 둔다.
+The figures in this chapter were all obtained by running this repository's code as-is. The reproduction method is
+written in each section. What could not be confirmed is gathered in §33.8.
 
 ---
 
-## 33.1 문제 — 이름 끝의 숫자는 언제 화수인가
+## 33.1 The problem — when is a number at the end of a name an episode number
 
-한 폴더에 이런 파일들이 쌓여 있다.
+In one folder these files have piled up.
 
 ```
 그렌라간01.mp4
@@ -34,184 +33,184 @@ Blade Runner 2049.mkv
 Apollo 13.mkv
 ```
 
-사람은 즉시 가른다. 그러나 그 판단의 근거를 규칙으로 적어 보면 균일하지 않다.
+A human splits them at once. But write down the basis for that judgment as a rule and it is not uniform.
 
-| 이름 | 끝의 숫자 | 사람의 판단 | 근거 |
+| Name | Trailing number | Human judgment | Basis |
 |---|---|---|---|
-| `그렌라간01` | `01` | 화수 | 같은 줄기의 이웃(`02`)이 있다 |
-| `원피스 500회` | `500` | 화수 | 단위 `회` 가 붙어 있다 |
-| `영상010` | `010` | 화수 | 앞자리 `0` 은 자릿수 맞춤이다 |
-| `Sky.Blue.2003` | `2003` | **연도** | 네 자리다 |
-| `Blade Runner 2049` | `2049` | **연도** — 혹은 제목의 일부 | 네 자리다 |
-| `Apollo 13` | `13` | **제목의 일부** | 형태만으로는 알 수 없다 |
+| `그렌라간01` | `01` | episode number | there is a same-stem neighbor (`02`) |
+| `원피스 500회` | `500` | episode number | the unit `회` is attached |
+| `영상010` | `010` | episode number | the leading `0` is digit padding |
+| `Sky.Blue.2003` | `2003` | **year** | it is four digits |
+| `Blade Runner 2049` | `2049` | **year** — or part of the title | it is four digits |
+| `Apollo 13` | `13` | **part of the title** | by form alone it cannot be known |
 
-마지막 두 줄이 이 장의 문제를 요약한다. **형태로 가를 수 있는 것과 없는 것이 섞여 있다.**
-`2003` 은 자릿수라는 형태적 근거로 가를 수 있고, `Apollo 13` 은 가를 수 없다 —
-`그렌라간 13` 과 문자 배열이 완전히 같기 때문이다.
+The last two rows summarize this chapter's problem. **What can be split by form and what cannot are mixed.**
+`2003` can be split by the formal basis of digit count, and `Apollo 13` cannot — because its character arrangement
+is exactly the same as `그렌라간 13`.
 
-이 판정이 어디에 쓰이는지가 문제의 무게를 정한다. 모듈 첫머리가 그것을 밝힌다.
+Where this verdict is used sets the problem's weight. The module's head states it.
 
 ```python
 # naming.py:1-7
-"""이름 규칙 — 화수 표기와 시리즈명의 단일 출처.
+"""Naming rules — the single source of episode notation and series name.
 
-화수를 읽어야 하는 곳이 셋이다: 자막 파일명 후보(`name_variants`), 이웃 화수
-수집(`episode_names`), 시리즈 폴더 배치(`series_of`). 규칙이 흩어지면 어디선가는
-`그렌라간1` 과 `그렌라간01` 을 같은 작품으로 보고 어디선가는 다르게 보게 된다.
-그래서 화수를 읽는 정규식과 범위 표기 해석은 이 모듈에만 둔다.
+There are three places that must read the episode number: subtitle-filename candidates (`name_variants`),
+neighbor-episode gathering (`episode_names`), series-folder placement (`series_of`). If the rule scatters,
+somewhere `그렌라간1` and `그렌라간01` are seen as the same work and somewhere as different.
+So the episode-number regex and range-notation interpretation are kept only in this module.
 """
 ```
 
-**단일 출처(single source of truth)로 만든 결정은 정확도를 한 곳에 집중시킨다.**
-장점은 규칙이 갈라지지 않는다는 것이고, 대가는 그 한 곳의 오분류율이 세 기능의
-오분류율이 된다는 것이다. §33.4 에서 이 대가를 실측한다.
+**The decision to make it a single source of truth concentrates the accuracy in one place.** The advantage is
+that the rule does not split, and the price is that that one place's misclassification rate becomes the three
+features' misclassification rate. §33.4 measures this price.
 
 ---
 
-## 33.2 원리 — 정규식은 분류기다
+## 33.2 The principle — a regex is a classifier
 
-> **용어** — **정규식(regular expression, 정규 표현식)**: 문자열의 집합을 유한한
-> 문법으로 기술하는 표기. 한 문자열이 그 집합에 드는지를 판정한다.
+> **Term** — **regular expression**: a notation describing a set of strings with a finite grammar. It judges
+> whether one string is in that set.
 
-> **용어** — **분류기(classifier)**: 입력을 미리 정한 범주 중 하나로 배정하는 절차.
-> `EPISODE_RE` 는 파일 이름을 "화수가 있는 이름"과 "없는 이름"으로 가르는 이진 분류기다.
+> **Term** — **classifier**: a procedure assigning input to one of predefined categories. `EPISODE_RE` is a binary
+> classifier splitting a file name into "a name with an episode number" and "one without."
 
-이렇게 보면 이 정규식의 품질을 재는 척도가 정해진다. 분류기의 척도는 **오분류율**이고,
-오분류에는 방향이 둘 있다.
+Seen this way, the measure of this regex's quality is set. A classifier's measure is the **misclassification
+rate**, and misclassification has two directions.
 
-> **용어** — **오탐(false positive, 위양성)**: 아닌 것을 맞다고 판정하는 오류.
-> **미탐(false negative, 위음성)**: 맞는 것을 아니라고 판정하는 오류.
+> **Term** — **false positive**: the error of judging what is not so as so.
+> **false negative**: the error of judging what is so as not so.
 
-| 방향 | 이 코드에서의 뜻 | 나타나는 증상 |
+| Direction | Meaning in this code | The symptom that appears |
 |---|---|---|
-| **오탐** | 화수가 아닌 숫자를 화수로 읽는다 | 영화가 존재하지 않는 시리즈의 회차가 되어 엉뚱한 폴더로 간다. 재고 조사가 그 영화를 "n화 있음"으로 세어 진짜 n화를 영영 받지 않는다 |
-| **미탐** | 화수를 화수가 아니라고 본다 | 회차물이 시리즈로 묶이지 않는다. 파일은 **제자리에 남는다** |
+| **false positive** | reading a non-episode number as an episode number | a movie becomes an episode of a nonexistent series and goes to the wrong folder. the inventory counts that movie as "episode n present" and never receives the real episode n |
+| **false negative** | seeing an episode number as not one | an episodic work is not tied into a series. the file **stays in place** |
 
-두 방향의 대가가 대칭이 아니다. **미탐은 "아무 일도 하지 않음"으로 떨어지고, 오탐은
-"틀린 일을 함"으로 떨어진다.** 파일을 옮기는 도구에서 이 비대칭은 결정적이다 —
-옮기지 않은 파일은 사람이 나중에 옮길 수 있지만, 잘못 옮겨 사라진 파일은 사람이
-찾아야 한다.
+The two directions' prices are not symmetric. **A false negative falls to "does nothing," and a false positive
+falls to "does the wrong thing."** In a tool that moves files this asymmetry is decisive — an unmoved file a human
+can move later, but a wrongly-moved and vanished file a human must go find.
 
-그래서 이 코드는 **일관되게 미탐 쪽으로 기운다.** 규칙 세 개가 모두 같은 방향이다.
+So this code **consistently leans toward the false-negative side.** All three rules are in the same direction.
 
-| 규칙 | 앵커 | 무엇을 포기하는가 |
+| Rule | Anchor | What it gives up |
 |---|---|---|
-| 화수 앞이 숫자면 화수가 아니다 | [`naming.py:20`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/naming.py#L20) `(?<!\d)` | 네 자리 이상으로 표기된 화수 |
-| 화수는 세 자리까지 | [`naming.py:20`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/naming.py#L20) `\d{1,3}` | 1000화 이상 |
-| 같은 시리즈가 둘 이상일 때만 폴더로 묶는다 | [`library.py:75-76`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L75-L76) | 혼자뿐인 회차 |
+| if the character before the episode number is a digit it is not an episode number | [`naming.py:20`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/naming.py#L20) `(?<!\d)` | an episode number written as four digits or more |
+| the episode number is up to three digits | [`naming.py:20`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/naming.py#L20) `\d{1,3}` | episode 1000 or higher |
+| group into a folder only when there are two or more of the same series | [`library.py:75-76`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L75-L76) | a lone episode |
 
-세 번째 규칙은 정규식 밖에 있다. **분류기의 오탐을 소비자 쪽에서 한 번 더 거르는
-구조**이며, 이것이 `Apollo 13` 한 편이 폴더로 감싸이지 않는 이유다.
+The third rule is outside the regex. It is **a structure filtering the classifier's false positives once more on
+the consumer side**, and this is why a single `Apollo 13` is not wrapped in a folder.
 
 ---
 
-## 33.3 코드 — `EPISODE_RE` 해부
+## 33.3 The code — dissecting `EPISODE_RE`
 
 ```python
 # naming.py:14-21
-# 이름 끝의 화수. 구분자(공백·밑줄·점·하이픈)와 단위(화·회)는 있을 수도 없을 수도 있다.
+# The episode number at the end of the name. The separator (space·underscore·dot·hyphen) and unit (화·회) may or may not be there.
 #
-# `(?<!\d)` 가 핵심이다. 이것이 없으면 `Sky.Blue.2003` 이 줄기 `Sky.Blue.2` + 화수
-# `003` 으로 갈린다 — 연도를 화수로 오인해 영화 한 편이 엉뚱한 시리즈명을 얻는다.
-# 화수 앞이 또 숫자라면 그 숫자열은 통째로 하나의 수이지 화수가 아니다.
+# `(?<!\d)` is the core. Without it `Sky.Blue.2003` splits into the stem `Sky.Blue.2` + episode number
+# `003` — mistaking a year for an episode number so one movie gets a nonsense series name.
+# If the character before the episode number is another digit, that digit string is one whole number, not an episode number.
 EPISODE_RE = re.compile(
     r"^(?P<stem>.*?)(?P<sep>[\s._-]*)(?<!\d)(?P<ep>\d{1,3})(?P<unit>\s*[화회])?$"
 )
 ```
 
-### 33.3.1 네 그룹과 하나의 관문
+### 33.3.1 Four groups and one gate
 
-| 조각 | 이름 | 무엇을 집는가 | 소비 폭 |
+| Piece | Name | What it grabs | Consume width |
 |---|---|---|---|
-| `^` | — | 문자열 시작 앵커 | 0 |
-| `(?P<stem>.*?)` | stem | 화수 앞 전부 — 시리즈명의 원재료 | 가변, **비탐욕** |
-| `(?P<sep>[\s._-]*)` | sep | 줄기와 화수 사이의 구분자 | 가변, 탐욕, 0개 허용 |
-| `(?<!\d)` | — | 바로 앞이 숫자면 이 자리를 거부 | **0** |
-| `(?P<ep>\d{1,3})` | ep | 화수 본체 | 1–3 |
-| `(?P<unit>\s*[화회])?` | unit | `1화`·`500회` 의 끝 글자 | 0, 또는 가변 (`\s*` 에 상한이 없다) |
-| `$` | — | 문자열 끝 앵커 | 0 |
+| `^` | — | string-start anchor | 0 |
+| `(?P<stem>.*?)` | stem | everything before the episode number — the raw material of the series name | variable, **non-greedy** |
+| `(?P<sep>[\s._-]*)` | sep | the separator between the stem and the episode number | variable, greedy, allows 0 |
+| `(?<!\d)` | — | reject this spot if the character just before is a digit | **0** |
+| `(?P<ep>\d{1,3})` | ep | the episode-number body | 1–3 |
+| `(?P<unit>\s*[화회])?` | unit | the end letter of `1화`·`500회` | 0, or variable (`\s*` has no upper bound) |
+| `$` | — | string-end anchor | 0 |
 
-이 표에서 앵커를 뺀 다섯 줄 중 네 번째 줄만 소비 폭이 0 이다. 나머지가 "무엇을
-가져갈지"를 정하는 동안 그것 하나만 **"여기서 끊어도 되는가"** 를 정한다.
+Of the five lines in this table minus the anchors, only the fourth line has consume width 0. While the rest set
+"what to take," that one alone sets **"is it OK to cut here."**
 
-### 33.3.2 `(?<!\d)` — 폭 0 의 관문
+### 33.3.2 `(?<!\d)` — the width-0 gate
 
-> **용어** — **부정 후방탐색(negative lookbehind)**: `(?<!X)` 형식의 **폭 0 어서션
-> (zero-width assertion)**. 현재 위치 **바로 앞**이 `X` 와 일치하면 그 자리에서의 매치를
-> 거부한다. 문자를 소비하지 않으므로 어떤 그룹의 내용도 바꾸지 않는다.
+> **Term** — **negative lookbehind**: a **zero-width assertion** of the form `(?<!X)`. If the position **just
+> before** the current one matches `X`, it rejects the match at that spot. Since it consumes no character, it
+> changes no group's content.
 
-![부정 후방탐색이 화수 후보 앞 글자를 검사해 통과와 차단을 가른다](/images/lecture/hls-recon/33-lookbehind-gate.svg)
+![A negative lookbehind checks the character before the episode candidate and splits pass and block](/images/lecture/hls-recon/33-lookbehind-gate.svg)
 
-*그림 33-1 — `(?<!\d)` 는 화수 후보 바로 앞 글자 하나만 본다*
+*Figure 33-1 — `(?<!\d)` looks at only the one character just before the episode candidate*
 
-관문의 근거는 어휘 분석의 기본 규칙이다.
+The gate's basis is a basic rule of lexical analysis.
 
-> **용어** — **최대 만족 원칙(maximal munch)**: 어휘 분석에서 한 토큰은 가능한 한 길게
-> 잡는다는 규칙. 연속한 숫자열은 통째로 하나의 수이지 쪼갤 수 있는 두 수가 아니다.
+> **Term** — **maximal munch**: the rule in lexical analysis that one token is grabbed as long as possible. A
+> consecutive digit string is one whole number, not two numbers that can be split.
 
-`Sky.Blue.2003` 의 `2003` 은 숫자 넷이 이어진 **하나의 수**다. 그 안에서 뒤 세 자리만
-떼어 화수라고 부르는 것은 토큰 경계를 어기는 일이고, `(?<!\d)` 는 그 경계를 강제한다.
+The `2003` of `Sky.Blue.2003` is **one number** of four consecutive digits. Taking only the last three inside it
+and calling it an episode number breaks the token boundary, and `(?<!\d)` enforces that boundary.
 
-실측했다. 같은 이름을 네 가지 정규식에 넣은 결과다.
+Measured. The result of putting the same name into four regexes.
 
-| 정규식 | `Sky.Blue.2003` 의 분해 |
+| Regex | The decomposition of `Sky.Blue.2003` |
 |---|---|
-| **실제** (`.*?` + `(?<!\d)`) | **매치 없음** — 화수 없는 이름 |
-| 탐욕 `.*` + `(?<!\d)` | 매치 없음 |
-| `.*?`, 관문 제거 | 줄기 `Sky.Blue.2` · 화수 `003` |
-| 탐욕 `.*`, 관문 제거 | 줄기 `Sky.Blue.200` · 화수 `3` |
+| **actual** (`.*?` + `(?<!\d)`) | **no match** — a name with no episode number |
+| greedy `.*` + `(?<!\d)` | no match |
+| `.*?`, gate removed | stem `Sky.Blue.2` · episode `003` |
+| greedy `.*`, gate removed | stem `Sky.Blue.200` · episode `3` |
 
-세 번째 줄이 코드 주석이 예고한 그 실패다. 네 번째 줄은 더 나쁘다 — 같은 이름이
-`Sky.Blue.200` 이라는 시리즈의 3화가 된다.
+The third row is that failure the code comment foretold. The fourth row is worse — the same name becomes episode
+3 of a series `Sky.Blue.200`.
 
-### 33.3.3 `\d{1,3}` — 상한은 관문과 다른 것을 막는다
+### 33.3.3 `\d{1,3}` — the upper bound blocks something different from the gate
 
-관문과 상한이 같은 일을 한다고 생각하기 쉬우나, 실측하면 역할이 갈린다. 상한만
-`\d+` 로 풀어 보았다(관문은 그대로 둔다).
+It is easy to think the gate and the upper bound do the same job, but measure and their roles split. I unwound
+only the upper bound to `\d+` (leaving the gate).
 
-| 이름 | 실제 (`\d{1,3}`) | `\d+` 로 바꾸면 |
+| Name | Actual (`\d{1,3}`) | With `\d+` |
 |---|---|---|
-| `Sky.Blue.2003` | 매치 없음 | 줄기 `Sky.Blue` · 화수 `2003` |
-| `Blade Runner 2049` | 매치 없음 | 줄기 `Blade Runner` · 화수 `2049` |
-| `원피스1000` | 매치 없음 | 줄기 `원피스` · 화수 `1000` |
+| `Sky.Blue.2003` | no match | stem `Sky.Blue` · episode `2003` |
+| `Blade Runner 2049` | no match | stem `Blade Runner` · episode `2049` |
+| `원피스1000` | no match | stem `원피스` · episode `1000` |
 
-`\d+` 에서는 `2003` 앞이 `.` 이므로 관문이 통과시킨다. 즉 **연도 전체를 화수로 읽는
-경로는 관문이 막지 못하고 상한이 막는다.** 둘의 분업은 이렇다.
+In `\d+` the character before `2003` is `.` so the gate passes it. That is, **the path reading a whole year as an
+episode number is blocked not by the gate but by the upper bound.** Their division of labor is this.
 
-| 장치 | 막는 것 |
+| Device | What it blocks |
 |---|---|
-| `(?<!\d)` | 숫자열 **안쪽**에서 끊는 분할 (`2003` → `2`+`003`) |
-| `\d{1,3}` | 네 자리 이상의 숫자열 **전체**를 화수로 읽는 분할 (`2003` → `2003`) |
+| `(?<!\d)` | a split cutting **inside** a digit string (`2003` → `2`+`003`) |
+| `\d{1,3}` | a split reading a whole digit string of four or more digits as an episode number (`2003` → `2003`) |
 
-둘을 합치면 이 정규식의 실제 의미가 한 문장으로 정리된다.
+Combine the two and this regex's actual meaning is organized in one sentence.
 
-> **이름 끝의 (단위를 뺀) 최대 숫자열이 1–3자리일 때만, 그 숫자열 전체가 화수다.**
+> **Only when the maximal digit string at the end of the name (minus the unit) is 1–3 digits is that whole digit
+> string an episode number.**
 
-이 재서술은 무작위 문자열 20만 건으로 확인했다(§33.6.2 에서 다시 쓴다).
+This restatement was confirmed with 200,000 random strings (used again in §33.6.2).
 
-### 33.3.4 `.*?` — 비탐욕이 지키는 것은 화수가 아니라 구분자다
+### 33.3.4 `.*?` — what non-greedy protects is not the episode number but the separator
 
-`.*?` 를 탐욕 `.*` 로 바꾸면 무엇이 달라지는지가 흥미롭다. 관문이 있는 한 **화수는
-그대로**이고, 갈라지는 것은 `stem` 과 `sep` 의 **경계**다.
+What differs when you change `.*?` to greedy `.*` is interesting. As long as the gate is there, **the episode
+number is unchanged**, and what splits is the **boundary** of `stem` and `sep`.
 
-| 이름 | `.*?` (실제) | 탐욕 `.*` |
+| Name | `.*?` (actual) | greedy `.*` |
 |---|---|---|
 | `원피스 1화` | stem `원피스` · sep `' '` | stem `'원피스 '` · sep `''` |
 | `작품-05` | stem `작품` · sep `'-'` | stem `'작품-'` · sep `''` |
 | `천원돌파 그렌라간 27` | stem `천원돌파 그렌라간` · sep `' '` | stem `'천원돌파 그렌라간 '` · sep `''` |
 
-비탐욕 `stem` 은 최소한만 집어가므로, 이어지는 탐욕 `sep` 이 구분자를 **전부** 가져간다.
-탐욕 `stem` 은 그 반대여서 구분자가 줄기에 흡수되고 `sep` 이 빈 문자열이 된다.
+The non-greedy `stem` grabs the minimum, so the following greedy `sep` takes **all** of the separator. The greedy
+`stem` is the opposite so the separator is absorbed into the stem and `sep` becomes the empty string.
 
-시리즈명에는 영향이 없다 — `series_of` 가 줄기 끝의 구분자를 다시 떼기 때문이다.
+There is no effect on the series name — because `series_of` strips the separator at the stem's end again.
 
 ```python
 # naming.py:41-51
 def series_of(name: str) -> str:
-    """파일명에서 시리즈명을 얻는다 — 끝의 화수와 그 앞 구분자를 떼어낸다.
+    """Get the series name from the file name — strip the trailing episode number and the separator before it.
 
-    `그렌라간01` → `그렌라간`. 화수가 없으면(영화 등) 이름을 그대로 돌려준다.
-    줄기가 비면(파일명이 숫자뿐) 시리즈로 묶을 근거가 없으므로 원본을 쓴다.
+    `그렌라간01` → `그렌라간`. If there is no episode number (a movie, etc.) return the name as-is.
+    If the stem is empty (the file name is all digits) there is no basis to group by series so use the original.
     """
     parts = split_episode(name)
     if not parts:
@@ -220,32 +219,31 @@ def series_of(name: str) -> str:
     return stem or name
 ```
 
-`rstrip(" ._-")` 가 탐욕·비탐욕의 차이를 흡수한다. 그러나 **`sep` 자체를 쓰는 소비자가
-하나 있다** — `name_variants` 의 "구분자를 뺀 표기" 후보다(§33.5). 탐욕으로 바꾸면
-`sep` 이 항상 비어 그 후보가 생성되지 않고, `그렌라간 01` 인 영상에 대해
-`그렌라간01` 자막을 찾지 못한다.
+`rstrip(" ._-")` absorbs the greedy·non-greedy difference. But **there is one consumer that uses `sep` itself** —
+`name_variants`'s "separator-removed notation" candidate (§33.5). Change it to greedy and `sep` is always empty so
+that candidate is not generated, and for a video `그렌라간 01` it cannot find the subtitle `그렌라간01`.
 
-**비탐욕이 지키는 것은 화수의 자릿수가 아니라 구분자 정보의 보존이다.**
+**What non-greedy protects is not the episode number's digit count but the preservation of the separator info.**
 
-관문과 비탐욕을 **둘 다** 빼면 결과가 무너진다. 실측이다.
+Remove **both** the gate and non-greedy and the result collapses. Measured.
 
-| 이름 | 실제 | 탐욕 + 관문 제거 |
+| Name | Actual | greedy + gate removed |
 |---|---|---|
-| `그렌라간01` | 줄기 `그렌라간` · 화수 `01` | 줄기 `그렌라간0` · 화수 `1` |
-| `천원돌파 그렌라간 27` | 줄기 `천원돌파 그렌라간` · 화수 `27` | 줄기 `천원돌파 그렌라간 2` · 화수 `7` |
-| `영상010` | 줄기 `영상` · 화수 `010` | 줄기 `영상01` · 화수 `0` |
+| `그렌라간01` | stem `그렌라간` · episode `01` | stem `그렌라간0` · episode `1` |
+| `천원돌파 그렌라간 27` | stem `천원돌파 그렌라간` · episode `27` | stem `천원돌파 그렌라간 2` · episode `7` |
+| `영상010` | stem `영상` · episode `010` | stem `영상01` · episode `0` |
 
-**모든 회차가 자기만의 시리즈를 갖게 된다.** 시리즈 폴더 기능이 통째로 무의미해진다.
+**Every episode comes to have its own series.** The series-folder feature becomes wholly meaningless.
 
-### 33.3.5 `unit` — 되돌릴 수 있게 쪼갠다
+### 33.3.5 `unit` — split so it can be re-joined
 
 ```python
 # naming.py:29-38
 def split_episode(name: str) -> tuple[str, str, str, str] | None:
-    """이름을 (줄기, 구분자, 화수, 단위) 로 나눈다. 화수가 없으면 None.
+    """Split the name into (stem, separator, episode number, unit). None if no episode number.
 
-    단위는 `1화`·`500회` 의 끝 글자다. 이름을 다시 조립할 때 그대로 붙여야
-    `원피스 1화` 가 `원피스 1` 로 바뀌지 않는다.
+    The unit is the end letter of `1화`·`500회`. When reassembling the name it must be attached as-is
+    so `원피스 1화` does not turn into `원피스 1`.
     """
     m = EPISODE_RE.match(name)
     if not m:
@@ -253,75 +251,75 @@ def split_episode(name: str) -> tuple[str, str, str, str] | None:
     return m.group("stem"), m.group("sep"), m.group("ep"), m.group("unit") or ""
 ```
 
-이 함수의 반환은 **손실 없는 분해**다. 네 조각을 그대로 이으면 원본이 된다.
-`unit` 을 따로 두지 않고 버렸다면 `원피스 1화` 의 이웃 화수를 만들 때
-`원피스 2` 가 나온다 — 서버에 없는 이름이다.
+This function's return is a **lossless decomposition.** Join the four pieces as-is and you get the original. Had
+`unit` not been kept separate but discarded, making the neighbor episode number of `원피스 1화` gives `원피스 2` — a
+name not on the server.
 
-같은 설계가 `sep` 에도 적용된다. **"쪼갠 뒤 다시 붙일 수 있는가"가 파서 설계의
-검사식**이며, 붙였을 때 원본이 나오지 않는 분해는 그 자체로 정보 손실이다.
+The same design applies to `sep`. **"Can you re-join after splitting" is the check formula of parser design**, and
+a decomposition that does not give the original when joined is itself information loss.
 
-`series_of` 의 마지막 줄 `return stem or name` 도 같은 계열의 방어다. 파일명이 숫자뿐
-(`01.mp4`)이면 줄기가 빈 문자열이 되는데, 빈 이름으로 폴더를 만들 수는 없으므로
-원본 이름을 쓴다.
+`series_of`'s last line `return stem or name` is a defense of the same lineage. If the file name is all digits
+(`01.mp4`) the stem becomes an empty string, and since you cannot make a folder with an empty name it uses the
+original name.
 
 ---
 
-## 33.4 오분류는 소비자 수만큼 번진다
+## 33.4 Misclassification spreads by the number of consumers
 
-![한 번의 오분류가 세 소비자로 번진다](/images/lecture/hls-recon/33-misclassification-spread.svg)
+![One misclassification spreads to three consumers](/images/lecture/hls-recon/33-misclassification-spread.svg)
 
-*그림 33-2 — 단일 출처의 오분류는 소비자 수만큼 증폭된다*
+*Figure 33-2 — a single source's misclassification is amplified by the number of consumers*
 
-`split_episode` 를 쓰는 곳을 전수로 옮기면 다음과 같다.
+Move the places using `split_episode` exhaustively and it is this.
 
-| 소비자 | 앵커 | 거치는 함수 | 오분류 시 증상 |
+| Consumer | Anchor | The function it goes through | Symptom on misclassification |
 |---|---|---|---|
-| 시리즈 폴더 배치(신규) | [`library.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L33) | `series_of` | 새로 받은 파일이 엉뚱한 폴더에 놓인다 |
-| 시리즈 폴더 되모으기 | [`library.py:69-71`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L69-L71) | `split_episode` `series_of` | 무관한 파일들이 한 폴더로 묶인다 |
-| 재고 조사 | `inventory.py:187,196` | `episode_of` `series_of` | 영화가 "n화 있음"으로 세어져 진짜 n화가 영영 빠진다 |
-| 자막 URL 후보 | [`subtitles.py:405`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L405) | `name_variants` | 없는 이름으로 주소를 조립해 후보 전부가 헛요청 |
-| 이웃 화수 수집 | [`cli.py:346`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L346) | `episode_names` | 범위 전체가 엉뚱한 이름으로 조립된다 |
-| 출력 파일 배치 | [`cli.py:663-665`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L663-L665) | `split_episode` `series_of` | 결과물이 엉뚱한 폴더에 놓인다 |
+| series-folder placement (new) | [`library.py:33`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L33) | `series_of` | a newly received file is put in the wrong folder |
+| series-folder re-gathering | [`library.py:69-71`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/library.py#L69-L71) | `split_episode` `series_of` | unrelated files are grouped into one folder |
+| inventory | `inventory.py:187,196` | `episode_of` `series_of` | a movie is counted as "episode n present" and the real episode n is forever missing |
+| subtitle URL candidates | [`subtitles.py:405`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L405) | `name_variants` | assembles addresses with nonexistent names so every candidate is a wasted request |
+| neighbor-episode gathering | [`cli.py:346`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L346) | `episode_names` | the whole range is assembled with wrong names |
+| output-file placement | [`cli.py:663-665`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L663-L665) | `split_episode` `series_of` | the output is put in the wrong folder |
 
-관문 한 줄을 지우고 실제로 돌려 보았다. `library.plan_tidy` 에 파일 목록을 주고
-계획을 받아 비교한 결과다.
+I removed the one gate line and actually ran it. The result of giving `library.plan_tidy` a file list and
+comparing the plans returned.
 
 ```
-A. tests/run.sh 의 픽스처 그대로
-   [실제 정규식]     모아모아01·02(+.srt) → 모아모아/
-   [(?<!\d) 제거]    같음 — 차이 없음
+A. the tests/run.sh fixture as-is
+   [actual regex]     모아모아01·02(+.srt) → 모아모아/
+   [(?<!\d) removed]  same — no difference
 
-B. 이름이 연도에서 끝나는 영화 두 편을 넣으면
+B. put in two movies ending in a year
    (Sky.Blue.2003.mkv, Sky.Blue.2010.mkv)
-   [실제 정규식]     두 영화 모두 제자리
-   [(?<!\d) 제거]    Sky.Blue.2003.mkv → Sky.Blue.2/
-                     Sky.Blue.2010.mkv → Sky.Blue.2/
+   [actual regex]     both movies stay in place
+   [(?<!\d) removed]  Sky.Blue.2003.mkv → Sky.Blue.2/
+                      Sky.Blue.2010.mkv → Sky.Blue.2/
 ```
 
-B 에서 벌어진 일을 말로 옮기면 이렇다. **무관한 영화 두 편이 `Sky.Blue.2` 라는
-존재하지 않는 시리즈의 3화와 10화로 묶여 새 폴더로 들어간다.** 폴더 이름은 원본
-어디에도 없던 문자열이다.
+Put what happened in B into words. **Two unrelated movies are grouped as episode 3 and episode 10 of a
+nonexistent series `Sky.Blue.2` and go into a new folder.** The folder name is a string that was nowhere in the
+originals.
 
-A 는 이 장에서 가장 중요한 관측이다. **저장소의 회귀 테스트 픽스처로는 이 결함이
-드러나지 않는다.** 이유는 §33.8 에서 다룬다.
+A is the most important observation in this chapter. **The repository's regression-test fixture does not reveal
+this defect.** The reason is covered in §33.8.
 
 ---
 
-## 33.5 정답은 서버만 안다 — 후보를 만들어 채택하기
+## 33.5 Only the server knows the answer — making candidates and adopting
 
-### 33.5.1 문제 — 같은 작품, 다른 표기
+### 33.5.1 The problem — same work, different notation
 
-영상 파일 이름과 자막 파일 이름은 서로 다른 주체가 정한다. 그래서 같은 회차를
-가리키면서 표기가 어긋난다.
+The video file name and the subtitle file name are decided by different actors. So they point at the same episode
+while the notation goes off.
 
 ```python
 # naming.py:60-70
 def name_variants(name: str) -> list[str]:
-    """이름 후보. 원본을 먼저, 그다음 화수 표기를 정규화한 형태.
+    """Name candidates. The original first, then the episode-number-normalized form.
 
-    영상 파일명과 자막 파일명은 같은 작품을 가리키면서도 화수 표기가 어긋나는 일이
-    잦다 — `그렌라간1` 과 `그렌라간01`, `그렌라간 01` 과 `그렌라간01`. 어느 쪽이
-    맞는지는 서버만 알고 있으므로 후보를 만들어 두고 존재하는 것을 채택한다.
+    The video filename and the subtitle filename frequently point at the same work while the episode
+    notation goes off — `그렌라간1` and `그렌라간01`, `그렌라간 01` and `그렌라간01`. Which is right
+    only the server knows, so make the candidates and adopt the one that exists.
     """
     out = [name]
     parts = split_episode(name)
@@ -329,27 +327,27 @@ def name_variants(name: str) -> list[str]:
         return out
 ```
 
-마지막 문장이 전략의 이름을 담고 있다.
+The last sentence holds the strategy's name.
 
-> **용어** — **생성 후 검사(generate and test)**: 정답을 직접 계산할 수 없을 때 후보를
-> 열거하고 각각을 판정자에게 물어 맞는 것을 채택하는 전략. 여기서 판정자는 **서버**다 —
-> 후보 주소로 요청해 자막이 오면 그 표기가 정답이다.
+> **Term** — **generate and test**: a strategy for when you cannot compute the answer directly — enumerate
+> candidates and ask a judge about each, adopting the one that matches. Here the judge is the **server** —
+> request a candidate address and if a subtitle comes, that notation is the answer.
 
-클라이언트는 서버의 이름 규칙을 알 수 없다. 알 수 있다고 가정하면 사이트마다 규칙을
-하드코딩하게 되고, 규칙이 바뀌는 순간 조용히 실패한다. **모르는 것을 모른다고 두고
-관측으로 결정하는 쪽**을 택한 것이다.
+The client cannot know the server's naming rules. Assume it can and you end up hardcoding rules per site, and the
+moment a rule changes it quietly fails. It chose **the side that leaves the unknown as unknown and decides by
+observation.**
 
-### 33.5.2 후보 생성 규칙
+### 33.5.2 The candidate-generation rules
 
 ```python
 # naming.py:71-86
     stem, sep, ep, unit = parts
 
     cands = []
-    if sep:  # 구분자를 뺀 표기
+    if sep:  # the separator-removed notation
         cands.append(f"{stem}{ep}{unit}")
-    # 자릿수 변형은 1~2자리에만 건다. 3자리는 화수가 아니라 연도('… 2026')일 수
-    # 있고, 그것을 건드리면 원본과 무관한 이름이 만들어진다.
+    # apply the digit-count variation only to 1~2 digits. 3 digits may be not an episode number
+    # but a year ('… 2026'), and touching it makes a name unrelated to the original.
     if len(ep) == 1:
         cands.append(f"{stem}{sep}{ep.zfill(2)}{unit}")
     elif len(ep) == 2 and ep[0] == "0":
@@ -361,343 +359,333 @@ def name_variants(name: str) -> list[str]:
     return out
 ```
 
-실제 출력이다.
+The actual output.
 
-| 입력 | 후보 목록 | 걸린 축 |
+| Input | Candidate list | The axis applied |
 |---|---|---|
-| `그렌라간01` | `그렌라간01`, `그렌라간1` | 자릿수(2→1) |
-| `그렌라간1` | `그렌라간1`, `그렌라간01` | 자릿수(1→2) |
-| `원피스 1화` | `원피스 1화`, `원피스1화`, `원피스 01화` | 구분자 + 자릿수 |
-| `작품-05` | `작품-05`, `작품05`, `작품-5` | 구분자 + 자릿수 |
-| `영상010` | `영상010` | 없음 — 3자리 |
-| `Sky.Blue.2003` | `Sky.Blue.2003` | 없음 — 화수가 아니다 |
+| `그렌라간01` | `그렌라간01`, `그렌라간1` | digit count (2→1) |
+| `그렌라간1` | `그렌라간1`, `그렌라간01` | digit count (1→2) |
+| `원피스 1화` | `원피스 1화`, `원피스1화`, `원피스 01화` | separator + digit count |
+| `작품-05` | `작품-05`, `작품05`, `작품-5` | separator + digit count |
+| `영상010` | `영상010` | none — 3 digits |
+| `Sky.Blue.2003` | `Sky.Blue.2003` | none — not an episode number |
 
-**원본이 언제나 첫 후보다.** 순서가 곧 정책이다 — 호출부는 앞에서부터 시도하고 첫
-성공에서 멈춘다([`subtitles.py:392-393`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L392-L393)). 원본을 먼저 두지 않으면, 변형 후보가 우연히
-200 을 받았을 때 원본을 시도해 보지도 않고 틀린 자막을 채택한다.
+**The original is always the first candidate.** The order is itself the policy — the caller tries from the front
+and stops at the first success ([`subtitles.py:392-393`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L392-L393)). Do not put the original first and, when a variant candidate
+happens to get a 200, it adopts the wrong subtitle without even trying the original.
 
-### 33.5.3 자릿수 변형을 1–2자리에만 거는 이유
+### 33.5.3 Why the digit-count variation is applied only to 1–2 digits
 
-주석이 든 근거는 연도다. 그런데 §33.3.3 에서 확인했듯 **네 자리 연도는 애초에 `ep`
-그룹에 도달하지 못한다** — `(?<!\d)` 와 `\d{1,3}` 이 앞에서 막는다. 실측 범위에서
-`… 2026` 꼴로 끝나는 이름은 어느 것도 매치되지 않았다.
+The basis the comment gives is the year. But as confirmed in §33.3.3, **a four-digit year does not reach the `ep`
+group in the first place** — `(?<!\d)` and `\d{1,3}` block it earlier. In the measured range no name ending in the
+`… 2026` shape matched.
 
-그러므로 이 제한은 **두 번째 방어선**으로 읽는 것이 정확하다. 지금 실제로 이 제한이
-관장하는 것은 3자리 화수(`500회`·`010`·`003`)이고, 여기서의 판단 근거는 다른 데 있다.
+So this restriction is more accurately read as a **second defense line.** What this restriction actually governs
+now is 3-digit episode numbers (`500회`·`010`·`003`), and the basis for the judgment here is elsewhere.
 
-| 축 | 실측된 표기 차이인가 | 후보에 넣는가 |
+| Axis | Is it a measured notation difference | Put in the candidates |
 |---|---|---|
-| 구분자 유무 (`그렌라간 01` ↔ `그렌라간01`) | 예 — 주석이 실측을 기록 | 넣는다 |
-| 1↔2자리 제로 패딩 (`1` ↔ `01`) | 예 — 회귀 테스트가 고정(`tests/run.sh:277-284`) | 넣는다 |
-| 3자리의 자릿수 변형 (`010` ↔ `10`) | **관측된 적 없음** | 넣지 않는다 |
+| separator presence (`그렌라간 01` ↔ `그렌라간01`) | yes — the comment records a measurement | put in |
+| 1↔2 digit zero padding (`1` ↔ `01`) | yes — the regression test fixes it (`tests/run.sh:277-284`) | put in |
+| a 3-digit's digit-count variation (`010` ↔ `10`) | **never observed** | do not put in |
 
-후보를 늘리는 데는 대가가 둘 있다. 하나는 **후보마다 HTTP 요청이 하나씩 늘어난다**는
-것이고([`subtitles.py:392-393`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L392-L393) 이 "짐작으로 넣은 경로는 실패할 때마다 헛요청이 된다"고
-적어 둔 것과 같은 논지), 다른 하나가 더 무겁다 — **잘못된 후보가 우연히 200 을 받으면
-틀린 자막을 정답으로 채택한다.** 생성 후 검사 전략에서 후보 집합을 넓히는 것은
-정확도를 올리는 일이 아니라 **오탐 확률을 올리는 일**이다.
+Widening the candidates has two prices. One is that **each candidate adds one HTTP request**
+([`subtitles.py:392-393`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/subtitles.py#L392-L393) writes the same thesis "a path put in by guessing is a wasted request each time it fails"),
+and the other is heavier — **if a wrong candidate happens to get a 200, it adopts the wrong subtitle as the
+answer.** In the generate-and-test strategy, widening the candidate set is not raising accuracy but **raising the
+false-positive probability.**
 
-### 33.5.4 `episode_names` — 폭을 입력에서 상속한다
+### 33.5.4 `episode_names` — inherit the width from the input
 
 ```python
 # naming.py:107-117
 def episode_names(name: str, spec: str, what: str = "--sub-range") -> list[str]:
-    """범위 표기를 이름에 적용해 화수별 이름 목록을 만든다.
+    """Apply a range notation to the name to make a per-episode name list.
 
-    자릿수는 입력 이름의 화수 표기를 따른다 — `그렌라간01` 이면 2자리를 유지한다.
+    The digit count follows the input name's episode notation — `그렌라간01` keeps 2 digits.
     """
     parts = split_episode(name)
     if not parts:
-        raise ValueError(f"이름 끝에서 화수를 찾지 못했다: {name!r} (예: 그렌라간01)")
+        raise ValueError(f"could not find an episode number at the end of the name: {name!r} (e.g. 그렌라간01)")
     stem, sep, ep, unit = parts
     lo, hi = parse_range(spec, what)
     return [f"{stem}{sep}{str(n).zfill(len(ep))}{unit}" for n in range(lo, hi + 1)]
 ```
 
-`zfill(len(ep))` 하나가 정책 전부다. **자릿수를 정하지 않고 입력에서 상속한다** —
-서버의 표기 규칙을 추측하지 않고 이미 확인된 표본 하나를 그대로 따른다.
+The one `zfill(len(ep))` is the whole policy. **It does not set the digit count but inherits it from the input** —
+it does not guess the server's notation rule but follows one already-confirmed sample as-is.
 
-| 입력 이름 | 범위 | 생성된 이름 |
+| Input name | Range | Generated names |
 |---|---|---|
 | `그렌라간01` | `01-03` | `그렌라간01` `그렌라간02` `그렌라간03` |
 | `그렌라간1` | `1-3` | `그렌라간1` `그렌라간2` `그렌라간3` |
 | `원피스 500회` | `500-502` | `원피스 500회` `원피스 501회` `원피스 502회` |
 | `비디오_003` | `3-5` | `비디오_003` `비디오_004` `비디오_005` |
 
-여기서 실패 처리가 다른 소비자들과 갈린다. 네 소비자의 미탐 대응을 비교하면 이렇다.
+Here the failure handling splits from the other consumers. Compare the four consumers' false-negative responses.
 
-| 함수 | 화수를 못 찾았을 때 | 왜 그렇게 하는가 |
+| Function | When it cannot find an episode number | Why so |
 |---|---|---|
-| `series_of` | 이름을 그대로 반환 | 자동 추론 경로 — 조용히 물러나면 파일이 제자리에 남는다 |
-| `episode_of` | `None` | 호출부가 그 파일을 건너뛴다 |
-| `name_variants` | 원본만 담은 목록 | 후보가 하나뿐일 뿐, 동작은 계속된다 |
-| `episode_names` | **`ValueError`** | 사용자가 `--sub-range` 로 **명시적으로 요구**한 기능이다 |
+| `series_of` | return the name as-is | an automatic-inference path — retreat quietly and the file stays in place |
+| `episode_of` | `None` | the caller skips that file |
+| `name_variants` | a list holding only the original | just one candidate, the behavior continues |
+| `episode_names` | **`ValueError`** | it is a feature the user **explicitly requested** with `--sub-range` |
 
-**사용자가 요구한 기능에서만 실패를 예외로 올린다.** 자동 추론이 조용히 물러나는 것은
-설계이고, 명시적 요구가 조용히 실패하는 것은 결함이다 — 후자는 사용자가 무엇을 잘못
-적었는지 알 길이 없다. [`cli.py:347-348`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L347-L348) 이 이 예외를 그대로 `SystemExit` 로 올린다.
+**Only in a user-requested feature does it raise the failure as an exception.** That an automatic inference
+retreats quietly is design, and that an explicit request fails quietly is a defect — the latter leaves the user no
+way to know what they wrote wrong. [`cli.py:347-348`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L347-L348) raises this exception straight to `SystemExit`.
 
 ---
 
-## 33.6 일반화 — 정확도가 곧 오분류율
+## 33.6 Generalization — accuracy is the misclassification rate
 
-### 33.6.1 정규식을 쓰는 순간 그 오분류율이 기능의 오분류율이 된다
+### 33.6.1 The moment you use a regex, its misclassification rate becomes the feature's misclassification rate
 
-이 장의 명제를 한 줄로 쓰면 이렇다.
+Write this chapter's proposition in one line and it is this.
 
-> **어떤 기능이 정규식으로 판정을 내리면, 그 기능의 오분류율은 정규식의 오분류율보다
-> 좋아질 수 없다.** 후단에서 걸러 낮출 수는 있어도(§33.2 의 "2편 이상" 규칙),
-> 정규식이 놓친 것을 후단이 되살릴 수는 없다.
+> **If a feature makes a verdict with a regex, that feature's misclassification rate cannot be better than the
+> regex's misclassification rate.** You can filter it lower downstream (§33.2's "two or more" rule), but downstream
+> cannot revive what the regex missed.
 
-같은 구조가 나타나는 곳을 나열한다.
+List where the same structure appears.
 
-| 영역 | 정규식이 판정하는 것 | 오탐의 대가 | 미탐의 대가 |
+| Domain | What the regex judges | The price of a false positive | The price of a false negative |
 |---|---|---|---|
-| 파일 이름 화수 (이 장) | 이 숫자가 화수인가 | 파일이 엉뚱한 폴더로 | 시리즈로 묶이지 않음 |
-| 로그 파싱·탐지 규칙 | 이 줄이 침해 지표인가 | 경보 피로 — 규칙이 꺼진다 | 놓친 침해 |
-| 스팸 필터·WAF 규칙 | 이 요청이 악성인가 | 정상 사용자 차단 | 우회 |
-| 입력 검증 | 이 값이 허용 형식인가 | 정상 가입 실패 | 주입 |
-| 라우팅·권한 매칭 | 이 경로가 보호 대상인가 | 정상 접근 거부 | **인증 없이 접근** |
-| 개인정보 마스킹 | 이 조각이 민감값인가 | 필요한 정보까지 가림 | **평문 유출** |
+| file-name episode number (this chapter) | is this number an episode number | file into the wrong folder | not grouped into a series |
+| log parsing·detection rule | is this line a compromise indicator | alert fatigue — the rule is turned off | a missed compromise |
+| spam filter·WAF rule | is this request malicious | a normal user blocked | bypass |
+| input validation | is this value an allowed form | a normal signup fails | injection |
+| routing·permission matching | is this path a protected target | a normal access denied | **access without authentication** |
+| PII masking | is this piece a sensitive value | hides even needed info | **plaintext leak** |
 
-아래 두 줄에서 미탐의 대가가 굵다. **같은 종류의 실수가 인증·권한 경로에 있으면
-그것은 오분류가 아니라 취약점이다.** 이 장의 코드에서는 파일 하나가 엉뚱한 폴더로 갈
-뿐이지만, 구조는 정확히 같다.
+On the lower two rows the false negative's price is bold. **If the same kind of mistake is on an
+authentication·permission path, it is not a misclassification but a vulnerability.** In this chapter's code only
+one file goes to the wrong folder, but the structure is exactly the same.
 
-여기서 정규식의 한계 자체도 분명히 해 둔다.
+Here also make clear the limit of a regex itself.
 
-> **용어** — **정규 언어(regular language)**: 유한 오토마타로 인식되는 문자열 집합.
-> 중첩·재귀 구조(괄호 짝 맞추기, HTML 트리)는 정규 언어가 아니므로 정규식으로
-> 인식할 수 없다.
+> **Term** — **regular language**: a string set recognized by a finite automaton. A nested·recursive structure
+> (matching parentheses, an HTML tree) is not a regular language so it cannot be recognized by a regex.
 
-이 장의 문제는 다행히 정규 언어로 표현된다 — "이름 끝의 숫자열"은 유한 오토마타가
-인식한다. 그러나 **"이 숫자가 화수인가"는 형태의 문제가 아니라 의미의 문제**다.
-정규식은 형태만 본다. `Apollo 13` 과 `그렌라간 13` 의 문자 배열이 같은 한, 어떤
-정규식도 둘을 가르지 못한다. **정규식으로 답할 수 없는 질문에 정규식을 쓰고 있다는
-사실을 아는 것**이 이 코드가 "2편 이상일 때만 묶는다"는 후단 규칙을 둔 이유다.
+This chapter's problem is fortunately expressed as a regular language — "a digit string at the end of a name" is
+recognized by a finite automaton. But **"is this number an episode number" is not a problem of form but of
+meaning.** A regex looks only at form. As long as `Apollo 13` and `그렌라간 13` have the same character arrangement,
+no regex can split them. **Knowing the fact that you are using a regex on a question a regex cannot answer** is why
+this code put the downstream rule "group only when there are two or more."
 
-### 33.6.2 이식성 — 같은 정규식이 다른 엔진에서는 컴파일조차 안 된다
+### 33.6.2 Portability — the same regex does not even compile in another engine
 
-제7부의 주제로 돌아온다. 이 정규식은 이식되지 않는다.
+Return to Part 7's subject. This regex does not port.
 
-| 엔진 | 후방탐색 | 이 정규식 |
+| Engine | Lookbehind | This regex |
 |---|---|---|
-| Python `re` | 고정 폭만 | 동작 — `\d` 는 폭 1 |
-| Python `regex`(외부 패키지) | 가변 폭 | 동작 |
-| JavaScript (ES2018 이상) | 가변 폭 | 후방탐색은 동작 — 다만 명명 그룹이 `(?<…>)` 라 `(?P<…>)` 를 고쳐야 한다 |
-| Go `regexp`, Rust `regex` (RE2 계열) | **없음** | **컴파일 실패** |
-| POSIX ERE (`grep -E`) | 없음 | 사용 불가 |
+| Python `re` | fixed-width only | works — `\d` is width 1 |
+| Python `regex` (external package) | variable-width | works |
+| JavaScript (ES2018+) | variable-width | the lookbehind works — only the named group is `(?<…>)` so `(?P<…>)` must be fixed |
+| Go `regexp`, Rust `regex` (RE2 family) | **none** | **compile fails** |
+| POSIX ERE (`grep -E`) | none | unusable |
 
-Python 의 고정 폭 제약은 직접 확인했다. `(?<!\d)` 는 컴파일되고,
-`(?<![0-9]{1,2})` 는 `PatternError: look-behind requires fixed-width pattern` 로
-거부된다(Python 3.14.5).
+I confirmed Python's fixed-width constraint directly. `(?<!\d)` compiles, and `(?<![0-9]{1,2})` is rejected with
+`PatternError: look-behind requires fixed-width pattern` (Python 3.14.5).
 
-RE2 계열이 후방탐색을 **의도적으로 뺐다**는 점이 중요하다. 역참조와 룩어라운드를
-지원하면 백트래킹이 필요해지고, 그러면 최악 시간을 보장할 수 없다. RE2 는 최악
-선형 시간을 보장하는 대신 표현력을 줄였다. **§33.7.3 의 ReDoS 안전성과 이 절의
-정확도 장치는 같은 축의 양 끝에 있다.**
+That the RE2 family **intentionally omitted** lookbehind matters. Support backreferences and lookaround and
+backtracking becomes needed, and then worst-case time cannot be guaranteed. RE2 guarantees worst-case linear time
+and in exchange reduced expressiveness. **§33.7.3's ReDoS safety and this section's accuracy devices are at the
+two ends of the same axis.**
 
-RE2 로 옮겨야 한다면 관문을 정규식 밖으로 빼면 된다. 후방탐색 없는 정규식으로 매치한
-뒤, `stem + sep` 의 마지막 글자가 숫자면 기각한다. 이 대체안이 등가인지는 무작위
-문자열 20만 건(`a b 0 1 . _ - 공백 화 회` 로 만든 길이 0–9 문자열)으로 확인했고,
-**불일치 0건**이었다. 등가인 이유는 §33.3.3 의 재서술에 있다 — `ep` 는 언제나 이름
-끝의 숫자열이므로, 가장 긴 후보가 관문에 막히면 더 짧은 후보도 반드시 막힌다.
+If you must move to RE2, take the gate outside the regex. After matching with a lookbehind-free regex, reject if
+the last character of `stem + sep` is a digit. Whether this alternative is equivalent was confirmed with 200,000
+random strings (length 0–9 strings made of `a b 0 1 . _ - space 화 회`), with **0 mismatches.** The reason it is
+equivalent is in §33.3.3's restatement — `ep` is always the digit string at the end of the name, so if the longest
+candidate is blocked by the gate a shorter candidate is necessarily blocked too.
 
 ---
 
-## 33.7 보안 — 같은 실수가 인증·권한 경로에 있을 때
+## 33.7 Security — when the same mistake is on an authentication·permission path
 
-### 33.7.1 `$` 는 문자열의 끝이 아니다
+### 33.7.1 `$` is not the end of the string
 
-Python 의 `$` 는 **문자열 끝, 또는 끝의 개행 바로 앞**에 일치한다. 절대적인 끝은
-`\Z` 다. 실측이다.
+Python's `$` matches **the string end, or just before a trailing newline.** The absolute end is `\Z`. Measured.
 
-| 입력 | `EPISODE_RE.match` | `EPISODE_RE.fullmatch` |
+| Input | `EPISODE_RE.match` | `EPISODE_RE.fullmatch` |
 |---|---|---|
-| `'그렌라간01'` | 일치 | 일치 |
-| `'그렌라간01\n'` | **일치** | 불일치 |
-| `'그렌라간01\n악성'` | 불일치 | 불일치 |
+| `'그렌라간01'` | match | match |
+| `'그렌라간01\n'` | **match** | no match |
+| `'그렌라간01\n악성'` | no match | no match |
 
-이 코드에서는 무해에 가깝다. 이름은 `Path.stem` 에서 오고, 개행이 든 파일명은 그
-자체로 별개의 문제이며, `sanitize` 가 `\x00-\x1f` 를 `_` 로 바꾼다(`naming.py:26,128`).
-다만 **`sanitize` 는 쓰는 시점에 적용되고 `EPISODE_RE` 는 그보다 먼저 돈다** —
-순서상 이 정규식은 정제되지 않은 문자열을 본다.
+In this code it is close to harmless. The name comes from `Path.stem`, a filename with a newline is itself a
+separate problem, and `sanitize` changes `\x00-\x1f` to `_` (`naming.py:26,128`). Only, **`sanitize` is applied at
+write time and `EPISODE_RE` runs before that** — in order, this regex sees an unsanitized string.
 
-접근 통제 경로에서는 이야기가 달라진다. `^/(login|static)/.*$` 로 인증 예외 경로를
-판정하는 코드에 `"/login/x\n"` 이 들어오면 **일치한다.** 그다음 그 문자열이 다른
-파서(프록시·로거·백엔드)에 전달되면, 그쪽은 개행을 다르게 해석한다. 두 계층이 같은
-입력을 다르게 읽는 순간이 우회가 성립하는 지점이다.
+On an access-control path the story differs. In code judging an auth-exception path with `^/(login|static)/.*$`,
+put in `"/login/x\n"` and it **matches.** Then if that string is passed to another parser (proxy·logger·backend),
+that side interprets the newline differently. The moment two layers read the same input differently is the spot
+where a bypass holds.
 
-> **원칙** — 앵커는 `\A` 와 `\Z` 를 쓰거나 `re.fullmatch` 를 쓴다. `^`·`$` 는
-> "줄 단위"라는 다른 의미를 갖는 문맥이 있고, 판정에 쓰는 정규식에서 그 모호함은
-> 비용이 된다.
+> **Principle** — for anchors use `\A` and `\Z` or use `re.fullmatch`. `^`·`$` have a context where they mean
+> something else, "line-wise," and in a regex used for a verdict that ambiguity is a cost.
 
-### 33.7.2 `\d` 는 `[0-9]` 가 아니다
+### 33.7.2 `\d` is not `[0-9]`
 
-Python 의 `\d` 는 유니코드 십진 숫자 전부에 일치한다. 실측이다.
+Python's `\d` matches all Unicode decimal digits. Measured.
 
-| 이름 | `EPISODE_RE` | `episode_of` |
+| Name | `EPISODE_RE` | `episode_of` |
 |---|---|---|
-| `그렌라간01` (ASCII) | 일치 | 1 |
-| `그렌라간０１` (전각) | **일치** | **1** |
-| `그렌라간٠١` (아라비아·인도 숫자) | **일치** | **1** |
-| `그렌라간೦೧` (칸나다 숫자) | **일치** | **1** |
+| `그렌라간01` (ASCII) | match | 1 |
+| `그렌라간０１` (fullwidth) | **match** | **1** |
+| `그렌라간٠١` (Arabic-Indic digits) | **match** | **1** |
+| `그렌라간೦೧` (Kannada digits) | **match** | **1** |
 
-`int()` 도 이 숫자들을 받는다. 이 코드에서의 귀결은 **같은 화수를 주장하는 두 파일**이
-생긴다는 것이고, 재고 조사가 그중 하나만 남긴다([`inventory.py:197-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L197-L201)).
+`int()` also accepts these digits. The consequence in this code is that **two files claiming the same episode
+number** arise, and the inventory keeps only one of them ([`inventory.py:197-201`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L197-L201)).
 
-같은 유니코드 폭이 `\s` 에도 적용된다. `그렌라간\xa001`(비분리 공백, NBSP)은 `sep` 이
-`'\xa0'` 으로 잡혀 정상 처리되지만, `그렌라간​01`(폭 0 공백)은 `\s` 가 아니어서
-줄기에 흡수된다 — 눈에 보이지 않는 문자 하나가 시리즈를 가른다. 제31장의 유니코드
-정규화 문제와 같은 축이다.
+The same Unicode width applies to `\s` too. `그렌라간\xa001` (non-breaking space, NBSP) has `sep` caught as `'\xa0'`
+so it is handled normally, but `그렌라간​01` (zero-width space) is not `\s` so it is absorbed into the stem — one
+invisible character splits the series. It is the same axis as Chapter 31's Unicode-normalization problem.
 
-보안 경로에서 이 성질은 고전적 우회 벡터다. 검증은 `\d` 로 하고 비교·저장은 ASCII 로
-하면, 두 계층이 같은 문자열을 다르게 본다. **방어는 단순하다 — 판정용 정규식에는
-`[0-9]` 를 쓰거나 `re.ASCII` 플래그를 준다.**
+On a security path this property is a classic bypass vector. Verify with `\d` and compare·store in ASCII and the
+two layers see the same string differently. **The defense is simple — use `[0-9]` in the verdict regex or give the
+`re.ASCII` flag.**
 
-### 33.7.3 ReDoS — 이 패턴이 폭발하지 않는 이유
+### 33.7.3 ReDoS — why this pattern does not explode
 
-> **용어** — **ReDoS(Regular expression Denial of Service, 정규식 서비스 거부)**:
-> 백트래킹 기반 정규식 엔진에서 특정 입력이 비정상적으로 긴 매칭 시간을 유발해
-> CPU 를 고갈시키는 공격.
+> **Term** — **ReDoS (Regular expression Denial of Service)**: an attack where, in a backtracking-based regex
+> engine, a particular input causes an abnormally long matching time and exhausts the CPU.
 
-> **용어** — **파국적 백트래킹(catastrophic backtracking)**: 같은 문자열을 나누는
-> 경우의 수가 입력 길이에 대해 지수적으로 늘어나 매칭 시간이 폭증하는 현상.
+> **Term** — **catastrophic backtracking**: the phenomenon where the number of ways to split the same string
+> grows exponentially with input length and the matching time explodes.
 
-측정했다. 왼쪽이 이 정규식, 오른쪽이 교과서적 파국 패턴 `^(a+)+$` 다.
+Measured. The left is this regex, the right the textbook catastrophic pattern `^(a+)+$`.
 
-| `EPISODE_RE` — 구분자만 이어지고 끝이 비숫자 | | `^(a+)+$` — `aaa…b` |
+| `EPISODE_RE` — only separators, ending in non-digit | | `^(a+)+$` — `aaa…b` |
 |---|---|---|
-| 길이 1000 → 12.6 ms | | 길이 18 → 9.4 ms |
-| 길이 2000 → 53.1 ms | | 길이 20 → 36.6 ms |
-| 길이 4000 → 219.6 ms | | 길이 22 → 148.4 ms |
-| 길이 8000 → 813.4 ms | | 길이 24 → 596.0 ms |
-| 길이 16000 → 3557.4 ms | | 길이 26 → 2581.9 ms |
+| length 1000 → 12.6 ms | | length 18 → 9.4 ms |
+| length 2000 → 53.1 ms | | length 20 → 36.6 ms |
+| length 4000 → 219.6 ms | | length 22 → 148.4 ms |
+| length 8000 → 813.4 ms | | length 24 → 596.0 ms |
+| length 16000 → 3557.4 ms | | length 26 → 2581.9 ms |
 
-성장률이 다르다. 왼쪽은 **길이가 2배일 때 시간이 4배** — O(n²) 다항이다. 오른쪽은
-**길이가 2 늘 때마다 시간이 4배** — 지수다.
+The growth rates differ. The left is **4× the time when the length is 2×** — O(n²) polynomial. The right is **4×
+the time each time the length grows by 2** — exponential.
 
-왜 폭발하지 않는지를 폭발 조건별로 따진다.
+Weigh why it does not explode by each explosion condition.
 
-| 파국의 전형적 조건 | 이 패턴 |
+| Typical condition for catastrophe | This pattern |
 |---|---|
-| 중첩 수량자 `(X+)+` | 없다 — 수량자가 겹쳐 쌓이지 않는다 |
-| 겹치는 대안 `(a\|a)*` | 대안 자체가 없다 |
-| 상한 없는 반복 + 실패 가능한 후행 | `\d{1,3}` 은 상한이 있고 `[화회]` 는 단일 문자 클래스다 |
-| 인접한 두 수량자가 같은 문자를 먹을 수 있음 | **있다** — `.*?` 와 `[\s._-]*` 가 구분자를 두고 다툰다 |
+| nested quantifier `(X+)+` | none — quantifiers do not stack overlapping |
+| overlapping alternation `(a\|a)*` | there is no alternation at all |
+| unbounded repetition + a fallible trailing part | `\d{1,3}` has an upper bound and `[화회]` is a single character class |
+| two adjacent quantifiers can eat the same character | **there is** — `.*?` and `[\s._-]*` fight over the separator |
 
-마지막 줄이 O(n²) 의 원인이다. **이 패턴은 선형이 아니다.** 정직하게 적어 둔다.
+The last row is the cause of O(n²). **This pattern is not linear.** Written honestly.
 
-그렇다면 안전한 근거는 무엇인가. 패턴이 아니라 **패턴의 차수와 입력 상한의 곱**이다.
-이 정규식의 입력은 파일 이름이고, 대부분의 파일 시스템이 255바이트를 상한으로 둔다.
-그 상한에서 측정한 값이다.
+Then what is the basis for safety. Not the pattern but **the product of the pattern's order and the input's upper
+bound.** This regex's input is a file name, and most filesystems set 255 bytes as the cap. The value measured at
+that cap.
 
-| 입력 | 1회당 시간 |
+| Input | Time per call |
 |---|---|
 | `그렌라간01` | 0.41 µs |
 | `천원돌파 그렌라간 27` | 0.70 µs |
-| 250자 + 화수 (매치 성공) | 11.7 µs |
-| 255자 전부 비구분자 (매치 실패) | 11.7 µs |
-| **255자 전부 구분자 (최악)** | **816 µs** |
+| 250 chars + episode number (match success) | 11.7 µs |
+| 255 chars all non-separator (match fail) | 11.7 µs |
+| **255 chars all separator (worst)** | **816 µs** |
 
-최악이 0.8 ms 다. 파일 하나당 한 번 도는 함수이므로 실사용에서 문제가 되지 않는다.
+The worst is 0.8 ms. It is a function running once per file so it is no problem in real use.
 
-> **원칙** — **ReDoS 안전성은 패턴 단독으로 판정할 수 없다.** 판정식은
-> "패턴의 최악 차수 × 입력 길이 상한"이다. 같은 패턴을 길이 상한이 없는 입력
-> (HTTP 헤더 값, 요청 본문, 로그 한 줄, 사용자 제출 문자열)에 쓰면 같은 차수가
-> 그대로 비용이 된다.
+> **Principle** — **ReDoS safety cannot be judged by the pattern alone.** The judgment formula is "the pattern's
+> worst-case order × the input length cap." Use the same pattern on an input with no length cap (an HTTP header
+> value, a request body, a log line, a user-submitted string) and the same order becomes the cost as-is.
 
-### 33.7.4 방어자 관점
+### 33.7.4 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **정규식을 쓰는 개발자** | 앵커는 `\A`·`\Z` 또는 `fullmatch`. 숫자는 `[0-9]` 또는 `re.ASCII`. 판정 규칙을 한 곳에 모으고, 그 한 곳을 **양방향으로** 테스트한다(§33.8) |
-| **탐지 규칙 작성자** | 규칙의 미탐이 곧 우회다. 규칙을 배포하기 전에 **"이 규칙이 무엇을 못 잡는가"를 먼저 적는다.** 정탐 사례만 있는 규칙은 검증된 규칙이 아니다 |
-| **코드 리뷰어** | 인접한 두 수량자가 같은 문자를 먹을 수 있는지 본다. 그것이 다항 폭발의 신호다. 중첩 수량자 `(X+)+` 는 지수 폭발의 신호다 |
-| **플랫폼·라이브러리 관리자** | 신뢰할 수 없는 입력에는 선형 시간 엔진(RE2 계열)이나 매칭 타임아웃을 강제하고, **입력 길이 상한을 규격으로 정한다** |
-| **감사자** | 인증·권한·마스킹 경로의 정규식은 오분류가 곧 취약점이다. 그 정규식의 오탐·미탐 사례가 테스트로 고정돼 있는지 요구한다 |
+| **a developer using a regex** | for anchors `\A`·`\Z` or `fullmatch`. for digits `[0-9]` or `re.ASCII`. gather the verdict rules in one place and test that one place **in both directions** (§33.8) |
+| **detection-rule author** | a rule's false negative is a bypass. before distributing the rule, **write first "what this rule cannot catch."** a rule with only true-positive cases is not a verified rule |
+| **code reviewer** | look at whether two adjacent quantifiers can eat the same character. that is the signal of polynomial explosion. a nested quantifier `(X+)+` is the signal of exponential explosion |
+| **platform·library maintainer** | for untrusted input enforce a linear-time engine (RE2 family) or a matching timeout, and **set an input-length cap as a spec** |
+| **auditor** | for a regex on an authentication·permission·masking path, a misclassification is a vulnerability. require that regex's false-positive·false-negative cases be fixed by tests |
 
 ---
 
-## 33.8 한계와 미해결
+## 33.8 Limits and open questions
 
-정직하게 적어 둔다.
+Written honestly.
 
-- **회귀 테스트가 `(?<!\d)` 를 고정하지 못한다.** 이 장에서 가장 무거운 발견이다.
-  픽스처는 이렇게 생겼다.
+- **The regression test cannot fix `(?<!\d)`.** The heaviest finding in this chapter. The fixture looks like this.
 
   ```bash
-  # tests/run.sh:318-331 (발췌)
-  : >"$TIDY/외톨이01.mp4"                 # 혼자뿐인 회차 — 폴더로 감싸지 않는다
-  : >"$TIDY/Sky.Blue.2003.1080p.mkv"      # 끝이 연도·화질 — 화수가 아니다
-  : >"$TIDY/목록.m3u8"                    # 미디어가 아니다
+  # tests/run.sh:318-331 (excerpt)
+  : >"$TIDY/외톨이01.mp4"                 # a lone episode — not wrapped in a folder
+  : >"$TIDY/Sky.Blue.2003.1080p.mkv"      # ends in year·resolution — not an episode number
+  : >"$TIDY/목록.m3u8"                    # not media
   …
   [[ -f "$TIDY/외톨이01.mp4" && -f "$TIDY/Sky.Blue.2003.1080p.mkv" && -f "$TIDY/목록.m3u8" ]] \
-    && ok "단독 회차·영화·비미디어는 건드리지 않는다" || bad "옮기지 말아야 할 것을 옮김"
+    && ok "does not touch a lone episode·movie·non-media" || bad "moved something that should not move"
   ```
 
-  `Sky.Blue.2003.1080p` 는 **끝이 `p` 라서 관문과 무관하게 매치되지 않는다.** 즉 이
-  검사는 `(?<!\d)` 를 지워도 통과한다. 테스트 스크립트에 등장하는 이름 77개를 실제
-  정규식과 관문을 뺀 정규식에 모두 통과시켜 비교한 결과 **판정이 갈리는 이름은
-  0개**였다. 주석이 든 반례(`Sky.Blue.2003`)와 테스트가 쓰는 이름(`Sky.Blue.2003.1080p`)이
-  다르다는 것이 원인이며, 픽스처에 `.1080p` 를 뗀 이름 하나(그리고 그것과 같은 줄기로
-  묶일 두 번째 파일)를 더하면 고정된다.
-  **다만 관문을 실제로 지운 채 전체 스위트를 돌려 62/62 를 재확인하지는 않았다** —
-  `library.plan_tidy` 단위로만 재현했고, 나머지는 이름 77개의 정적 비교다.
-- **의미론은 판정할 수 없다.** `Apollo 13`·`Toy Story 3` 는 회차물과 문자 배열이 같다.
-  `plan_tidy` 의 "같은 시리즈 2편 이상" 규칙이 폴더 생성은 막지만, `episode_of` 는
-  여전히 13 을 돌려준다. 재고 조사 경로에서 이 오탐이 어떻게 나타나는지는 측정하지
-  않았다.
-- **1000화 이상은 화수로 읽지 않는다.** 실측: `원피스1000` 은 매치되지 않아 영화로
-  취급된다. 장편 연재물에서 실제로 걸릴 수 있는 한계이며, 상한을 4로 올리면 연도
-  오인이 되살아난다 — **상한 하나가 두 오류 방향을 동시에 조절한다.**
-- **시즌 표기를 모른다.** 실측: `Show.S01E05` → 줄기 `Show.S01E`, 화수 `05`.
-  화수는 맞지만 시리즈명이 오염된다. 서구권 표기(`SxxExx`)를 다루려면 규칙이 하나 더
-  필요하고, 그 규칙은 새로운 오탐을 들여온다.
-- **`\d` 의 유니코드 폭과 `ep[0] == "0"` 의 ASCII 비교가 어긋난다.** 전각 `０１` 은
-  매치되지만 `ep[0]` 이 `'0'`(U+0030)이 아니어서 자릿수 변형 후보가 생성되지 않는다.
-  한 함수 안에서 두 문자 집합을 쓰고 있는 것이며, 현재 실사용에서 문제가 관측되지는
-  않았다.
-- **`$` 의 끝 개행 허용은 이 코드에서 무해하다고 판단했으나 검증하지 않았다.**
-  개행이 든 파일명이 실제로 어떤 경로로 들어오는지는 추적하지 않았다.
-- **`name_variants` 의 구분자 축은 회귀로 고정돼 있지 않다.** `tests/run.sh:277-284`
-  가 고정하는 것은 1↔01 자릿수 축뿐이다. `.*?` 를 탐욕으로 바꾸면 구분자 후보가
-  사라지지만 테스트는 통과한다 — 앞의 첫 항목과 같은 종류의 빈틈이다.
-- **O(n²) 는 파일 시스템의 길이 상한에 기대고 있다.** `--sub-name` 처럼 사용자가 직접
-  주는 문자열에는 길이 검사가 없다. 사용자 자신이 주는 값이므로 위협 모델상 문제는
-  아니지만, 이 코드를 서버 문맥으로 옮기면 재검토가 필요한 지점이다.
+  `Sky.Blue.2003.1080p` **ends in `p` so it does not match regardless of the gate.** That is, this check passes
+  even with `(?<!\d)` removed. Passing all 77 names appearing in the test script through the actual regex and the
+  gate-removed regex and comparing, the names whose verdict split were **0.** The cause is that the counterexample
+  the comment gives (`Sky.Blue.2003`) and the name the test uses (`Sky.Blue.2003.1080p`) differ, and it is fixed by
+  adding to the fixture one name with `.1080p` stripped (and a second file that would group with it under the same
+  stem). **But I did not actually remove the gate and re-run the whole suite to reconfirm 62/62** — I reproduced
+  only at the `library.plan_tidy` unit, and the rest is a static comparison of 77 names.
+- **Semantics cannot be judged.** `Apollo 13`·`Toy Story 3` have the same character arrangement as an episodic
+  work. `plan_tidy`'s "two or more of the same series" rule blocks folder creation, but `episode_of` still returns
+  13. How this false positive appears on the inventory path was not measured.
+- **Episode 1000 or higher is not read as an episode number.** Measured: `원피스1000` does not match so it is
+  treated as a movie. It is a limit that can actually catch in a long-running serial, and raising the cap to 4
+  revives the year misjudgment — **one cap adjusts two error directions at once.**
+- **It does not know season notation.** Measured: `Show.S01E05` → stem `Show.S01E`, episode `05`. The episode
+  number is right but the series name is contaminated. To handle the Western notation (`SxxExx`) one more rule is
+  needed, and that rule brings in new false positives.
+- **`\d`'s Unicode width and `ep[0] == "0"`'s ASCII comparison go off.** Fullwidth `０１` matches but `ep[0]` is not
+  `'0'` (U+0030) so the digit-count variation candidate is not generated. It is using two character sets inside one
+  function, and no problem was observed in current real use.
+- **`$`'s trailing-newline allowance was judged harmless in this code but not verified.** By what path a filename
+  with a newline actually comes in was not traced.
+- **`name_variants`'s separator axis is not fixed by regression.** What `tests/run.sh:277-284` fixes is only the
+  1↔01 digit-count axis. Change `.*?` to greedy and the separator candidate vanishes but the test passes — the same
+  kind of gap as the first item above.
+- **O(n²) leans on the filesystem's length cap.** A string the user gives directly like `--sub-name` has no length
+  check. Being a value the user themselves gives it is no problem in the threat model, but it is a spot needing
+  re-review if this code is moved to a server context.
 
 ---
 
-## 33.9 요약
+## 33.9 Summary
 
-1. **`EPISODE_RE` 는 이진 분류기다.** 품질의 척도는 오분류율이고, 오탐(연도를 화수로)과
-   미탐(화수를 못 읽음)의 대가가 대칭이 아니다. 미탐은 "아무 일도 하지 않음", 오탐은
-   "틀린 일을 함"이므로 이 코드는 일관되게 미탐 쪽으로 기운다.
-2. **`(?<!\d)` 는 폭 0 의 관문**이고, 최대 만족 원칙을 강제한다 — 연속한 숫자열은 통째로
-   하나의 수다. 이것이 없으면 `Sky.Blue.2003` 이 줄기 `Sky.Blue.2` + 화수 `003` 으로
-   갈리고, 무관한 영화 두 편이 존재하지 않는 시리즈 폴더로 묶인다(실측).
-3. **관문과 상한 `\d{1,3}` 은 다른 것을 막는다.** 관문은 숫자열 안쪽에서 끊는 분할을,
-   상한은 네 자리 숫자열 전체를 화수로 읽는 분할을 막는다. 둘을 합치면
-   "이름 끝의 최대 숫자열이 1–3자리일 때만 화수"가 된다.
-4. **`.*?` 가 지키는 것은 화수가 아니라 구분자 정보**다. 탐욕으로 바꾸면 화수는 같지만
-   `sep` 이 비어 이름 후보 하나가 죽는다. 관문과 비탐욕을 둘 다 빼면 모든 회차가
-   자기만의 시리즈를 갖게 된다.
-5. **정답을 모를 때는 후보를 만들어 서버가 고르게 한다**(생성 후 검사). 원본이 언제나
-   첫 후보이고, 후보 집합을 넓히는 것은 정확도가 아니라 **오탐 확률과 요청 수**를
-   올리는 일이다. 그래서 자릿수 변형은 실측된 축(1↔2자리)에만 건다.
-6. **단일 출처의 오분류율은 소비자 수만큼 증폭된다.** 규칙을 한 곳에 모은 것은 옳지만,
-   그 대가로 그 한 곳이 여섯 경로의 정확도를 동시에 결정한다.
-7. **이 패턴은 O(n²) 이지 선형이 아니다.** 안전한 이유는 패턴이 아니라 입력 길이 상한
-   (파일명 255바이트)이다. ReDoS 안전성의 판정식은 "패턴의 최악 차수 × 입력 상한"이다.
-8. **여기서는 파일 하나가 엉뚱한 폴더로 갈 뿐이지만 구조는 같다.** 같은 종류의 오분류가
-   인증·권한·마스킹 경로에 있으면 그것은 오분류가 아니라 취약점이다. `$` 의 끝 개행
-   허용과 `\d` 의 유니코드 폭이 그 경로에서 실제로 우회에 쓰이는 성질이다.
+1. **`EPISODE_RE` is a binary classifier.** The quality measure is the misclassification rate, and the prices of a
+   false positive (year as episode number) and a false negative (fails to read the episode number) are not
+   symmetric. A false negative is "does nothing" and a false positive is "does the wrong thing," so this code
+   consistently leans toward the false-negative side.
+2. **`(?<!\d)` is a width-0 gate** enforcing maximal munch — a consecutive digit string is one whole number.
+   Without it `Sky.Blue.2003` splits into the stem `Sky.Blue.2` + episode `003`, and two unrelated movies are
+   grouped into a nonexistent series folder (measured).
+3. **The gate and the upper bound `\d{1,3}` block different things.** The gate blocks a split cutting inside a
+   digit string, the upper bound blocks reading a whole four-digit string as an episode number. Combine them and
+   it becomes "only when the maximal digit string at the end of the name is 1–3 digits is it an episode number."
+4. **What `.*?` protects is not the episode number but the separator info.** Change it to greedy and the episode
+   number is the same but `sep` empties and one name candidate dies. Remove both the gate and non-greedy and every
+   episode comes to have its own series.
+5. **When you do not know the answer, make candidates and let the server pick** (generate and test). The original
+   is always the first candidate, and widening the candidate set raises not accuracy but **the false-positive
+   probability and the request count.** So the digit-count variation is applied only to the measured axis (1↔2
+   digits).
+6. **A single source's misclassification rate is amplified by the number of consumers.** Gathering the rule in one
+   place is right, but at the price that that one place decides the accuracy of six paths at once.
+7. **This pattern is O(n²), not linear.** The reason it is safe is not the pattern but the input-length cap
+   (filename 255 bytes). ReDoS safety's judgment formula is "the pattern's worst-case order × the input cap."
+8. **Here only one file goes to the wrong folder but the structure is the same.** If the same kind of
+   misclassification is on an authentication·permission·masking path, it is not a misclassification but a
+   vulnerability. `$`'s trailing-newline allowance and `\d`'s Unicode width are the properties actually used for
+   bypass on that path.
 
 ---
 
-**다음 장** — 이 장은 코드를 검증하다가 **테스트의 빈틈**을 하나 찾았다. 회귀 테스트가
-`(?<!\d)` 를 고정하지 못하고 있으며, 그 관문을 지워도 62개 검사가 그대로 통과할 것으로
-보인다. 통과하는 테스트가 아무것도 보장하지 못하는 이 상태를 무엇이라 부르고, 어떻게
-알아채는가 — 제8부의 첫 장인 제34장이 그 질문을 정면으로 다룬다. 검증 도구를 무엇으로
-검증하는가, 즉 **테스트 오라클 문제**다.
+**Next chapter** — this chapter, while verifying code, found one **gap in the test.** The regression test cannot
+fix `(?<!\d)`, and it seems the 62 checks would pass as-is even with that gate removed. What is this state where a
+passing test guarantees nothing called, and how is it noticed — Chapter 34, the first of Part 8, faces that
+question head-on. What do you verify the verification tool with, i.e. the **test-oracle problem.**

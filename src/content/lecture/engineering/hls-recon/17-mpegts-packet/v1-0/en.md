@@ -1,78 +1,76 @@
 ---
-untranslated: ko
-title: "MPEG-TS 패킷 해부"
-description: "188바이트의 구조"
-date: 2026-08-17
+title: "Dissecting the MPEG-TS Packet"
+description: "The structure of 188 bytes"
+date: 2026-06-27
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-17-mpegts-packet.svg
 ---
-## 17.0 이 장에서 답할 것
+## 17.0 What this chapter answers
 
-1. 왜 패킷 길이가 188바이트로 고정되어 있고, 그 고정이 무엇을 가능하게 하는가
-2. 헤더 4바이트 — 32비트에는 정확히 무엇이 들어 있는가
-3. 코드의 비트 연산 하나하나는 어느 필드를 읽는가
-4. NULL PID 를 건너뛰지 않으면 무엇이 어긋나는가
-5. **scrambling control 을 보지 않으면 무엇이 깨지는가**
+1. Why is the packet length fixed at 188 bytes, and what does that fixing make possible?
+2. The 4-byte header — what exactly is in the 32 bits?
+3. Which field does each single bit operation in the code read?
+4. What goes off if you do not skip the NULL PID?
+5. **What breaks if you do not look at scrambling control?**
 
-제14장에서 세그먼트의 정체를 판별하는 근거는 선두 바이트 `0x47` 이었다. 이 장은 그
-`0x47` 뒤에 이어지는 3바이트를 마저 읽는다. 판별에서 검증으로 넘어가는 지점이다.
+In Chapter 14 the basis for determining a segment's identity was the leading byte `0x47`. This chapter reads the
+3 bytes that follow that `0x47`. It is the point where we cross from determination to verification.
 
 ---
 
-## 17.1 문제 — 재조립 경로는 유실을 말해 주지 않는다
+## 17.1 The problem — the reassembly path does not tell you about loss
 
-이 저장소의 TS 분석 모듈은 존재 이유를 첫 문단에 적어 두었다.
+This repository's TS-analysis module wrote its reason for existing in its first paragraph.
 
 ```python
 # tsanalyze.py:1-6
-"""세그먼트 페이로드 분석 — 컨테이너 판별과 MPEG-TS 전송 무결성.
+"""Segment-payload analysis — container determination and MPEG-TS transport integrity.
 
-ffmpeg 는 디코딩 관점의 오류만 보고한다. 송출 검증에서 정작 필요한 것은
-"전송 도중 패킷이 빠졌는가"이고, 그 답은 TS 패킷 헤더의 4비트
-continuity counter 에 있다 — PID 별로 0~15 를 순환하므로 값이 건너뛰면 유실이다.
+ffmpeg reports only decode-view errors. What delivery verification actually needs is
+"was a packet dropped in transit," and that answer is in the TS packet header's 4-bit
+continuity counter — it cycles 0-15 per PID, so a skipped value is a loss.
 """
 ```
 
-이 주장이 참인지 직접 재보자. 로컬에서 4초짜리 테스트 스트림을 만들고(§17.10 의 실습
-절차와 같다), 첫 세그먼트에 결함을 주입한 뒤 네 가지 관측 도구를 같은 파일에 물린다.
-결함은 이 저장소의 회귀 테스트가 쓰는 것과 동일한 방식이다 — 파일 한가운데에서
-**188바이트 패킷 12개를 잘라낸다**(`tests/run.sh:134-137`).
+Let us re-measure whether this claim is true, first-hand. Locally we make a 4-second test stream (the same as
+§17.10's lab procedure), inject a defect into the first segment, then attach four observation tools to the same
+file. The defect is exactly the way this repository's regression test does it — **it cuts twelve 188-byte
+packets** out of the middle of the file (`tests/run.sh:134-137`).
 
 ```python
-# tests/run.sh:134-137 — 결함 주입 1
-p = d / "seg002.ts"                       # 결함 1: TS 패킷 12개 제거 → CC 점프
+# tests/run.sh:134-137 — defect injection 1
+p = d / "seg002.ts"                       # defect 1: remove 12 TS packets → a CC jump
 raw = p.read_bytes()
 cut = (len(raw) // 188 // 2) * 188
 p.write_bytes(raw[:cut] + raw[cut + 188 * 12:])
 ```
 
-측정 결과다(ffmpeg 8.1.1, 동일 파일 `seg000.ts` 214,696바이트 = 188 × 1,142).
+The measurements (ffmpeg 8.1.1, the same file `seg000.ts` 214,696 bytes = 188 × 1,142).
 
-| 관측 도구 | 정상 | 영상 12패킷 제거 | 영상 16패킷 제거 | 오디오 12패킷 제거 |
+| Observation tool | Normal | video 12 packets removed | video 16 packets removed | audio 12 packets removed |
 |---|---|---|---|---|
-| `ffmpeg -c copy`(재조립 경로) | exit 0, 0줄 | **exit 0, 0줄** | **exit 0, 0줄** | **exit 0, 0줄** |
-| `ffprobe` 재생 길이 | 2.023222 | **2.023222** | **2.023222** | **2.023222** |
-| 전체 디코드(`-xerror`) | 0줄 | 3줄 | 6줄 | 3줄 |
-| `tsanalyze.analyze` | 정상 | **CC 불연속 1건** | **0건 — 못 잡음** | **CC 불연속 1건** |
+| `ffmpeg -c copy` (reassembly path) | exit 0, 0 lines | **exit 0, 0 lines** | **exit 0, 0 lines** | **exit 0, 0 lines** |
+| `ffprobe` play length | 2.023222 | **2.023222** | **2.023222** | **2.023222** |
+| full decode (`-xerror`) | 0 lines | 3 lines | 6 lines | 3 lines |
+| `tsanalyze.analyze` | normal | **1 CC discontinuity** | **0 — missed** | **1 CC discontinuity** |
 
-세 가지를 읽어야 한다.
+Three things to read.
 
-**첫째, 이 도구가 실제로 쓰는 재조립 경로는 아무 말도 하지 않는다.** `assemble.py` 는
-컨테이너 작업을 전부 `-c copy` 로 위임한다(제19장). 그 경로에서 ffmpeg 은 종료 코드 0,
-표준 오류 0줄을 낸다. **재생 길이도 소수점 여섯째 자리까지 동일하다.** 결손을 총량으로
-찾으려는 시도가 왜 무력한지는 제21장에서 PTS 로 다시 확인하지만, 세그먼트 하나 안에서도
-이미 성립한다.
+**First, the reassembly path this tool actually uses says nothing.** `assemble.py` delegates all container work
+to `-c copy` (Chapter 19). On that path ffmpeg gives exit code 0, standard error 0 lines. **The play length too
+is identical to the sixth decimal place.** Why an attempt to find loss by aggregate is powerless is confirmed
+again with PTS in Chapter 21, but it already holds within a single segment.
 
-**둘째, 전체 디코드는 잡지만 대가가 다르다.** `probe.decode_check` 는 산출물을 끝까지
-디코드해 표준 오류 줄 수를 센다.
+**Second, full decode catches it but the price differs.** `probe.decode_check` decodes the output to the end and
+counts standard-error lines.
 
 ```python
 # probe.py:298-309
 def decode_check(path: str) -> tuple[int, list[str]]:
-    """전체 디코드를 돌려 오류 줄을 수집한다. 출력은 버린다(-f null).
+    """Run a full decode and collect error lines. Throw the output away (-f null).
 
-    파일이 '열린다'와 '끝까지 디코드된다'는 다른 문제라, 재조립 검증에서는 후자가 기준이다.
+    "opens" and "decodes to the end" are different questions, and in reassembly verification the latter is the criterion.
     """
     proc = subprocess.run(
         [require("ffmpeg"), "-v", "error", "-hide_banner", "-xerror", "-i", path, "-f", "null", "-"],
@@ -83,35 +81,33 @@ def decode_check(path: str) -> tuple[int, list[str]]:
     return len(lines), lines[:20]
 ```
 
-종료 코드가 아니라 **줄 수를 세는** 이유가 측정으로 드러난다. `-xerror` 를 빼고 같은
-파일을 돌리면 ffmpeg 은 `corrupted macroblock` 2줄을 찍고도 **종료 코드 0** 으로 끝난다.
-종료 코드를 판정 근거로 삼았다면 이 검사는 아무것도 잡지 못했을 것이다.
+Why it **counts lines** rather than the exit code is revealed by measurement. Drop `-xerror` and run the same
+file, and ffmpeg prints 2 lines of `corrupted macroblock` and yet ends with **exit code 0**. Had the exit code
+been the verdict basis, this check would have caught nothing.
 
-대가는 비용과 해상도다. 같은 210KB 파일에서 `analyze()` 는 0.4밀리초, 전체 디코드는
-62밀리초가 걸렸다(약 150배). 그리고 디코드 오류는 **재조립이 끝난 뒤 산출물 전체**에서
-나오므로 "몇 번째 세그먼트인가"를 말해 주지 못한다. `analyze()` 는 받는 즉시,
-세그먼트별로, `(PID, 기대값, 실제값)` 까지 짚는다.
+The price is cost and resolution. On the same 210 KB file `analyze()` took 0.4 ms and full decode took 62 ms
+(about 150×). And a decode error comes out of **the whole output after reassembly finished**, so it cannot tell
+you "which segment." `analyze()` points, immediately on receipt, per segment, down to `(PID, expected, actual)`.
 
-**셋째, 어느 쪽도 다른 쪽을 포함하지 않는다.** 16패킷을 제거하면 디코더는 6줄을 토하지만
-CC 검사는 **0건**을 낸다. 4비트 카운터가 16주기로 순환하기 때문이며, 이것이 제18장의
-주제다. 반대로 CC 검사만이 잡는 결손도 있다. **두 검사는 겹치는 것이 아니라 서로의
-사각을 메운다.**
+**Third, neither side contains the other.** Remove 16 packets and the decoder spits 6 lines but the CC check
+gives **0**. Because the 4-bit counter cycles with period 16, and that is Chapter 18's subject. Conversely there
+is loss that only the CC check catches. **The two checks do not overlap; they fill each other's blind spots.**
 
-그래서 이 장의 질문은 이렇게 좁혀진다 — **재조립 경로가 침묵하는 자리에서, 바이트열만
-보고 무엇을 알 수 있는가.** 답은 헤더 4바이트에 있다.
+So this chapter's question narrows to this — **at the spot where the reassembly path is silent, what can be
+known from the bytes alone?** The answer is in the 4-byte header.
 
 ---
 
-## 17.2 원리 — 188바이트 고정 길이가 하는 일
+## 17.2 The principle — what the 188-byte fixed length does
 
-> **용어** — **MPEG-TS(MPEG-2 Transport Stream)**: ISO/IEC 13818-1 이 정의한 다중화
-> 컨테이너. 오류가 잦고 되감을 수 없는 전송로(방송·네트워크)를 전제로 설계되었으며,
-> 스트림 전체가 **고정 길이 패킷의 나열** 하나로만 이루어진다.
+> **Term** — **MPEG-TS (MPEG-2 Transport Stream)**: the multiplexing container ISO/IEC 13818-1 defines. It was
+> designed presupposing error-prone, non-rewindable transport paths (broadcast·network), and the whole stream
+> consists of nothing but **a sequence of fixed-length packets.**
 
-> **용어** — **패킷(transport stream packet)**: TS 의 유일한 단위. 길이는 **언제나
-> 188바이트**이고, 앞 4바이트가 헤더, 나머지 184바이트가 몸통이다.
+> **Term** — **packet (transport stream packet)**: TS's sole unit. Its length is **always 188 bytes**, the
+> leading 4 bytes are the header, the remaining 184 bytes the body.
 
-코드가 이 사실을 상수 셋으로 고정해 둔다.
+The code fixes this fact in three constants.
 
 ```python
 # tsanalyze.py:12-14
@@ -120,156 +116,154 @@ SYNC_BYTE = 0x47
 NULL_PID = 0x1FFF
 ```
 
-세 줄이 이 장 전체의 어휘다. 길이 하나, 정렬 표지 하나, 예외 하나.
+Three lines are the whole vocabulary of this chapter. One length, one alignment marker, one exception.
 
-### 17.2.1 고정 길이가 사 주는 네 가지
+### 17.2.1 The four things the fixed length buys
 
-가변 길이 컨테이너(ISO-BMFF·Matroska)와 달리 TS 에는 **길이 필드가 없다.** 길이가
-상수이기 때문이다. 이 하나의 결정에서 네 가지 성질이 따라 나온다.
+Unlike variable-length containers (ISO-BMFF·Matroska), TS **has no length field.** Because the length is a
+constant. From this one decision four properties follow.
 
-| 성질 | 내용 | 이 저장소에서 어디에 쓰이는가 |
+| Property | Content | Where it is used in this repository |
 |---|---|---|
-| **재동기가 계산 가능** | 다음 패킷의 시작 위치는 언제나 `현재 + 188`. 탐색이 아니라 산술 | `analyze` 의 루프 보폭([`tsanalyze.py:85`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L85)) |
-| **판별이 O(1)** | 두 바이트(`data[0]`·`data[188]`)만 읽으면 컨테이너를 안다 | `sniff`([`tsanalyze.py:31-34`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L31-L34)), `_ts_flaw`([`inventory.py:113-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L113-L121)) |
-| **계량이 가능** | 파일 크기 ÷ 188 = 패킷 수. 나머지가 있으면 그 자체가 이상 신호 | 실측: 214,696 = 188 × 1,142, 나머지 0 |
-| **연결에 대해 닫힘** | 유효한 TS 둘을 이어 붙이면 다시 유효한 TS | `assemble.concat_segments`(제19장) |
+| **resync is computable** | the next packet's start is always `current + 188`. arithmetic, not a search | the loop stride of `analyze` ([`tsanalyze.py:85`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L85)) |
+| **determination is O(1)** | read just two bytes (`data[0]`·`data[188]`) and you know the container | `sniff` ([`tsanalyze.py:31-34`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L31-L34)), `_ts_flaw` ([`inventory.py:113-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L113-L121)) |
+| **counting is possible** | file size ÷ 188 = packet count. a nonzero remainder is itself an anomaly signal | measured: 214,696 = 188 × 1,142, remainder 0 |
+| **closed under concatenation** | join two valid TS and you get valid TS again | `assemble.concat_segments` (Chapter 19) |
 
-네 번째가 이 도구의 재조립 전략 전체를 떠받치고, 두 번째가 제14장의 위장 판별을
-떠받친다. **고정 길이는 규격의 사소한 선택이 아니라 이 저장소가 하는 일의 전제다.**
+The fourth holds up this tool's whole reassembly strategy, and the second holds up Chapter 14's masquerade
+determination. **The fixed length is not a trivial choice of the spec but the premise of what this repository
+does.**
 
-### 17.2.2 왜 하필 188인가 — 통설과 확인된 것
+### 17.2.2 Why 188 exactly — the received story and what is confirmed
 
-널리 인용되는 근거는 ATM(Asynchronous Transfer Mode) 호환이다. ATM 셀의 페이로드
-47바이트 × 4 = 188 이라는 설명이다. **이 교재는 규격 원문에서 이 근거를 확인하지
-못했다**(§17.11). 확인된 것은 다음뿐이다.
+The widely cited basis is ATM (Asynchronous Transfer Mode) compatibility. The explanation is that an ATM cell's
+payload, 47 bytes × 4 = 188. **This course could not confirm this basis in the spec's own text** (§17.11). What
+is confirmed is only the following.
 
-- 헤더는 4바이트이고 몸통은 184바이트다 — 헤더 오버헤드 **2.13%**
-- 동기 바이트는 `0x47` 이며, ASCII 로는 `G` 다. 그래서 `xxd` 출력에서 `G@..` 로 보인다
-  (제14장 §14.1 의 그 바이트열이다)
+- the header is 4 bytes and the body 184 bytes — header overhead **2.13%**
+- the sync byte is `0x47`, which in ASCII is `G`. so in an `xxd` dump it shows as `G@..` (that byte string of
+  Chapter 14 §14.1)
 
-`0x47` 이라는 값 자체에는 마법이 없다. **페이로드 안에도 얼마든지 나타난다.** 그래서
-한 번의 일치는 근거가 되지 못하고, 판별기가 188바이트 뒤를 다시 확인한다(제14장
-§14.4.1). 우연 일치 확률이 1/256 에서 1/65,536 으로 떨어진다.
+The value `0x47` itself has no magic. **It appears freely inside the payload too.** So a single match is no
+basis, and the determiner reconfirms 188 bytes later (Chapter 14 §14.4.1). The chance-match probability falls
+from 1/256 to 1/65,536.
 
 ---
 
-## 17.3 헤더 4바이트 — 32비트 전수 해부
+## 17.3 The 4-byte header — a full dissection into 32 bits
 
-![TS 패킷 헤더 4바이트를 32비트로 펼친 지도](/images/lecture/hls-recon/17-header-bits.svg)
+![A map of the TS packet header's 4 bytes unfolded into 32 bits](/images/lecture/hls-recon/17-header-bits.svg)
 
-*그림 17-1 — TS 패킷 헤더 4바이트를 32비트로 펼친 지도*
+*Figure 17-1 — a map of the TS packet header's 4 bytes unfolded into 32 bits*
 
-여덟 개 필드가 32비트를 나눠 갖는다. 표로 전수 정리하면 다음과 같다. 마지막 열이
-이 교재의 형식이다 — **이 필드를 안 보면 무엇이 깨지는가.**
+Eight fields share the 32 bits. Laid out fully in a table it is the following. The last column is this course's
+format — **what breaks if you do not look at this field.**
 
-| # | 필드 | 비트 | 코드 | 이 코드가 쓰는가 | 안 보면 |
+| # | Field | Bits | Code | Does this code use it | If you do not look |
 |---|---|---|---|---|---|
-| 1 | **sync byte** | `pkt[0]` 8비트 | `pkt[0] != SYNC_BYTE` | ✅ | 정렬이 깨진 바이트열을 TS 로 읽어 전 필드가 쓰레기가 된다 |
-| 2 | **TEI** | `pkt[1]` 비트 7 | `pkt[1] & 0x80` | ✅ | 상류 장비가 "이 패킷은 이미 손상됐다"고 표시한 것을 놓친다 |
-| 3 | **PUSI** | `pkt[1]` 비트 6 | — | ❌ | PES 경계를 못 잡는다. 이 코드는 PES 를 파싱하지 않으므로 불필요 |
-| 4 | **transport priority** | `pkt[1]` 비트 5 | — | ❌ | 우선순위 힌트. 무결성과 무관 |
-| 5 | **PID** | `pkt[1]` 하위 5비트 + `pkt[2]` = 13비트 | `((pkt[1] & 0x1F) << 8) \| pkt[2]` | ✅ | CC 를 스트림별로 나눠 볼 수 없다. 영상·오디오 카운터가 뒤섞여 전량 오탐 |
-| 6 | **transport scrambling control** | `pkt[3]` 비트 7-6 | `(pkt[3] >> 6) & 0x03` | ✅ | **암호문을 영상으로 저장하고 성공을 보고한다**(§17.9) |
-| 7 | **adaptation field control** | `pkt[3]` 비트 5-4 | `pkt[3] & 0x10` (payload 비트만) | ✅ | payload 없는 패킷에서 CC 가 증가한다고 착각해 오탐이 쏟아진다 |
-| 8 | **continuity counter** | `pkt[3]` 하위 4비트 | `pkt[3] & 0x0F` | ✅ | 패킷 유실을 검출할 수단이 사라진다 |
+| 1 | **sync byte** | `pkt[0]` 8 bits | `pkt[0] != SYNC_BYTE` | ✅ | a misaligned byte string is read as TS and every field becomes garbage |
+| 2 | **TEI** | `pkt[1]` bit 7 | `pkt[1] & 0x80` | ✅ | you miss the upstream gear marking "this packet is already damaged" |
+| 3 | **PUSI** | `pkt[1]` bit 6 | — | ❌ | you cannot catch a PES boundary. this code does not parse PES so it is unnecessary |
+| 4 | **transport priority** | `pkt[1]` bit 5 | — | ❌ | a priority hint. unrelated to integrity |
+| 5 | **PID** | `pkt[1]` low 5 bits + `pkt[2]` = 13 bits | `((pkt[1] & 0x1F) << 8) \| pkt[2]` | ✅ | you cannot view CC split per stream. video·audio counters mix and it is all false positives |
+| 6 | **transport scrambling control** | `pkt[3]` bits 7-6 | `(pkt[3] >> 6) & 0x03` | ✅ | **it saves ciphertext as video and reports success** (§17.9) |
+| 7 | **adaptation field control** | `pkt[3]` bits 5-4 | `pkt[3] & 0x10` (payload bit only) | ✅ | you mistake a payload-less packet's CC for having increased and false positives pour out |
+| 8 | **continuity counter** | `pkt[3]` low 4 bits | `pkt[3] & 0x0F` | ✅ | the means to detect packet loss disappears |
 
-### 17.3.1 실측 — 첫 패킷을 손으로 푼다
+### 17.3.1 Measured — unpack the first packet by hand
 
 ```
 $ xxd -l 16 seg000.ts
 00000000: 4740 1110 0042 f025 0001 c100 00ff 01ff  G@...B.%........
 ```
 
-앞 4바이트 `47 40 11 10` 을 표대로 분해한다.
+Decompose the leading 4 bytes `47 40 11 10` per the table.
 
-| 바이트 | 값 | 비트 | 필드 → 값 |
+| Byte | Value | Bits | Field → value |
 |---|---|---|---|
 | `pkt[0]` | `0x47` | `0100 0111` | sync byte = `0x47` ✅ |
-| `pkt[1]` | `0x40` | `0100 0000` | TEI=0 · **PUSI=1** · priority=0 · PID 상위 5비트 = `00000` |
-| `pkt[2]` | `0x11` | `0001 0001` | PID 하위 8비트 = `00010001` → **PID = 0x0011** |
+| `pkt[1]` | `0x40` | `0100 0000` | TEI=0 · **PUSI=1** · priority=0 · PID high 5 bits = `00000` |
+| `pkt[2]` | `0x11` | `0001 0001` | PID low 8 bits = `00010001` → **PID = 0x0011** |
 | `pkt[3]` | `0x10` | `0001 0000` | scrambling=`00` · **AFC=`01`** · CC=`0000` |
 
-읽어낸 것: **PID 0x0011 의 패킷이고, 새 단위가 여기서 시작하며(PUSI=1), 스크램블되지
-않았고, adaptation field 없이 payload 만 있으며(AFC=01), 이 PID 의 첫 카운터 값은
-0 이다.** PID 0x0011 은 DVB 가 서비스 기술 테이블(SDT)에 배정한 번호이고, ffmpeg 의 TS
-먹서가 기본으로 서비스 정보를 앞에 쓴다.
+What was read: **it is a PID 0x0011 packet, a new unit starts here (PUSI=1), it is not scrambled, there is only
+payload with no adaptation field (AFC=01), and this PID's first counter value is 0.** PID 0x0011 is the number
+DVB assigns to the Service Description Table (SDT), and ffmpeg's TS muxer writes service info at the front by
+default.
 
-> **용어** — **PID(Packet Identifier, 패킷 식별자)**: 13비트 정수. 그 패킷이 어느
-> 기본 스트림(영상·오디오·자막·제어 테이블)에 속하는지를 가리키는 **번호표**이지
-> 주소가 아니다. 0–8191(0x1FFF) 범위이며, 의미 배정은 스트림 안의 제어 테이블(PAT·PMT)이
-> 정한다.
+> **Term** — **PID (Packet Identifier)**: a 13-bit integer. It is a **number tag** indicating which elementary
+> stream (video·audio·subtitle·control table) that packet belongs to, not an address. The range is 0–8191
+> (0x1FFF), and the meaning assignment is set by the control tables in the stream (PAT·PMT).
 
-같은 세그먼트 1,142패킷 전체의 PID 분포는 이렇다.
+The PID distribution across all 1,142 packets of the same segment is this.
 
-| PID | 패킷 수 | 무엇 |
+| PID | Packet count | What |
 |---|---|---|
-| `0x0000` | 2 | PAT(Program Association Table) — 규격이 고정한 번호 |
-| `0x0011` | 1 | SDT — DVB 가 고정한 번호 |
-| `0x1000` | 2 | PMT(Program Map Table) — ffmpeg 먹서의 기본값 |
-| `0x0100` | 1,033 | 영상 |
-| `0x0101` | 104 | 오디오 |
+| `0x0000` | 2 | PAT (Program Association Table) — a number the spec fixes |
+| `0x0011` | 1 | SDT — a number DVB fixes |
+| `0x1000` | 2 | PMT (Program Map Table) — ffmpeg muxer's default |
+| `0x0100` | 1,033 | video |
+| `0x0101` | 104 | audio |
 
-**분석기는 이 의미를 하나도 모른다.** PID 를 정수 키로만 쓰고 그 아래 카운터를 따로
-셀 뿐이다. 의미를 알아야 하는 일(어느 트랙이 영상인가)은 ffprobe 에 위임되어 있다.
-"모르는 채로 할 수 있는 일과 알아야만 하는 일"을 가른 결과가 이 모듈의 크기다 —
-121줄이다.
+**The analyzer knows none of these meanings.** It uses PID only as an integer key and counts the counter under
+it separately. The work that requires knowing the meaning (which track is video) is delegated to ffprobe. The
+result of dividing "what can be done without knowing and what must be known" is this module's size — 121 lines.
 
-### 17.3.2 필드 경계는 바이트 경계와 다르다
+### 17.3.2 A field boundary differs from a byte boundary
 
-여덟 필드 중 **바이트 경계를 걸치는 것은 PID 하나뿐이다.** `pkt[1]` 의 하위 5비트와
-`pkt[2]` 의 8비트를 이어야 13비트가 된다. 코드가 그대로 그 조립이다.
+Of the eight fields, **only one straddles a byte boundary: PID.** You must join `pkt[1]`'s low 5 bits and
+`pkt[2]`'s 8 bits to get 13 bits. The code is exactly that assembly.
 
 ```python
 pid = ((pkt[1] & 0x1F) << 8) | pkt[2]
 ```
 
-- `pkt[1] & 0x1F` — 상위 3비트(TEI·PUSI·priority)를 **버린다**. `0x1F` = `0001 1111`
-- `<< 8` — 남은 5비트를 8칸 왼쪽으로 밀어 하위 바이트 자리를 비운다
-- `| pkt[2]` — 그 자리에 다음 바이트를 채운다
+- `pkt[1] & 0x1F` — **discard** the high 3 bits (TEI·PUSI·priority). `0x1F` = `0001 1111`
+- `<< 8` — push the remaining 5 bits 8 places left, emptying the low-byte slot
+- `| pkt[2]` — fill that slot with the next byte
 
-마스크를 빠뜨리면 어떻게 되는가. `pkt[1] = 0x40`(PUSI=1)인 첫 패킷에서
-`(0x40 << 8) | 0x11 = 0x4011` 이 나온다. 실제 PID 0x0011 과 다른 값이며, **13비트
-범위(최대 0x1FFF)를 벗어난다.** PUSI 가 서는 패킷과 서지 않는 패킷이 서로 다른 PID 로
-갈리므로, 한 스트림의 카운터가 두 개로 쪼개져 검사가 전량 오탐이 된다. 마스크는
-장식이 아니라 필드 경계 그 자체다.
+What happens if you omit the mask. In the first packet where `pkt[1] = 0x40` (PUSI=1), `(0x40 << 8) | 0x11 =
+0x4011` comes out. It differs from the real PID 0x0011 and **exceeds the 13-bit range (max 0x1FFF).** Because a
+packet where PUSI is set and one where it is not split into different PIDs, one stream's counter is cut into two
+and the check becomes all false positives. The mask is not decoration but the field boundary itself.
 
-### 17.3.3 몸통 184바이트를 무엇이 차지하는가
+### 17.3.3 What occupies the 184-byte body
 
-![188바이트의 몸통 배치를 AFC 2비트가 정한다](/images/lecture/hls-recon/17-packet-layout.svg)
+![The 2 AFC bits set the body layout of the 188 bytes](/images/lecture/hls-recon/17-packet-layout.svg)
 
-*그림 17-2 — 188바이트의 몸통 배치를 AFC 2비트가 정한다*
+*Figure 17-2 — the 2 AFC bits set the body layout of the 188 bytes*
 
-> **용어** — **adaptation field(적응 필드)**: payload 대신 몸통에 들어갈 수 있는 제어
-> 영역. 길이 바이트로 시작하며 PCR(기준 클럭)·불연속 표시·패딩을 담는다. 길이가
-> 가변이므로 payload 와 함께 있을 때는 남는 자리만큼만 payload 가 실린다.
+> **Term** — **adaptation field**: a control area that can go into the body instead of payload. It starts with a
+> length byte and carries the PCR (reference clock)·discontinuity marker·padding. Since its length is variable,
+> when it is together with payload only as much payload as fits the leftover rides along.
 
-> **용어** — **adaptation field control(AFC, 적응 필드 제어)**: 2비트. 몸통에
-> adaptation field 가 있는지, payload 가 있는지를 각각 한 비트로 알린다.
+> **Term** — **adaptation field control (AFC)**: 2 bits. Each bit tells, respectively, whether there is an
+> adaptation field in the body and whether there is payload.
 
-| AFC | 몸통 구성 | CC | 실측(seg000.ts 1,142패킷) |
+| AFC | Body composition | CC | Measured (seg000.ts 1,142 packets) |
 |---|---|---|---|
-| `00` | 규격상 쓰이지 않는다 | — | 0 |
-| `01` | payload 만 | **증가** | 1,008 |
-| `10` | adaptation field 만 (payload 없음) | **유지** | 0 |
-| `11` | adaptation field + payload | **증가** | 134 |
+| `00` | unused by spec | — | 0 |
+| `01` | payload only | **increases** | 1,008 |
+| `10` | adaptation field only (no payload) | **holds** | 0 |
+| `11` | adaptation field + payload | **increases** | 134 |
 
-코드는 이 2비트를 통째로 읽지 않는다. **payload 비트 하나만** 본다.
+The code does not read these 2 bits whole. It looks at **only the one payload bit.**
 
 ```python
 has_payload = bool(pkt[3] & 0x10)
 ```
 
-`0x10` = `0001 0000` — AFC 두 비트 중 아래쪽, 즉 "payload 가 있는가"만 남긴다. 이것으로
-충분한 이유는 표의 3열에 있다. **CC 가 증가하는 경우와 payload 비트가 서는 경우가 정확히
-일치한다.** adaptation field 의 유무는 이 검사에 필요 없으므로 읽지 않는다. 필요 없는
-것을 읽지 않는 것도 결정이다 — 읽으면 그것을 해석하는 코드가 따라붙고, 해석에는 규격
-예외가 따라붙는다.
+`0x10` = `0001 0000` — of the two AFC bits it keeps only the lower one, i.e. "is there payload." Why this is
+enough is in the table's third column. **The case where CC increases and the case where the payload bit is set
+match exactly.** Whether there is an adaptation field is not needed for this check, so it is not read. Not
+reading what is not needed is also a decision — read it and code that interprets it follows, and interpretation
+brings spec exceptions with it.
 
 ---
 
-## 17.4 코드 — 루프 한 줄이 필드 하나다
+## 17.4 The code — one loop line is one field
 
-이제 분석 루프 전체를 읽는다. 35줄이고, 위에서 본 필드가 위에서부터 순서대로 나온다.
+Now read the whole analysis loop. It is 35 lines, and the fields seen above come out in order from the top.
 
 ```python
 # tsanalyze.py:85-119
@@ -295,7 +289,7 @@ has_payload = bool(pkt[3] & 0x10)
         has_payload = bool(pkt[3] & 0x10)
         cc = pkt[3] & 0x0F
 
-        # CC 는 payload 를 실은 패킷에서만 증가한다. adaptation-only 패킷은 유지.
+        # CC increases only in packets carrying payload. an adaptation-only packet holds it.
         if not has_payload:
             last_cc[pid] = cc
             continue
@@ -303,204 +297,203 @@ has_payload = bool(pkt[3] & 0x10)
         prev = last_cc.get(pid)
         if prev is not None:
             expected = (prev + 1) & 0x0F
-            if cc != expected and cc != prev:  # cc == prev 는 규격상 허용된 중복 패킷
+            if cc != expected and cc != prev:  # cc == prev is a spec-permitted duplicate packet
                 rep.cc_discontinuities += 1
                 if len(rep.cc_detail) < 20:
                     rep.cc_detail.append((pid, expected, cc))
         last_cc[pid] = cc
 ```
 
-### 17.4.1 줄과 필드의 대응
+### 17.4.1 The correspondence of line to field
 
-| 코드 | 읽는 필드 | 판정 | 왜 이 자리인가 |
+| Code | Field read | Verdict | Why this spot |
 |---|---|---|---|
-| `range(0, len(data) - PACKET_SIZE + 1, PACKET_SIZE)` | — | — | 보폭이 곧 패킷 길이. 마지막 온전한 패킷까지만 돈다 |
-| `pkt[0] != SYNC_BYTE` | ① sync byte | `sync_errors` | 정렬이 깨졌으면 나머지 24비트는 해석할 가치가 없다 → `continue` |
-| `pkt[1] & 0x80` | ② TEI | `transport_errors` | 상류가 붙인 손상 표지. 세되 중단하지 않는다 |
-| `((pkt[1] & 0x1F) << 8) \| pkt[2]` | ⑤ PID | — | 이후 모든 판정이 PID 별이므로 먼저 구한다 |
-| `pid == NULL_PID` | ⑤ PID | — | 패딩은 검사 대상이 아니다 → `continue`(§17.5) |
-| `(pkt[3] >> 6) & 0x03` | ⑥ scrambling control | `scrambled_packets` | 0 이 아니면 payload 는 암호문(§17.9) |
-| `pkt[3] & 0x10` | ⑦ AFC 의 payload 비트 | — | CC 증가 여부의 유일한 조건 |
-| `pkt[3] & 0x0F` | ⑧ CC | `cc_discontinuities` | 직전 값과 견준다 |
+| `range(0, len(data) - PACKET_SIZE + 1, PACKET_SIZE)` | — | — | the stride is the packet length. it goes only to the last whole packet |
+| `pkt[0] != SYNC_BYTE` | ① sync byte | `sync_errors` | if alignment is broken the remaining 24 bits are not worth interpreting → `continue` |
+| `pkt[1] & 0x80` | ② TEI | `transport_errors` | a damage marker the upstream attached. count but do not stop |
+| `((pkt[1] & 0x1F) << 8) \| pkt[2]` | ⑤ PID | — | every subsequent verdict is per-PID so obtain it first |
+| `pid == NULL_PID` | ⑤ PID | — | padding is not a check target → `continue` (§17.5) |
+| `(pkt[3] >> 6) & 0x03` | ⑥ scrambling control | `scrambled_packets` | if nonzero the payload is ciphertext (§17.9) |
+| `pkt[3] & 0x10` | ⑦ AFC's payload bit | — | the sole condition for whether CC increases |
+| `pkt[3] & 0x0F` | ⑧ CC | `cc_discontinuities` | compared against the previous value |
 
-**순서가 곧 정책이다.** `continue` 가 놓인 두 자리를 보면 이 코드가 무엇을 "판정 대상이
-아니다"라고 선언했는지 알 수 있다.
+**The order is itself the policy.** Look at the two spots where `continue` is placed and you know what this code
+declared "not a verdict target."
 
-- **동기 이탈 패킷** — 필드를 해석하지 않는다. 정렬이 깨진 바이트를 PID 로 읽으면
-  존재하지 않는 스트림이 무더기로 생긴다
-- **NULL 패킷** — PID 목록에도 넣지 않고 CC 도 보지 않는다
+- **a sync-lost packet** — its fields are not interpreted. read misaligned bytes as PID and nonexistent streams
+  arise in droves
+- **a NULL packet** — not even put in the PID list, and CC is not looked at
 
-반대로 TEI 는 `continue` 하지 **않는다.** 손상 표지가 붙은 패킷도 헤더 자체는 읽을 수
-있고, 그 패킷의 CC 는 여전히 유실 판정에 필요하기 때문이다.
+Conversely TEI does **not** `continue`. Even a packet with a damage marker can still have its header itself
+read, and that packet's CC is still needed for the loss verdict.
 
-### 17.4.2 이 루프가 하지 않는 것 — 재동기
+### 17.4.2 What this loop does not do — resync
 
-`sync_errors += 1` 다음은 `continue` 다. **다음 `0x47` 을 찾아 정렬을 되찾으려는 시도가
-없다.** 보폭은 언제나 188 이다.
+After `sync_errors += 1` comes `continue`. **There is no attempt to find the next `0x47` and recover
+alignment.** The stride is always 188.
 
-이것이 관측 가능한 결과를 만든다. 정상 파일 한가운데에 **1바이트를 삽입**하고 돌리면
-이렇게 나온다.
-
-```
-1바이트 삽입 → packets 1142, sync_errors 571, cc_discontinuities 0, clean False
-```
-
-한 바이트가 어긋났을 뿐인데 **이후 571패킷 전부가 동기 이탈로 잡힌다.** 원인이 하나인
-결함이 571건의 오류로 보고되는 것이다.
-
-이것은 버그가 아니라 선택이다. 근거는 둘이다.
-
-1. **검출 목적에는 충분하다.** 이 검사가 답해야 할 질문은 "몇 바이트가 어긋났는가"가
-   아니라 "이 세그먼트를 믿어도 되는가"이고, 답은 어느 쪽이든 아니오다.
-2. **재동기는 새로운 오판을 들여온다.** 페이로드 안의 우연한 `0x47` 에 다시 정렬하면
-   그 뒤 전부가 그럴듯한 쓰레기 필드로 읽힌다. 정렬 복원은 여러 후보를 검증해야 하는
-   별개의 문제다.
-
-다만 **정직하게 적어 두어야 할 것**은 리포트에 나오는 숫자가 결함의 개수가 아니라는
-점이다. `동기 이탈 571건` 은 "571곳이 깨졌다"가 아니라 "이 지점 이후를 해석할 수
-없다"는 뜻이다.
-
-### 17.4.3 잘린 마지막 패킷은 조용히 버려진다
-
-루프 범위 `len(data) - PACKET_SIZE + 1` 은 **온전한 188바이트를 채우는 마지막 위치까지만**
-돈다. 파일 끝에 남은 부분 패킷은 세지도, 오류로 잡지도 않는다.
+This makes an observable result. **Insert 1 byte** into the middle of a normal file and run it and it comes out
+like this.
 
 ```
-seg000.ts 에서 끝 100바이트 제거 → packets 1141 (원본 1142), sync_errors 0, clean True
+1 byte inserted → packets 1142, sync_errors 571, cc_discontinuities 0, clean False
 ```
 
-세그먼트가 끝에서 잘렸는데 **TS 무결성은 통과한다.** 이 검사만 두면 잘린 세그먼트를 못
-잡는다는 뜻이며, 실제로는 다른 검사(수신 바이트 수, 길이 정합, 타임라인 연속성)가 이
-구멍을 메운다. **검사 하나의 사각을 다른 검사가 덮는 구조**를 알고 있어야, 어느 검사를
-끄면 무엇이 열리는지 말할 수 있다.
+Just one byte went off, and yet **all 571 packets after it are caught as sync-lost.** A defect with a single
+cause is reported as 571 errors.
+
+This is not a bug but a choice. The grounds are two.
+
+1. **It is enough for the detection purpose.** The question this check must answer is not "how many bytes went
+   off" but "can I trust this segment," and the answer is no either way.
+2. **Resync brings in new misjudgments.** Realign to an accidental `0x47` inside the payload and everything
+   after it reads as plausible-garbage fields. Alignment recovery is a separate problem that must verify several
+   candidates.
+
+Only, **what must be written honestly** is that the number in the report is not the count of defects. `sync-lost
+571` means not "571 places broke" but "this point onward cannot be interpreted."
+
+### 17.4.3 A truncated last packet is quietly discarded
+
+The loop range `len(data) - PACKET_SIZE + 1` goes only **to the last position that fills a whole 188 bytes.** A
+partial packet left at the file's end is neither counted nor caught as an error.
+
+```
+remove the last 100 bytes from seg000.ts → packets 1141 (original 1142), sync_errors 0, clean True
+```
+
+The segment is cut at the end and yet **TS integrity passes.** This means with only this check a truncated
+segment is missed, and in reality other checks (received byte count, length consistency, timeline continuity)
+fill this hole. **Knowing the structure where one check's blind spot is covered by another check** is what lets
+you say which check, turned off, opens what.
 
 ---
 
-## 17.5 NULL PID 를 건너뛰는 이유
+## 17.5 Why the NULL PID is skipped
 
 ```python
 if pid == NULL_PID:
     continue
 ```
 
-> **용어** — **null packet(널 패킷)**: PID 가 `0x1FFF` 인 패킷. 내용에 의미가 없고,
-> 스트림의 비트레이트를 일정하게 맞추기 위한 **패딩**으로만 존재한다. 중계 장비는
-> 이것을 자유롭게 넣고 뺀다.
+> **Term** — **null packet**: a packet whose PID is `0x1FFF`. Its content has no meaning, and it exists only as
+> **padding** to keep the stream's bitrate constant. Relay gear inserts and removes it freely.
 
-이 두 줄이 왜 필요한지는 CBR(고정 비트레이트) 스트림을 만들어 보면 즉시 보인다. 같은
-소스를 3 Mbps 고정으로 다중화한 결과다.
+Why these two lines are needed is seen at once if you make a CBR (constant bitrate) stream. This is the result of
+multiplexing the same source at a fixed 3 Mbps.
 
-| | 패킷 수 | 비율 |
+| | Packet count | Ratio |
 |---|---|---|
-| 전체 | 7,988 | 100% |
-| **NULL(0x1FFF)** | **5,381** | **67.4%** |
-| 영상 `0x0100` | 2,314 | 29.0% |
-| 오디오 `0x0101` | 202 | 2.5% |
-| 제어(PAT·PMT·SDT) | 91 | 1.1% |
+| whole | 7,988 | 100% |
+| **NULL (0x1FFF)** | **5,381** | **67.4%** |
+| video `0x0100` | 2,314 | 29.0% |
+| audio `0x0101` | 202 | 2.5% |
+| control (PAT·PMT·SDT) | 91 | 1.1% |
 
-**파일의 3분의 2가 패딩이다.** 이 패킷들을 검사에 포함시키면 두 가지가 어긋난다.
+**Two-thirds of the file is padding.** Include these packets in the check and two things go off.
 
-**첫째, PID 목록이 오염된다.** 리포트는 `PID 5종` 대신 `PID 6종`을 찍고, JSON 통계의
-`pids` 배열에 8191 이 섞인다([`report.py:250-256`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L250-L256)). 검증 결과를 놓고 "이 송출은 트랙이
-몇 개인가"를 따지는 사람에게 이것은 틀린 값이다.
+**First, the PID list is polluted.** The report prints `PID: 6 kinds` instead of `PID: 5 kinds`, and 8191 mixes
+into the JSON stats' `pids` array ([`report.py:250-256`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L250-L256)). To someone weighing "how many tracks does this delivery
+have" from the verification result, this is a wrong value.
 
-**둘째, CC 검사의 근거가 없어진다.** 널 패킷의 카운터는 스트림의 연속성과 무관하고,
-중계 장비가 널 패킷을 넣고 빼는 것은 **정상 동작**이다. 유실이 아닌 것을 유실로 세면
-오탐이다.
+**Second, the CC check loses its basis.** A null packet's counter is unrelated to the stream's continuity, and
+relay gear inserting and removing null packets is **normal operation.** Counting what is not loss as loss is a
+false positive.
 
-여기서 측정 결과를 정직하게 적어야 한다. **이 환경에서는 건너뛰지 않아도 CC 오탐이
-나지 않았다.**
+Here the measurement must be written honestly. **In this environment no CC false positive arose even without
+skipping.**
 
 ```
-NULL 포함해 검사 → CC 불연속 0건
-NULL 제외하고 검사 → CC 불연속 0건   (차이는 PID 목록 6종 vs 5종뿐)
+check including NULL → 0 CC discontinuities
+check excluding NULL → 0 CC discontinuities   (the only difference is the PID list, 6 kinds vs 5)
 ```
 
-이유는 ffmpeg 의 먹서가 **널 패킷의 CC 를 전부 0 으로 고정**하기 때문이다(앞 24개를
-직접 확인했다). 값이 변하지 않으므로 `cc == prev` 분기 — 규격이 허용한 중복 패킷 —
-에 걸려 오탐이 발생하지 않는다.
+The reason is that ffmpeg's muxer **fixes all null packets' CC to 0** (I checked the first 24 directly). Since
+the value does not change, it catches on the `cc == prev` branch — the spec-permitted duplicate packet — and no
+false positive arises.
 
-즉 **이 건너뛰기의 이득은 측정된 범위에서 PID 목록의 정확성뿐이다.** 그럼에도 유지가
-옳은 이유는 제15장 §15.7 의 근거 1 과 같다. 이 코드의 안전성이 **특정 먹서의 우연한
-동작에 의존하게 두지 않는 것**이다. 널 패킷의 카운터를 증가시키거나 재다중화 과정에서
-값이 뒤섞이는 구현이 있다면, 그 순간 3분의 2가 오탐으로 뒤집힌다.
+That is, **the benefit of this skip, within the measured range, is only the PID list's accuracy.** The reason
+keeping it is nonetheless right is the same as ground 1 of Chapter 15 §15.7. It is **not letting this code's
+safety depend on a particular muxer's accidental behavior.** If there is an implementation that increments null
+packets' counters or scrambles the value during re-multiplexing, at that moment two-thirds flips to false
+positives.
 
-한 가지 더. **HLS 세그먼트에는 보통 널 패킷이 없다.** 실측한 VOD 세그먼트의 PID 목록에
-`0x1FFF` 은 없었다. HTTP 로 파일을 받는 데는 비트레이트를 채울 이유가 없기 때문이다.
-그러나 방송 신호를 그대로 재다중화해 HLS 로 내보내는 송출에서는 널 패킷이 그대로 남는다.
-**"우리 스트림에는 없다"가 "코드에서 빼도 된다"가 아니다.**
+One more thing. **HLS segments usually have no null packets.** The measured VOD segment's PID list had no
+`0x1FFF`. Because receiving a file over HTTP has no reason to fill the bitrate. But in a delivery that
+re-multiplexes a broadcast signal as-is out to HLS, null packets remain. **"Our stream does not have it" is not
+"it is fine to remove from the code."**
 
 ---
 
-## 17.6 TSReport — 왜 합계 하나가 아니라 네 개인가
+## 17.6 TSReport — why four totals and not one
 
 ```python
 # tsanalyze.py:40-49
 @dataclass
 class TSReport:
     packets: int = 0
-    parsed: bool = False  # TS 로 해석되었는가 (fMP4 면 False)
-    sync_errors: int = 0  # sync byte 0x47 불일치 = 스트림 정렬 깨짐
-    transport_errors: int = 0  # TEI 플래그 = 전송 계층이 표시한 오류
-    cc_discontinuities: int = 0  # continuity counter 점프 = 패킷 유실
-    scrambled_packets: int = 0  # scrambling control ≠ 0 = 복호화되지 않음
+    parsed: bool = False  # was it interpreted as TS (False if fMP4)
+    sync_errors: int = 0  # sync byte 0x47 mismatch = stream alignment broken
+    transport_errors: int = 0  # TEI flag = an error the transport layer marked
+    cc_discontinuities: int = 0  # continuity counter jump = packet loss
+    scrambled_packets: int = 0  # scrambling control ≠ 0 = not decrypted
     pids: set[int] = field(default_factory=set)
-    cc_detail: list[tuple[int, int, int]] = field(default_factory=list)  # (pid, 기대, 실제)
+    cc_detail: list[tuple[int, int, int]] = field(default_factory=list)  # (pid, expected, actual)
 ```
 
-네 개의 오류 계수를 하나로 합치지 않은 이유는 **원인과 대응이 각각 다르기 때문**이다.
+The reason the four error counts are not merged into one is that **the cause and the response differ for each.**
 
-| 계수 | 읽는 필드 | 무엇이 일어났는가 | 누구의 문제인가 | 판정 |
+| Count | Field read | What happened | Whose problem | Verdict |
 |---|---|---|---|---|
-| `sync_errors` | ① | 바이트 정렬이 깨졌다 | 수신·저장 경로, 또는 TS 가 아닌 것을 TS 로 읽음 | **FAIL** |
-| `transport_errors` | ② | 상류 장비가 손상을 표시했다 | 송출 측 상류(위성·케이블 구간 등) | WARN |
-| `cc_discontinuities` | ⑧ | 패킷이 빠졌다 | 전송 경로 또는 송출 측 | WARN |
-| `scrambled_packets` | ⑥ | payload 가 암호문이다 | 키·암호화 방식의 불일치 | **FAIL** |
+| `sync_errors` | ① | byte alignment broke | the receive·store path, or reading non-TS as TS | **FAIL** |
+| `transport_errors` | ② | upstream gear marked damage | the delivery-side upstream (satellite·cable segments, etc.) | WARN |
+| `cc_discontinuities` | ⑧ | a packet was dropped | the transport path or the delivery side | WARN |
+| `scrambled_packets` | ⑥ | the payload is ciphertext | a mismatch of key·encryption method | **FAIL** |
 
-판정 매핑이 코드에 그대로 있다.
+The verdict mapping is right there in the code.
 
 ```python
 # report.py:232-245
-    # 3) TS 전송 무결성
+    # 3) TS transport integrity
     if ts and ts.parsed:
         problems = []
         if ts.cc_discontinuities:
-            problems.append(f"CC 불연속 {ts.cc_discontinuities}건(패킷 유실)")
+            problems.append(f"{ts.cc_discontinuities} CC discontinuities (packet loss)")
         if ts.transport_errors:
-            problems.append(f"TEI {ts.transport_errors}건")
+            problems.append(f"{ts.transport_errors} TEI")
         if ts.sync_errors:
-            problems.append(f"동기 이탈 {ts.sync_errors}건")
+            problems.append(f"{ts.sync_errors} sync-lost")
         if ts.scrambled_packets:
-            problems.append(f"미복호 패킷 {ts.scrambled_packets}건")
+            problems.append(f"{ts.scrambled_packets} undecrypted packets")
         rep.add(
-            "TS 무결성",
+            "TS integrity",
             FAIL if (ts.sync_errors or ts.scrambled_packets) else (WARN if problems else PASS),
 ```
 
-**동기 이탈과 미복호만 FAIL 이다.** 두 경우는 산출물 전체가 못 쓰는 상태이고, TEI 와 CC
-불연속은 **부분 손상**이라 사용자가 감수할 수 있는 판단의 여지가 있다. 합계 하나였다면
-이 구분을 할 수 없다. 계수를 나눈 것은 취향이 아니라 판정 규칙의 요구다.
+**Only sync-lost and undecrypted are FAIL.** Those two cases leave the whole output unusable, whereas TEI and CC
+discontinuity are **partial damage** so there is room for a judgment the user can accept. With one total this
+distinction could not be made. Splitting the counts is not taste but the verdict rule's demand.
 
-### 17.6.1 `parsed` — 없음과 통과를 구별한다
+### 17.6.1 `parsed` — distinguishing absence from passing
 
 ```python
 # tsanalyze.py:77-83
     rep = TSReport()
     if len(data) < PACKET_SIZE or data[0] != SYNC_BYTE:
-        # fMP4(ftyp/moof 시작) 등 TS 가 아닌 컨테이너 — 분석 대상 아님
+        # a non-TS container like fMP4 (starts with ftyp/moof) — not an analysis target
         return rep
 
     rep.parsed = True
     last_cc = state if state is not None else {}
 ```
 
-fMP4 세그먼트는 TS 가 아니므로 검사할 것이 없다. 이때 `parsed=False` 인 보고서가
-돌아가고, 리포트는 `if ts and ts.parsed:` 로 **항목 자체를 만들지 않는다.**
-`sync_errors=0`, `cc_discontinuities=0` 을 그대로 믿어 PASS 를 찍으면 어떻게 되는가 —
-fMP4 스트림마다 "TS 무결성 통과"가 나온다. **검사하지 않은 것이 통과로 기록되는 것**이
-검증 도구가 낼 수 있는 최악의 오류다(제38장의 "판정 보류"와 같은 원리).
+An fMP4 segment is not TS so there is nothing to check. Then a report with `parsed=False` returns, and the
+report **does not make the item itself** via `if ts and ts.parsed:`. What happens if you believe `sync_errors=0`,
+`cc_discontinuities=0` as-is and stamp PASS — every fMP4 stream gets "TS integrity passed." **That what was not
+checked is recorded as passed** is the worst error a verification tool can make (the same principle as Chapter
+38's "verdict withheld").
 
-### 17.6.2 `merge` 와 `cc_detail` 20개 상한
+### 17.6.2 `merge` and the 20-item `cc_detail` cap
 
 ```python
 # tsanalyze.py:60-68
@@ -515,15 +508,15 @@ fMP4 스트림마다 "TS 무결성 통과"가 나온다. **검사하지 않은 �
         self.cc_detail.extend(other.cc_detail[: max(0, 20 - len(self.cc_detail))])
 ```
 
-계수는 더하고, PID 는 합집합이고, `parsed` 는 OR 다 — 세그먼트 하나만 TS 여도 전체는
-TS 로 본다. 마지막 줄만 성질이 다르다. **`cc_detail` 은 20개에서 끊는다.**
+Counts are added, PIDs are a union, `parsed` is OR — if even one segment is TS the whole is viewed as TS. Only
+the last line differs in nature. **`cc_detail` is cut off at 20.**
 
-정렬이 깨진 파일에서는 유실이 수천 건 나올 수 있고, 그것을 전부 담으면 리포트 JSON 이
-결함 하나 때문에 수 메가바이트로 부푼다. 상한은 `analyze` 안에도 한 번 더 있다
-([`tsanalyze.py:117`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L117)). **판정에 필요한 것은 개수이고, 상세는 진단용 표본이다.** 둘을
-구분하지 않으면 로그가 스스로 장애 요인이 된다.
+In a file whose alignment is broken thousands of losses can arise, and holding them all inflates the report JSON
+to several megabytes over a single defect. The cap is once more inside `analyze` too ([`tsanalyze.py:117`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/tsanalyze.py#L117)).
+**What the verdict needs is the count, and the detail is a diagnostic sample.** Not distinguishing the two makes
+the log itself a failure factor.
 
-### 17.6.3 세그먼트 경계를 잇는 상태
+### 17.6.3 The state that spans segment boundaries
 
 ```python
 # cli.py:437-438
@@ -536,52 +529,52 @@ TS 로 본다. 마지막 줄만 성질이 다르다. **`cc_detail` 은 20개에�
         ts_total.merge(analyze(data, cc_state))
 ```
 
-`cc_state` 는 **같은 dict 를 세그먼트마다 계속 넘겨** PID 별 마지막 카운터를 이어 간다.
-세그먼트 하나가 통째로 빠지면 그 경계에서만 카운터가 튀므로, 상태를 넘기지 않으면
-**세그먼트 단위 결손은 영원히 보이지 않는다.** 이 상태 전달이 정확히 무엇을 더 잡고
-무엇을 여전히 못 잡는지는 제18장에서 정량화한다.
+`cc_state` **keeps passing the same dict for each segment** and carries the last per-PID counter forward. If a
+whole segment is missing, the counter jumps only at that boundary, so if you do not pass the state **a
+segment-unit loss is forever invisible.** Exactly what this state passing catches more and what it still cannot
+catch is quantified in Chapter 18.
 
 ---
 
-## 17.7 같은 판별의 축소판 — [`inventory.py:113-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L113-L121)
+## 17.7 A miniature of the same determination — [`inventory.py:113-121`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L113-L121)
 
-같은 원리가 이 저장소에 한 번 더, **훨씬 작게** 구현되어 있다.
+The same principle is implemented once more in this repository, **much smaller.**
 
 ```python
 # inventory.py:113-121
 def _ts_flaw(path: Path) -> str:
-    """MPEG-TS 는 188바이트 주기로 동기 바이트(0x47)가 온다. 둘을 견준다."""
+    """MPEG-TS has a sync byte (0x47) every 188 bytes. Compare the two."""
     with path.open("rb") as fh:
         head = fh.read(_TS_PACKET + 1)
     if len(head) < _TS_PACKET + 1:
-        return "패킷 하나도 채우지 못했다"
+        return "could not fill even one packet"
     if head[0] != _TS_SYNC or head[_TS_PACKET] != _TS_SYNC:
-        return "MPEG-TS 동기 바이트가 맞지 않는다"
+        return "the MPEG-TS sync byte does not match"
     return ""
 ```
 
-189바이트만 읽고 **두 바이트만 본다.** 헤더의 나머지 필드는 건드리지 않는다. 왜 같은
-파일 형식에 두 개의 다른 검사가 있는가 — 목적과 비용이 다르기 때문이다.
+It reads only 189 bytes and **looks at only two bytes.** It does not touch the header's remaining fields. Why are
+there two different checks for the same file format — because the purpose and the cost differ.
 
 | | `tsanalyze.analyze` | `inventory._ts_flaw` |
 |---|---|---|
-| **질문** | 방금 받은 것이 전송 중 온전했는가 | 폴더에 이미 있는 것이 완성본인가 |
-| **읽는 양** | 전량 | 189바이트 |
-| **보는 필드** | ①②⑤⑥⑦⑧ | ①(두 번) |
-| **시점** | 수신 직후, 메모리 위 | 재실행 시, 디스크에서 |
-| **호출 횟수** | 세그먼트마다 1회 | **회차마다 1회 × 매 실행** |
+| **Question** | was the just-received thing intact in transit | is the thing already in the folder a finished copy |
+| **Amount read** | all | 189 bytes |
+| **Fields seen** | ①②⑤⑥⑦⑧ | ① (twice) |
+| **Timing** | just after receipt, in memory | on re-run, from disk |
+| **Call count** | once per segment | **once per episode × every run** |
 
-[`inventory.py:17-19`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L17-L19) 가 그 판단의 근거를 적어 두었다.
+[`inventory.py:17-19`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L17-L19) wrote the basis for that judgment.
 
-> 온전한지는 싸게 확인할 수 있는 것만 기본으로 본다. 27개를 매번 ffprobe 로 열면
-> 재실행이 느려져 '빠진 것만 받는다'는 이득이 사라지기 때문이다.
+> Whether it is intact, we check by default only what can be confirmed cheaply. Opening 27 files with ffprobe
+> every time makes the re-run slow, so the benefit of "receive only what is missing" disappears.
 
-**판정의 비대칭 비용**이다. 재고 조사에서 틀리면 두 방향의 손해가 다르다 — 너무
-관대하면 깨진 파일이 완성본 행세를 해 그 회차가 **영원히** 복구되지 않고, 너무
-엄격하면 멀쩡한 27화를 매번 다시 받는다([`inventory.py:13-15`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L13-L15)). 그래서 이 자리에서는
-"싸고 확실한 것만" 본다. 두 바이트가 그 조건을 만족한다.
+It is a **cost asymmetry of the verdict.** Get it wrong in the inventory and the two directions of loss differ —
+too lenient and a broken file passes as finished so that episode is **never** recovered, too strict and 27 fine
+episodes are re-received every time ([`inventory.py:13-15`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L13-L15)). So at this spot it looks at "only the cheap and
+sure." Two bytes satisfy that condition.
 
-두 모듈이 **같은 상수를 각자 갖고 있다**는 점도 짚어 둔다.
+It is worth noting too that the two modules **each hold the same constants.**
 
 ```python
 # inventory.py:44-45
@@ -589,201 +582,197 @@ _TS_SYNC = 0x47
 _TS_PACKET = 188
 ```
 
-`tsanalyze` 를 import 하면 없앨 수 있는 중복이다. 대신 `inventory` 는 `tsanalyze` 에
-의존하지 않게 된다 — 재고 조사는 네트워크 수신 계층을 전혀 모르는 채로 성립한다.
-**단일 출처(SSOT)를 지키는 이득과 계층 독립을 지키는 이득이 정면으로 부딪히는 자리**이고,
-이 코드는 후자를 골랐다. 규격 상수라 바뀔 일이 없다는 것이 그 선택을 지탱한다. 값이
-바뀔 수 있는 상수였다면 반대가 옳다.
+This is a duplication that could be removed by importing `tsanalyze`. In exchange `inventory` comes to not depend
+on `tsanalyze` — the inventory holds up knowing nothing of the network-receive layer at all. **It is the spot
+where the benefit of keeping a single source of truth (SSOT) and the benefit of keeping layer independence
+collide head-on**, and this code chose the latter. That they are spec constants that will not change supports
+that choice. Had they been constants that could change, the opposite would be right.
 
-마지막으로 이 축소판의 한계다. **`.ts` 확장자에만 적용된다**([`inventory.py:144-145`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L144-L145)).
-제14장에서 본 위장 확장자로 저장된 파일은 이 검사를 그냥 지나간다. 재고 조사가 다루는
-것은 **이 도구가 스스로 저장한 산출물**이라 현재 문제가 없지만, 사용자가 다른 경로로
-받은 파일을 같은 폴더에 두면 판정 근거가 사라진다.
+Finally, this miniature's limit. **It applies only to the `.ts` extension** ([`inventory.py:144-145`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L144-L145)). A file
+saved with the masquerade extension seen in Chapter 14 just passes this check by. What the inventory handles is
+**the output this tool saved itself** so there is no problem now, but put a file the user got by another path in
+the same folder and the verdict basis disappears.
 
 ---
 
-## 17.8 일반화 — 고정 길이 프레임과 평문 헤더
+## 17.8 Generalization — fixed-length frames and plaintext headers
 
-### 17.8.1 중계 가능성은 헤더가 평문일 것을 요구한다
+### 17.8.1 Relayability requires the header be plaintext
 
-TS 패킷의 구조는 특이한 것이 아니라 **전형**이다. 같은 형태가 계층마다 반복된다.
+The TS packet's structure is not peculiar but **typical.** The same form repeats per layer.
 
-| 계층 | 프레임 | 헤더 | 누가 헤더를 읽는가 |
+| Layer | Frame | Header | Who reads the header |
 |---|---|---|---|
-| 링크 | Ethernet 프레임 | 선두 14바이트 | 스위치 — MAC 주소로 포워딩 |
-| 셀 | ATM 셀 | 선두 5바이트(53바이트 고정) | 셀 스위치 — VPI/VCI 로 교환 |
-| 네트워크 | IP 패킷 | 선두 20바이트(+옵션) | 라우터·NAT·방화벽 |
-| 미디어 | **MPEG-TS 패킷** | **선두 4바이트(188바이트 고정)** | **재다중화기·중계기 — PID 로 필터링** |
-| 보안 | TLS 레코드 | 선두 5바이트 | 수신 측 — 레코드 경계를 알아야 복호를 시작한다 |
+| link | Ethernet frame | leading 14 bytes | switch — forwards by MAC address |
+| cell | ATM cell | leading 5 bytes (53 bytes fixed) | cell switch — swaps by VPI/VCI |
+| network | IP packet | leading 20 bytes (+options) | router·NAT·firewall |
+| media | **MPEG-TS packet** | **leading 4 bytes (188 bytes fixed)** | **re-multiplexer·relay — filters by PID** |
+| security | TLS record | leading 5 bytes | receiver — must know the record boundary to start decryption |
 
-공통 원리를 한 문장으로 쓰면 이렇다.
+Writing the common principle in one sentence, it is this.
 
-> **중계(relay)에 필요한 정보는 암호화할 수 없다. 그래서 스크램블·암호화는 언제나
-> payload 부터 적용되고 헤더는 평문으로 남는다.**
+> **Information needed for the relay cannot be encrypted. So scrambling·encryption always applies from the
+> payload on, and the header remains plaintext.**
 
-TS 의 스크램블이 payload 에만 걸리는 이유가 이것이다. PID 를 읽지 못하면 중계 장비는
-그 패킷을 어디로 보낼지 알 수 없고, 그러면 네트워크가 성립하지 않는다.
+This is why TS's scrambling applies only to the payload. Unable to read the PID, relay gear cannot know where to
+send that packet, and then the network does not hold up.
 
-이 원리에는 **양면**이 있다.
+This principle has **two faces.**
 
-- **밝은 면** — 받는 쪽이 내용을 몰라도 전송의 무결성은 검증할 수 있다. §17.9 의 검사가
-  성립하는 근거 전체가 이것이다
-- **어두운 면** — 내용을 암호화해도 **메타데이터는 샌다.** PID 구성으로 트랙 수를,
-  패킷 도착률로 비트레이트를, PCR 로 시간축을 관측 가능하다
+- **the bright face** — the receiving side can verify the transport's integrity without knowing the content.
+  the whole basis on which §17.9's check holds is this
+- **the dark face** — even if you encrypt the content, **the metadata leaks.** the track count via the PID
+  composition, the bitrate via the packet arrival rate, the time axis via the PCR are all observable
 
-QUIC 의 **헤더 보호(header protection)** 는 정확히 이 어두운 면을 겨냥한 반례다.
-중계에 꼭 필요한 최소한만 남기고 나머지 헤더 필드까지 가려, 경로 위 관측자가 연결을
-추적하지 못하게 한다. **어디까지를 평문으로 남길 것인가가 프로토콜 설계의 선택지**라는
-사실 자체를 QUIC 이 보여 준 셈이다. TS 는 1990년대의 방송 전제 위에서 그 선택을
-"전부 평문"으로 했다.
+QUIC's **header protection** is exactly a counterexample aimed at this dark face. It leaves only the bare minimum
+needed for the relay and masks the rest of the header fields too, so an on-path observer cannot track the
+connection. QUIC showed the very fact that **how far to leave things plaintext is a protocol-design choice.** TS,
+on the 1990s broadcast premise, made that choice "all plaintext."
 
-### 17.8.2 길이가 상수인 파서와 길이를 신뢰하는 파서
+### 17.8.2 A parser whose length is a constant and a parser that trusts the length
 
-제20장의 ISO-BMFF 와 나란히 놓으면 대비가 선명하다.
+Set side by side with Chapter 20's ISO-BMFF and the contrast is sharp.
 
 | | MPEG-TS | ISO-BMFF |
 |---|---|---|
-| 다음 경계를 아는 법 | **상수 188** | 상자 머리의 `box_size` **필드를 읽는다** |
-| 입력이 정하는가 | 아니다 | **그렇다** |
-| 대표 실패 모드 | 정렬 이탈(1바이트 삽입 → 이후 전부 오류) | 크기 필드 위조 → 경계 검사 누락 시 **정수 오버플로** |
-| 방어 코드 | 없어도 된다 | `box_size < 8`·`offset + box_size > size` 검사 필수([`inventory.py:92-95`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L92-L95)) |
+| How the next boundary is known | **constant 188** | **reads the `box_size` field** of the box head |
+| Does the input set it | no | **yes** |
+| Representative failure mode | alignment loss (1 byte inserted → everything after is an error) | size-field forgery → **integer overflow** if the boundary check is omitted |
+| Defense code | can be absent | `box_size < 8`·`offset + box_size > size` checks required ([`inventory.py:92-95`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/inventory.py#L92-L95)) |
 
-**길이 필드가 없다는 것은 그 필드를 검증할 필요가 없다는 뜻이다.** 파일 포맷 파서
-취약점의 큰 갈래 하나가 길이·오프셋 필드를 신뢰한 데서 나오는데, TS 는 그 갈래를
-설계 단계에서 지워 버렸다. 대신 정렬이라는 다른 취약점을 얻었고, 그것은 메모리 안전성
-문제가 아니라 **해석 가능성** 문제다.
+**Having no length field means there is no length field to verify.** One large branch of file-format parser
+vulnerabilities comes from trusting length·offset fields, and TS erased that branch at the design stage. In
+exchange it got a different vulnerability, alignment, and that is not a memory-safety problem but an
+**interpretability** problem.
 
-> **신뢰할 입력을 줄이는 가장 확실한 방법은 입력에서 그 값을 받지 않는 것이다.**
+> **The surest way to reduce the input you must trust is to not take that value from the input.**
 
-이 원리는 포맷 설계뿐 아니라 API 설계에도 그대로 적용된다. 제14장에서 `sniff()` 가
-`Content-Type` 을 **인자로 받지도 않게** 만든 것이 같은 형태의 결정이었다.
+This principle applies as-is not only to format design but to API design. In Chapter 14, making `sniff()` **not
+even take `Content-Type` as an argument** was a decision of the same form.
 
 ---
 
-## 17.9 보안 — scrambling control 을 안 보면 암호문을 영상으로 저장한다
+## 17.9 Security — do not look at scrambling control and you save ciphertext as video
 
-> **용어** — **transport scrambling control(TSC, 전송 스크램블 제어)**: 헤더의 2비트.
-> `00` 은 스크램블 없음, 그 외 값은 **payload 가 스크램블되어 있음**을 뜻한다. 헤더와
-> adaptation field 는 이 값과 무관하게 언제나 평문이다.
+> **Term** — **transport scrambling control (TSC)**: 2 bits of the header. `00` means no scrambling, any other
+> value means **the payload is scrambled.** The header and adaptation field are always plaintext regardless of
+> this value.
 
 ```python
 if (pkt[3] >> 6) & 0x03:
     rep.scrambled_packets += 1
 ```
 
-`>> 6` 으로 최상위 2비트를 끌어내리고 `& 0x03` 으로 나머지를 지운다. 0 이 아니면 —
-**값이 무엇이든** — 미복호 패킷으로 센다. 두 비트의 구체적 값(`01`·`10`·`11`)이
-무엇을 구분하는지는 이 코드의 관심이 아니다. **0 인가 아닌가만이 판정에 필요하다.**
+`>> 6` pulls down the top 2 bits and `& 0x03` erases the rest. If nonzero — **whatever the value** — it counts
+as an undecrypted packet. What the two bits' concrete value (`01`·`10`·`11`) distinguishes is not this code's
+concern. **Only whether it is zero or not is needed for the verdict.**
 
-### 17.9.1 무엇을 뜻하는가 — 정확히
+### 17.9.1 What it means — exactly
 
-TSC 가 0 이 아닌 패킷을 받았다면, 그 payload 는 이 도구가 가진 키로 열리지 않는
-상태다. 원인은 셋으로 갈린다.
+If you received a packet whose TSC is nonzero, that payload is in a state that does not open with the key this
+tool has. The cause splits into three.
 
-| 원인 | 실제로 무슨 일인가 | 이 도구의 대응 |
+| Cause | What actually happened | This tool's response |
 |---|---|---|
-| **전송 계층 스크램블** | 조건부 접근(CA) 시스템이 걸어 놓은 스크램블. 애초에 이 클라이언트를 수신자로 상정하지 않은 신호다 | 판정 FAIL — 처리할 수 없는 콘텐츠 |
-| **프레임 단위 암호화의 일부 구현** | 세그먼트 통째 복호가 성립하지 않는 방식. `EXT-X-KEY` 단계에서 이미 거부된다 | [`playlist.py:62-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L62-L64) 가 앞에서 차단 |
-| **재다중화 잔재·먹서 오류** | 스크램블을 풀고도 비트를 지우지 않은 채 재다중화한 스트림 | 판정 FAIL — 오탐 가능(§17.11) |
+| **transport-layer scrambling** | scrambling a conditional-access (CA) system placed. a signal that never presupposed this client as a recipient | verdict FAIL — content that cannot be handled |
+| **part of some frame-level encryption implementation** | a method where whole-segment decryption does not hold. it is already refused at the `EXT-X-KEY` stage | [`playlist.py:62-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L62-L64) blocks it earlier |
+| **re-multiplexing residue·muxer error** | a stream re-multiplexed with the scrambling undone but the bit not cleared | verdict FAIL — false positive possible (§17.11) |
 
-여기서 흔한 오해 하나를 정정해야 한다. **"복호화 키가 틀렸다"는 이 검사에 걸리지
-않는다.** AES-128 로 전 세그먼트를 암호화한 스트림을 틀린 키로 풀면 결과는 무작위
-바이트열이고, 선두가 `0x47` 일 확률은 1/256 이다. 실측하면 이렇게 된다.
-
-```
-무작위 바이트열 → sniff() = "unknown", analyze().parsed = False
-```
-
-즉 틀린 키는 **한 단계 앞의 매직 넘버 판별에서 잡히고**, 페이로드 유효성 FAIL 로
-기록된다([`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464), 제14장 §14.4.2). TSC 검사가 잡는 것은 그와 다른 상황 —
-**바이트열은 완전히 정상적인 TS 인데 그 안의 내용만 암호문인 경우**다.
-
-### 17.9.2 실측 — 매직 넘버는 통과하고 TSC 만 잡는다
-
-정상 세그먼트의 payload 는 그대로 두고, PSI(제어 테이블)를 제외한 1,137패킷의 TSC 를
-`10` 으로 세워 보았다. 헤더 2비트만 바꾼 것이다.
+Here one common misunderstanding must be corrected. **"The decryption key is wrong" does not catch on this
+check.** Decrypt a stream that AES-128-encrypted every segment with the wrong key and the result is a random
+byte string, and the probability its head is `0x47` is 1/256. Measured, it comes out like this.
 
 ```
-sniff()               = "mpegts"        ← 통과
+random byte string → sniff() = "unknown", analyze().parsed = False
+```
+
+That is, a wrong key **is caught one stage earlier at the magic-number determination**, and recorded as a
+payload-validity FAIL ([`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464), Chapter 14 §14.4.2). What the TSC check catches is a different
+situation — **the byte string is a completely normal TS but only its inner content is ciphertext.**
+
+### 17.9.2 Measured — the magic number passes and only TSC catches it
+
+I left a normal segment's payload as-is and set the TSC of 1,137 packets — excluding the PSI (control tables) —
+to `10`. I changed only the header's 2 bits.
+
+```
+sniff()               = "mpegts"        ← passes
 analyze().packets     = 1142
-analyze().cc_disc     = 0               ← CC 도 정상
-analyze().scrambled   = 1137            ← 여기서만 잡힌다
+analyze().cc_disc     = 0               ← CC also normal
+analyze().scrambled   = 1137            ← caught only here
 analyze().clean       = False
-선두 4바이트           = 47 40 11 10     ← 정상 세그먼트와 동일
+leading 4 bytes       = 47 40 11 10     ← identical to a normal segment
 ```
 
-![스크램블된 패킷에서도 헤더 4바이트는 평문으로 남는다](/images/lecture/hls-recon/17-clear-header.svg)
+![In a scrambled packet too the header 4 bytes stay plaintext](/images/lecture/hls-recon/17-clear-header.svg)
 
-*그림 17-3 — 스크램블된 패킷에서도 헤더 4바이트는 평문으로 남는다*
+*Figure 17-3 — in a scrambled packet too the header 4 bytes stay plaintext*
 
-**제14장의 판별 근거가 여기서는 무력하다.** 선두 바이트도, 188바이트 뒤의 바이트도
-`0x47` 이다. 그럴 수밖에 없다 — §17.8.1 에서 본 대로 **헤더는 스크램블 대상이 아니기
-때문이다.** 매직 넘버는 헤더 안에 있고, 헤더는 언제나 평문이다.
+**Chapter 14's determination basis is powerless here.** Both the leading byte and the byte 188 later are `0x47`.
+It cannot be otherwise — as seen in §17.8.1, **the header is not a scrambling target.** The magic number is
+inside the header, and the header is always plaintext.
 
-그래서 결론이 이렇게 갈린다.
+So the conclusion splits like this.
 
-| 도구 | 보는 곳 | 판정 | 사용자에게 보고되는 것 |
+| Tool | Where it looks | Verdict | What is reported to the user |
 |---|---|---|---|
-| 선두 바이트만 보는 도구 | `data[0]`, `data[188]` | `mpegts` | **"전량 수신 성공"** — 암호문을 `.ts` 로 저장한다 |
-| 헤더 2비트를 읽는 도구 | `pkt[3]` 비트 7-6 | 미복호 1,137건 | **FAIL** — 산출물을 신뢰할 수 없다 |
+| a tool looking at the leading byte only | `data[0]`, `data[188]` | `mpegts` | **"full receipt success"** — it saves ciphertext as `.ts` |
+| a tool reading the 2 header bits | `pkt[3]` bits 7-6 | 1,137 undecrypted | **FAIL** — the output cannot be trusted |
 
-**같은 바이트열에서 정반대의 결론이 나온다.** 제14장 §14.7.2 의 "같은 헤더, 정반대
-의미"가 한 층 더 안쪽에서 반복되는 셈이다. 그때는 응답 헤더가 같았고, 지금은 매직
-넘버가 같다. **판별 근거를 한 겹만 두면 언제나 그 겹을 통과하는 경우가 남는다.**
+**From the same byte string opposite conclusions come out.** Chapter 14 §14.7.2's "the same header, opposite
+meaning" repeats one layer deeper. Then the response headers were the same; now the magic number is the same.
+**Place the determination basis one layer only and there always remains a case that passes that layer.**
 
-이것이 [`report.py:245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L245) 가 미복호를 WARN 이 아니라 **FAIL** 로 두는 이유다. 파일은
-만들어지고, 크기도 정상이고, 재생 길이도 나온다. 그런데 내용이 없다. **성공처럼 보이는
-실패**는 실패처럼 보이는 실패보다 위험하다.
+This is why [`report.py:245`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L245) puts undecrypted as **FAIL** and not WARN. The file is made, its size is normal, and a
+play length comes out. And yet there is no content. **A failure that looks like success** is more dangerous than
+a failure that looks like failure.
 
-### 17.9.3 이 저장소에서 TSC 검사가 놓인 자리
+### 17.9.3 Where the TSC check sits in this repository
 
-솔직히 말하면 이 검사는 **정상 경로에서 절대 발동하지 않는다.** 앞단에서 이미 세 번
-걸러지기 때문이다.
+Honestly, this check **never fires on the normal path.** Because it is already filtered three times upstream.
 
-1. [`playlist.py:62-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L62-L64) — `METHOD` 가 `AES-128`·`NONE` 이 아니거나 `KEYFORMAT` 이
-   `identity` 가 아니면 지원 대상에서 제외
-2. [`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40) — 그럼에도 세그먼트 단위 복호를 시도하면 `NotImplementedError`
-3. [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464) — 복호 결과가 미디어가 아니면 페이로드 유효성 FAIL
+1. [`playlist.py:62-64`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L62-L64) — if `METHOD` is not `AES-128`·`NONE` or `KEYFORMAT` is not `identity`, it is excluded
+   from support
+2. [`decrypt.py:36-40`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L36-L40) — if segment-unit decryption is nonetheless attempted, `NotImplementedError`
+3. [`cli.py:459-464`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L464) — if the decryption result is not media, a payload-validity FAIL
 
-그렇다면 왜 남겨 두는가. **앞의 세 판정이 전부 옳다는 보장이 없기 때문이다.** 1번은
-플레이리스트의 자기 신고에 의존한다. 플레이리스트가 `METHOD=NONE` 이라고 선언했는데
-실제 세그먼트가 스크램블되어 있으면 1·2·3 이 모두 통과하고 **TSC 검사만 남는다.**
+Then why leave it. **Because there is no guarantee that the previous three verdicts are all correct.** Number 1
+depends on the playlist's self-report. If the playlist declared `METHOD=NONE` but the actual segment is
+scrambled, 1·2·3 all pass and **only the TSC check remains.**
 
-> **자기 신고를 근거로 한 판정 뒤에는 반드시 바이트를 근거로 한 판정이 있어야 한다.**
+> **After a verdict based on a self-report there must always be a verdict based on the bytes.**
 
-이 교재가 제5장부터 반복해 온 원칙의 마지막 적용 지점이다. 그물의 마지막 코는 앞의
-코가 전부 찢어졌을 때를 위해 있다.
+It is the last application point of the principle this course has repeated since Chapter 5. The last knot of the
+net is there for when all the previous knots are torn.
 
-### 17.9.4 방어자 관점
+### 17.9.4 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **검증 도구 구현자** | 컨테이너 판별(매직 넘버)과 내용 유효성(헤더 필드)을 **분리해 둘 다** 검사한다. 판별 통과를 유효성 통과로 쓰면 암호문에 성공을 보고한다 |
-| **플레이어 구현자** | TSC ≠ 0 인데 복호 수단이 없으면 **재생을 시도하지 말고 명시적으로 실패**시킨다. 조용한 검은 화면은 사용자에게 네트워크 문제로 보인다 |
-| **송출 사업자** | 암호화 방식을 플레이리스트 선언(`EXT-X-KEY`)과 실제 비트에서 **일치**시킨다. 선언과 내용이 어긋나면 정상 클라이언트도 진단할 수 없는 실패를 만든다 |
-| **감사자** | "수신 성공률 100%" 보고서를 볼 때 **무엇을 근거로 성공이라 했는지** 묻는다. 상태 코드인가, 매직 넘버인가, 헤더 필드인가에 따라 그 100%의 의미가 전부 다르다 |
-| **네트워크 운영자** | 콘텐츠를 암호화해도 **PID 구성·패킷 도착률·PCR 은 그대로 노출**된다는 것을 전제로 위협 모델을 세운다. 암호화는 내용을 가리지 트래픽의 형상을 가리지 않는다 |
+| **verification-tool implementer** | separate container determination (magic number) and content validity (header fields) and check **both.** using determination-pass as validity-pass reports success on ciphertext |
+| **player implementer** | if TSC ≠ 0 but there is no decryption means, **do not attempt playback and fail explicitly.** a silent black screen looks to the user like a network problem |
+| **delivery operator** | make the encryption method **match** between the playlist declaration (`EXT-X-KEY`) and the actual bits. if the declaration and content go off, even a normal client makes a failure it cannot diagnose |
+| **auditor** | when you see a "100% receipt success" report, ask **on what basis it was called success.** whether it is the status code, the magic number, or the header field, the meaning of that 100% is entirely different |
+| **network operator** | build the threat model presupposing that even if you encrypt the content **the PID composition·packet arrival rate·PCR are exposed as-is.** encryption masks the content, not the traffic's shape |
 
-마지막 행이 §17.8.1 의 어두운 면이다. **헤더가 평문이라는 성질은 검증자에게 지렛대이면서
-동시에 관측자에게 창문이다.** 같은 성질이 역할에 따라 미덕이 되기도 노출이 되기도 한다 —
-제15장의 "같은 메커니즘이 방어와 회피에 동시에 쓰인다"와 정확히 같은 구조다.
+The last row is §17.8.1's dark face. **The property that the header is plaintext is a lever for the verifier and
+at the same time a window for the observer.** The same property becomes a virtue or an exposure depending on the
+role — exactly the same structure as Chapter 15's "the same mechanism is used for both defense and evasion."
 
-### 17.9.5 교재의 경계
+### 17.9.5 The course's boundary
 
-이 절은 **스크램블을 푸는 방법을 다루지 않는다.** 다룬 것은 "스크램블되어 있다는 사실을
-어떻게 아는가"이고, 그것은 헤더의 2비트를 읽는 일이다. 키 획득·조건부 접근 시스템의
-우회는 이 저장소에 코드가 없고 교재의 범위 밖이다(§0.1). 여기서 배워야 할 것은
-**위협 모델과 관측 가능성**이다 — 무엇이 평문으로 남고, 그것으로 무엇을 알 수 있으며,
-알 수 없는 것은 무엇인가.
+This section **does not cover how to undo scrambling.** What it covered is "how to know the fact that it is
+scrambled," and that is reading the header's 2 bits. Key acquisition·bypassing a conditional-access system has
+no code in this repository and is outside the course's scope (§0.1). What must be learned here is the **threat
+model and observability** — what remains plaintext, what can be known from it, and what cannot be known.
 
 ---
 
-## 17.10 실습 — 로컬 재현
+## 17.10 Lab — local reproduction
 
-이 장의 모든 수치는 외부 서버 없이 재현할 수 있다. `ffmpeg` 과 `python3` 만 있으면
-된다.
+Every number in this chapter can be reproduced with no external server. You only need `ffmpeg` and `python3`.
 
-### 17.10.1 스트림 만들기
+### 17.10.1 Making the stream
 
 ```bash
 ffmpeg -v error -y -f lavfi -i "testsrc2=size=320x180:rate=30:duration=4" \
@@ -792,14 +781,14 @@ ffmpeg -v error -y -f lavfi -i "testsrc2=size=320x180:rate=30:duration=4" \
   -f hls -hls_time 2 -hls_playlist_type vod \
   -hls_segment_filename "seg%03d.ts" index.m3u8
 
-# 널 패킷을 보려면 고정 비트레이트로 한 번 더
+# to see null packets, once more at constant bitrate
 ffmpeg -v error -y -f lavfi -i "testsrc2=size=320x180:rate=30:duration=4" \
   -f lavfi -i "sine=frequency=440:duration=4" \
   -c:v libx264 -preset ultrafast -g 30 -c:a aac \
   -f mpegts -muxrate 3000000 cbr.ts
 ```
 
-### 17.10.2 헤더를 손으로 푼다
+### 17.10.2 Unpacking the header by hand
 
 ```python
 P = 188
@@ -821,14 +810,14 @@ for i in range(0, P * 6, P):
 #5   47 01 00 12  TEI=0 PUSI=0 PID=0x0100 SC=0 AFC=01 CC=2
 ```
 
-패킷 #3 부터 영상 PID `0x0100` 이 시작되고 **CC 가 0·1·2 로 오른다.** #3 만 AFC 가 `11`
-인 것은 그 자리에 PCR 이 들어 있기 때문이다. 스트림의 첫 세 패킷이 SDT·PAT·PMT 라는
-것도 보인다 — 받는 쪽이 아무 사전 지식 없이 스트림을 해석할 수 있게 하는 순서다.
+From packet #3 the video PID `0x0100` starts and **CC rises 0·1·2.** That only #3 has AFC `11` is because a PCR
+sits there. You can also see that the stream's first three packets are SDT·PAT·PMT — an order that lets the
+receiving side interpret the stream with no prior knowledge.
 
-### 17.10.3 결함을 주입하고 검사기를 돌린다
+### 17.10.3 Inject a defect and run the checker
 
 ```python
-import sys; sys.path.insert(0, ".")          # 저장소 루트에서
+import sys; sys.path.insert(0, ".")          # from the repository root
 from hlsrecon.tsanalyze import analyze, sniff
 
 raw = open("seg000.ts", "rb").read()
@@ -836,88 +825,88 @@ cut = (len(raw) // 188 // 2) * 188
 
 for n in (12, 16):
     r = analyze(raw[:cut] + raw[cut + 188 * n:])
-    print(n, "패킷 제거 →", r.cc_discontinuities, "건", r.cc_detail[:1])
+    print(n, "packets removed →", r.cc_discontinuities, "found", r.cc_detail[:1])
 ```
 
 ```
-12 패킷 제거 → 1 건 [(256, 6, 2)]
-16 패킷 제거 → 0 건 []
+12 packets removed → 1 found [(256, 6, 2)]
+16 packets removed → 0 found []
 ```
 
-`(256, 6, 2)` 를 읽는 법 — PID 256(`0x0100`)에서 카운터가 6 이어야 하는데 2 가 왔다.
-`(2 − 6) mod 16 = 12` 이고, 이것이 **제거한 패킷 수와 정확히 같다.** 4비트 카운터가
-유실량까지 알려 주는 것처럼 보인다. 그리고 바로 아래 줄이 그 인상을 무너뜨린다 —
-16을 제거하면 `(0) mod 16 = 0` 이라 **아무 일도 없었던 것과 구별되지 않는다.**
+How to read `(256, 6, 2)` — on PID 256 (`0x0100`) the counter should have been 6 but 2 came. `(2 − 6) mod 16 =
+12`, and this is **exactly the same as the number of packets removed.** The 4-bit counter looks as if it tells
+you even the loss amount. And the very next line collapses that impression — remove 16 and `(0) mod 16 = 0` so
+**it is indistinguishable from nothing having happened.**
 
-제18장은 이 한 줄에서 시작한다.
-
----
-
-## 17.11 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **규격 원문을 대조하지 못했다.** 이 장의 필드 배치·의미는 코드와 실측(ffmpeg 8.1.1
-  출력)에서 역으로 확인한 것이다. ISO/IEC 13818-1 원문으로 확인하지 못한 항목이 셋
-  있다 — ⓐ 188바이트의 유래(ATM 4셀 설), ⓑ 널 패킷 continuity counter 의 규격상 지위,
-  ⓒ TSC 값 `01`·`10`·`11` 이 각각 지시하는 것. ⓒ 는 이 코드가 0 인지만 보므로 판정에
-  영향이 없지만, 서술의 근거로는 부족하다.
-- **프레임 단위 암호화 스트림을 실물로 확보하지 못했다.** 따라서 그런 스트림에서 TSC
-  비트가 실제로 서는지 **측정하지 못했다.** §17.9.1 의 표에서 그 행은 추론이다. 확인하려면
-  해당 방식으로 인코딩된 실제 스트림이 필요하다.
-- **192바이트·204바이트 변형을 다루지 않는다.** 실측: 각 패킷 앞에 4바이트 타임스탬프가
-  붙는 192바이트 형식(M2TS)을 넣으면 `sniff()` 는 `unknown`, `analyze().parsed` 는
-  `False` 다. 오류 정정 부호가 붙는 204바이트 형식도 마찬가지다. 현재 대상(HLS 세그먼트)
-  에서는 나타나지 않지만, 일반 도구라면 한계다.
-- **adaptation field 안을 읽지 않는다.** 그 안에는 `discontinuity_indicator` 가 있어
-  "규격이 예고한 불연속"과 "유실"을 구별할 근거가 되는데, 이 코드는 읽지 않는다.
-  광고 삽입 등으로 불연속이 정상적으로 발생하는 스트림에서 **오탐이 날 수 있다.**
-  이 저장소가 실측한 범위에서는 나타나지 않았지만 확인된 적도 없다.
-- **PID 가 통째로 사라지면 아무 말도 하지 않는다.** 실측: 오디오 PID(`0x0101`) 104패킷을
-  전부 제거하면 `cc_discontinuities = 0`, `clean = True` 다. 남은 PID 들의 카운터는
-  완벽하게 연속이기 때문이다. **트랙 하나가 통째로 없어져도 TS 무결성은 통과한다.**
-- **미복호 판정이 한 패킷에도 FAIL 이다.** 실측: TSC 를 세운 패킷이 하나뿐이어도
-  `clean = False` 이고 판정은 FAIL 이다. 재다중화 잔재가 한둘 섞인 스트림에서 오탐이
-  될 수 있다. 임계값을 둘 것인가는 열린 설계 문제이며, 현재는 "미복호는 0건이어야
-  한다"는 강한 입장을 취하고 있다.
-- **`analyze()` 단독으로는 TS 임을 보증하지 않는다.** 실측: `0x47` 로 시작하는 201바이트
-  쓰레기를 넣으면 `parsed = True`, `packets = 1` 이 나온다. 파이프라인에서는 `sniff()`
-  가 먼저 걸러 주므로 문제되지 않지만([`cli.py:459-465`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L465)), **함수 단독으로 쓰면 보증이
-  없다.** 판별과 분석의 분리가 낳은 계약상의 빈틈이다.
-- **이 장의 수치는 한 먹서의 산출물이다.** PID 배정(0x0100·0x0101·0x1000)·AFC 분포·
-  널 패킷의 CC 값은 전부 ffmpeg 8.1.1 의 TS 먹서가 정한 것이다. 다른 먹서·하드웨어
-  인코더에서는 다를 수 있고, §17.5 의 "오탐이 나지 않았다"는 결론은 그만큼만 유효하다.
+Chapter 18 begins from this one line.
 
 ---
 
-## 17.12 요약
+## 17.11 Limits and open questions
 
-1. **TS 는 188바이트 고정 길이 패킷의 나열뿐이다.** 그 고정에서 재동기의 산술 계산,
-   O(1) 컨테이너 판별, 패킷 수 계량, 연결에 대한 닫힘이 따라 나온다. 이 도구의 판별·
-   재조립·검증 전략이 모두 이 성질 위에 서 있다.
-2. **헤더 4바이트에는 여덟 필드가 들어 있고, 바이트 경계를 걸치는 것은 PID 하나뿐이다.**
-   `((pkt[1] & 0x1F) << 8) | pkt[2]` 의 마스크와 시프트는 그 필드 경계를 그대로 옮긴
-   것이며, 마스크를 빠뜨리면 한 스트림의 카운터가 둘로 쪼개져 검사가 전량 오탐이 된다.
-3. **코드는 필요한 비트만 읽는다.** AFC 2비트 대신 payload 비트 하나(`pkt[3] & 0x10`)만
-   보는데, CC 가 증가하는 조건과 그 비트가 정확히 일치하기 때문이다. 읽지 않기로 한
-   필드(PUSI·priority·adaptation field 내부)는 이 검사에 근거를 더하지 않는다.
-4. **NULL PID 를 건너뛰는 것은 측정된 이득보다 큰 결정이다.** CBR 스트림의 67.4%가 널
-   패킷이었고, 건너뛰지 않으면 PID 목록이 오염된다. CC 오탐은 이 환경에서 관측되지
-   않았지만 — 먹서가 우연히 CC 를 0 으로 고정했기 때문이며 — **안전성을 먹서의 우연에
-   의존시키지 않는 것**이 이 두 줄의 값어치다.
-5. **재조립 경로는 유실에 침묵한다.** `-c copy` 는 종료 코드 0 에 오류 0줄, 재생 길이도
-   소수점 여섯째 자리까지 동일했다. 전체 디코드는 잡지만 150배 느리고 어느 세그먼트인지
-   말해 주지 못한다. **두 검사는 서로의 사각을 메우지 어느 쪽도 다른 쪽을 포함하지 않는다.**
-6. **scrambling control 을 보지 않으면 암호문을 영상으로 저장하고 성공을 보고한다.**
-   헤더는 스크램블 대상이 아니므로 매직 넘버 판별은 그대로 통과한다(실측: `sniff()` =
-   `mpegts`, 미복호 1,137건). **판별 근거를 한 겹만 두면 그 겹을 통과하는 경우가 반드시
-   남는다** — 제14장의 "같은 헤더, 정반대 의미"가 한 층 안쪽에서 반복된 형태다.
-7. **중계 가능성은 헤더가 평문일 것을 요구하고, 그 성질은 양면이다.** 검증자에게는
-   지렛대이고 관측자에게는 창문이다. 암호화는 내용을 가리지 트래픽의 형상을 가리지 않는다.
+Written honestly.
+
+- **Could not cross-check against the spec's own text.** This chapter's field layout·meanings were confirmed in
+  reverse from the code and measurements (ffmpeg 8.1.1 output). There are three items not confirmed against
+  ISO/IEC 13818-1's text — ⓐ the origin of 188 bytes (the ATM 4-cell story), ⓑ the null packet continuity
+  counter's spec status, ⓒ what TSC values `01`·`10`·`11` each indicate. ⓒ has no effect on the verdict since
+  this code sees only whether it is 0, but as a basis for the narrative it is insufficient.
+- **Could not obtain a real frame-level-encryption stream.** So whether the TSC bits actually get set in such a
+  stream **was not measured.** That row in §17.9.1's table is inference. To confirm it you would need an actual
+  stream encoded that way.
+- **Does not handle the 192-byte·204-byte variants.** Measured: put in the 192-byte format (M2TS) where a 4-byte
+  timestamp precedes each packet and `sniff()` gives `unknown`, `analyze().parsed` is `False`. The 204-byte
+  format with an error-correction code attached is the same. It does not appear in the current target (HLS
+  segments) but for a general tool it is a limit.
+- **Does not read inside the adaptation field.** In there is a `discontinuity_indicator`, which would be a basis
+  to distinguish "a discontinuity the spec announced" from "loss," but this code does not read it. In a stream
+  where discontinuity occurs normally via ad insertion, etc., **a false positive can arise.** It did not appear
+  within this repository's measured range but has not been confirmed either.
+- **If a whole PID vanishes it says nothing.** Measured: remove all 104 packets of the audio PID (`0x0101`) and
+  `cc_discontinuities = 0`, `clean = True`. Because the remaining PIDs' counters are perfectly continuous. **Even
+  if a whole track disappears, TS integrity passes.**
+- **The undecrypted verdict is FAIL even at one packet.** Measured: even if only one packet has TSC set, `clean =
+  False` and the verdict is FAIL. In a stream with one or two re-multiplexing residues mixed in it can be a false
+  positive. Whether to put a threshold is an open design problem, and currently it takes the strong stance that
+  "undecrypted must be 0."
+- **`analyze()` alone does not guarantee it is TS.** Measured: put in 201 bytes of garbage starting with `0x47`
+  and `parsed = True`, `packets = 1` comes out. In the pipeline `sniff()` filters first so it is no problem
+  ([`cli.py:459-465`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L459-L465)), but **used as a function alone there is no guarantee.** It is a contractual gap born of
+  separating determination and analysis.
+- **This chapter's numbers are one muxer's output.** The PID assignment (0x0100·0x0101·0x1000)·AFC distribution·
+  null packets' CC values are all set by ffmpeg 8.1.1's TS muxer. On another muxer·hardware encoder they can
+  differ, and §17.5's "no false positive arose" conclusion is valid only that far.
 
 ---
 
-**다음 장** — §17.10.3 에서 12패킷 유실은 잡혔고 16패킷 유실은 잡히지 않았다. 원인은
-버그가 아니라 4비트라는 폭 자체에 있다. 제18장은 이 검사의 **미탐률을 정량화**하고,
-"PASS 는 무결이 아니라 이 검사로는 못 잡았다는 뜻"이라는 명제를 세운다. 검사기의
-한계를 아는 것이 검사기를 쓰는 조건이다.
+## 17.12 Summary
+
+1. **TS is nothing but a sequence of 188-byte fixed-length packets.** From that fixing follow the arithmetic of
+   resync, O(1) container determination, packet counting, and closure under concatenation. This tool's
+   determination·reassembly·verification strategies all stand on this property.
+2. **The 4-byte header contains eight fields, and only one straddles a byte boundary: PID.** The mask and shift
+   of `((pkt[1] & 0x1F) << 8) | pkt[2]` transfer that field boundary as-is, and omit the mask and one stream's
+   counter is cut into two and the check becomes all false positives.
+3. **The code reads only the bits it needs.** Instead of the 2 AFC bits it looks at one payload bit (`pkt[3] &
+   0x10`), because the condition for CC increasing and that bit match exactly. Fields it chose not to read
+   (PUSI·priority·inside the adaptation field) add no basis to this check.
+4. **Skipping the NULL PID is a decision larger than the measured benefit.** 67.4% of the CBR stream was null
+   packets, and without skipping the PID list is polluted. A CC false positive was not observed in this
+   environment — because the muxer happened to fix CC to 0 — but **not making safety depend on a muxer's
+   accident** is the worth of these two lines.
+5. **The reassembly path is silent about loss.** `-c copy` gave exit code 0 with 0 error lines, and the play
+   length was identical to the sixth decimal place. Full decode catches it but is 150× slower and does not tell
+   you which segment. **The two checks fill each other's blind spots; neither contains the other.**
+6. **Do not look at scrambling control and you save ciphertext as video and report success.** Since the header is
+   not a scrambling target the magic-number determination passes as-is (measured: `sniff()` = `mpegts`, 1,137
+   undecrypted). **Place the determination basis one layer only and there always remains a case that passes that
+   layer** — a form of Chapter 14's "the same header, opposite meaning" repeated one layer deeper.
+7. **Relayability requires the header be plaintext, and that property has two faces.** For the verifier it is a
+   lever and for the observer a window. Encryption masks the content, not the traffic's shape.
+
+---
+
+**Next chapter** — in §17.10.3 the 12-packet loss was caught and the 16-packet loss was not. The cause is not a
+bug but the 4-bit width itself. Chapter 18 **quantifies this check's miss rate** and sets the proposition "PASS
+is not integrity but means this check could not catch it." Knowing the checker's limit is the condition for
+using the checker.

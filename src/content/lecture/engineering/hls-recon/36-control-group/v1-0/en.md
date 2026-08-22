@@ -1,203 +1,201 @@
 ---
-untranslated: ko
-title: "대조군"
-description: "\"ffmpeg 은 놓친다\"를 테스트로 고정하기"
-date: 2026-08-20
+title: "The Control Group"
+description: "Fixing \"ffmpeg misses it\" as a test"
+date: 2026-08-11
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-36-control-group.svg
 ---
-## 36.0 이 장에서 답할 것
+## 36.0 What this chapter answers
 
-1. 이 저장소의 회귀 테스트 마지막 항목은 **자기 코드를 한 줄도 실행하지 않는다.**
-   그런데 왜 회귀 테스트에 들어가 있는가
-2. "우리 도구는 결손을 잡는다"와 "우리 도구는 결손을 잡고 비교 대상은 놓친다"는
-   무엇이 다른가
-3. 이 항목만 실패했을 때 스크립트를 죽이지 않고 노란 점을 찍는 이유는 무엇인가
-4. 성능 최적화·보안 강화 주장에는 왜 같은 형식이 필요한가
+1. The last item of this repository's regression test **runs not a single line of its own code.** So why is it in
+   the regression test?
+2. What is the difference between "our tool catches the loss" and "our tool catches the loss and the comparison
+   target misses it"?
+3. When only this item fails, why does it print a yellow dot instead of killing the script?
+4. Why do performance-optimization·security-hardening claims need the same form?
 
-네 번째가 이 장의 도착점이다. 앞의 셋은 11줄짜리 셸 스크립트를 읽는 일이고,
-네 번째는 **"우리가 낫다"는 모든 주장이 어떤 모양이어야 검증 가능한가**의 문제다.
+The fourth is this chapter's destination. The first three are reading an 11-line shell script, and the fourth is
+the problem of **what shape every claim of "we are better" must have to be verifiable.**
 
 ---
 
-## 36.1 문제 — 존재 이유는 절대 명제가 아니다
+## 36.1 The problem — the reason for existing is not an absolute proposition
 
-이 저장소의 README 는 첫 절에서 도구의 존재 이유를 밝힌다.
+This repository's README states the tool's reason for existing in its first section.
 
 ```bash
 # README.md:17-19
-ffmpeg -i master.m3u8 -c copy out.mp4     # 받아진다. 그러나 —
+ffmpeg -i master.m3u8 -c copy out.mp4     # received. but —
 ```
 
 > `README.md:21-23`
 >
-> 이 명령은 세그먼트가 HTTP 404 로 빠져도 **조용히 건너뛰고 exit 0 으로 끝난다.**
-> 총 재생 길이도 그대로다 — MPEG-TS 세그먼트는 절대 표시 시각(PTS)을 품고 있어
-> 중간 조각이 사라져도 뒤 조각의 시각이 원래대로 유지되기 때문이다.
+> This command, even if a segment drops with HTTP 404, **quietly skips it and ends with exit 0.** The total play
+> length too is unchanged — because an MPEG-TS segment carries an absolute presentation time (PTS), so even if a
+> middle piece vanishes the rear pieces' times stay as they were.
 
-그리고 이어서 도구의 범위를 정의한다.
+And it goes on to define the tool's scope.
 
 > `README.md:32-34`
 >
-> hls-recon 은 재조립 자체는 ffmpeg 에 위임하고, **ffmpeg 가 알려주지 않는 것만**
-> 따로 계측한다: 세그먼트별 HTTP 결과와 지연, MPEG-TS 연속성 카운터, 재조립본의
-> 타임라인 결손.
+> hls-recon delegates the reassembly itself to ffmpeg and separately measures **only what ffmpeg does not tell
+> you**: per-segment HTTP results and latency, the MPEG-TS continuity counter, and the reassembled copy's timeline
+> loss.
 
-여기서 문장의 논리적 형태를 보자. **"ffmpeg 가 알려주지 않는 것만"** — 이 도구의
-가치 명제는 자기 자신만으로는 서술되지 않는다. **다른 도구의 동작을 항으로 포함한다.**
+Look at the sentence's logical form. **"only what ffmpeg does not tell you"** — this tool's value proposition is
+not described by itself alone. **It includes another tool's behavior as a term.**
 
-> **용어** — **가치 명제(value proposition)**: 어떤 제품·도구가 사용자에게 무엇을
-> 제공하기에 쓰일 만한가를 밝힌 진술. 여기서는 "ffmpeg 한 줄로는 부족하다"가 그것이다.
+> **Term** — **value proposition**: a statement of what a product·tool provides the user that makes it worth
+> using. Here it is "one line of ffmpeg is not enough."
 
-이 구별이 이 장 전체를 지탱한다.
+This distinction holds up this whole chapter.
 
-| 명제의 형태 | 예 | 검증에 필요한 측정 |
+| Form of the proposition | Example | Measurement needed to verify |
 |---|---|---|
-| **절대 명제** | "이 도구는 6초 결손을 FAIL 로 잡는다" | 이 도구 하나 — 결함 주입 스트림에 돌려 보면 끝 |
-| **상대 명제** | "이 도구는 **ffmpeg 이 놓치는** 결손을 잡는다" | **두 항 모두** — 이 도구와 ffmpeg 을, 같은 입력에서 |
+| **absolute proposition** | "this tool catches a 6-second loss as FAIL" | this tool alone — run it on a defect-injection stream and done |
+| **relative proposition** | "this tool catches a loss **ffmpeg misses**" | **both terms** — this tool and ffmpeg, on the same input |
 
-제35장까지의 결함 주입 테스트는 전부 절대 명제를 고정한다. 패킷 12개를 지우고
-`CC 불연속` 이 뜨는지 본다(`tests/run.sh:483`). 세그먼트를 지우고 `세그먼트 수신` 이
-실패로 뜨는지 본다(`tests/run.sh:482`). 이것들은 전부 이 저장소 코드에 대한 진술이다.
+The fault-injection tests through Chapter 35 all fix absolute propositions. Remove 12 packets and see whether `CC
+discontinuity` appears (`tests/run.sh:483`). Delete a segment and see whether `segment receive` appears as a
+failure (`tests/run.sh:482`). These are all statements about this repository's code.
 
-**그런데 도구의 존재 이유는 절대 명제가 아니다.** "결손을 잡는다"는 것만으로는 왜
-ffmpeg 대신 이것을 써야 하는지가 나오지 않는다. 존재 이유는 **차이**에 있고, 차이는
-한쪽만 재서는 나오지 않는다.
+**But the tool's reason for existing is not an absolute proposition.** "It catches the loss" alone does not yield
+why you should use this instead of ffmpeg. The reason for existing is in the **difference**, and a difference does
+not come from measuring only one side.
 
-절대 명제만 고정한 테스트 묶음에는 구멍이 하나 있다.
+A test suite fixing only absolute propositions has one hole.
 
-> 만약 상류 ffmpeg 이 언젠가 결손을 종료 코드로 보고하기 시작한다면, 이 저장소의
-> 나머지 61개 테스트는 **전부 그대로 통과한다.** 코드는 아무것도 바뀌지 않았으니까.
-> 그러나 도구의 가치 명제는 그날 무너져 있다. **그리고 아무도 모른다.**
+> If the upstream ffmpeg someday starts reporting the loss via the exit code, this repository's other 61 tests
+> **all pass as-is.** Because the code changed nothing. But the tool's value proposition has collapsed that day.
+> **And no one knows.**
 
-이 구멍을 막는 항목이 `tests/run.sh` 의 마지막 11줄이다.
+The item blocking this hole is the last 11 lines of `tests/run.sh`.
 
 ---
 
-## 36.2 원리 — 대조군
+## 36.2 The principle — the control group
 
-### 36.2.1 용어
+### 36.2.1 Terms
 
-> **용어** — **대조군(control group)**: 실험에서 **처치를 가하지 않고** 나머지 조건은
-> 처치군과 같게 유지한 비교 집단. 처치군에서 관측된 변화가 처치 때문인지 다른
-> 요인 때문인지를 가르는 기준선이 된다.
+> **Term** — **control group**: a comparison group in an experiment kept **without the treatment** and with the
+> rest of the conditions the same as the treatment group. It becomes the baseline dividing whether the change
+> observed in the treatment group is due to the treatment or to another factor.
 
-> **용어** — **처치군(treatment group)**: 검증하려는 처치(개입)를 실제로 가한 집단.
+> **Term** — **treatment group**: the group to which the treatment (intervention) to be verified is actually
+> applied.
 
-> **용어** — **교란 변수(confounding variable)**: 처치가 아닌데도 두 집단의 결과에
-> 차이를 만들 수 있는 요인. 입력 데이터·실행 시각·하드웨어·라이브러리 버전이
-> 모두 후보다. 통제되지 않은 교란 변수가 하나라도 있으면 관측된 차이를 처치의
-> 효과로 돌릴 수 없다.
+> **Term** — **confounding variable**: a factor that, though not the treatment, can make a difference in the two
+> groups' results. Input data·run time·hardware·library version are all candidates. If there is even one
+> uncontrolled confounding variable, the observed difference cannot be attributed to the treatment's effect.
 
-> **용어** — **내부 타당도(internal validity)**: 관측된 차이를 **정말 처치가 만들었는가**
-> 하는 성질. 교란 변수를 통제할수록 높아진다.
+> **Term** — **internal validity**: the property of whether the observed difference was **really made by the
+> treatment.** It rises the more confounding variables are controlled.
 
-### 36.2.2 이 테스트에서의 대응
+### 36.2.2 The correspondence in this test
 
-`tests/run.sh` 의 `[3/4]` 와 `[4/4]` 단계가 정확히 처치군·대조군 쌍을 이룬다.
+`tests/run.sh`'s `[3/4]` and `[4/4]` stages form exactly a treatment-group·control-group pair.
 
-| 실험 설계의 요소 | `tests/run.sh` 에서 |
+| Element of experimental design | In `tests/run.sh` |
 |---|---|
-| 관측 대상(모집단) | 결함 4종이 주입된 HLS 스트림 하나 |
-| **처치** | 재조립 위에 **계측 계층을 얹는 것** |
-| 처치군 | `[3/4]` — `hls-recon` 을 돌린 결과 ([`run.sh:474-481`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L474-L481)) |
-| 대조군 | `[4/4]` — `ffmpeg` 단독을 돌린 결과 ([`run.sh:512-522`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L512-L522)) |
-| 관측 지표 | **프로세스 종료 코드** 하나 |
-| 통제한 교란 변수 | 같은 URL · 같은 로컬 HTTP 서버 · 같은 실행 · 같은 ffmpeg 바이너리 |
+| observation target (population) | one HLS stream with 4 defects injected |
+| **treatment** | **laying a measurement layer** over the reassembly |
+| treatment group | `[3/4]` — the result of running `hls-recon` ([`run.sh:474-481`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L474-L481)) |
+| control group | `[4/4]` — the result of running `ffmpeg` alone ([`run.sh:512-522`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L512-L522)) |
+| observation metric | one **process exit code** |
+| controlled confounding variables | same URL · same local HTTP server · same run · same ffmpeg binary |
 
-![통제된 비교 — 달라진 것은 계측 계층 하나뿐이다](/images/lecture/hls-recon/36-control-vs-treatment.svg)
+![A controlled comparison — the only thing changed is the one measurement layer](/images/lecture/hls-recon/36-control-vs-treatment.svg)
 
-*그림 36-1 — 통제된 비교. 두 실행이 공유하는 것과 갈라지는 것*
+*Figure 36-1 — a controlled comparison. What the two runs share and what they diverge on*
 
-그림에서 읽어야 할 것은 **위쪽 상자가 양쪽에 똑같이 들어 있다**는 사실이다. 이
-도구는 재조립을 직접 하지 않는다.
+What to read in the figure is the fact that **the top box is identically in both sides.** This tool does not do
+the reassembly itself.
 
 ```python
 # assemble.py:1-6
-"""재조립 계층 — 실제 컨테이너 작업은 전부 ffmpeg 에 위임한다.
+"""Reassembly layer — all actual container work is delegated to ffmpeg.
 
-세그먼트 병합·복호화·타임스탬프 정규화는 ffmpeg 의 hls/mpegts demuxer 가
-이미 규격대로 구현하고 있으므로 여기서 다시 만들지 않는다. 이 모듈의 책임은
-"어떤 인자로 위임할지"와 "진행 상황을 어떻게 계측할지" 뿐이다.
+Segment merging·decryption·timestamp normalization are already implemented per spec
+by ffmpeg's hls/mpegts demuxer, so they are not rebuilt here. This module's responsibility
+is only "with what arguments to delegate" and "how to measure progress."
 """
 ```
 
-따라서 처치는 **"ffmpeg 대신 우리"가 아니라 "ffmpeg 위에 계측 계층 하나"** 다.
-이것을 정확히 말하는 것이 왜 중요한가 — 주장의 범위가 달라지기 때문이다.
-"우리가 ffmpeg 보다 낫다"는 근거 없는 문장이고, "같은 ffmpeg 재조립에 계측을
-얹으면 결손이 보인다"는 측정으로 뒷받침된 문장이다.
+So the treatment is **not "us instead of ffmpeg" but "one measurement layer over ffmpeg."** Why saying this
+exactly matters — because the claim's scope changes. "We are better than ffmpeg" is a baseless sentence, and "lay
+measurement over the same ffmpeg reassembly and the loss becomes visible" is a measurement-backed sentence.
 
-### 36.2.3 같은 입력을 쓰는 것이 설계의 전부다
+### 36.2.3 Using the same input is the whole of the design
 
-`[4/4]` 가 쓰는 URL 은 `"$BASE/damaged/index.m3u8"` 이고, 이것은 `[3/4]` 가 쓴 URL
-([`run.sh:477`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L477))과 **문자 그대로 같다.** 대조군용 픽스처를 따로 만들지 않았다.
+The URL `[4/4]` uses is `"$BASE/damaged/index.m3u8"`, and this is **literally the same** as the URL `[3/4]` used
+([`run.sh:477`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L477)). No separate control fixture was made.
 
-따로 만들었다면 무엇이 깨지는가.
+What breaks if made separately.
 
-- **결함이 같다는 보장이 사라진다.** 픽스처 생성은 `ffmpeg` 인코딩([`run.sh:37-44`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L37-L44))과
-  파이썬 바이트 조작([`run.sh:131-146`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L131-L146))을 거치는데, 두 번 만들면 GOP 경계·패킷 수가
-  달라질 수 있다. 그러면 "ffmpeg 이 놓쳤다"가 **결함이 더 작았기 때문**일 가능성이
-  열린다 — 전형적인 교란 변수다.
-- **같은 서버·같은 시각이라는 조건도 사라진다.** 404 는 서버가 파일을 못 찾아서 나는
-  것이므로, 서버 상태가 다르면 애초에 다른 실험이다.
+- **The guarantee the defects are the same vanishes.** Fixture generation goes through `ffmpeg` encoding
+  ([`run.sh:37-44`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L37-L44)) and Python byte manipulation ([`run.sh:131-146`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L131-L146)), and made twice the GOP boundary·packet count can
+  differ. Then the possibility opens that "ffmpeg missed it" was **because the defect was smaller** — a typical
+  confounding variable.
+- **The condition of the same server·same time also vanishes.** A 404 comes because the server cannot find the
+  file, so with a different server state it is a different experiment from the start.
 
-두 실행이 같은 `$WORK` 디렉터리, 같은 `python3 -m http.server`([`run.sh:149`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L149)),
-같은 프로세스 수명 안에서 일어난다. **내부 타당도를 위해 지불한 비용이 0 인 설계**다.
-대조군을 나중에 붙이려 하면 이 조건을 다시 만들어야 하고, 그때는 비용이 든다.
+The two runs happen in the same `$WORK` directory, the same `python3 -m http.server` ([`run.sh:149`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L149)), within the
+same process lifetime. **It is a design paying 0 cost for internal validity.** Try to attach a control later and
+you must recreate this condition, and then it costs.
 
 ---
 
-## 36.3 코드 — 열한 줄의 해부
+## 36.3 The code — the dissection of eleven lines
 
 ```bash
 # tests/run.sh:512-522
-# ffmpeg 단독으로는 같은 결손을 놓친다는 사실 자체를 고정한다.
-head_ "[4/4] 대조군 — ffmpeg 단독은 결손을 놓친다"
+# Fix the very fact that ffmpeg alone misses the same loss.
+head_ "[4/4] control — ffmpeg alone misses the loss"
 set +e
 ffmpeg -v error -y -i "$BASE/damaged/index.m3u8" -c copy "$WORK/out/naive.mp4" >/dev/null 2>&1
 naive=$?
 set -e
 if [[ $naive -eq 0 ]]; then
-  ok "ffmpeg 단독 exit 0 — 결손을 보고하지 않음 (도구가 필요한 이유)"
+  ok "ffmpeg alone exit 0 — does not report the loss (the reason the tool is needed)"
 else
-  printf '  \033[33m·\033[0m ffmpeg 가 exit %s 로 실패 — 환경에 따라 다를 수 있음\n' "$naive"
+  printf '  \033[33m·\033[0m ffmpeg failed with exit %s — may differ by environment\n' "$naive"
 fi
 ```
 
-줄마다 결정이 하나씩 들어 있다.
+Each line has one decision in it.
 
-| 요소 | 결정 | 빠뜨리면 |
+| Element | Decision | If omitted |
 |---|---|---|
-| `"$BASE/damaged/index.m3u8"` | `[3/4]` 와 **같은 URL** | 교란 변수가 들어와 내부 타당도가 무너진다(§36.2.3) |
-| `-c copy` | README 가 인용한 **그 명령** 그대로 | 일부러 약한 명령을 고르면 허수아비 비교가 된다(§36.6) |
-| `-v error` | 로그 수준을 error 로 낮춤 | — 관측 지표를 종료 코드 하나로 고정하기 위한 것. 여기에 함의가 있다(§36.6.2) |
-| `>/dev/null 2>&1` | 출력 전량 폐기 | 테스트 로그가 ffmpeg 진행 로그로 뒤덮인다 |
-| `set +e` … `set -e` | 실패 허용 구간 | 스크립트 첫 줄이 `set -euo pipefail`([`run.sh:8`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L8))이므로, 감싸지 않으면 **대조군이 실패한 순간 스크립트가 즉사한다** |
-| `naive=$?` | 종료 코드만 저장 | 이후 분기의 유일한 근거 |
-| `if [[ $naive -eq 0 ]]` | **기대값이 0** | 보통의 테스트와 부호가 반대다 |
-| `ok` / `printf` 비대칭 | 성공은 카운터에, 실패는 로그에만 | §36.4 |
+| `"$BASE/damaged/index.m3u8"` | the **same URL** as `[3/4]` | a confounding variable comes in and internal validity collapses (§36.2.3) |
+| `-c copy` | **that command** the README cited, as-is | pick a deliberately weak command and it becomes a straw-man comparison (§36.6) |
+| `-v error` | lower the log level to error | — to fix the observation metric to one exit code. there is an implication here (§36.6.2) |
+| `>/dev/null 2>&1` | discard all output | the test log gets buried under ffmpeg's progress log |
+| `set +e` … `set -e` | a failure-allowed stretch | the script's first line is `set -euo pipefail` ([`run.sh:8`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L8)), so without wrapping **the moment the control fails the script dies instantly** |
+| `naive=$?` | store only the exit code | the sole basis for the later branch |
+| `if [[ $naive -eq 0 ]]` | **the expected value is 0** | the sign is opposite an ordinary test |
+| `ok` / `printf` asymmetry | success to the counter, failure to the log only | §36.4 |
 
-### 36.3.1 기대값이 0 이라는 것
+### 36.3.1 That the expected value is 0
 
-일반적인 테스트는 "실패하면 잡는다"를 확인한다. 이 항목은 반대다 — **성공을 기대하고,
-그 성공이 곧 결함의 증거다.**
+An ordinary test confirms "catches it if it fails." This item is the opposite — **it expects success, and that
+success is itself the evidence of the defect.**
 
 ```
-[3/4]  hls-recon  →  exit 2   ← 기대: 실패. 실패해야 통과
-[4/4]  ffmpeg     →  exit 0   ← 기대: 성공. 성공해야 통과
+[3/4]  hls-recon  →  exit 2   ← expect: fail. must fail to pass
+[4/4]  ffmpeg     →  exit 0   ← expect: succeed. must succeed to pass
 ```
 
-같은 입력에 대해 한쪽은 실패하기를, 다른 쪽은 성공하기를 기대한다. 이 비대칭이
-**"놓친다"라는 한 문장을 두 개의 관측으로 분해한 결과**다.
+For the same input, one side is expected to fail and the other to succeed. This asymmetry is **the result of
+decomposing the one sentence "misses it" into two observations.**
 
-![두 관측이 합쳐져야 한 문장이 성립한다](/images/lecture/hls-recon/36-two-observations.svg)
+![The two observations must combine for one sentence to hold](/images/lecture/hls-recon/36-two-observations.svg)
 
-*그림 36-2 — 두 관측이 합쳐져야 결론이 나온다*
+*Figure 36-2 — the two observations must combine for the conclusion to come*
 
-### 36.3.2 도구가 왜 exit 2 를 내는가
+### 36.3.2 Why the tool gives exit 2
 
-처치군 쪽의 종료 코드는 판정 하나에서 나온다.
+The treatment-group side's exit code comes from one verdict.
 
 ```python
 # cli.py:651-652
@@ -205,39 +203,39 @@ def _exit_code(verdict: str) -> int:
     return {report.PASS: 0, report.WARN: 0, report.FAIL: 2}[verdict]
 ```
 
-그리고 이 결함 조합에서 FAIL 을 만드는 검사 중 하나가 타임라인 연속성이다.
+And one of the checks making a FAIL in this defect combination is timeline continuity.
 
 ```python
 # probe.py:191-198
 def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
-    """영상 트랙의 표시 시각을 훑어 결손 구간을 찾는다.
+    """Sweep the video track's presentation times to find loss stretches.
 
-    총 길이 비교로는 중간 세그먼트 유실을 잡을 수 없다. MPEG-TS 세그먼트는
-    절대 PTS(표시 시각)를 담고 있어서, 한 조각이 빠져도 뒤 조각의 시각이
-    원래대로 유지되어 총 길이가 그대로이기 때문이다. 결손은 총량이 아니라
-    타임라인의 구멍으로 나타나므로 인접 프레임 간격을 직접 본다.
+    A total-length comparison cannot catch a middle-segment loss. Because an MPEG-TS segment
+    carries an absolute PTS (presentation time), so even if one piece is dropped the rear pieces'
+    times stay as they were and the total length is unchanged. Loss appears not as a total but
+    as a hole in the timeline, so look directly at the adjacent frame intervals.
     """
 ```
 
-> 이 docstring 이 대조군 항목의 이론적 근거다. **"ffmpeg 이 놓치는" 이유가 여기
-> 적혀 있고, `[4/4]` 는 그 서술이 오늘도 참인지를 매 실행마다 확인한다.**
-> 주석에 적힌 주장과 테스트가 같은 명제를 가리키는 드문 경우다.
-> 원리 자체(PTS 가 왜 절대 시각인가)는 제21장에서 다룬다.
+> This docstring is the control item's theoretical basis. **The reason "ffmpeg misses it" is written here, and
+> `[4/4]` confirms every run whether that narrative is still true today.** It is a rare case where the claim
+> written in a comment and the test point at the same proposition. The principle itself (why PTS is an absolute
+> time) is covered in Chapter 21.
 
 ---
 
-## 36.4 노란 점 — 실패시키지 않는 실패
+## 36.4 The yellow dot — a failure that does not fail
 
-이 항목에서 가장 많이 오해받을 부분은 `else` 분기다.
+The most-misunderstood part of this item is the `else` branch.
 
 ```bash
 else
-  printf '  \033[33m·\033[0m ffmpeg 가 exit %s 로 실패 — 환경에 따라 다를 수 있음\n' "$naive"
+  printf '  \033[33m·\033[0m ffmpeg failed with exit %s — may differ by environment\n' "$naive"
 fi
 ```
 
-`bad` 를 부르지 않는다. 직접 `printf` 로 **노란 가운뎃점**을 찍고 끝난다.
-차이를 보려면 스크립트 상단의 헬퍼를 봐야 한다.
+It does not call `bad`. It directly prints a **yellow middle dot** with `printf` and ends. To see the difference
+you must look at the helper at the script's top.
 
 ```bash
 # tests/run.sh:16-19
@@ -247,321 +245,316 @@ bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; fail=$((fail+1)); }
 head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 ```
 
-`bad` 는 `fail` 을 올리고, `fail` 은 마지막 줄에서 종료 코드가 된다.
+`bad` raises `fail`, and `fail` becomes the exit code on the last line.
 
 ```bash
 # tests/run.sh:524-525
-head_ "결과: 통과 $pass / 실패 $fail"
+head_ "result: pass $pass / fail $fail"
 [[ $fail -eq 0 ]] || exit 1
 ```
 
-즉 `else` 분기에서 `bad` 를 부르면 **상류 ffmpeg 이 개선되는 날 이 저장소의 CI 가
-빨간불이 된다.** 이 저장소 코드에는 아무 문제도 없는데.
+That is, call `bad` in the `else` branch and **the day the upstream ffmpeg improves, this repository's CI goes
+red.** Even though there is no problem in this repository's code.
 
-세 가지 구현을 견줘 보자.
+Weigh three implementations.
 
-| 구현 | 상류 ffmpeg 이 결손을 보고하게 되면 | 문제 |
+| Implementation | If the upstream ffmpeg comes to report the loss | Problem |
 |---|---|---|
-| `bad "…"` | `fail`+1 → `exit 1` → CI 실패 | **신호가 틀렸다.** 자기 코드가 멀쩡한데 빨간불이 뜨면, 다음 사람은 원인을 고치는 대신 **이 항목을 지운다.** 그러면 감시 자체가 사라진다 |
-| 아예 검사하지 않음 | 아무 일도 일어나지 않음 | 가치 명제의 전제가 무너진 것을 **아무도 모른다**(§36.1 의 구멍) |
-| **노란 점 + 카운터 미가산** | 로그에 한 줄 남고 CI 는 통과 | **관측은 하되 판정은 보류한다** |
+| `bad "…"` | `fail`+1 → `exit 1` → CI fails | **the signal is wrong.** if a red light appears while your own code is fine, the next person, instead of fixing the cause, **deletes this item.** then the monitoring itself vanishes |
+| do not check at all | nothing happens | the value proposition's premise having collapsed, **no one knows** (§36.1's hole) |
+| **yellow dot + no counter increment** | one line remains in the log and CI passes | **observe but withhold the verdict** |
 
-세 번째가 이 저장소의 선택이다. 그리고 이것은 이 교재가 제38장에서 다룰 원칙의
-선행 사례다 — **알 수 없음(unknown)은 통과(pass)도 실패(fail)도 아니다.**
+The third is this repository's choice. And this is a precursor to a principle this course covers in Chapter 38 —
+**unknown is neither pass nor fail.**
 
-여기서 "환경에 따라 다를 수 있음"이라는 문구가 중요하다. 대조군이 실패하는 원인은
-적어도 셋이고, 그중 **가치 명제의 변화는 하나뿐**이다.
+Here the phrase "may differ by environment" matters. The causes of the control failing are at least three, and of
+them **only one is a change of the value proposition.**
 
-| 대조군이 exit 0 을 내지 않은 이유 | 뜻하는 것 |
+| The reason the control did not give exit 0 | What it means |
 |---|---|
-| 상류 ffmpeg 이 결손을 종료 코드로 보고하게 됨 | **가치 명제가 바뀌었다** — 교재와 README 를 고쳐야 한다 |
-| ffmpeg 빌드·버전이 달라 다른 경로를 탐 | 환경 차이. 코드 문제 아님 |
-| 로컬 HTTP 서버·디스크·포트 등 실행 환경 문제 | 잡음(flaky). 코드 문제 아님 |
+| the upstream ffmpeg comes to report the loss via the exit code | **the value proposition changed** — the course and README must be fixed |
+| a different ffmpeg build·version takes a different path | an environment difference. not a code problem |
+| a run-environment problem like the local HTTP server·disk·port | flaky. not a code problem |
 
-**셋을 종료 코드만으로 구별할 수 없다.** 구별할 수 없는 신호로 CI 를 죽이면 그 신호는
-곧 무시당한다. 그래서 스크립트는 **사람에게 넘긴다** — 로그에 노란 점을 남기고,
-판정은 읽는 사람이 한다.
+**The three cannot be distinguished by the exit code alone.** Kill CI with an indistinguishable signal and that
+signal is soon ignored. So the script **hands it to a human** — leaves a yellow dot in the log, and the reader
+makes the verdict.
 
-> **정직하게** — 이 선택에는 대가가 있다. **아무도 CI 로그를 읽지 않으면 이 신호는
-> 소실된다.** 노란 점은 자동화된 게이트가 아니라 사람이 읽어야만 작동하는 신호다.
-> 이 저장소는 그 위험을 감수했고, 감수한 이유는 위 표의 왼쪽 열이 셋이기 때문이다.
-
----
-
-## 36.5 이 항목이 테스트하지 않는 것
-
-대조군 항목을 과대평가하지 않기 위해 경계를 그어 둔다.
-
-**첫째, 산출물을 검사하지 않는다.** `$WORK/out/naive.mp4` 는 만들어지지만 그 뒤로
-아무도 열어 보지 않는다. 길이도, 프레임 수도, 결손 구간도 확인하지 않는다.
-**관측 지표는 종료 코드 하나뿐이다.**
-
-**둘째, 그래서 단독으로는 아무 결론도 내지 못한다.** "ffmpeg 이 exit 0 을 냈다"는
-사실만으로는 그 입력에 결손이 있었는지 알 수 없다. 정상 스트림에 돌려도 똑같이
-exit 0 이 나온다. 결론은 `[3/4]` 가 **같은 입력에 결손이 실재함을 독립적으로 확인해
-준 뒤에야** 성립한다(그림 36-2).
-
-**셋째, 그 의존 관계가 코드에 표현되어 있지 않다.** 스크립트는 두 단계를 **순서로만**
-잇는다. `[3/4]` 가 실패해도 `[4/4]` 는 그대로 실행되고 태연히 `ok` 를 찍는다.
-전체 종료 코드는 `fail>0` 때문에 1 이 되므로 실무상 문제는 없지만, **로그에는
-근거 없는 초록 체크가 남는다.** 개선하려면 `[3/4]` 의 결과를 조건으로 걸어야 한다.
-
-**넷째, 결함이 분리되지 않는다.** `damaged` 스트림에는 결함 4종이 한꺼번에 들어 있다
-([`run.sh:131-147`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L131-L147)) — TS 패킷 12개 제거·세그먼트 중복·404·200 오류 페이지.
-따라서 이 항목이 고정하는 것은 **"이 조합에 대해 ffmpeg 이 exit 0"** 이고,
-"404 하나만으로도 exit 0" 은 고정되지 않는다. 결함별 대조군을 두려면 결함마다
-스트림을 나눠야 한다. 이 저장소는 그렇게 하지 않았다.
+> **Honestly** — this choice has a price. **If no one reads the CI log, this signal is lost.** The yellow dot is
+> a signal that works only if a human reads it, not an automated gate. This repository accepted that risk, and the
+> reason is that the above table's left column is three.
 
 ---
 
-## 36.6 비교 대상은 공정한가
+## 36.5 What this item does not test
 
-대조군 설계에서 가장 쉽게 무너지는 지점이다.
+To not overrate the control item, draw a boundary.
 
-> **용어** — **허수아비 비교(straw-man comparison)**: 비교 대상을 실제보다 약한
-> 형태로 세워 놓고 이긴 뒤, 강한 형태에도 이겼다고 말하는 오류. 대조군을 일부러
-> 불리하게 구성하면 측정은 그대로여도 결론이 무의미해진다.
+**First, it does not inspect the output.** `$WORK/out/naive.mp4` is made but no one opens it afterward. It
+confirms neither the length, nor the frame count, nor the loss stretch. **The observation metric is only one exit
+code.**
 
-`-c copy` 는 허수아비인가. 아니다 — README 첫 절이 인용한 명령이고(`README.md:17-19`),
-사람들이 실제로 치는 명령이다. **비교 대상은 "가장 강한 형태"가 아니라 "실제로 쓰이는
-형태"여야 한다**는 것이 이 저장소의 선택이다.
+**Second, so alone it draws no conclusion.** From the fact "ffmpeg gave exit 0" alone you cannot know whether that
+input had a loss. Run it on a normal stream and exit 0 comes just the same. The conclusion holds only after
+`[3/4]` **independently confirmed a loss really exists in the same input** (Figure 36-2).
 
-그러나 그 선택은 주장의 범위를 좁힌다. 확인해 보자.
+**Third, that dependency is not expressed in the code.** The script joins the two stages **by order only.** Even
+if `[3/4]` fails, `[4/4]` runs as-is and calmly prints `ok`. The overall exit code becomes 1 because of `fail>0`
+so there is no practical problem, but **a baseless green check remains in the log.** To improve it you must gate
+`[4/4]` on `[3/4]`'s result.
 
-### 36.6.1 재현 — 무엇이 얼마나 사라지는가
+**Fourth, the defects are not separated.** The `damaged` stream has 4 defects at once ([`run.sh:131-147`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L131-L147)) — 12 TS
+packets removed·segment duplicate·404·200 error page. So what this item fixes is **"ffmpeg gives exit 0 for this
+combination,"** and "exit 0 with only a single 404" is not fixed. To have a per-defect control you must split the
+stream per defect. This repository did not do so.
 
-이 절의 표는 **이 장을 위해 별도로 측정한 값**이며, `tests/run.sh` 가 재는 값이
-아니다. 환경은 ffmpeg 8.1.1(macOS, Apple clang 21), 로컬 `python3 -m http.server`,
-`127.0.0.1` 이다. 픽스처는 저장소와 같은 절차([`run.sh:37-44`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L37-L44))로 만들되 인코딩을
-줄이려고 해상도만 320×180 으로 낮췄다(저장소는 640×360). 30초 · 6초 세그먼트 5개다.
+---
 
-세그먼트 하나만 404 로 만든 경우다.
+## 36.6 Is the comparison target fair
 
-| 관측 | 정상본 | `seg001` 404 |
+The spot most easily collapsed in control-group design.
+
+> **Term** — **straw-man comparison**: the error of setting the comparison target in a form weaker than reality,
+> beating it, then saying you beat the strong form too. Compose the control deliberately unfavorably and, with the
+> measurement the same, the conclusion becomes meaningless.
+
+Is `-c copy` a straw man. No — it is the command the README's first section cited (`README.md:17-19`) and the
+command people actually type. **The comparison target must be "the form actually used," not "the strongest
+form"** is this repository's choice.
+
+But that choice narrows the claim. Let us confirm.
+
+### 36.6.1 Reproduction — what and how much vanishes
+
+This section's table is a **value measured separately for this chapter**, not what `tests/run.sh` measures. The
+environment is ffmpeg 8.1.1 (macOS, Apple clang 21), local `python3 -m http.server`, `127.0.0.1`. The fixture was
+made by the same procedure as the repository ([`run.sh:37-44`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/tests/run.sh#L37-L44)) but with only the resolution lowered to 320×180 to
+reduce encoding (the repository is 640×360). 30 seconds · five 6-second segments.
+
+The case where only one segment is made 404.
+
+| Observation | Normal copy | `seg001` 404 |
 |---|---|---|
-| ffmpeg 종료 코드 | 0 | **0** |
+| ffmpeg exit code | 0 | **0** |
 | `ffprobe format=duration` | 30.023401 | **30.023401** |
-| 영상 패킷 수(`v:0`) | 900 | **720** |
+| video packet count (`v:0`) | 900 | **720** |
 
-**총 길이가 소수점 여섯 자리까지 같은데 프레임 180개가 없다.** 180프레임 ÷ 30fps
-= 6.0초 — 세그먼트 하나가 통째로 사라진 만큼이다. `README.md:21-23` 과
-[`probe.py:191-198`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L191-L198) 이 서술한 성질이 그대로 재현된다.
+**The total length is the same to the sixth decimal place yet 180 frames are missing.** 180 frames ÷ 30fps =
+6.0 seconds — the amount of one whole segment vanished. The property `README.md:21-23` and [`probe.py:191-198`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L191-L198)
+narrated is reproduced as-is.
 
-결함 4종이 모두 들어간 저장소 픽스처와 같은 조합에서는 길이도 어긋났다
-(30.02s → 24.04s). **길이라는 지표는 결함 조합에 따라 흔들리지만, 종료 코드는
-양쪽 모두 0 이었다.** 대조군이 종료 코드를 지표로 고른 것은 이 점에서 옳다.
+In the same combination as the repository fixture where all 4 defects are in, the length went off too (30.02s →
+24.04s). **The length metric shakes by defect combination, but the exit code was 0 on both sides.** That the
+control chose the exit code as the metric is right on this point.
 
-### 36.6.2 "조용히"의 정확한 뜻
+### 36.6.2 The exact meaning of "quietly"
 
-`-v error` 를 지정한 것이 결론을 바꾸는지 확인해야 한다. 같은 입력에 로그 수준만
-바꿔 돌린 결과다.
+You must confirm whether specifying `-v error` changes the conclusion. The result of running the same input with
+only the log level changed.
 
-| `-v` 수준 | stderr | 종료 코드 |
+| `-v` level | stderr | Exit code |
 |---|---|---|
-| `error` | **아무 출력 없음** | 0 |
-| `warning` | `Segment 1 of playlist 0 failed too many times, skipping` 을 포함한 7줄 | 0 |
-| `info`(기본) | 위 7줄 + 진행 로그 수십 줄 | 0 |
+| `error` | **no output** | 0 |
+| `warning` | 7 lines including `Segment 1 of playlist 0 failed too many times, skipping` | 0 |
+| `info` (default) | the 7 lines above + tens of progress-log lines | 0 |
 
-읽어야 할 것 둘.
+Two things to read.
 
-1. **ffmpeg 은 알고 있고, 말도 한다.** 세그먼트 하나가 통째로 사라진 것을 감지하고
-   `skipping` 이라고 적는다. 정보가 없는 것이 아니다.
-2. **그러나 그 메시지의 심각도가 `warning` 이다.** ffmpeg 자신의 분류에서
-   "세그먼트 하나 통째 유실"은 error 가 아니다. 그래서 `-v error` 에서는 한 글자도
-   나오지 않고, **어느 수준에서도 종료 코드는 0 이다.**
+1. **ffmpeg knows, and it even says so.** It detects that one whole segment vanished and writes `skipping`. It is
+   not that there is no information.
+2. **But that message's severity is `warning`.** In ffmpeg's own classification, "one whole segment lost" is not
+   an error. So under `-v error` not a letter comes out, and **at any level the exit code is 0.**
 
-따라서 README 의 "조용히"는 **자동화 관점에서 정확하고, 사람이 보는 관점에서는
-느슨하다.** 정확히 쓰면 이렇다.
+So the README's "quietly" is **accurate from the automation view and loose from the human-viewing view.** Written
+exactly it is this.
 
-> ffmpeg 은 결손을 **종료 코드로 보고하지 않는다.** 로그에는 warning 으로 남지만,
-> 파이프라인은 로그를 읽지 않고 종료 코드를 읽는다.
+> ffmpeg does **not report the loss via the exit code.** It remains in the log as a warning, but the pipeline does
+> not read the log; it reads the exit code.
 
-이 구별이 도구의 가치 명제를 더 정확하게 만든다. 처치는 "탐지 능력의 추가"가 아니라
-**"이미 존재하는 신호를 판정으로 승격시키는 것"** 에 가깝다.
+This distinction makes the tool's value proposition more accurate. The treatment is not "the addition of detection
+ability" but closer to **"promoting an already-existing signal to a verdict."**
 
-### 36.6.3 ffmpeg 에게 유리한 조건을 줘 보면
+### 36.6.3 If you give ffmpeg favorable conditions
 
-`-xerror`(첫 오류에서 중단) 를 붙이면 어떻게 되는가. 같은 입력, 같은 환경에서 측정한
-결과다.
+What happens if you attach `-xerror` (stop at the first error). The result measured on the same input, same
+environment.
 
-| 명령 | 종료 코드 | 산출물 길이 | 영상 패킷 |
+| Command | Exit code | Output length | Video packets |
 |---|---|---|---|
-| `-c copy` (대조군과 동일) | 0 | 30.023401 | 720 |
+| `-c copy` (same as the control) | 0 | 30.023401 | 720 |
 | `-c copy -xerror` | **183** | **6.037188** | **178** |
-| `-c copy -xerror` (정상 스트림) | 0 | — | — |
+| `-c copy -xerror` (normal stream) | 0 | — | — |
 
-**종료 코드가 0 이 아니게 만들 수는 있다.** 그러나 그 대가를 보자.
+**You can make the exit code non-zero.** But see the price.
 
-- 산출물이 **6.04초**다. 30초 중 24초를 버렸다. `-xerror` 는 검증이 아니라 **중단**이다.
-- 걸린 지점은 결손 자체가 아니라 이음매의 `corrupt input packet` 이다. 결손이 **몇 건
-  인지·어디인지·합계 몇 초인지** 는 어디에도 나오지 않는다.
-- 그래서 "결손을 보고했다"고 말할 수 없다. 보고된 것은 "무엇인가 잘못됐다"뿐이다.
+- The output is **6.04 seconds.** It threw away 24 of the 30 seconds. `-xerror` is not verification but a **stop.**
+- The spot it caught is not the loss itself but a `corrupt input packet` at a junction. **How many losses·where·
+  how many seconds in total** appears nowhere.
+- So you cannot say "it reported the loss." What was reported is only "something is wrong."
 
-정리하면 주장의 정확한 형태는 이렇다.
+Organized, the exact form of the claim is this.
 
-| 진술 | 참인가 |
+| Statement | True |
 |---|---|
-| "ffmpeg 은 이 결손을 탐지할 수 없다" | **거짓** — warning 으로 적고, `-xerror` 로 종료 코드까지 바꿀 수 있다 |
-| "기본 호출의 ffmpeg 은 결손을 종료 코드로 보고하지 않는다" | 참(실측) |
-| "종료 코드를 바꾸는 옵션은 결손의 위치·규모를 알려주지 않고 산출물을 버린다" | 참(실측) |
+| "ffmpeg cannot detect this loss" | **false** — it writes it as a warning, and with `-xerror` can even change the exit code |
+| "ffmpeg on the default call does not report the loss via the exit code" | true (measured) |
+| "the option that changes the exit code does not tell the loss's position·scale and throws away the output" | true (measured) |
 
-**대조군을 세우면 자기 주장이 좁아진다.** 좁아진 문장이 참인 문장이다. 이것이
-대조군의 두 번째 효용이다 — 이기게 해 주는 것이 아니라 **과장하지 못하게 막는 것.**
+**Set up a control and your own claim narrows.** The narrowed sentence is the true sentence. This is the control's
+second use — not to make you win but **to keep you from exaggerating.**
 
-> **정직하게** — 위 세 줄은 각각 1회 실행의 관측이다. `-xerror` 가 정상 스트림에서
-> 오탐을 내지 않는다는 것도 1회 관측일 뿐 오탐률 측정이 아니다. 그리고 이 측정은
-> **`tests/run.sh` 에 들어 있지 않다** — 저장소의 대조군은 옵션 없는 한 줄만 잰다.
+> **Honestly** — the three rows above are each a one-off run's observation. That `-xerror` gives no false positive
+> on a normal stream is also a one-off observation, not a false-positive-rate measurement. And this measurement is
+> **not in `tests/run.sh`** — the repository's control measures only the one option-less line.
 
 ---
 
-## 36.7 일반화 — 상대 명제에는 대조군이 필요하다
+## 36.7 Generalization — a relative proposition needs a control group
 
-이 장의 형식은 스트리밍과 무관하게 반복된다. 공통 형태는 하나다.
+This chapter's form repeats independently of streaming. The common form is one.
 
-> **"우리가 낫다"는 주장은 비교 대상을 함께 측정해야 검증 가능하다.**
-> 한쪽만 재면 그것은 측정이 아니라 관찰기록이다.
+> **A claim of "we are better" is verifiable only if you measure the comparison target together.**
+> Measure only one side and it is not a measurement but an observation record.
 
-| 주장 | 처치군 측정 | **빠뜨리기 쉬운 대조군** | 대조군 없이 쓰면 생기는 일 |
+| Claim | Treatment-group measurement | **The control easily omitted** | What happens if used without a control |
 |---|---|---|---|
-| "이 도구는 ffmpeg 이 놓치는 결손을 잡는다" | 결함 주입 스트림에서 FAIL | 같은 스트림·같은 시각의 ffmpeg 단독 | 존재 이유가 검증되지 않은 채 문서에만 남는다 |
-| "이 최적화로 2배 빨라졌다" | 최적화 후 벤치마크 | **같은 하드웨어·같은 입력·같은 부하**의 최적화 전 | 캐시 워밍·다른 머신·다른 입력 크기가 전부 교란 변수 |
-| "이 패치로 공격면이 줄었다" | 패치 후 차단 목록 | 패치 전 같은 입력의 동작 | 제15장 — 측정되지 않은 개선 |
-| "새 분류기가 정확도 5%p 높다" | 새 모델 점수 | **같은 테스트셋**의 기존 모델 점수 | 테스트셋이 바뀌면 두 숫자는 비교 대상이 아니다 |
-| "캐시 도입으로 DB 부하가 줄었다" | 캐시 켠 뒤 QPS | 같은 트래픽 패턴에서 캐시 끈 상태 | 트래픽 자체가 줄어든 것을 캐시 효과로 오인 |
-| "이 정적 분석기가 버그를 N건 찾았다" | 새 도구가 낸 경보 | **기존 파이프라인이 이미 잡던 것** | 순증분이 0 이어도 N 건은 그대로 보고된다 |
+| "this tool catches a loss ffmpeg misses" | FAIL on the defect-injection stream | ffmpeg alone on the same stream·same time | the reason for existing remains only in the doc, unverified |
+| "this optimization made it 2× faster" | benchmark after the optimization | before the optimization on the **same hardware·same input·same load** | cache warming·a different machine·a different input size are all confounding variables |
+| "this patch reduced the attack surface" | the block list after the patch | the behavior on the same input before the patch | Chapter 15 — an unmeasured improvement |
+| "the new classifier is 5pp more accurate" | the new model's score | the existing model's score on the **same test set** | change the test set and the two numbers are not comparable |
+| "the cache reduced DB load" | QPS with the cache on | the cache off on the same traffic pattern | the traffic itself dropping mistaken for the cache's effect |
+| "this static analyzer found N bugs" | the alerts the new tool gave | **what the existing pipeline already caught** | even with 0 net increase, N is still reported |
 
-마지막 행이 제15장과 정확히 같은 구조다. 제15장 §15.5.2 는 `-allowed_extensions` 를
-`ALL` 에서 열거로 좁힌 뒤, **변경 전(`ALL`)과 변경 후(열거)를 같은 확장자 9종에
-대해 둘 다** 측정했다. 결과는 전 항목 동일 — 공격면 축소가 **측정되지 않았다.**
+The last row is exactly the same structure as Chapter 15. Chapter 15 §15.5.2, after narrowing `-allowed_extensions`
+from `ALL` to an enumeration, measured **both before (`ALL`) and after (enumeration) for the same 9 extensions.**
+The result was identical on every item — the attack-surface reduction was **not measured.**
 
-만약 처치군만 측정했다면 표는 "9종 중 7종 거부"였을 것이고, 결론은 "공격면을
-줄였다"였을 것이다. **틀린 문장은 아니지만 참인 근거가 없는 문장.** 그 문장을 막은
-것이 대조군이다.
+Had you measured only the treatment group, the table would have been "7 of 9 rejected," and the conclusion would
+have been "reduced the attack surface." **Not a false sentence but a sentence with no true basis.** What blocked
+that sentence was the control.
 
-여기서 이 장의 명제가 나온다.
+Here comes this chapter's proposition.
 
-> **대조군의 주된 효용은 개선을 증명하는 것이 아니라,
-> 개선이 아닌 것을 개선이라 부르지 못하게 막는 것이다.**
+> **The control's main use is not to prove an improvement but to keep what is not an improvement from being called
+> one.**
 
-### 36.7.1 대조군을 회귀 테스트에 넣는다는 것
+### 36.7.1 What it means to put a control in the regression test
 
-한 번 측정하고 문서에 적는 것과, 회귀 테스트에 넣는 것은 다르다.
+Measuring once and writing it in a document, and putting it in the regression test, are different.
 
-| | 1회 측정 후 문서화 | 회귀 테스트로 고정 |
+| | Measure once and document | Fix by regression test |
 |---|---|---|
-| 측정 시점 | 그때 한 번 | **매 실행마다** |
-| 비교 대상이 개선되면 | 문서가 조용히 낡는다 | **다음 실행에서 신호가 뜬다** |
-| 환경이 바뀌면 | 알 수 없음 | 노란 점으로 드러남 |
-| 유지 비용 | 0 | 픽스처를 계속 유지해야 함 |
+| Measurement time | once, then | **every run** |
+| If the comparison target improves | the doc quietly ages | **a signal appears on the next run** |
+| If the environment changes | unknown | revealed by a yellow dot |
+| Maintenance cost | 0 | must keep maintaining the fixture |
 
-`tests/run.sh` 의 마지막 11줄이 하는 일은 **가치 명제를 살아 있는 가정으로 만드는
-것**이다. 소프트웨어에서 "경쟁 도구와의 비교"는 보통 발표 자료에 한 번 실리고
-낡아 간다. 이 저장소는 그것을 실행 가능한 형태로 코드에 넣었다.
+What the last 11 lines of `tests/run.sh` do is **make the value proposition a living assumption.** In software, "a
+comparison with a competing tool" is usually put in a presentation deck once and ages. This repository put it into
+the code in an executable form.
 
 ---
 
-## 36.8 보안 — 방어 주장에도 같은 형식이 필요하다
+## 36.8 Security — a defense claim needs the same form
 
-### 36.8.1 순증분을 묻는 질문
+### 36.8.1 The question asking the net increase
 
-보안 도구·보안 패치의 가치 명제도 상대 명제다. "이 WAF 규칙이 공격을 N건 차단했다"는
-문장에는 대조군이 없다.
+A security tool's·security patch's value proposition is also a relative proposition. The sentence "this WAF rule
+blocked N attacks" has no control.
 
-| 물어야 할 것 | 대조군 없이 답할 수 있는가 |
+| To ask | Answerable without a control |
 |---|---|
-| 그 N건 중 몇 건이 **규칙 없이도 애플리케이션에서 거부**되었을 것인가 | 아니오 |
-| 그 N건 중 몇 건이 **다른 계층(인증·입력 검증·ORM)에서 이미 막히던 것**인가 | 아니오 |
-| 규칙 도입으로 **정상 요청 몇 건이 함께 막혔는가** | 아니오 — 처치군만 보면 오탐은 안 보인다 |
+| of those N, how many would have been rejected by the application **even without the rule** | no |
+| of those N, how many were **already blocked at another layer (auth·input validation·ORM)** | no |
+| by introducing the rule, **how many normal requests were blocked together** | no — look at the treatment group only and false positives are invisible |
 
-세 질문 모두 "같은 트래픽을 규칙 없이 흘려 보낸 상태"라는 대조군을 요구한다.
-그것 없이 나온 N 은 **차단 건수이지 개선량이 아니다.**
+All three questions demand the control "the same traffic flowed with no rule." The N that came out without it is
+**a block count, not an improvement amount.**
 
-이것이 제15장의 **우연한 방어(incidental defense)** 와 같은 구조다. ②층(확장자
-allowlist)을 좁힌 효과가 0 으로 측정된 이유는 ③층이 이미 앞을 막고 있었기
-때문이었다. 순증분은 **다른 계층이 무엇을 하고 있는지 함께 측정해야만** 나온다.
+This is the same structure as Chapter 15's **incidental defense.** The reason the effect of narrowing layer ②
+(extension allowlist) was measured as 0 was that layer ③ was already blocking in front. The net increase comes out
+**only if you measure together what the other layers are doing.**
 
-### 36.8.2 한계를 공개하는 것은 방어자에게 이롭다
+### 36.8.2 Publishing the limit is beneficial to the defender
 
-이 저장소의 대조군 항목은 공개 저장소에 이렇게 적혀 있다 — **"ffmpeg 단독은
-이 결손을 놓친다."** 이것은 곧 **"ffmpeg 종료 코드만 보는 수집·아카이빙 파이프라인은
-이 결함에 눈이 멀어 있다"** 는 정보다. 감춰야 하는가.
+This repository's control item is written in a public repository like this — **"ffmpeg alone misses this loss."**
+This is the information **"a collection·archiving pipeline that looks only at the ffmpeg exit code is blind to this
+defect."** Should it be hidden.
 
-아니다. 이유는 제25장에서 다룬 **Kerckhoffs 원리**와 같은 논리다.
+No. The reason is the same logic as the **Kerckhoffs's principle** covered in Chapter 25.
 
-- 이 사실은 이미 상류 ffmpeg 의 동작에서 누구나 관측할 수 있다. 숨겨도 숨겨지지 않는다.
-- 이 사실을 모르는 쪽은 **공격자가 아니라 방어자**다. 아카이브를 운영하면서 자기
-  파이프라인이 무엇을 못 보는지 모르는 사람이 위험에 처한다.
-- 검사기의 한계를 문서화하는 것은 제18장(4비트 카운터의 미탐률)과 같은 태도다.
-  **"PASS = 무결"이 아니라 "PASS = 이 검사로는 못 잡음"** 이라는 것을 알아야 그 PASS 를
-  쓸 수 있다.
+- This fact is already observable by anyone from the upstream ffmpeg's behavior. Hide it and it is not hidden.
+- The side that does not know this fact is **not the attacker but the defender.** Someone running an archive not
+  knowing what their pipeline cannot see is the one in danger.
+- Documenting the checker's limit is the same attitude as Chapter 18 (the 4-bit counter's miss rate). You must
+  know that **"PASS = intact" is not it but "PASS = not caught by this check"** to use that PASS.
 
-### 36.8.3 방어자 관점
+### 36.8.3 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **도구 개발자** | 가치 명제가 상대 명제라면 **비교 대상을 회귀 테스트에 넣는다.** 비교 대상이 개선되면 문서를 고치고 가치 명제를 갱신한다. 발표 자료에 한 번 실린 비교는 낡는다 |
-| **보안 도구 도입 담당자** | "이 도구가 X 를 잡는다"가 아니라 **"현재 파이프라인이 X 를 놓치는데 이 도구가 잡는다"** 를 요구한다. 앞 문장은 도구 벤더가, 뒤 문장은 도입자가 측정해야 한다 |
-| **감사자** | "보안 개선"이라 적힌 변경에 **대조군 측정을 요구한다.** 측정 없는 개선 주장은 검증 대상이지 근거가 아니다(제15장 §15.9 와 동일) |
-| **CI 운영자** | **자기 코드가 아니라 외부 전제를 감시하는 항목은 빌드를 실패시키지 않는다.** 대신 사람이 읽는 자리에 눈에 띄게 남긴다. 틀린 빨간불은 항목 자체를 삭제하게 만든다 |
-| **문서 작성자** | 측정한 것과 측정하지 못한 것을 문장 단위로 구분한다. "탐지할 수 없다"와 "기본 호출에서 종료 코드로 보고하지 않는다"는 다른 문장이다(§36.6.3) |
+| **tool developer** | if the value proposition is a relative proposition, **put the comparison target in the regression test.** if the comparison target improves, fix the doc and update the value proposition. a comparison put in a deck once ages |
+| **security-tool adoption owner** | require not "this tool catches X" but **"the current pipeline misses X and this tool catches it."** the former the tool vendor measures, the latter the adopter must measure |
+| **auditor** | require a **control measurement** for a change written as a "security improvement." a claim of improvement with no measurement is a verification target, not a basis (same as Chapter 15 §15.9) |
+| **CI operator** | **an item monitoring an external premise rather than your own code must not fail the build.** instead leave it visibly in a spot a human reads. a wrong red light makes them delete the item itself |
+| **document author** | distinguish what was measured and what could not be measured, sentence by sentence. "cannot detect" and "does not report via the exit code on the default call" are different sentences (§36.6.3) |
 
 ---
 
-## 36.9 한계와 미해결
+## 36.9 Limits and open questions
 
-정직하게 적어 둔다.
+Written honestly.
 
-- **대조군이 하나뿐이다.** `ffmpeg` 만 잰다. `yt-dlp`·`streamlink`·`N_m3u8DL-RE`
-  같은 다른 재조립 도구는 측정하지 않았다. 따라서 고정된 명제는 "ffmpeg 이 놓친다"
-  까지이고, "이 결손을 보고하는 도구가 달리 없다"는 **주장된 적도 검증된 적도 없다.**
-- **결함이 분리되지 않는다.** 결함 4종이 한 스트림에 섞여 있으므로 어느 결함이
-  exit 0 을 만들었는지 분해되지 않는다(§36.5). 결함별 대조군이 있으면 커버리지
-  대응표(제35장)와 1:1로 맞출 수 있다.
-- **`[3/4]` 와 `[4/4]` 의 논리적 의존이 코드에 없다.** 순서로만 이어져 있어, 앞
-  단계가 실패해도 대조군은 근거 없이 `ok` 를 찍는다.
-- **ffmpeg 옵션 공간을 전수 조사하지 않았다.** §36.6.3 에서 잰 것은 `-xerror`
-  하나다. `-err_detect`·`-fflags` 계열의 조합 중 결손을 더 정확히 보고하는 것이
-  있는지는 확인하지 못했다. 있다면 "비교 대상이 실제로 쓰이는 형태"라는 §36.6 의
-  전제를 다시 검토해야 한다.
-- **`-xerror` 가 걸린 원인을 소스로 확인하지 않았다.** 이음매에서 `corrupt input
-  packet` 이 뜬 것이 continuity counter 불연속 때문이라고 **추론**했을 뿐,
-  `libavformat` 을 읽어 확인하지는 않았다. 만약 그 추론이 맞다면 제18장의 미탐
-  조건(정확히 16의 배수 패킷 유실)에서는 이 우회로도 작동하지 않을 것이다 —
-  이 역시 **추론이며 측정하지 않았다.**
-- **환경이 고정되지 않는다.** 이 저장소는 ffmpeg 버전을 고정하지 않고 "PATH 에 있을
-  것"만 요구한다. 제15장 §15.7 과 같은 조건이며, 그래서 `else` 분기의 문구가
-  "환경에 따라 다를 수 있음"이다. 대조군의 재현성은 이 지점에서 원리적으로 제한된다.
-- **노란 점은 사람이 읽어야 작동한다.** §36.4 에서 적었듯 자동화된 게이트가 아니다.
-  CI 로그를 아무도 보지 않는 팀에서는 이 설계가 "아예 검사하지 않음"과 같아진다.
+- **There is only one control.** It measures only `ffmpeg`. Other reassembly tools like `yt-dlp`·`streamlink`·
+  `N_m3u8DL-RE` were not measured. So the fixed proposition is up to "ffmpeg misses it," and "there is no other
+  tool that reports this loss" was **neither claimed nor verified.**
+- **The defects are not separated.** Since 4 defects are mixed in one stream, which defect made exit 0 is not
+  decomposed (§36.5). With a per-defect control it can be matched 1:1 with the coverage mapping table (Chapter 35).
+- **The logical dependency of `[3/4]` and `[4/4]` is not in the code.** They are joined by order only, so even if
+  the prior stage fails the control prints a baseless `ok`.
+- **The ffmpeg option space was not exhaustively investigated.** What §36.6.3 measured is one option, `-xerror`.
+  Whether there is a combination of the `-err_detect`·`-fflags` family that reports the loss more accurately could
+  not be confirmed. If there is, §36.6's premise "the comparison target is the form actually used" must be
+  re-reviewed.
+- **What `-xerror` caught was not confirmed from the source.** That a `corrupt input packet` appeared at a
+  junction was **inferred** to be due to a continuity-counter discontinuity, not confirmed by reading
+  `libavformat`. If that inference is right, this workaround would not work under Chapter 18's miss condition
+  (packet loss of exactly a multiple of 16) either — this too is **inference and not measured.**
+- **The environment is not pinned.** This repository does not pin the ffmpeg version and requires only "be on the
+  PATH." It is the same condition as Chapter 15 §15.7, and so the `else` branch's phrase is "may differ by
+  environment." The control's reproducibility is principled-ly limited at this point.
+- **The yellow dot works only if a human reads it.** As written in §36.4 it is not an automated gate. In a team
+  where no one looks at the CI log, this design becomes the same as "does not check at all."
 
 ---
 
-## 36.10 요약
+## 36.10 Summary
 
-1. 도구의 존재 이유는 **상대 명제**다 — "ffmpeg 이 알려주지 않는 것만 계측한다"
-   (`README.md:32-34`). 상대 명제는 **두 항을 같은 조건에서 재야** 검증된다.
-2. `tests/run.sh:512-522` 는 **자기 코드를 한 줄도 실행하지 않는 회귀 테스트 항목**
-   이다. 감시 대상이 이 저장소의 코드가 아니라 **가치 명제의 전제**이기 때문이다.
-3. 처치는 "ffmpeg 대신 우리"가 아니라 **"같은 ffmpeg 재조립 위에 계측 계층 하나"**
-   다([`assemble.py:1-6`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L1-L6)). 대조군과 처치군이 같은 URL·같은 서버·같은 실행을 공유하는
-   것이 이 비교의 내부 타당도 전부다.
-4. **기대값이 0 이다.** 대조군은 성공해야 통과하고, 그 성공이 결함의 증거다.
-   `[3/4]` 의 exit 2 와 `[4/4]` 의 exit 0 이 **함께 있어야** 한 문장이 성립한다.
-5. `else` 분기가 `bad` 를 부르지 않는 이유는 **대조군의 실패가 자기 코드의 결함이
-   아니기 때문**이다. 빨간불로 만들면 다음 사람이 항목을 지운다. 노란 점은
-   **관측하되 판정을 보류하는** 제3의 상태다(제38장).
-6. 실측하면 주장은 좁아진다 — ffmpeg 은 결손을 **warning 으로 적고 종료 코드로는
-   보고하지 않는다.** `-xerror` 로 종료 코드를 바꿀 수는 있으나 그것은 검증이 아니라
-   중단이고 산출물의 80%를 버린다. **좁아진 문장이 참인 문장이다.**
-7. 일반화: **"우리가 낫다"는 주장은 비교 대상을 함께 측정해야 검증 가능하다.**
-   대조군의 주된 효용은 개선을 증명하는 것이 아니라 **개선이 아닌 것을 개선이라
-   부르지 못하게 막는 것**이다(제15장의 우연한 방어와 같은 구조).
+1. The tool's reason for existing is a **relative proposition** — "measure only what ffmpeg does not tell you"
+   (`README.md:32-34`). A relative proposition is verified only by **measuring the two terms under the same
+   conditions.**
+2. `tests/run.sh:512-522` is **a regression-test item that runs not a single line of its own code.** Because the
+   monitoring target is not this repository's code but **the value proposition's premise.**
+3. The treatment is not "us instead of ffmpeg" but **"one measurement layer over the same ffmpeg reassembly"**
+   ([`assemble.py:1-6`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/assemble.py#L1-L6)). That the control and treatment groups share the same URL·same server·same run is the whole
+   internal validity of this comparison.
+4. **The expected value is 0.** The control must succeed to pass, and that success is the evidence of the defect.
+   `[3/4]`'s exit 2 and `[4/4]`'s exit 0 must be **together** for one sentence to hold.
+5. The reason the `else` branch does not call `bad` is that **the control's failure is not a defect of its own
+   code.** Make it a red light and the next person deletes the item. The yellow dot is a third state that
+   **observes but withholds the verdict** (Chapter 38).
+6. Measure and the claim narrows — ffmpeg writes the loss as a **warning and does not report it via the exit
+   code.** With `-xerror` you can change the exit code but that is not verification but a stop and throws away 80%
+   of the output. **The narrowed sentence is the true sentence.**
+7. Generalization: **a claim of "we are better" is verifiable only by measuring the comparison target together.**
+   The control's main use is not to prove an improvement but **to keep what is not an improvement from being called
+   one** (the same structure as Chapter 15's incidental defense).
 
 ---
 
-**다음 장** — 이 장의 대조군은 "비교 대상이 놓친다"를 고정했다. 그런데 이 저장소의
-검사기 자신에 대해서도 같은 종류의 비대칭이 남아 있다. 결함을 잡는 것만 고정한
-테스트는 **"항상 FAIL 을 내는 구현"** 을 그대로 통과시킨다. 제37장은 재고 조사
-판정기를 예로, 오탐과 미탐을 **함께** 고정하지 않으면 무엇이 조용히 깨지는지를
-다룬다 — 너무 엄격하면 멀쩡한 27화를 매번 다시 받고, 너무 관대하면 깨진 파일이
-완성본 행세를 해 그 회차가 영원히 빠진다.
+**Next chapter** — this chapter's control fixed "the comparison target misses it." But the same kind of asymmetry
+remains for this repository's own checker too. A test fixing only catching the defect passes an **"implementation
+that always gives FAIL"** as-is. Chapter 37, with the inventory verdict maker as an example, covers what quietly
+breaks if you do not fix the false positive and false negative **together** — too strict and you re-receive 27
+fine episodes every time, too lenient and a broken file passes as a finished copy so that episode is missing
+forever.

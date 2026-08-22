@@ -1,220 +1,218 @@
 ---
-untranslated: ko
-title: "테스트 오라클 문제"
-description: "검증기를 검증하기"
-date: 2026-08-19
+title: "The Test-Oracle Problem"
+description: "Verifying the verifier"
+date: 2026-08-06
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-34-oracle-problem.svg
 ---
-## 34.0 이 장에서 답할 것
+## 34.0 What this chapter answers
 
-1. 어떤 입력에 대해 무엇이 옳은 출력인지를 **무엇을 근거로** 판정하는가
-2. 검증 도구에서 그 문제가 왜 특히 날카로운가
-3. **PASS 만 내는 도구와 무검증의 차이**는 무엇인가
-4. 그 차이를 회귀 테스트로 어떻게 고정하는가
+1. For some input, **on what basis** do you judge what the correct output is?
+2. Why is that problem especially sharp in a verification tool?
+3. What is the **difference between a tool that gives only PASS and no verification?**
+4. How do you fix that difference with a regression test?
 
-제8부는 앞의 일곱 부에서 만든 검사들이 **실제로 무엇을 잡는지**를 묻는다. 이 장은
-그 물음 자체를 성립시키는 장이다.
+Part 8 asks what the checks made in the previous seven parts **actually catch.** This chapter is the one that
+makes that very question hold.
 
 ---
 
-## 34.1 문제 — 두 줄짜리 스크립트가 정상 케이스를 전부 통과한다
+## 34.1 The problem — a two-line script passes every normal case
 
-`tests/run.sh` 의 정상 케이스 블록은 여섯 번의 검증 실행으로 이루어져 있다
-(`tests/run.sh:173-178`). 평문 TS, AES-128 암호화, fMP4, 마스터 플레이리스트의
-variant 선택, remux 위임, 구조 조사 — 이 도구가 다루는 입력의 대표 집합이다.
+`tests/run.sh`'s normal-case block consists of six verification runs (`tests/run.sh:173-178`). Plaintext TS,
+AES-128 encryption, fMP4, master-playlist variant selection, remux delegation, structure probe — the
+representative set of inputs this tool handles.
 
-이제 다음 스크립트를 `hls-recon` 대신 그 자리에 놓는다.
+Now put the following script in that spot instead of `hls-recon`.
 
 ```bash
 #!/usr/bin/env bash
-exit 0                    # 항상 PASS
+exit 0                    # always PASS
 ```
 
-실측한 결과다. `tests/run.sh` 의 `expect_pass` 정의(`tests/run.sh:162-170`)와 여섯 개의
-호출을 그대로 옮겨 이 스텁에 물렸다.
+The measured result. I moved `tests/run.sh`'s `expect_pass` definition (`tests/run.sh:162-170`) and the six calls
+as-is and put them onto this stub.
 
 ```
-[정상 블록 — expect_pass 6건]
-  PASS 평문TS-segments
-  PASS AES128-복호화
+[normal block — 6 expect_pass]
+  PASS plaintextTS-segments
+  PASS AES128-decrypt
   PASS fMP4-CMAF
-  PASS 마스터-variant선택
-  PASS remux-위임
-  PASS 구조조사
+  PASS master-variant-select
+  PASS remux-delegate
+  PASS structure-probe
 ```
 
-**6/6 통과다.** 이 두 줄은 M3U8 을 파싱하지 않고, HTTP 요청을 보내지 않고, 바이트를
-한 개도 읽지 않는다. 그런데 "정상 스트림이 정상으로 나오는가"만 묻는 시험에서는
-4,173줄짜리 진짜 구현과 구별되지 않는다.
+**6/6 pass.** These two lines do not parse M3U8, send no HTTP request, and read not a single byte. And yet in a
+test asking only "does a normal stream come out normal" it is indistinguishable from the 4,173-line real
+implementation.
 
-이 저장소는 그 사실을 스크립트 머리에 적어 두었다.
+This repository wrote that fact at the script's head.
 
 ```bash
 # tests/run.sh:1-8
 #!/usr/bin/env bash
-# hls-recon 회귀 테스트.
+# hls-recon regression test.
 #
-# 로컬에 HLS 스트림 4종을 만들어 정상 케이스가 PASS 로 나오는지 확인하고,
-# 결함 3종을 주입해 실제로 FAIL 로 잡히는지 확인한다.
-# 검증 도구가 PASS 만 낸다면 아무것도 검증하지 못하는 것과 같으므로,
-# "결함을 잡는가"가 이 스크립트의 핵심이다.
+# Makes 4 kinds of HLS stream locally, confirms the normal cases come out PASS,
+# and injects 3 kinds of defect to confirm they are actually caught as FAIL.
+# A verification tool that gives only PASS is the same as verifying nothing,
+# so "does it catch the defect" is this script's core.
 set -euo pipefail
 ```
 
-여섯째 줄이 이 장의 명제다. **"검증 도구가 PASS 만 낸다면 아무것도 검증하지 못하는
-것과 같다."** 같은 문장이 `README.md:355-356` 에도 있다.
+The sixth line is this chapter's proposition. **"A verification tool that gives only PASS is the same as verifying
+nothing."** The same sentence is in `README.md:355-356` too.
 
-> 검증 도구가 PASS 만 낸다면 아무것도 검증하지 못하는 것과 같다. 그래서 회귀 테스트는
-> "정상을 통과시키는가"와 함께 **"결함을 실제로 잡는가"**를 고정한다.
+> A verification tool that gives only PASS is the same as verifying nothing. So the regression test fixes, along
+> with "does it pass the normal," **"does it actually catch the defect."**
 
-정확히 말하면 "같다"보다 나쁘다. 무검증은 아무 주장도 하지 않는다. 항상 PASS 를 내는
-도구는 **거짓 주장을 CI 로그와 리포트 JSON 에 남긴다.** 다음 사람은 그 기록을 근거로
-"이 파이프라인은 검증되고 있다"고 판단한다.
+To be exact it is worse than "the same." No verification makes no claim. A tool that always gives PASS **leaves a
+false claim in the CI log and the report JSON.** The next person, on the basis of that record, judges "this
+pipeline is being verified."
 
-| | 산출물 | 후속 판단에 미치는 영향 |
+| | Output | Effect on the following judgment |
 |---|---|---|
-| 도구 없음 | 없음 | "검증되지 않았다" — 정확하다 |
-| 항상 PASS 를 내는 도구 | `PASS`, exit 0, 리포트 JSON | "검증되었다" — **거짓이며, 그 거짓이 근거로 인용된다** |
-| 정탐률을 아는 도구 | `PASS`, 그리고 못 잡는 것의 목록 | "이 검사로는 못 잡는 결함이 남아 있다" — 정확하다 |
+| no tool | none | "not verified" — accurate |
+| a tool that always gives PASS | `PASS`, exit 0, report JSON | "verified" — **false, and that falsehood is cited as a basis** |
+| a tool that knows its true-positive rate | `PASS`, and a list of what it cannot catch | "defects this check cannot catch remain" — accurate |
 
 ---
 
-## 34.2 원리 — 테스트 오라클 문제
+## 34.2 The principle — the test-oracle problem
 
-### 34.2.1 정의
+### 34.2.1 Definition
 
-> **용어** — **테스트 오라클(test oracle)**: 주어진 입력에 대해 프로그램의 출력이
-> 올바른지 아닌지를 판정하는 **독립적 근거**. 명세 문서, 참조 구현, 사람의 판단,
-> 자명한 불변식 등이 오라클 노릇을 한다.
+> **Term** — **test oracle**: an **independent basis** judging whether a program's output for a given input is
+> correct. A specification document, a reference implementation, human judgment, a self-evident invariant serve as
+> an oracle.
 
-> **용어** — **테스트 오라클 문제(test oracle problem)**: 실제 대상에 대해 그런 독립적
-> 근거를 얻는 일이 일반적으로 어렵거나 불가능한 문제. 테스트 입력을 만드는 일은 쉬운데
-> **그 입력의 정답을 아는 일이 어렵다**는 비대칭에서 나온다.
+> **Term** — **test-oracle problem**: the problem that obtaining such an independent basis for a real target is
+> generally hard or impossible. It arises from the asymmetry that making a test input is easy but **knowing that
+> input's answer is hard.**
 
-이 저장소가 답해야 할 질문을 다시 쓰면 이렇다.
+Rewrite the question this repository must answer and it is this.
 
-> 이 HLS 스트림을 받아 만든 MP4 가 **온전한가**.
+> Is the MP4 made by receiving this HLS stream **intact?**
 
-이 질문의 정답은 어디에도 적혀 있지 않다. 원본을 가진 쪽은 송출자이고, 우리에게는
-서버가 준 텍스트와 바이트열밖에 없다. 제4장에서 확인했듯 기준선 N 조차 서버가 준
-플레이리스트에서 나온다.
+The answer to this question is written nowhere. The side with the original is the deliverer, and we have only the
+text and byte string the server gave. As confirmed in Chapter 4, even the baseline N comes from the
+server-given playlist.
 
-### 34.2.2 오라클을 어디서 얻는가
+### 34.2.2 Where you get an oracle
 
-오라클의 출처는 몇 갈래로 분류되어 있다. 각각이 이 저장소에서 쓸 수 있는지를 따져
-보면 왜 결함 주입이 남는지가 드러난다.
+The sources of an oracle are classified into a few branches. Weighing whether each is usable in this repository
+reveals why defect injection remains.
 
-| 오라클의 종류 | 정의 | 이 저장소에서 |
+| Kind of oracle | Definition | In this repository |
 |---|---|---|
-| **명세 오라클**(specified oracle) | 규격 문서가 정답을 직접 규정한다 | RFC 8216 이 규정하는 것은 **형식**이지 "이 스트림이 온전한가"가 아니다. 파서 동작에만 부분적으로 쓸 수 있다 |
-| **의사 오라클**(pseudo-oracle) | 같은 문제를 푸는 **다른 구현**의 출력과 대조한다. 이 방식의 테스트를 차분 테스트(differential testing)라 한다 | 후보는 ffmpeg 뿐인데, **이 도구가 존재하는 이유가 ffmpeg 이 결손을 놓치기 때문**이다(`README.md:359-360`). 오라클로 쓸 수 없다 |
-| **변형 오라클**(metamorphic oracle) | 정답을 몰라도 성립하는 **입력–출력 사이의 관계**로 판정한다. 그 관계를 변형 관계(metamorphic relation)라 한다 | 쓸 수 있다. "정상 스트림에서 세그먼트를 하나 지우면 판정이 나빠져야 한다"가 그런 관계다 |
-| **암묵 오라클**(implicit oracle) | 어떤 입력에서도 일어나면 안 되는 일 — 크래시, 무한 대기, 스택 트레이스 노출 | 이미 쓰고 있다. `grep -q 'Traceback' "$DIAG" && bad "스택 트레이스가 노출됨"`(`tests/run.sh:202`) 이 정확히 이것이다 |
-| **구성된 오라클**(constructed oracle) | **정답을 아는 입력을 직접 만든다.** 결함 주입이 여기 속한다 | 이 스크립트의 중심. 제35장의 주제다 |
+| **specified oracle** | the spec document directly stipulates the answer | what RFC 8216 stipulates is the **form**, not "is this stream intact." usable only partially for parser behavior |
+| **pseudo-oracle** | compare against the output of **another implementation** solving the same problem. this style of test is differential testing | the only candidate is ffmpeg, and **the reason this tool exists is that ffmpeg misses loss** (`README.md:359-360`). unusable as an oracle |
+| **metamorphic oracle** | judge by a **relation between input and output** that holds without knowing the answer. that relation is a metamorphic relation | usable. "delete one segment from a normal stream and the verdict should worsen" is such a relation |
+| **implicit oracle** | something that must never happen on any input — a crash, an infinite wait, a stack-trace exposure | already used. `grep -q 'Traceback' "$DIAG" && bad "stack trace exposed"` (`tests/run.sh:202`) is exactly this |
+| **constructed oracle** | **make an input whose answer you know.** defect injection belongs here | the center of this script. Chapter 35's subject |
 
-> **용어** — **결함 주입(fault injection)**: 정상이라고 알고 있는 대상에 의도적으로
-> 결함을 심어, 시스템이 그 결함에 어떻게 반응하는지를 관측하는 기법.
+> **Term** — **fault injection**: the technique of deliberately planting a defect into a target known to be normal
+> and observing how the system reacts to that defect.
 
-`tests/run.sh:130` 이 그 구성의 첫 줄이다.
+`tests/run.sh:130` is the first line of that construction.
 
 ```bash
 # tests/run.sh:129-130
-# 결함 주입본
+# defect-injected copy
 cp -R plain damaged
 ```
 
-`damaged` 는 `plain` 의 복사본에서 출발한다. 두 입력의 차이가 **주입한 결함뿐**이라는
-사실이 오라클을 만든다. `plain` 은 PASS 여야 하고 `damaged` 는 FAIL 이어야 한다 —
-이것은 절대적 정답이 아니라 **두 입력 사이의 관계**이며, 그래서 변형 오라클이면서
-구성된 오라클이다.
+`damaged` starts from a copy of `plain`. The fact that the two inputs' difference is **only the injected defect**
+makes the oracle. `plain` must be PASS and `damaged` must be FAIL — this is not an absolute answer but a
+**relation between two inputs**, and so it is both a metamorphic oracle and a constructed oracle.
 
-### 34.2.3 검증 도구에서는 오라클이 두 겹이다
+### 34.2.3 In a verification tool the oracle is two-ply
 
-일반적인 프로그램에서 오라클은 한 겹이다. 정렬 함수를 테스트한다면 "출력이 오름차순
-인가"라는 독립적 판정 근거가 있다. 그 근거는 정렬 함수 밖에 있다.
+In an ordinary program the oracle is one-ply. Test a sort function and there is an independent verdict basis "is
+the output ascending." That basis is outside the sort function.
 
-검증 도구는 다르다.
+A verification tool is different.
 
-| 층 | 질문 | 누가 답하는가 |
+| Layer | Question | Who answers |
 |---|---|---|
-| 1차 | 이 스트림은 온전한가 | **도구 자신** — 도구가 곧 오라클이다 |
-| 2차 | 도구의 그 답은 옳은가 | ??? |
+| 1st | is this stream intact | **the tool itself** — the tool is the oracle |
+| 2nd | is the tool's answer right | ??? |
 
-**도구를 오라클로 쓰라고 만들었으므로, 그 도구를 시험할 때 참조할 상위 오라클이
-남아 있지 않다.** 이것이 검증 도구에서 오라클 문제가 특히 날카로운 이유다. 정적
-분석기·취약점 스캐너·린터·모니터링 알람이 모두 같은 자리에 있다.
+**Since it was made to be used as an oracle, when testing that tool there is no higher oracle left to
+reference.** This is why the oracle problem is especially sharp in a verification tool. A static analyzer·
+vulnerability scanner·linter·monitoring alarm are all in the same spot.
 
-빠져나가는 길은 하나다. **정답을 아는 입력을 아래에서 만들어 넣는 것.** 상위 오라클이
-없으면 오라클을 구성해서 채운다.
+There is one way out. **Make and feed in an input whose answer you know from below.** With no higher oracle, you
+construct an oracle to fill it.
 
 ---
 
-## 34.3 원리 — 판정기는 분류기다
+## 34.3 The principle — a verdict maker is a classifier
 
-검증 도구의 출력은 PASS/WARN/FAIL 이라는 이산 판정이다. 즉 이 도구는 **분류기**이고,
-분류기의 성능은 한 축이 아니라 두 축으로 잰다.
+A verification tool's output is a discrete verdict PASS/WARN/FAIL. That is, this tool is a **classifier**, and a
+classifier's performance is measured not on one axis but two.
 
-> **용어** — **혼동 행렬(confusion matrix)**: 실제 상태(결함 있음/없음)와 판정
-> (FAIL/PASS)의 조합을 네 칸으로 표시한 표. 정탐·오탐·미탐·정상통과의 개수가 들어간다.
+> **Term** — **confusion matrix**: a table showing the combination of the actual state (defect present/absent) and
+> the verdict (FAIL/PASS) in four cells. The counts of true positive·false positive·false negative·true negative
+> go in.
 
-| | 도구 판정 = FAIL | 도구 판정 = PASS |
+| | Tool verdict = FAIL | Tool verdict = PASS |
 |---|---|---|
-| **실제로 결함 있음** | 정탐(true positive) | **미탐(false negative)** |
-| **실제로 결함 없음** | **오탐(false positive)** | 정상 통과(true negative) |
+| **actually has a defect** | true positive | **false negative** |
+| **actually has no defect** | **false positive** | true negative |
 
-정상 케이스만 고정하는 테스트는 이 표의 **아래 행만** 고정한다. 위 행이 비어 있으므로
-미탐이 100% 인 구현 — 곧 §34.1 의 `exit 0` — 이 통과한다. 반대로 결함 케이스만
-고정하면 위 행만 채워지고 `exit 2` 한 줄이 통과한다.
+A test fixing only normal cases fixes **only the bottom row** of this table. Since the top row is empty, an
+implementation with 100% false negatives — i.e. §34.1's `exit 0` — passes. Conversely fix only defect cases and
+only the top row is filled and the one line `exit 2` passes.
 
-세 후보를 두 게이트에 통과시켜 실측한 결과다.
+The result of passing three candidates through the two gates.
 
-![게이트 하나만으로는 가짜 구현이 통과한다](/images/lecture/hls-recon/34-two-gates.svg)
+![One gate alone and a fake implementation passes](/images/lecture/hls-recon/34-two-gates.svg)
 
-*그림 34-1 — 게이트 하나만으로는 가짜 구현이 통과한다*
+*Figure 34-1 — one gate alone and a fake implementation passes*
 
-| 후보 구현 | 게이트 ① 정상 블록 | 게이트 ② 결함 블록 | 남는가 |
+| Candidate implementation | Gate ① normal block | Gate ② defect block | Survives |
 |---|---|---|---|
-| `hls-recon` (실물) | 6/6 | 6/6 | 남는다 |
-| `exit 0` (항상 PASS) | **6/6** | 0/6 | 배제 |
-| `exit 2` (항상 FAIL) | 0/6 | 1/6 | 배제 |
-| `exit 2` + 404 한 줄만 출력 | 0/6 | 2/6 | 배제 |
+| `hls-recon` (real) | 6/6 | 6/6 | survives |
+| `exit 0` (always PASS) | **6/6** | 0/6 | excluded |
+| `exit 2` (always FAIL) | 0/6 | 1/6 | excluded |
+| `exit 2` + output only one 404 line | 0/6 | 2/6 | excluded |
 
-넷째 행이 §34.5 의 예고다. 종료 코드 2 를 내고 `세그먼트 수신 … 실패` 한 줄만 찍는
-구현은 결함 블록의 여섯 단언 중 둘을 통과한다. **판정만 고정하면 이런 구현이
-살아남는다.**
+The fourth row is §34.5's foretelling. An implementation giving exit code 2 and printing only one line `segment
+receive … failed` passes two of the defect block's six assertions. **Fix only the verdict and such an
+implementation survives.**
 
-> **용어** — **변이 테스트(mutation testing)**: 프로그램에 인위적인 결함(변이,
-> mutant)을 심고 테스트 스위트가 그 변이를 잡아내는지 측정하는 기법. 잡히지 않은
-> 변이는 스위트의 사각지대를 가리킨다.
+> **Term** — **mutation testing**: the technique of planting an artificial defect (a mutant) into a program and
+> measuring whether the test suite catches that mutant. An uncaught mutant points at the suite's blind spot.
 
-위 실험은 프로그램 전체를 하나의 극단적 변이로 갈아치운 거친 형태의 변이 테스트다.
-정교하지는 않지만 **"이 스위트가 무엇을 배제하는가"** 라는 질문에는 답한다.
+The above experiment is a coarse form of mutation testing that replaced the whole program with one extreme
+mutant. It is not refined, but it answers the question **"what does this suite exclude."**
 
 ---
 
-## 34.4 코드 — 정상 축: `expect_pass` 가 두 신호를 함께 보는 이유
+## 34.4 The code — the normal axis: why `expect_pass` looks at two signals together
 
 ```bash
 # tests/run.sh:160-170
-# ---------------------------------------------------------------- 정상 케이스
-# 기대: 종료 코드 0 + 리포트에 FAIL 항목 없음
+# ---------------------------------------------------------------- normal cases
+# expect: exit code 0 + no FAIL item in the report
 expect_pass() {
   local name="$1"; shift
   local log="$WORK/out/$name.log"
   if "$RECON" "$@" >"$log" 2>&1 && ! grep -q '✗' "$log"; then
     ok "$name"
   else
-    bad "$name — $(grep -m1 '✗' "$log" || echo '종료 코드 비정상')"
+    bad "$name — $(grep -m1 '✗' "$log" || echo 'exit code abnormal')"
   fi
 }
 ```
 
-통과 조건이 **연언(conjunction)** 이다. 종료 코드 0 **그리고** 로그에 `✗` 없음. 종료
-코드만 보아도 될 것 같은데 왜 둘인가.
+The pass condition is a **conjunction.** Exit code 0 **and** no `✗` in the log. It seems the exit code alone would
+do, so why two.
 
-### 34.4.1 종료 코드 채널의 사각지대
+### 34.4.1 The exit-code channel's blind spot
 
 ```python
 # cli.py:651-652
@@ -222,135 +220,134 @@ def _exit_code(verdict: str) -> int:
     return {report.PASS: 0, report.WARN: 0, report.FAIL: 2}[verdict]
 ```
 
-**WARN 이 0 에 접혀 있다.** 종료 코드 0 은 "결함이 없다"가 아니라 "FAIL 은 아니다"를
-뜻한다. 이 접힘은 의도된 것이다 — WARN 으로 CI 를 멈추면 재시도 한 번에도 빌드가
-깨진다. 그러나 그 대가로 종료 코드는 PASS 와 WARN 을 구별하지 못한다.
+**WARN is folded into 0.** Exit code 0 means not "no defect" but "not FAIL." This folding is intended — halt CI on
+WARN and the build breaks even on one retry. But at the price the exit code cannot distinguish PASS from WARN.
 
-### 34.4.2 로그 채널이 더 보는 것
+### 34.4.2 What the log channel sees more
 
-`✗` 는 두 곳에서 나온다.
+`✗` comes from two places.
 
-| 출처 | 언제 찍히는가 | 집계 판정에 반영되는가 |
+| Source | When it is printed | Reflected in the aggregate verdict |
 |---|---|---|
-| [`report.py:71`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L71) — `mark = {PASS: "✓", WARN: "!", FAIL: "✗"}[self.verdict]` | 리포트 렌더링 시 FAIL 검사줄마다 | 반영된다(종료 코드 2) |
-| `cli.py:335·358-360·387·454·463` — 진행 로그의 `✗` 출력 | 세그먼트·자막 **개별 항목**이 실패할 때마다 | **반드시 반영되지는 않는다** |
+| [`report.py:71`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L71) — `mark = {PASS: "✓", WARN: "!", FAIL: "✗"}[self.verdict]` | on report rendering, per FAIL check line | reflected (exit code 2) |
+| `cli.py:335·358-360·387·454·463` — the `✗` output of the progress log | each time a **individual** segment·subtitle item fails | **not necessarily reflected** |
 
-두 번째 줄이 핵심이다. 개별 항목의 실패가 집계 판정을 FAIL 까지 끌어올리지 못하는
-경로가 실재한다. 가장 분명한 예가 이웃 화수 수집이다.
+The second row is the core. There exists a path where an individual item's failure does not pull the aggregate
+verdict up to FAIL. The clearest example is neighbor-episode gathering.
 
 ```python
-# report.py:464-469 (발췌)
+# report.py:464-469 (excerpt)
 rep.add(
-    "자막 일괄 수집",
+    "subtitle batch collect",
     PASS if got else WARN,
     ...
 )
 ```
 
-세 개를 시도해 하나만 받아져도 판정은 **PASS** 다. 그동안 [`cli.py:358-360`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L358-L360) 은 실패한 둘
-각각에 `✗` 를 찍는다. 종료 코드 0, 판정 PASS, 그런데 로그에는 `✗` 가 둘 — `grep -q '✗'`
-가 없으면 정상 케이스 시험이 이 상태를 통과시킨다.
+Try three and even if only one is received the verdict is **PASS.** Meanwhile [`cli.py:358-360`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L358-L360) prints a `✗` for
+each of the two failures. Exit code 0, verdict PASS, and yet two `✗` in the log — without `grep -q '✗'` the
+normal-case test passes this state.
 
-![한 판정, 두 관측 채널 — 사각지대가 겹치지 않는다](/images/lecture/hls-recon/34-two-channels.svg)
+![One verdict, two observation channels — their blind spots do not overlap](/images/lecture/hls-recon/34-two-channels.svg)
 
-*그림 34-2 — 한 판정, 두 관측 채널 — 사각지대가 겹치지 않는다*
+*Figure 34-2 — one verdict, two observation channels — their blind spots do not overlap*
 
-### 34.4.3 이렇게 하지 않으면 무엇이 깨지는가
+### 34.4.3 What breaks if you do not do this
 
-| 채널 구성 | 통과시켜 버리는 것 |
+| Channel configuration | What it passes |
 |---|---|
-| 종료 코드만 | 개별 항목이 실패했는데 집계가 WARN·PASS 로 끝나는 실행. 위의 자막 일괄 수집이 실제 사례 |
-| 로그 `✗` 만 | 도구가 리포트를 아예 렌더링하지 않고 죽는 실행 — 출력이 없으므로 `✗` 도 없다 |
-| 둘 다 | 위 둘을 모두 배제한다 |
+| exit code only | a run where individual items failed but the aggregate ends WARN·PASS. the subtitle batch collect above is an actual case |
+| log `✗` only | a run where the tool does not render the report at all and dies — no output so no `✗` either |
+| both | excludes both of the above |
 
-**두 채널의 사각지대가 겹치지 않는다.** 이것이 연언을 쓰는 이유이며, 관측 채널을
-늘리는 일반 원칙이기도 하다 — 같은 것을 두 번 보는 중복이 아니라, **서로 다른 것을
-놓치는 두 관측을 겹치는 것**이 값을 만든다.
+**The two channels' blind spots do not overlap.** This is why a conjunction is used, and it is also the general
+principle of adding observation channels — not the redundancy of looking at the same thing twice, but **overlaying
+two observations that miss different things** makes the worth.
 
 ---
 
-## 34.5 코드 — 결함 축: 판정이 아니라 대응을 고정한다
+## 34.5 The code — the defect axis: fix not the verdict but the response
 
 ```bash
 # tests/run.sh:472-487
-# ---------------------------------------------------------------- 결함 검출
-# 기대: 종료 코드 2 + 해당 검사 항목이 실제로 결함을 지목
-head_ "[3/4] 결함 주입 스트림 — 검출해야 한다"
+# ---------------------------------------------------------------- defect detection
+# expect: exit code 2 + the relevant check item actually points at the defect
+head_ "[3/4] defect-injected stream — must detect"
 DLOG="$WORK/out/damaged.log"
 set +e
 "$RECON" "$BASE/damaged/index.m3u8" -o "$WORK/out/damaged.mp4" --report "$WORK/out/damaged.json" >"$DLOG" 2>&1
 code=$?
 set -e
 
-[[ $code -eq 2 ]] && ok "종료 코드 2 (FAIL)" || bad "종료 코드가 2가 아님: $code"
-grep -q '세그먼트 수신.*실패'   "$DLOG" && ok "세그먼트 404 검출"   || bad "세그먼트 404 미검출"
-grep -q 'CC 불연속'            "$DLOG" && ok "패킷 유실 검출"       || bad "패킷 유실 미검출"
-grep -q '중복 해시'            "$DLOG" && ok "중복 세그먼트 검출"   || bad "중복 세그먼트 미검출"
-grep -q '타임라인 연속성.*결손' "$DLOG" && ok "타임라인 결손 검출"   || bad "타임라인 결손 미검출"
-grep -q '페이로드 유효성.*미디어가 아님' "$DLOG" \
-  && ok "200-오류페이지 검출" || bad "200-오류페이지 미검출"
+[[ $code -eq 2 ]] && ok "exit code 2 (FAIL)" || bad "exit code is not 2: $code"
+grep -q 'segment receive.*failed'   "$DLOG" && ok "segment 404 detected"   || bad "segment 404 not detected"
+grep -q 'CC discontinuit'           "$DLOG" && ok "packet loss detected"    || bad "packet loss not detected"
+grep -q 'duplicate hash'            "$DLOG" && ok "duplicate segment detected" || bad "duplicate segment not detected"
+grep -q 'timeline continuity.*gap'  "$DLOG" && ok "timeline loss detected"  || bad "timeline loss not detected"
+grep -q 'payload validity.*not media' "$DLOG" \
+  && ok "200-error-page detected" || bad "200-error-page not detected"
 ```
 
-첫 줄이 판정을 고정하고, 나머지 다섯 줄이 **어느 검사가 어느 결함을 지목했는지**를
-고정한다. 뒤의 다섯 줄은 없어도 되는 장식처럼 보인다. 그렇지 않다.
+The first line fixes the verdict, and the remaining five fix **which check pointed at which defect.** The latter
+five look like removable decoration. They are not.
 
-### 34.5.1 하나의 스트림에 네 결함이 함께 들어 있다
+### 34.5.1 Four defects are together in one stream
 
-`damaged` 에는 결함이 넷 주입되어 있다(`tests/run.sh:131-146`) — TS 패킷 12개 제거,
-세그먼트 중복 송출, 세그먼트 404, 200 응답에 HTML 오류 페이지. 이들은 **한 번의 실행**
-으로 검사된다. 따라서 종료 코드 2 는 넷 중 **어느 하나**만 잡혀도 나온다. 종료 코드만
-고정하면 "404 만 잡고 나머지는 전부 놓치는 구현"이 통과한다 — §34.3 표의 넷째 행이
-그것이고, 실측으로 결함 블록 2/6 을 통과했다.
+`damaged` has four injected defects (`tests/run.sh:131-146`) — 12 TS packets removed, a segment delivered
+duplicately, a segment 404, an HTML error page on a 200 response. They are checked in **one run.** So exit code 2
+comes even if **any one** of the four is caught. Fix only the exit code and an "implementation that catches only
+the 404 and misses all the rest" passes — that is §34.3's table's fourth row, and it passed the defect block 2/6
+by measurement.
 
-### 34.5.2 그리고 두 결함은 종료 코드에 흔적을 남기지 않는다
+### 34.5.2 And two defects leave no trace in the exit code
 
-실측한 리포트다(`damaged.log` 의 검사줄).
+The measured report (`damaged.log`'s check lines).
 
 ```
-  ✓ 플레이리스트       세그먼트 5개, 선언 길이 30.00s, TARGETDURATION 6s, 암호화 없음
-  ✗ 세그먼트 수신      1/5개 실패 (HTTP [404]) — 재조립본에 결손 구간 발생
-  ✓ 응답 지연          TTFB p50 1ms / p95 2ms, 처리량 중앙값 4626.2 Mbps
-  ✗ 페이로드 유효성    1개가 200 응답이나 미디어가 아님 (video/mp2t) — seg#3 선두 3c21444f43545950
-  ! 세그먼트 고유성    중복 해시 존재 — 동일 세그먼트가 반복 송출됨
-  ! TS 무결성          CC 불연속 11건(패킷 유실)
-  ! 길이 정합          실측 24.04s vs 선언 30.00s (드리프트 -5.96s / 19.88%)
-  ✓ 스트림 구성        h264 Constrained Baseline 640x360 @22.5fps 1476kbps + aac 1ch 44100Hz 95kbps
-  ✗ 타임라인 연속성    결손 1건 / 합계 6.03s (최대 6.03s) @ 5.99~12.02s
-  ✗ 전체 디코드        오류 6건 — [h264 @ 0x984c29880] mb_type 644 in P slice too large at 31 20
+  ✓ playlist            5 segments, declared length 30.00s, TARGETDURATION 6s, encryption none
+  ✗ segment receive     1/5 failed (HTTP [404]) — a loss stretch arises in the reassembled copy
+  ✓ response latency    TTFB p50 1ms / p95 2ms, throughput median 4626.2 Mbps
+  ✗ payload validity    1 is a 200 response but not media (video/mp2t) — seg#3 head 3c21444f43545950
+  ! segment uniqueness  duplicate hash present — the same segment is repeatedly delivered
+  ! TS integrity        11 CC discontinuities (packet loss)
+  ! length consistency  measured 24.04s vs declared 30.00s (drift -5.96s / 19.88%)
+  ✓ stream composition  h264 Constrained Baseline 640x360 @22.5fps 1476kbps + aac 1ch 44100Hz 95kbps
+  ✗ timeline continuity 1 gap / total 6.03s (max 6.03s) @ 5.99~12.02s
+  ✗ full decode         6 errors — [h264 @ 0x984c29880] mb_type 644 in P slice too large at 31 20
 ```
 
-`!` 는 WARN 이다. 그리고 WARN 은 종료 코드 0 이다([`cli.py:652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L652)).
+`!` is WARN. And WARN is exit code 0 ([`cli.py:652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L652)).
 
-| 주입 결함 | 지목하는 검사 | 그 검사의 판정 | 근거 | 종료 코드에 기여 |
+| Injected defect | The check pointing at it | That check's verdict | Basis | Contributes to the exit code |
 |---|---|---|---|---|
-| 세그먼트 404 | 세그먼트 수신 | FAIL | [`report.py:167-173`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L173) | 있음 |
-| 세그먼트 404(2차 효과) | 타임라인 연속성 | FAIL | [`report.py:311-317`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L311-L317) | 있음 |
-| 200 + HTML 오류 페이지 | 페이로드 유효성 | FAIL | [`report.py:199-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L206) | 있음 |
-| TS 패킷 12개 제거 | TS 무결성 | **WARN** | [`report.py:243-249`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L243-L249) | **없음** |
-| 세그먼트 중복 송출 | 세그먼트 고유성 | **WARN** | [`report.py:214-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L214-L218) | **없음** |
+| segment 404 | segment receive | FAIL | [`report.py:167-173`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L173) | yes |
+| segment 404 (second-order effect) | timeline continuity | FAIL | [`report.py:311-317`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L311-L317) | yes |
+| 200 + HTML error page | payload validity | FAIL | [`report.py:199-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L206) | yes |
+| 12 TS packets removed | TS integrity | **WARN** | [`report.py:243-249`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L243-L249) | **no** |
+| segment delivered duplicately | segment uniqueness | **WARN** | [`report.py:214-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L214-L218) | **no** |
 
-아래 둘은 종료 코드에 아무 흔적도 남기지 않는다. **`grep -q 'CC 불연속'` 과
-`grep -q '중복 해시'` 를 지우면, CC 분석 모듈과 SHA-256 중복 검사가 코드에서 통째로
-사라져도 이 스위트는 초록으로 남는다.**
+The lower two leave no trace in the exit code. **Remove `grep -q 'CC discontinuit'` and `grep -q 'duplicate
+hash'`, and even if the CC-analysis module and the SHA-256 duplicate check vanish wholesale from the code, this
+suite stays green.**
 
-WARN 인 것은 설계 결정이다. CC 불연속은 송출 측 인코더의 정상적 이음매에서도
-나타나므로 곧바로 FAIL 로 올리면 오탐이 쏟아진다(제18장). 중복 세그먼트도 광고 삽입
-등에서 합법적으로 나타난다. 판정을 낮춘 것과 **검출 자체를 고정하는 것은 별개**이고,
-이 다섯 줄이 그 별개를 지킨다.
+That they are WARN is a design decision. A CC discontinuity appears even at a delivery-side encoder's normal seam
+so raising it straight to FAIL pours out false positives (Chapter 18). A duplicate segment also appears
+legitimately in ad insertion, etc. Lowering the verdict and **fixing the detection itself are separate**, and
+these five lines keep that separateness.
 
-### 34.5.3 임계값 하나에 판정을 걸면 어떻게 되는가
+### 34.5.3 What happens if you hang the verdict on one threshold
 
-위 리포트에서 눈여겨볼 줄이 하나 더 있다.
+There is one more line to note in the report above.
 
 ```
-  ! 길이 정합          실측 24.04s vs 선언 30.00s (드리프트 -5.96s / 19.88%)
+  ! length consistency  measured 24.04s vs declared 30.00s (drift -5.96s / 19.88%)
 ```
 
-6초 세그먼트 하나가 통째로 빠졌는데 이 검사는 WARN 이다. 임계식이 이렇기 때문이다.
+A whole 6-second segment is missing yet this check is WARN. Because the threshold formula is this.
 
 ```python
 # report.py:266-272
-# 한 세그먼트 이상 어긋났으면 구간 결손으로 본다.
+# off by a segment or more → treat as a stretch loss.
 if target_duration and abs(drift) >= target_duration:
     verdict = FAIL
 elif drift_pct > 0.5:
@@ -359,204 +356,202 @@ else:
     verdict = PASS
 ```
 
-`abs(-5.96) = 5.96` 이고 `target_duration = 6` 이다. **0.04초 차이로 FAIL 문턱을 넘지
-못했다.** 결손을 FAIL 로 붙잡은 것은 타임라인 연속성 검사였다(`5.99~12.02s` 구간).
+`abs(-5.96) = 5.96` and `target_duration = 6`. **By a 0.04-second difference it failed to cross the FAIL
+threshold.** What caught the loss as FAIL was the timeline-continuity check (the `5.99~12.02s` stretch).
 
-만약 이 도구가 길이 정합 하나에만 의존했다면, 세그먼트가 통째로 빠진 스트림이 WARN
-으로 나가고 종료 코드는 0 이 된다. 제0장의 출발점 — "총 길이가 맞는데 중간이 비어
-있다" — 이 임계 0.04초의 형태로 다시 나타난 셈이다. **검사가 여럿인 이유이자, 각
-검사의 검출을 개별로 고정해야 하는 이유다.**
+Had this tool depended on length consistency alone, a stream with a whole segment missing would go out as WARN and
+the exit code would be 0. Chapter 0's starting point — "the total length matches but the middle is empty" —
+appears again in the form of a 0.04-second threshold. **It is why there are several checks, and why each check's
+detection must be fixed individually.**
 
 ---
 
-## 34.6 코드 — 대조군은 왜 하드 단언이 아닌가
+## 34.6 The code — why the control is not a hard assertion
 
 ```bash
-# tests/run.sh:512-522 (발췌)
-# ffmpeg 단독으로는 같은 결손을 놓친다는 사실 자체를 고정한다.
-head_ "[4/4] 대조군 — ffmpeg 단독은 결손을 놓친다"
+# tests/run.sh:512-522 (excerpt)
+# Fix the very fact that ffmpeg alone misses the same loss.
+head_ "[4/4] control — ffmpeg alone misses the loss"
 ...
 if [[ $naive -eq 0 ]]; then
-  ok "ffmpeg 단독 exit 0 — 결손을 보고하지 않음 (도구가 필요한 이유)"
+  ok "ffmpeg alone exit 0 — does not report the loss (the reason the tool is needed)"
 else
-  printf '  \033[33m·\033[0m ffmpeg 가 exit %s 로 실패 — 환경에 따라 다를 수 있음\n' "$naive"
+  printf '  \033[33m·\033[0m ffmpeg failed with exit %s — may differ by environment\n' "$naive"
 fi
 ```
 
-`else` 가지가 `bad` 를 부르지 않는다. 실패 개수를 늘리지 않으므로 스위트는 여전히
-초록이다. 다른 모든 단언과 다르다.
+The `else` branch does not call `bad`. Since it does not raise the failure count, the suite stays green. It is
+different from every other assertion.
 
-이유는 **이 단언의 오라클이 내가 통제하지 않는 외부 도구의 행동**이라는 데 있다.
-"ffmpeg 은 이 결손을 놓친다"는 명제는 ffmpeg 의 버전·빌드 옵션에 달려 있고, 상류가
-이 동작을 고치면 명제가 거짓이 된다. 그때 내 스위트가 빨갛게 되는 것은 잘못이다 —
-**비교 대상이 개선된 것을 내 회귀로 보고해서는 안 된다.**
+The reason is that **this assertion's oracle is the behavior of an external tool I do not control.** The
+proposition "ffmpeg misses this loss" depends on ffmpeg's version·build options, and if the upstream fixes this
+behavior the proposition becomes false. For my suite to go red then is wrong — **the comparison target being
+improved must not be reported by my regression.**
 
-그래서 이 줄은 단언이 아니라 **관측의 기록**으로 남는다. `·` 표시와 종료 코드가
-함께 찍히므로, 다음 사람이 로그를 보면 대조군의 전제가 바뀌었음을 알 수 있다.
-대조군 설계 자체는 제36장의 주제다.
+So this line remains not an assertion but a **record of observation.** Since a `·` mark and the exit code are
+printed together, the next person seeing the log can know the control's premise changed. The control design itself
+is Chapter 36's subject.
 
 ---
 
-## 34.7 일반화 — 정탐률을 모르면 그 PASS 는 정보가 아니다
+## 34.7 Generalization — without knowing the true-positive rate, that PASS is not information
 
-> **용어** — **정탐률(true positive rate, 재현율 recall · 민감도 sensitivity)**:
-> 실제로 결함이 있는 입력 중 도구가 결함이라고 판정한 비율.
+> **Term** — **true-positive rate (recall · sensitivity)**: the ratio of inputs actually having a defect that the
+> tool judged as a defect.
 
-정탐률이 0 인 도구를 생각해 보자. 그 도구는 결함이 있든 없든 PASS 를 낸다. 즉
+Think of a tool with true-positive rate 0. That tool gives PASS whether there is a defect or not. That is,
 
 ```
-P(출력 = PASS | 결함 있음) = P(출력 = PASS | 결함 없음) = 1
+P(output = PASS | defect present) = P(output = PASS | defect absent) = 1
 ```
 
-두 조건부 분포가 같으므로 PASS 를 관측해도 결함 유무에 대한 믿음은 갱신되지 않는다.
+Since the two conditional distributions are the same, observing PASS does not update the belief about
+defect-or-not.
 
-> **용어** — **상호정보량(mutual information)**: 두 확률변수 중 하나를 관측했을 때
-> 다른 하나에 대한 불확실성이 줄어드는 양. 0 이면 관측이 아무것도 알려주지 않는다.
+> **Term** — **mutual information**: the amount by which the uncertainty about one random variable decreases when
+> the other is observed. If 0, the observation tells you nothing.
 
-출력과 실제 상태 사이의 상호정보량이 0 이라는 뜻이고, 그때 **PASS 는 0비트를
-나른다.** 이 장의 제목이 말하는 "무검증과의 차이"가 여기서 정량적으로 사라진다.
+It means the mutual information between the output and the actual state is 0, and then **PASS carries 0 bits.** The
+"difference from no verification" this chapter's title speaks of quantitatively vanishes here.
 
-주의할 것은 **정탐률이 1 이어야 한다는 말이 아니라는 점**이다. 제18장에서 다루듯
-4비트 연속성 카운터는 정확히 16의 배수만큼 유실되면 원리적으로 검출하지 못한다.
-그래도 그 검사는 정보를 나른다 — **미탐 조건이 명시되어 있기 때문**이다. 문제가 되는
-것은 정탐률이 낮은 도구가 아니라 **정탐률을 모르는 도구**다.
+Note that **it is not that the true-positive rate must be 1.** As covered in Chapter 18, a 4-bit continuity
+counter cannot detect a loss of exactly a multiple of 16 in principle. Yet that check carries information —
+**because the miss condition is stated.** What is a problem is not a tool with a low true-positive rate but **a
+tool that does not know its true-positive rate.**
 
-> **PASS 는 "무결하다"가 아니라 "이 검사로는 못 잡았다"이다.**
-> 그 문장이 성립하려면 "이 검사가 무엇을 잡는가"를 먼저 알아야 한다.
+> **PASS is not "intact" but "not caught by this check."**
+> For that sentence to hold you must first know "what this check catches."
 
-같은 구조가 나타나는 곳을 나열한다. 각 행의 가운데 열이 §34.1 의 `exit 0` 에 해당하는
-실패 모드다 — **버그가 아니라 운영 중에 흔히 일어나는 일**이라는 점이 중요하다.
+List where the same structure appears. Each row's middle column is the failure mode corresponding to §34.1's `exit
+0` — what matters is that it is **not a bug but something that commonly happens in operations.**
 
-| 도구 | 조용히 "이상 없음"이 되는 경로 | 정탐률을 확인하는 방법 |
+| Tool | The path where it quietly becomes "no anomaly" | How to confirm the true-positive rate |
 |---|---|---|
-| 취약점 스캐너 | 인증 실패로 로그인 뒤를 보지 못함, 스캔 범위 미설정, 플러그인 미갱신 | 알려진 취약 버전을 심은 대상에 돌려 검출 여부를 본다 |
-| 정적 분석기 | 규칙 집합 미로드, 빌드 실패로 분석 대상 0개, 파서가 새 문법에서 죽음 | 결함이 표시된 벤치마크 코퍼스(Juliet/SARD 등)로 검출률을 잰다 |
-| 린터 | 설정 파일 경로 오류로 적용 규칙 0개 | 규칙을 위반하는 파일을 저장소에 상주시킨다 |
-| 백신·EDR | 시그니처 미갱신, 실시간 검사 꺼짐, 제외 경로 과다 | **EICAR 표준 테스트 문자열** — 악성이 아니면서 반드시 탐지되도록 업계가 합의한 파일 |
-| 퍼저(fuzzer) | 시드가 파서 진입 전에 거부됨, 커버리지 계측 미작동 | 커버리지 증가와 알려진 크래시의 재발견으로 확인 |
-| 모니터링 알람 | 지표 파이프라인 단절 → 데이터 없음 → 임계 미달 → 침묵 | 합성 장애 주입(카나리아 · 게임데이) |
-| 백업 | 백업 잡이 성공을 보고하지만 복원이 되지 않음 | 정기 복원 리허설 |
-| CI 테스트 스위트 | 테스트가 수집되지 않아 0개 실행 후 초록 | 변이 테스트, **실행된 단언 수 자체를 고정** |
+| vulnerability scanner | fails auth so does not see behind login, scan scope unset, plugins not updated | run it against a target with a known vulnerable version planted and see whether it detects |
+| static analyzer | rule set not loaded, 0 targets analyzed due to build failure, parser dies on new syntax | measure the detection rate with a defect-marked benchmark corpus (Juliet/SARD, etc.) |
+| linter | 0 rules applied due to a config-file path error | keep a rule-violating file resident in the repository |
+| antivirus·EDR | signature not updated, real-time scan off, too many exclusion paths | **the EICAR standard test string** — a file the industry agreed must be detected while being non-malicious |
+| fuzzer | seeds rejected before entering the parser, coverage instrumentation not working | confirm by coverage increase and rediscovery of known crashes |
+| monitoring alarm | metric pipeline severed → no data → below threshold → silence | synthetic fault injection (canary · gameday) |
+| backup | the backup job reports success but the restore does not work | periodic restore rehearsal |
+| CI test suite | tests not collected so 0 run then green | mutation testing, **fix the executed-assertion count itself** |
 
-마지막 행이 이 저장소가 쓰는 방법이다. `tests/run.sh` 는 마지막에 개수를 찍고,
-README 가 그 수를 기록해 둔다.
+The last row is the method this repository uses. `tests/run.sh` prints the count at the end, and the README
+records that number.
 
 ```bash
-./tests/run.sh        # 통과 62 / 실패 0     (README.md:362-364)
+./tests/run.sh        # pass 62 / fail 0     (README.md:362-364)
 ```
 
-62 는 임의의 수가 아니다. `ok` 호출 지점 57개 중 하나는 `expect_pass` 안에 있고
-`expect_pass` 는 6번 호출되므로, 실행되는 단언은 `56 + 6 = 62` 다. 실행 결과와
-계산이 일치한다 — **테스트가 통과했다는 것과 테스트가 실행되었다는 것은 다른
-주장이고, 둘 다 확인해야 한다.**
+62 is not an arbitrary number. Of the 57 `ok` call sites one is inside `expect_pass`, and `expect_pass` is called
+6 times, so the assertions run are `56 + 6 = 62`. The run result and the calculation match — **that a test passed
+and that a test ran are different claims, and both must be confirmed.**
 
 ---
 
-## 34.8 보안 — 침묵하는 탐지기
+## 34.8 Security — the silent detector
 
-### 34.8.1 위협 모델
+### 34.8.1 The threat model
 
-방어 도구를 무력화하는 가장 값싼 경로는 도구의 탐지 로직을 뚫는 것이 아니다.
-**도구가 조용해지도록 만드는 것**이다.
+The cheapest path to neutralize a defense tool is not to pierce the tool's detection logic. It is **to make the
+tool go silent.**
 
-| 무력화 경로 | 필요한 능력 | 남는 흔적 |
+| Neutralization path | Required capability | Trace left |
 |---|---|---|
-| 탐지 규칙을 우회하는 새 기법 개발 | 높음 | 시도 자체가 로그에 남을 수 있다 |
-| 스캔 범위에서 대상 자산을 빠뜨리게 하기 | 낮음 — 인프라 변경 하나 | **없음. 스캔은 계속 초록이다** |
-| 예외·제외 목록 확대 | 낮음 — 운영 편의 요청 형태로 온다 | 설정 이력에만 |
-| 지표 수집 경로 끊기 | 낮음 | 알람이 침묵하는 것 자체가 흔적인데, 침묵을 감시하지 않으면 흔적이 아니다 |
+| develop a new technique bypassing the detection rule | high | the attempt itself can be logged |
+| make a target asset dropped from the scan scope | low — one infrastructure change | **none. the scan keeps going green** |
+| expand the exception·exclusion list | low — comes as an operational-convenience request | only in the config history |
+| sever the metric-collection path | low | the alarm going silent is itself a trace, but if you do not watch the silence it is not a trace |
 
-아래 세 줄은 공격자가 만들지 않아도 **운영 중에 저절로 발생한다**. 설정 표류
-(configuration drift), 자산 목록 누락, 파이프라인 장애가 같은 결과를 낸다. 그래서
-이것은 공격 시나리오이기 이전에 **일상적 실패 모드**다.
+The lower three lines **arise by themselves in operations** even if an attacker does not make them. Configuration
+drift, asset-list omission, pipeline failure produce the same result. So this is a daily failure mode before it
+is an attack scenario.
 
-여기서 이 장의 보안 명제가 나온다.
+Here comes this chapter's security proposition.
 
-> **탐지기의 침묵은 두 가지를 뜻한다 — 사건이 없거나, 탐지기가 죽었거나.**
-> 이 둘을 구별할 장치가 없으면 침묵은 정보가 아니다.
+> **A detector's silence means two things — there was no event, or the detector died.**
+> Without a device to distinguish these two, silence is not information.
 
-§34.7 의 정보이론적 서술과 같은 말이다. 구별 장치가 곧 **반드시 발화하는 입력**이다.
+It is the same as §34.7's information-theoretic narrative. The distinguishing device is **an input that
+necessarily fires.**
 
-### 34.8.2 방어자 관점
+### 34.8.2 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **보안 엔지니어** | 도입하는 도구마다 **알려진 취약 샘플로 정탐률을 실측한다.** 벤더가 제시한 탐지 목록은 주장이지 측정이 아니다. 측정은 자기 환경·자기 설정에서 해야 한다 — 도구가 잡을 수 있어도 우리 설정에서 안 잡히면 안 잡히는 것이다 |
-| **탐지 엔지니어링** | 탐지 규칙마다 **그 규칙이 반드시 발화하는 입력을 같은 변경에 담는다.** 규칙과 규칙의 오라클이 분리되면 규칙만 남고 오라클은 유실된다 |
-| **SOC 운영** | 알림 0건을 성과로 보고하지 않는다. 파이프라인 생존을 증명하는 카나리아 이벤트를 주기적으로 흘리고, **카나리아가 안 보이는 것**을 장애로 다룬다 |
-| **감사자** | "스캔 통과"를 근거로 받지 않는다. 스캔 범위, 규칙 버전, 제외 목록, 마지막 정탐 기록을 함께 요구한다. 제15장의 원칙이 그대로다 — 측정 없는 개선 주장은 검증 대상이지 근거가 아니다 |
-| **개발팀** | CI 초록은 "테스트가 통과했다"이지 "테스트가 실행되었다"가 아니다. 실행 단언 수 또는 커버리지 하한을 함께 고정한다 |
-| **도구 제작자** | **자기 도구의 미탐 조건을 문서화한다.** 못 잡는 것을 밝힌 도구가, 못 잡는 것을 밝히지 않은 도구보다 안전하다 — 사용자가 나머지를 다른 통제로 메울 수 있기 때문이다 |
+| **security engineer** | for each tool adopted, **measure the true-positive rate with a known vulnerable sample.** the detection list the vendor presents is a claim, not a measurement. the measurement must be done in your own environment·your own configuration — the tool being able to catch it but not catching it in your config means it does not catch it |
+| **detection engineering** | for each detection rule, **put an input that necessarily fires that rule in the same change.** separate the rule and the rule's oracle and only the rule remains while the oracle is lost |
+| **SOC operations** | do not report 0 alerts as an achievement. periodically flow a canary event proving the pipeline is alive, and treat **not seeing the canary** as an incident |
+| **auditor** | do not accept "scan passed" as a basis. require together the scan scope, rule version, exclusion list, last true-positive record. Chapter 15's principle as-is — a claim of improvement with no measurement is a verification target, not a basis |
+| **development team** | CI green is "the tests passed," not "the tests ran." fix together the executed-assertion count or a coverage lower bound |
+| **tool maker** | **document your own tool's miss conditions.** a tool that stated what it cannot catch is safer than one that did not — because the user can fill the rest with another control |
 
-이 장은 특정 제품이나 서비스의 탐지를 회피하는 절차를 다루지 않는다. 다루는 것은
-**"내가 켜 둔 탐지기가 실제로 켜져 있는지 어떻게 아는가"** 라는 방어자의 문제다.
-회피 기법의 목록이 아니라 검증 절차의 부재가 이 절의 대상이다.
-
----
-
-## 34.9 한계와 미해결
-
-정직하게 적어 둔다.
-
-- **결함 주입은 내가 상상한 결함만 고정한다.** `damaged` 가 담은 것은 넷이고, 스위트
-  전체로 넓혀도 여덟이다(`README.md:366-375`). **상상하지 못한 결함에 대한 정탐률은
-  여전히 모른다.** 오라클을 구성하는 방식의 원리적 한계이며, 결함 주입이 오라클 문제를
-  **해결**하는 것이 아니라 **일부를 우회**하는 것임을 뜻한다.
-- **머리 주석 자체가 코드와 어긋나 있다.** `tests/run.sh:4-5` 는 "HLS 스트림 4종",
-  "결함 3종"이라고 쓰는데, 같은 파일 `tests/run.sh:147` 의 출력은 이미 결함 넷을
-  나열하고 README 의 대응표는 여덟 줄이다. 스트림도 자막 트랙을 더하면 다섯이다
-  (`README.md:358-359`). **오라클 원칙을 선언한 문장이 그 원칙의 대상인 코드로부터
-  표류했다** — 문서는 실행되지 않으므로 회귀 테스트로 고정되지 않는다는 사실의 사례다.
-- **결함을 지목한 검사 7개 중 고정된 것은 5개다.** §34.5.2 의 리포트에서 `길이
-  정합`(WARN)과 `전체 디코드`(FAIL)도 결함을 지목했으나 `tests/run.sh` 에 대응
-  `grep` 이 없다(확인함 — 두 문자열은 스크립트 어디에도 없다). **전체 디코드 검사가
-  코드에서 사라져도 다른 FAIL 셋 때문에 종료 코드는 2 이고 스위트는 초록이다.**
-- **`grep -q '✗'` 는 판정의 문자열 대리(proxy)다.** [`cli.py:964`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L964) 의 `--tidy` 미리보기는
-  **정상 동작으로** `✗` 를 찍는다(건너뛸 파일 표시). 현재 그 경로는 `expect_pass` 를
-  거치지 않으므로 문제가 없지만, 이는 구조적 보증이 아니라 **우연한 배치**다. 판정
-  채널을 문자열로 관측하는 방식의 취성이 남아 있다.
-- **62 는 단언 수이지 커버리지가 아니다.** 어떤 코드 경로가 한 번도 실행되지 않았는지는
-  측정하지 않았다. 커버리지 계측을 붙이지 않은 상태이므로, 이 스위트가 코드의 어느
-  부분을 건드리지 않는지는 **알지 못한다**.
-- **대응표의 정확성 자체는 검증되지 않았다.** "이 결함은 이 검사가 잡아야 한다"
-  (`README.md:366-375`)는 사람의 판단이다. 그 대응이 틀렸다면 스위트는 **틀린 것을
-  충실히 고정한다.** 오라클을 구성하는 사람이 오라클의 최종 근거라는 회귀를 완전히
-  없앨 수는 없다.
-- **이 장의 스텁 실험은 저장소에 남아 있지 않다.** `exit 0` · `exit 2` 스텁을 만들어
-  두 블록을 돌린 것은 집필 중 수행한 일회성 측정이며, 회귀 테스트로 고정되어 있지
-  않다. 즉 **"이 스위트가 항상 PASS 구현을 배제한다"는 성질 자체는 회귀로 지켜지지
-  않는다.** 이 성질을 지키려면 변이 테스트를 상시화해야 한다 — 미해결이다.
+This chapter does not cover the procedure of evading a particular product's or service's detection. What it covers
+is the defender's problem **"how do I know the detector I turned on is actually on."** Not a list of evasion
+techniques but the absence of a verification procedure is this section's target.
 
 ---
 
-## 34.10 요약
+## 34.9 Limits and open questions
 
-1. **테스트 오라클 문제**는 "어떤 입력의 올바른 출력이 무엇인지 판정할 독립적 근거를
-   얻는 문제"다. 입력을 만드는 일보다 **정답을 아는 일이 어렵다**는 비대칭에서 나온다.
-2. **검증 도구에서는 오라클이 두 겹이다.** 도구 자신이 1차 오라클이므로, 그 도구를
-   시험할 상위 오라클이 남아 있지 않다. 정적 분석기·스캐너·린터·알람이 모두 같은
-   자리에 있다.
-3. 빠져나가는 길은 **정답을 아는 입력을 만들어 넣는 것**이다. `cp -R plain damaged`
-   한 줄이 그 구성이며, 두 입력의 차이가 곧 오라클이다.
-4. **항상 PASS 를 내는 두 줄짜리 구현이 정상 케이스 6/6 을 통과한다**(실측). 무검증
-   보다 나쁘다 — 거짓 주장이 기록으로 남아 다음 사람의 근거가 되기 때문이다.
-5. 판정기는 분류기이므로 **혼동 행렬의 두 행을 모두 고정**해야 구현이 특정된다. 한
-   행만 고정하면 `exit 0` 또는 `exit 2` 한 줄이 살아남는다.
-6. `expect_pass` 가 종료 코드와 로그 `✗` 를 **함께** 보는 이유는 두 채널의 사각지대가
-   다르기 때문이다. WARN 은 종료 코드 0 으로 접히고([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)), 개별 항목 실패는
-   집계 판정에 도달하지 않을 수 있다([`report.py:464-469`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L464-L469)).
-7. 결함 블록이 **검사 이름별로** `grep` 하는 이유는 판정만 고정하면 부족하기 때문이다.
-   네 결함이 한 실행에 들어 있어 종료 코드 2 는 하나만 잡혀도 나오고, 그중 둘
-   (TS 무결성·세그먼트 고유성)은 WARN 이라 **종료 코드에 아무 흔적을 남기지 않는다.**
-8. **정탐률을 모르는 도구의 PASS 는 0비트를 나른다.** 정탐률이 낮은 것이 아니라
-   모르는 것이 문제다 — 미탐 조건이 명시된 검사는 낮은 정탐률로도 정보를 준다.
-9. 방어자의 명제: **탐지기의 침묵은 "사건 없음"과 "탐지기 사망" 둘 다를 뜻한다.**
-   구별하려면 반드시 발화하는 입력을 주기적으로 흘려야 한다.
+Written honestly.
+
+- **Defect injection fixes only the defects I imagined.** What `damaged` holds is four, and widened to the whole
+  suite it is eight (`README.md:366-375`). **The true-positive rate for defects I could not imagine is still
+  unknown.** It is the principled limit of the oracle-construction way, and means defect injection does not
+  **solve** the oracle problem but **bypasses part** of it.
+- **The head comment itself is off from the code.** `tests/run.sh:4-5` writes "4 kinds of HLS stream," "3 kinds of
+  defect," but the same file's `tests/run.sh:147` output already lists four defects and the README's mapping table
+  is eight lines. The streams too are five with the subtitle track added (`README.md:358-359`). **The sentence
+  declaring the oracle principle has drifted from the code that is the principle's target** — a case of the fact
+  that a document is not executed so it is not fixed by a regression test.
+- **Of the 7 checks pointing at a defect, 5 are fixed.** In §34.5.2's report, `length consistency` (WARN) and
+  `full decode` (FAIL) also pointed at a defect but have no corresponding `grep` in `tests/run.sh` (confirmed —
+  the two strings are nowhere in the script). **Even if the full-decode check vanishes from the code, the exit
+  code is 2 because of the other three FAILs and the suite stays green.**
+- **`grep -q '✗'` is a string proxy for the verdict.** [`cli.py:964`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L964)'s `--tidy` preview prints `✗` as **normal
+  behavior** (marking files to skip). Currently that path does not go through `expect_pass` so there is no problem,
+  but this is not a structural guarantee but an **incidental placement.** The brittleness of observing the verdict
+  channel by a string remains.
+- **62 is the assertion count, not coverage.** Which code paths were never executed was not measured. Coverage
+  instrumentation is not attached, so which parts of the code this suite does not touch is **unknown.**
+- **The mapping table's own accuracy is not verified.** "This defect should be caught by this check"
+  (`README.md:366-375`) is human judgment. If that mapping is wrong the suite **faithfully fixes the wrong thing.**
+  The regression that the person constructing the oracle is the oracle's final basis cannot be fully removed.
+- **This chapter's stub experiment does not remain in the repository.** Making the `exit 0` · `exit 2` stubs and
+  running the two blocks was a one-off measurement done while writing, not fixed by a regression test. That is,
+  **the very property "this suite excludes an always-PASS implementation" is not kept by regression.** To keep this
+  property mutation testing must be made permanent — unresolved.
 
 ---
 
-**다음 장** — 이 장은 "결함을 잡는가"를 함께 고정해야 한다는 것까지 보였다. 그러면
-어떤 결함을 주입할 것인가. 임의로 망가뜨린 파일은 무엇이 검출되었는지 해석할 수
-없으므로 오라클이 되지 못한다. 제35장은 이 저장소가 주입한 여덟 결함이 각각 어느
-검사를 겨냥하는지, 그 대응표가 왜 곧 커버리지의 증명이 되는지, 그리고 결함 하나가
-둘 이상의 검사를 건드릴 때 무엇을 조심해야 하는지를 다룬다.
+## 34.10 Summary
+
+1. **The test-oracle problem** is "the problem of obtaining an independent basis to judge what the correct output
+   of some input is." It arises from the asymmetry that **knowing the answer is harder than making the input.**
+2. **In a verification tool the oracle is two-ply.** Since the tool itself is the 1st oracle, there is no higher
+   oracle left to test that tool. A static analyzer·scanner·linter·alarm are all in the same spot.
+3. The way out is **to make and feed in an input whose answer you know.** The one line `cp -R plain damaged` is
+   that construction, and the two inputs' difference is the oracle.
+4. **A two-line implementation always giving PASS passes normal cases 6/6** (measured). It is worse than no
+   verification — because a false claim remains as a record and becomes the next person's basis.
+5. Since the verdict maker is a classifier, **both rows of the confusion matrix must be fixed** for the
+   implementation to be pinned down. Fix only one row and the one line `exit 0` or `exit 2` survives.
+6. The reason `expect_pass` looks at the exit code and the log `✗` **together** is that the two channels' blind
+   spots differ. WARN is folded into exit code 0 ([`cli.py:651-652`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L651-L652)), and an individual item's failure may not reach
+   the aggregate verdict ([`report.py:464-469`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L464-L469)).
+7. The reason the defect block `grep`s **per check name** is that fixing only the verdict is not enough. Four
+   defects are in one run so exit code 2 comes even if only one is caught, and two of them (TS integrity·segment
+   uniqueness) are WARN so they **leave no trace in the exit code.**
+8. **A PASS from a tool that does not know its true-positive rate carries 0 bits.** It is not a low true-positive
+   rate but not knowing it that is the problem — a check whose miss condition is stated gives information even with
+   a low true-positive rate.
+9. The defender's proposition: **a detector's silence means both "no event" and "detector dead."** To distinguish
+   them you must periodically flow an input that necessarily fires.
+
+---
+
+**Next chapter** — this chapter showed up to the need to fix "does it catch the defect" together. Then what defect
+to inject. A randomly broken file cannot be interpreted for what was detected so it does not become an oracle.
+Chapter 35 covers which check each of the eight defects this repository injected targets, why that mapping table
+is itself the proof of coverage, and what to be careful of when one defect touches two or more checks.

@@ -1,39 +1,39 @@
 ---
-untranslated: ko
-title: "임계값 설계"
-description: "중앙값의 3배, 그리고 오탐"
-date: 2026-08-18
+title: "Threshold Design"
+description: "Three times the median, and false positives"
+date: 2026-07-09
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-22-threshold-design.svg
 ---
-## 22.0 이 장에서 답할 것
+## 22.0 What this chapter answers
 
-1. 관측 지표를 옳게 골랐다면 그다음 결정은 무엇인가 — **임계값은 어디서 오는가**
-2. `max(0.4, 중앙값 × 3)` 의 세 상수는 각각 무엇을 막고, 각각 무엇을 못 막는가
-3. **가변 프레임률에서 무엇이 깨지는가.** 그리고 그것은 임계값 조정으로 고칠 수 있는가
-4. 이 저장소의 다른 임계값들은 어떤 근거 위에 서 있는가 — 근거가 없는 것은 어느 것인가
+1. If you chose the observation metric right, what is the next decision — **where does the threshold come from?**
+2. What does each of the three constants in `max(0.4, median × 3)` block, and what does each fail to block?
+3. **What breaks under a variable frame rate.** And can it be fixed by adjusting the threshold?
+4. On what basis do this repository's other thresholds stand — which have none?
 
-제21장이 **무엇을 관측할 것인가**에 답했다면 이 장은 **관측한 값을 어디서 자를 것인가**에
-답한다. 두 질문의 성격은 다르다. 앞쪽에는 옳은 답이 있고(총 길이는 틀렸고 프레임 간격이
-맞다), 뒤쪽에는 **교환(trade-off)만 있다.**
+If Chapter 21 answered **what to observe**, this chapter answers **where to cut the observed value.** The two
+questions differ in nature. The former has a right answer (the total length is wrong and the frame interval is
+right), and the latter has **only a trade-off.**
 
 ---
 
-## 22.1 문제 — 같은 선 하나가 오탐과 미탐을 동시에 만든다
+## 22.1 The problem — one and the same line makes both false positives and false negatives
 
-관측 지표를 바꾼 것만으로는 끝나지 않는다. 실측부터 본다. 로컬에서 네 종류의 파일을
-만들어 이 저장소의 `gap_scan()` 을 인자 없이 그대로 돌린 결과다(재현 절차는 §22.5.2).
+Changing the observation metric alone does not finish it. Look at the measurement first. The result of making
+four kinds of file locally and running this repository's `gap_scan()` as-is with no arguments (reproduction
+procedure in §22.5.2).
 
-| 파일 | 실제 결손 | 검출 | 판정 | 옳은가 |
+| File | Actual loss | Detected | Verdict | Correct |
 |---|---|---|---|---|
-| 30fps 정상, 900프레임 | 없음 | 0건 | PASS | 옳음 |
-| 30fps, 6초 세그먼트 1개 결손 | 6.00s | 1건 / 6.03s @ 5.99–12.02s | FAIL | 옳음 |
-| VFR 정상, 정지 화면 포함 | **없음** | 4건 / 6.00s | FAIL | **오탐** |
-| 60fps, 5프레임 결손 | 0.083s | 0건 | PASS | **미탐** |
+| 30fps normal, 900 frames | none | 0 | PASS | correct |
+| 30fps, one 6-second segment lost | 6.00s | 1 / 6.03s @ 5.99–12.02s | FAIL | correct |
+| VFR normal, includes a still | **none** | 4 / 6.00s | FAIL | **false positive** |
+| 60fps, 5 frames lost | 0.083s | 0 | PASS | **false negative** |
 
-첫 두 줄이 이 검사의 존재 이유다. 실제로 앞의 두 파일은 **컨테이너 길이가 소수점
-여섯 자리까지 동일하다.**
+The first two rows are this check's reason for existing. In fact the first two files have a **container length
+identical to the sixth decimal place.**
 
 ```
 $ ffprobe -v error -show_entries format=duration -of csv=p=0 full.mp4 damaged.mp4
@@ -41,109 +41,110 @@ $ ffprobe -v error -show_entries format=duration -of csv=p=0 full.mp4 damaged.mp
 30.023401
 ```
 
-6초가 통째로 없어졌는데 길이가 같다. `길이 정합` 검사([`report.py:263-278`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L263-L278))는 두 파일에
-같은 판정을 낸다 — 드리프트 `+0.02s / 0.08%`, 둘 다 PASS. 제21장이 도입한 갭 스캔만이
-이 둘을 가른다.
+6 seconds vanished whole and the length is the same. The `length consistency` check ([`report.py:263-278`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L263-L278)) gives the
+two files the same verdict — drift `+0.02s / 0.08%`, both PASS. Only the gap scan Chapter 21 introduced splits
+these two.
 
-그런데 뒤의 두 줄에서 그 갭 스캔이 틀린다. **손상되지 않은 파일이 FAIL 을 받고, 프레임
-다섯 개가 실제로 없는 파일이 PASS 를 받는다.** 지표는 그대로이고 바뀐 것은 입력의 성질뿐이다.
+And yet on the last two rows that gap scan is wrong. **An undamaged file gets a FAIL, and a file that really is
+missing five frames gets a PASS.** The metric is the same and what changed is only the input's nature.
 
-![임계 400ms 선 하나가 네 경우를 가른다](/images/lecture/hls-recon/22-threshold-line.svg)
+![One 400ms threshold line splits the four cases](/images/lecture/hls-recon/22-threshold-line.svg)
 
-*그림 22-1 — 임계 400ms 선 하나가 네 경우를 가른다*
+*Figure 22-1 — one 400ms threshold line splits the four cases*
 
-> **용어** — **오탐(false positive, 1종 오류)**: 결함이 없는 대상을 결함 있다고 판정하는 것.
-> **미탐(false negative, 2종 오류)**: 결함이 있는 대상을 정상이라고 판정하는 것.
-> 검사기의 성능은 이 두 오류율의 쌍으로만 서술할 수 있다. 한쪽만 보고한 성능 수치는
-> 성능이 아니다 — 언제나 FAIL 을 내는 구현은 미탐률 0%다.
-
----
-
-## 22.2 원리 — 손잡이는 하나뿐이다
-
-### 22.2.1 혼동 행렬과 이 도구에서의 비용
-
-| | 실제로 결손 있음 | 실제로 결손 없음 |
-|---|---|---|
-| **FAIL 판정** | 정탐(true positive) — 도구가 존재하는 이유 | **오탐** — 멀쩡한 파일을 다시 받게 만든다 |
-| **PASS 판정** | **미탐** — 깨진 파일이 완성본 행세를 한다 | 정상 통과(true negative) |
-
-두 오류의 비용이 같지 않다.
-
-| 오류 | 즉각 비용 | 지연 비용 |
-|---|---|---|
-| 오탐 | 재다운로드 한 번, 사람의 확인 시간 | **도구를 끄게 만든다** |
-| 미탐 | 없음 — 아무 일도 일어나지 않는다 | 재고 조사가 그 파일을 완성본으로 등록해 회차가 영원히 빠진다(제37장) |
-
-미탐의 즉각 비용이 0 이라는 점이 함정이다. **미탐은 아무 신호도 남기지 않는다.** 오탐은
-시끄럽고 미탐은 조용하므로, 실사용에서 압력은 언제나 "덜 예민하게 만들라"는 방향으로만
-걸린다.
-
-### 22.2.2 단조성 — 두 오류를 동시에 줄이는 방법은 임계값에 없다
-
-임계 τ 를 올리면 검출 건수는 단조 감소한다. 따라서 오탐은 줄고 미탐은 는다. 내리면
-반대다. 그림 22-1 의 각주가 그 뜻이다 — 임계를 오른쪽으로 옮기면 세 번째 줄의 오탐이
-사라지지만 두 번째 줄이 위험해지고, 왼쪽으로 옮기면 네 번째 줄이 잡히지만 세 번째 줄이
-더 나빠진다.
-
-> **두 오류를 동시에 줄이는 유일한 방법은 임계를 옮기는 것이 아니라 지표를 바꾸는
-> 것이다.** 임계는 이미 그려진 두 분포 사이에서 자리를 고를 뿐이고, 분포가 겹치는 폭은
-> 지표가 결정한다.
-
-> **용어** — **분리도(separability)**: 정상 집단과 이상 집단의 지표 분포가 겹치지 않는
-> 정도. 겹치는 구간에서는 어떤 임계값도 두 오류를 동시에 0 으로 만들지 못한다.
-> 임계값을 움직이며 얻는 (오탐률, 정탐률) 쌍의 궤적이 **ROC 곡선**이고, 이 궤적은
-> 지표를 바꾸지 않는 한 위로 올라가지 않는다.
-
-제21장이 총 길이를 버리고 프레임 간격을 택한 것은 **지표를 바꿔 분리도를 올린 결정**
-이었다. 이 장이 다루는 것은 그 뒤에 남은, 옮기기만 할 수 있는 손잡이다.
-
-### 22.2.3 오탐은 결국 미탐이 된다
-
-검증 도구에서 오탐을 "미탐보다 싼 오류"로 취급하는 것은 틀렸다.
-
-오탐이 반복되면 사용자는 검사를 끈다. 검사를 끈 순간 그 검사의 미탐률은 **100%가 된다.**
-즉 오탐은 미탐보다 싼 오류가 아니라 **지연된 미탐**이다. 보안 운영에서는 이것을
-**경보 피로(alert fatigue)** 라고 부른다.
-
-> **용어** — **경보 피로(alert fatigue)**: 오탐이 잦은 경보에 대응자가 둔감해져, 결국
-> 진짜 경보까지 무시하거나 경보 자체를 비활성화하게 되는 현상. 탐지 시스템이
-> 실패하는 가장 흔한 경로이며, 실패의 원인은 탐지 능력이 아니라 임계값 설계다.
-
-이 저장소는 그 전환을 코드로 인정해 두었다 — `--no-gap-scan`([`cli.py:1067`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1067)). §22.5.4 에서
-그 설계의 값과 대가를 따로 본다.
+> **Term** — **false positive (type I error)**: judging a defect-free target as defective.
+> **false negative (type II error)**: judging a defective target as normal.
+> A checker's performance can be described only by the pair of these two error rates. A performance figure
+> reporting one side alone is not performance — an implementation that always gives FAIL has a 0% false-negative
+> rate.
 
 ---
 
-## 22.3 코드 — 여섯 단계, 세 개의 상수
+## 22.2 The principle — there is only one handle
 
-판정의 입구는 함수 시그니처다. 세 상수 중 둘이 여기 있다.
+### 22.2.1 The confusion matrix and the cost in this tool
+
+| | Actually has loss | Actually has no loss |
+|---|---|---|
+| **FAIL verdict** | true positive — the reason the tool exists | **false positive** — makes a fine file get re-received |
+| **PASS verdict** | **false negative** — a broken file passes as finished | true negative |
+
+The two errors' costs are not equal.
+
+| Error | Immediate cost | Delayed cost |
+|---|---|---|
+| false positive | one re-download, a person's confirmation time | **makes the tool get turned off** |
+| false negative | none — nothing happens | the inventory registers that file as finished so the episode is missing forever (Chapter 37) |
+
+That the false negative's immediate cost is 0 is the trap. **A false negative leaves no signal.** A false
+positive is noisy and a false negative is quiet, so in real use the pressure is always only in the direction of
+"make it less sensitive."
+
+### 22.2.2 Monotonicity — the way to reduce both errors at once is not in the threshold
+
+Raise the threshold τ and the detection count decreases monotonically. So false positives fall and false
+negatives rise. Lower it and the opposite. Figure 22-1's caption means that — move the threshold right and the
+third row's false positive vanishes but the second row becomes endangered, move it left and the fourth row is
+caught but the third row worsens.
+
+> **The only way to reduce both errors at once is not to move the threshold but to change the metric.** The
+> threshold merely picks a spot between the two already-drawn distributions, and the width by which the
+> distributions overlap is determined by the metric.
+
+> **Term** — **separability**: the degree to which the metric distributions of the normal group and the abnormal
+> group do not overlap. In the overlap region no threshold can make both errors 0 at once. The trajectory of
+> (false-positive rate, true-positive rate) pairs obtained by moving the threshold is the **ROC curve**, and this
+> trajectory does not rise unless you change the metric.
+
+Chapter 21 discarding the total length and choosing the frame interval was **a decision that changed the metric
+to raise separability.** What this chapter treats is the handle left after that, which can only be moved.
+
+### 22.2.3 A false positive eventually becomes a false negative
+
+Treating a false positive as "a cheaper error than a false negative" in a verification tool is wrong.
+
+Repeat false positives and the user turns off the check. The moment the check is off, that check's false-negative
+rate **becomes 100%.** That is, a false positive is not a cheaper error than a false negative but a **delayed
+false negative.** In security operations this is called **alert fatigue.**
+
+> **Term** — **alert fatigue**: the phenomenon where responders grow numb to a frequently-false-positive alert
+> and eventually ignore even the real alert or disable the alert itself. It is the most common path by which a
+> detection system fails, and the cause of failure is not detection ability but threshold design.
+
+This repository acknowledged that switch in code — `--no-gap-scan` ([`cli.py:1067`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L1067)). §22.5.4 looks separately at
+that design's worth and price.
+
+---
+
+## 22.3 The code — six steps, three constants
+
+The verdict's entrance is the function signature. Two of the three constants are here.
 
 ```python
 # probe.py:191-198
 def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
-    """영상 트랙의 표시 시각을 훑어 결손 구간을 찾는다.
+    """Sweep the video track's presentation times to find loss stretches.
 
-    총 길이 비교로는 중간 세그먼트 유실을 잡을 수 없다. MPEG-TS 세그먼트는
-    절대 PTS(표시 시각)를 담고 있어서, 한 조각이 빠져도 뒤 조각의 시각이
-    원래대로 유지되어 총 길이가 그대로이기 때문이다. 결손은 총량이 아니라
-    타임라인의 구멍으로 나타나므로 인접 프레임 간격을 직접 본다.
+    A total-length comparison cannot catch a middle-segment loss. Because an MPEG-TS segment
+    carries an absolute PTS (presentation time), so even if one piece is dropped the rear pieces'
+    times stay as they were and the total length is unchanged. Loss appears not as a total but
+    as a hole in the timeline, so look directly at the adjacent frame intervals.
     """
 ```
 
-`factor` 와 `floor` 가 **기본값이 있는 인자**로 노출돼 있다는 점부터 설계 결정이다.
-상수를 함수 안에 묻지 않았으므로 호출자가 바꿀 수 있고, 무엇보다 **이름이 붙었다.**
-`3.0` 과 `0.4` 가 코드 본문에 벌거벗은 숫자로 있었다면 다음 사람은 그것이 무엇의 3배이고
-무엇의 0.4 인지 알 수 없다.
+That `factor` and `floor` are exposed as **arguments with defaults** is itself a design decision. Since the
+constants are not buried inside the function the caller can change them, and above all **they are named.** Had
+`3.0` and `0.4` been naked numbers in the code body, the next person could not know what they are 3 times of and
+0.4 of what.
 
-판정 본체는 열다섯 줄이다.
+The verdict body is fifteen lines.
 
 ```python
 # probe.py:219-233
     if len(times) < 3:
-        return GapScan(ok=False, error="표시 시각을 가진 영상 패킷이 부족하다")
+        return GapScan(ok=False, error="too few video packets with a presentation time")
 
-    # B-프레임이 있으면 패킷 순서가 표시 순서와 다르므로 시각 기준으로 정렬한다.
+    # with B-frames the packet order differs from the presentation order, so sort by time.
     times.sort()
     deltas = [b - a for a, b in zip(times, times[1:])]
     ordered = sorted(deltas)
@@ -157,214 +158,215 @@ def gap_scan(path: str, factor: float = 3.0, floor: float = 0.4) -> GapScan:
     return scan
 ```
 
-![갭 판정 여섯 단계와 각 단계를 빼면 생기는 오류](/images/lecture/hls-recon/22-gap-pipeline.svg)
+![The six steps of the gap verdict and the error each step's removal makes](/images/lecture/hls-recon/22-gap-pipeline.svg)
 
-*그림 22-2 — 갭 판정 여섯 단계와 각 단계를 빼면 생기는 오류*
+*Figure 22-2 — the six steps of the gap verdict and the error each step's removal makes*
 
-각 단계를 하나씩, **빼면 무엇이 깨지는지** 실측과 함께 본다.
+Look at each step one by one, with the measurement of **what breaks if you remove it.**
 
-### 22.3.1 정렬 — B-프레임이 만드는 가짜 간격
+### 22.3.1 Sorting — the fake interval B-frames make
 
-> **용어** — **B-프레임(bidirectionally predicted frame, 양방향 예측 프레임)**: 앞뒤 두
-> 방향의 프레임을 참조해 부호화되는 프레임. 뒤 프레임을 참조하므로 **디코드 순서가
-> 표시 순서보다 앞서야 한다.** 그 결과 컨테이너에 저장된 패킷 순서(DTS 순)와 화면에
-> 나타나는 순서(PTS 순)가 달라진다.
+> **Term** — **B-frame (bidirectionally predicted frame)**: a frame encoded by referencing frames in both
+> directions, forward and back. Since it references a later frame, **its decode order must precede the
+> presentation order.** As a result the packet order stored in the container (DTS order) differs from the order
+> appearing on screen (PTS order).
 
-`ffprobe` 가 내주는 `packet=pts_time` 은 **패킷 순서**로 나온다. B-프레임이 있으면 이 값은
-단조 증가하지 않는다. 실측이다(30fps, `-bf 3`).
+The `packet=pts_time` `ffprobe` puts out comes in **packet order.** With B-frames this value does not increase
+monotonically. Measured (30fps, `-bf 3`).
 
 ```
-패킷 순서(앞 12개) pts_time: [0.0, 0.1333, 0.0667, 0.0333, 0.1, 0.2667, 0.2, 0.1667, ...]
+packet order (first 12) pts_time: [0.0, 0.1333, 0.0667, 0.0333, 0.1, 0.2667, 0.2, 0.1667, ...]
 ```
 
-정렬 없이 인접 차를 구하면 음수와 과대값이 섞인다.
+Take adjacent differences without sorting and negatives and over-large values mix in.
 
-| 조건 | 간격 범위 | 정렬 없이 검출된 "결손" | 정렬 후 |
+| Condition | Interval range | "loss" detected without sorting | After sorting |
 |---|---|---|---|
-| 30fps, `-bf 3` | −66.7ms – +166.7ms | 0건 | 0건 |
-| 5fps, `-bf 3` | −400ms – +1000ms | **9건** | 0건 |
+| 30fps, `-bf 3` | −66.7ms – +166.7ms | 0 | 0 |
+| 5fps, `-bf 3` | −400ms – +1000ms | **9** | 0 |
 
-여기서 이 장 전체를 관통하는 관찰이 처음 나온다.
+Here comes, for the first time, an observation running through this whole chapter.
 
-> **정렬을 빼먹은 구현은 30fps 에서 아무 증상도 보이지 않는다.** 재정렬로 생기는 최대
-> 도약(166.7ms)이 임계 400ms 보다 작기 때문이다. 흔한 조건에서만 시험하면 이 결함은
-> 통과한다. 5fps 로 내려가면 도약이 1000ms 가 되어 임계 600ms 를 넘고, 그제야 9건의
-> 오탐으로 드러난다.
+> **An implementation that omitted the sort shows no symptom at 30fps.** Because the maximum jump reordering
+> makes (166.7ms) is smaller than the threshold 400ms. Test only under common conditions and this defect passes.
+> Drop to 5fps and the jump becomes 1000ms, exceeding the threshold 600ms, and only then does it surface as 9
+> false positives.
 
-부수 효과는 없다. 음수 간격은 `d > threshold` 를 통과하지 못해 `Gap(start=a, end=b)` 에
-담기지 않으므로, `a > b` 인 항목이나 `length` 프로퍼티([`probe.py:172-174`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L172-L174))의 음수 값은
-정렬이 없어도 생기지 않는다. 정렬 누락이 남기는 증상은 과대 도약이 만드는 오탐뿐이다.
+There is no side effect. A negative interval cannot pass `d > threshold` so it is not put in `Gap(start=a,
+end=b)`, so an item with `a > b` or a negative value of the `length` property ([`probe.py:172-174`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/probe.py#L172-L174)) does not arise
+even without sorting. The only symptom the missing sort leaves is the false positive an over-large jump makes.
 
-### 22.3.2 중앙값 — 붕괴점 50%
+### 22.3.2 The median — breakdown point 50%
 
-> **용어** — **중앙값(median)**: 표본을 정렬했을 때 가운데 오는 값.
-> **붕괴점(breakdown point)**: 통계량이 임의로 망가지기 위해 오염돼야 하는 표본의 최소
-> 비율. 중앙값은 50%, 평균(mean)은 **0%** 다 — 표본 하나를 무한대로 보내면 평균도
-> 무한대가 된다.
+> **Term** — **median**: the middle value when the sample is sorted.
+> **breakdown point**: the minimum fraction of the sample that must be contaminated for a statistic to be
+> arbitrarily corrupted. The median is 50%, the mean is **0%** — send one sample to infinity and the mean too
+> becomes infinity.
 
-프레임 간격 분포에서 결손은 곧 **오염된 표본**이다. 평균을 쓰면 그 오염이 임계값 자체를
-끌어올린다. 같은 파일 네 종을 중앙값 기준과 평균 기준으로 각각 판정한 실측이다.
+In the frame-interval distribution a loss is itself a **contaminated sample.** Use the mean and that
+contamination pulls up the threshold itself. Measured: judging the same four kinds of file by the median basis
+and the mean basis each.
 
-| 파일 | 간격 중앙값 | 간격 평균 | 중앙값 기준 임계 → 검출 | 평균 기준 임계 → 검출 |
+| File | Interval median | Interval mean | Median-basis threshold → detected | Mean-basis threshold → detected |
 |---|---|---|---|---|
-| 30fps 정상 | 33.33ms | 33.33ms | 400.0ms → 0건 | 400.0ms → 0건 |
-| 30fps, 6초 결손 | 33.33ms | 41.68ms | 400.0ms → 1건 | 400.0ms → 1건 |
-| VFR 정상 | 33.33ms | 71.43ms | 400.0ms → 4건 | 400.0ms → 4건 |
-| **5fps, 구멍 15개** | **200.00ms** | **505.08ms** | **600.0ms → 15건** | **1515.3ms → 0건** |
+| 30fps normal | 33.33ms | 33.33ms | 400.0ms → 0 | 400.0ms → 0 |
+| 30fps, 6-second loss | 33.33ms | 41.68ms | 400.0ms → 1 | 400.0ms → 1 |
+| VFR normal | 33.33ms | 71.43ms | 400.0ms → 4 | 400.0ms → 4 |
+| **5fps, 15 holes** | **200.00ms** | **505.08ms** | **600.0ms → 15** | **1515.3ms → 0** |
 
-앞의 세 줄에서는 차이가 없다. 그런데 마지막 줄에서 평균 기준 검사는 **21초가 사라진
-파일을 결손 0건으로 통과시킨다.** 완전한 실명이다.
+There is no difference on the first three rows. But on the last row the mean-basis check **passes a file with 21
+seconds missing as 0 losses.** Complete blindness.
 
-왜 마지막 줄에서만 갈리는가. 평균이 임계를 끌어올려도 그 상승분이 결손 간격보다 작으면
-검출은 유지된다. 결손 하나가 평균에 기여하는 몫은 `결손길이 / 표본수` 이므로, 표본이
-많으면 희석된다. 갈리는 조건은 **결손이 많고 표본이 적을 때** — 위 파일은 간격 59개 중
-15개(25.4%)가 결손이고, 그 15개가 평균을 2.5배로 밀어 올렸다.
+Why do they split only on the last row. Even if the mean pulls up the threshold, if that rise is smaller than the
+loss interval, detection is kept. A single loss's contribution to the mean is `loss length / sample count`, so
+with many samples it is diluted. The splitting condition is **when losses are many and samples are few** — the
+file above has 15 of 59 intervals (25.4%) being losses, and those 15 pushed the mean up 2.5×.
 
-중앙값도 무한히 강하지는 않다. 붕괴점이 50%이므로, **결손 간격이 전체 간격의 과반을
-넘으면 중앙값 자체가 결손 값이 된다.** 위 파일에서 결손이 30개를 넘었다면 중앙값은
-1400ms 가 되고 임계는 4200ms 로 올라가 역시 0건이 된다. 즉 이 검사는 "대부분이
-정상"이라는 가정 위에 서 있다. 가정을 명시하지 않은 통계량은 없다.
+The median is not infinitely strong either. Since the breakdown point is 50%, **if the loss intervals exceed the
+majority of all intervals, the median itself becomes a loss value.** In the file above, had losses exceeded 30,
+the median would become 1400ms and the threshold rise to 4200ms and it too would be 0. That is, this check stands
+on the assumption "most is normal." There is no statistic that does not state its assumption.
 
-코드를 정확히 읽으면 세부 하나가 더 있다.
+Reading the code exactly, there is one more detail.
 
 ```python
 median = ordered[len(ordered) // 2]
 ```
 
-표본 수가 짝수일 때 이것은 두 가운데 값의 **평균이 아니라 큰 쪽**을 취한다(상위 중앙값,
-upper median). 교과서 정의와 다르지만 방향은 안전한 쪽이다 — 임계가 미세하게 커지므로
-오탐에 보수적이다.
+When the sample count is even, this takes **not the average of the two middle values but the larger** (the upper
+median). It differs from the textbook definition but the direction is the safe side — the threshold grows
+minutely, so it is conservative about false positives.
 
-마지막으로, 이 값은 판정에만 쓰이지 않는다.
+Finally, this value is not used only for the verdict.
 
 ```python
 # report.py:319-324
             rep.add(
-                "타임라인 연속성",
+                "timeline continuity",
                 PASS,
-                f"영상 프레임 {gaps.frames:,}개 연속, 결손 0 "
-                f"(간격 중앙값 {gaps.frame_interval * 1000:.1f}ms, 임계 {gaps.threshold * 1000:.0f}ms)",
+                f"{gaps.frames:,} video frames continuous, 0 missing "
+                f"(interval median {gaps.frame_interval * 1000:.1f}ms, threshold {gaps.threshold * 1000:.0f}ms)",
             )
 ```
 
-사용자가 읽는 "간격 중앙값"이 곧 판정에 쓰인 통계량이다. 평균이었다면 위 5fps 파일에서
-`간격 중앙값 505.1ms` 로 인쇄되어 **실제 프레임 간격 200ms 와 2.5배 어긋난 값**을 보고했을
-것이다. **판정용 통계량과 표시용 통계량이 같은 값이므로, 기술 통계로서도 옳아야 한다.**
+The "interval median" the user reads is exactly the statistic used in the verdict. Had it been the mean, in the
+5fps file above it would print `interval median 505.1ms`, reporting **a value 2.5× off from the actual frame
+interval 200ms.** **Since the verdict statistic and the display statistic are the same value, it must be correct
+as descriptive statistics too.**
 
-### 22.3.3 factor 3.0 — 무엇의 3배인가
+### 22.3.3 factor 3.0 — 3 times of what
 
-`median * factor` 는 **상대 임계**다. 기준이 상수가 아니라 대상 자신이 드러낸 값이므로
-프레임률에 자동으로 적응한다.
+`median * factor` is a **relative threshold.** Since the basis is not a constant but the value the target itself
+revealed, it adapts automatically to the frame rate.
 
-3.0 이라는 값은 유도할 수 있다. 연속 N 프레임이 사라지면 살아남은 이웃 사이의 간격은
-`(N+1) × 프레임간격` 이 된다. 검출 조건은 `(N+1) × 간격 > 3 × 간격`, 즉 **N ≥ 3**.
+The value 3.0 is derivable. If N consecutive frames vanish, the interval between the surviving neighbors becomes
+`(N+1) × frame interval`. The detection condition is `(N+1) × interval > 3 × interval`, i.e. **N ≥ 3.**
 
-> **factor 3.0 = "3프레임 이상 연속 결손을 잡겠다"는 선언이다.**
+> **factor 3.0 = the declaration "I will catch a consecutive loss of 3 or more frames."**
 
-프레임 1–2개 결손을 제외한 이유는 코드에 적혀 있지 않지만, 인코더의 정상 동작(프레임
-드롭, 편집 이음매, 타임스탬프 반올림)이 그 크기의 간격을 만들 수 있다는 점을 생각하면
-합리적인 하한이다. 다만 **이것은 사후 재구성이고 설계 의도라는 증거는 없다.**
+The reason for excluding a 1–2 frame loss is not written in the code, but considering that an encoder's normal
+operation (frame drop, editing seam, timestamp rounding) can make a gap of that size, it is a reasonable lower
+bound. Only, **this is a post-hoc reconstruction and there is no evidence it was the design intent.**
 
-### 22.3.4 floor 0.4 — 절대 상수가 하는 일과 뺏는 것
+### 22.3.4 floor 0.4 — what the absolute constant does and takes away
 
-`max(floor, median * factor)` 는 두 임계 중 **더 관대한 쪽**을 택한다. 두 값이 프레임률에
-따라 어떻게 겨루는지가 이 코드에서 가장 중요한 표다.
+`max(floor, median * factor)` takes **the more lenient** of the two thresholds. How the two values compete by
+frame rate is the most important table in this code.
 
-| fps | 간격 | 중앙값×3 | 실제 임계 | 이긴 쪽 | 검출되는 최소 연속 결손 |
+| fps | Interval | median×3 | Actual threshold | Winner | Min detected consecutive loss |
 |---|---|---|---|---|---|
-| 120 | 8.33ms | 25.0ms | 400ms | floor | 48프레임 (400.0ms) |
-| 60 | 16.67ms | 50.0ms | 400ms | floor | 24프레임 (400.0ms) |
-| 30 | 33.33ms | 100.0ms | 400ms | floor | 12프레임 (400.0ms) |
-| 25 | 40.00ms | 120.0ms | 400ms | floor | 10프레임 (400.0ms) |
-| 24 | 41.67ms | 125.0ms | 400ms | floor | 9프레임 (375.0ms) |
-| 15 | 66.67ms | 200.0ms | 400ms | floor | 6프레임 (400.0ms) |
-| 10 | 100.0ms | 300.0ms | 400ms | floor | 4프레임 (400.0ms) |
-| **7.5** | 133.3ms | **400.0ms** | 400ms | 동률 | 3프레임 (400.0ms) |
-| 5 | 200.0ms | 600.0ms | 600ms | **factor** | 3프레임 (600.0ms) |
-| 1 | 1000ms | 3000ms | 3000ms | **factor** | 3프레임 (3000ms) |
+| 120 | 8.33ms | 25.0ms | 400ms | floor | 48 frames (400.0ms) |
+| 60 | 16.67ms | 50.0ms | 400ms | floor | 24 frames (400.0ms) |
+| 30 | 33.33ms | 100.0ms | 400ms | floor | 12 frames (400.0ms) |
+| 25 | 40.00ms | 120.0ms | 400ms | floor | 10 frames (400.0ms) |
+| 24 | 41.67ms | 125.0ms | 400ms | floor | 9 frames (375.0ms) |
+| 15 | 66.67ms | 200.0ms | 400ms | floor | 6 frames (400.0ms) |
+| 10 | 100.0ms | 300.0ms | 400ms | floor | 4 frames (400.0ms) |
+| **7.5** | 133.3ms | **400.0ms** | 400ms | tie | 3 frames (400.0ms) |
+| 5 | 200.0ms | 600.0ms | 600ms | **factor** | 3 frames (600.0ms) |
+| 1 | 1000ms | 3000ms | 3000ms | **factor** | 3 frames (3000ms) |
 
-두 상수가 하는 일을 한 문장으로 쓰면 이렇다.
+Write what the two constants do in one sentence and it is this.
 
-> **floor 는 "0.4초"라는 시간을 고정하고, factor 는 "3프레임"이라는 개수를 고정한다.**
-> `max()` 는 둘 중 더 느슨한 쪽을 택한다.
+> **floor fixes a time, "0.4 second," and factor fixes a count, "3 frames."**
+> `max()` takes whichever of the two is looser.
 
-여기서 교차점이 나온다. `median × 3 > 0.4` 는 `median > 0.1333`, 즉 **7.5fps 미만**에서만
-성립한다. 실사용 영상은 거의 전부 24fps 이상이므로,
+Here the crossover appears. `median × 3 > 0.4` holds as `median > 0.1333`, i.e. only **below 7.5fps.** Real-world
+video is almost all 24fps or above, so
 
-> **7.5fps 를 넘는 모든 스트림에서 `factor` 는 판정에 관여하지 않는다.** 실제로 판정을
-> 내리는 값은 `0.4` 하나다.
+> **In every stream above 7.5fps, `factor` does not participate in the verdict.** The value that actually gives
+> the verdict is the one `0.4`.
 
-README 가 "프레임 간격 중앙값의 3배 또는 0.4초 중 큰 값"(`README.md:426`)이라고 병렬로
-적어 두었지만, 실무에서 두 항은 대등하지 않다. `factor` 는 저프레임률 송출(타임랩스,
-감시 카메라, 슬라이드·화면 공유)에서만 살아난다.
+The README wrote them in parallel as "the larger of three times the median frame interval or 0.4 second"
+(`README.md:426`), but in practice the two terms are not equal. `factor` comes alive only in low-frame-rate
+delivery (timelapse, surveillance camera, slide·screen share).
 
-floor 를 빼면 무엇이 깨지는지도 실측했다.
+I measured what breaks if you remove floor too.
 
-| 파일 | `floor=0.4` (기본) | `floor=0` |
+| File | `floor=0.4` (default) | `floor=0` |
 |---|---|---|
-| 60fps 정상 | 임계 400ms → 0건 | 임계 50ms → 0건 |
-| 60fps, 5프레임(100ms) 결손 | 임계 400ms → **0건 (미탐)** | 임계 50ms → **1건 (검출)** |
+| 60fps normal | threshold 400ms → 0 | threshold 50ms → 0 |
+| 60fps, 5-frame (100ms) loss | threshold 400ms → **0 (miss)** | threshold 50ms → **1 (detected)** |
 
-floor 가 없으면 60fps 에서 임계가 50ms 로 내려간다. 이 스트림은 완벽한 CFR 이라 오탐이
-나지 않았지만, 실제 송출에서 50ms 는 프레임 3개 분량이고 **인코더가 정상적으로 만드는
-흔들림과 구별되지 않는 크기**다. floor 는 그 오탐을 막는다. 그리고 그 대가로 **0.4초
-미만의 진짜 결손을 전부 포기한다.** 60fps 에서는 프레임 23개까지, 120fps 에서는 47개까지
-아무 말도 하지 않는다.
+Without floor the threshold drops to 50ms at 60fps. This stream is perfect CFR so no false positive arose, but in
+real delivery 50ms is 3 frames' worth and **a size indistinguishable from the jitter an encoder normally makes.**
+floor blocks that false positive. And at the price it **gives up every real loss below 0.4 second.** At 60fps it
+says nothing up to 23 frames, at 120fps up to 47.
 
-`0.4` 의 출처는 코드·주석·README 어디에도 없다. 30fps 에서 12프레임에 해당한다는 해석은
-사후에 붙일 수 있지만 그것이 설계 의도라는 근거는 없다. **정직하게 적으면 이 상수는
-근거가 약하다.** 그리고 이 근거 약한 상수가 §22.3.3 의 유도 가능한 상수를 실질적으로
-대체하고 있다는 점이 이 절의 결론이다.
+The origin of `0.4` is in neither code·comment·README. The interpretation that it corresponds to 12 frames at
+30fps can be attached after the fact, but there is no basis it was the design intent. **Written honestly, this
+constant's basis is weak.** And that this weakly-based constant is effectively replacing §22.3.3's derivable
+constant is this section's conclusion.
 
-### 22.3.5 엄격 부등호와 경계
+### 22.3.5 The strict inequality and the boundary
 
-`if d > threshold` 는 엄격 부등호다. 임계와 정확히 같은 간격은 결손이 아니다. 30fps 에서
-연속 결손 프레임 수를 하나씩 늘려 가며 실측한 경계다.
+`if d > threshold` is a strict inequality. An interval exactly equal to the threshold is not a loss. The boundary
+measured by increasing the consecutive lost-frame count one at a time at 30fps.
 
-| 지운 프레임 | 이웃 간 간격 | 임계 | 판정 |
+| Frames deleted | Interval between neighbors | Threshold | Verdict |
 |---|---|---|---|
-| 10개 | 366.667ms | 400.0ms | 미탐 |
-| **11개** | **400.000ms** | 400.0ms | **미탐** (같으므로 통과) |
-| 12개 | 433.333ms | 400.0ms | 검출 |
-| 13개 | 466.667ms | 400.0ms | 검출 |
+| 10 | 366.667ms | 400.0ms | miss |
+| **11** | **400.000ms** | 400.0ms | **miss** (equal so it passes) |
+| 12 | 433.333ms | 400.0ms | detected |
+| 13 | 466.667ms | 400.0ms | detected |
 
-이 표가 §22.7 의 출발점이 된다. **30fps 에서 이 검사가 보장하는 것은 "0.4초를 초과하는
-구멍이 없다"뿐이고, 그 이하에 대해서는 아무 말도 하지 않는다.**
+This table becomes §22.7's starting point. **What this check guarantees at 30fps is only "there is no hole
+exceeding 0.4 second," and about anything below that it says nothing.**
 
-한 가지 정밀도 문제도 여기서 드러난다. 간격은 **프레임 사이**의 값이므로, 보고되는 결손
-길이는 실제 사라진 내용보다 정확히 **프레임 한 개분 길다.** 6.000초 세그먼트가 사라진
-파일에서 리포트가 `6.03s` 를 낸 것이 그 때문이고, 11프레임(366.7ms)을 지운 파일의 간격이
-400.0ms 인 것도 같은 이유다. 결손 합계(`gaps.lost`)는 결손 건수만큼 계통적으로 과대
-평가된다.
+One precision problem is revealed here too. Since the interval is the value **between frames**, the reported loss
+length is exactly **one frame longer** than the content that actually vanished. That the report gave `6.03s` for a
+file where a 6.000-second segment vanished is because of that, and that the interval of a file with 11 frames
+(366.7ms) deleted is 400.0ms is the same reason. The loss total (`gaps.lost`) is systematically over-estimated by
+the number of loss events.
 
-### 22.3.6 임계값을 판정과 함께 인쇄한다
+### 22.3.6 It prints the threshold together with the verdict
 
-§22.3.2 에 인용한 [`report.py:319-324`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L319-L324) 는 PASS 를 낼 때도 `간격 중앙값` 과 `임계` 를 함께
-찍는다. 이것은 장식이 아니다.
+[`report.py:319-324`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L319-L324) cited in §22.3.2 prints the `interval median` and `threshold` together even when it gives a PASS.
+This is not decoration.
 
-> **임계를 감춘 검사기의 PASS 는 정보가 아니다.** "결손 0"만 읽은 사람은 그것이 "구멍이
-> 없다"는 뜻인지 "0.4초를 넘는 구멍이 없다"는 뜻인지 구별할 수 없다. 임계가 함께
-> 인쇄되면 독자가 그 PASS 의 사정거리를 직접 계산할 수 있다.
+> **A checker's PASS that hides the threshold is not information.** Someone who read only "0 missing" cannot tell
+> whether it means "there is no hole" or "there is no hole exceeding 0.4 second." Print the threshold together and
+> the reader can compute that PASS's range themselves.
 
-같은 값이 JSON 에도 남는다([`report.py:325-335`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L325-L335), `threshold_sec` · `frame_interval_sec`).
-사후 분석에서 "그때 임계가 얼마였나"를 되물을 수 있다는 뜻이고, 임계를 바꾼 뒤 과거
-리포트와 비교할 수 있다는 뜻이다.
+The same value is left in the JSON too ([`report.py:325-335`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L325-L335), `threshold_sec` · `frame_interval_sec`). It means you can ask
+in post-hoc analysis "what was the threshold then," and it means you can compare with a past report after
+changing the threshold.
 
 ---
 
-## 22.4 다른 임계값들 — 근거의 등급
+## 22.4 The other thresholds — the grade of the basis
 
-갭 임계만 임계값인 것은 아니다. 이 저장소의 판정 규칙은 `report.build()` 한 곳에 모여
-있고([`report.py:123-511`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L123-L511)), 그 안의 상수를 전수로 훑으면 **근거의 등급이 뚜렷하게 갈린다.**
+The gap threshold is not the only threshold. This repository's verdict rules gather in one place, `report.build()`
+([`report.py:123-511`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L123-L511)), and sweep the constants in it exhaustively and **the grade of the basis splits sharply.**
 
-### 22.4.1 길이 드리프트 — 상대 임계의 모범과 그 옆의 구멍
+### 22.4.1 Length drift — the model of a relative threshold and the hole next to it
 
 ```python
 # report.py:263-278
     if media and media.ok:
         drift = media.duration - declared_duration
         drift_pct = abs(_pct(drift, declared_duration))
-        # 한 세그먼트 이상 어긋났으면 구간 결손으로 본다.
+        # off by a segment or more → treat as a stretch loss.
         if target_duration and abs(drift) >= target_duration:
             verdict = FAIL
         elif drift_pct > 0.5:
@@ -372,67 +374,65 @@ floor 가 없으면 60fps 에서 임계가 50ms 로 내려간다. 이 스트림�
         else:
             verdict = PASS
         rep.add(
-            "길이 정합",
+            "length consistency",
             verdict,
-            f"실측 {media.duration:.2f}s vs 선언 {declared_duration:.2f}s "
-            f"(드리프트 {drift:+.2f}s / {drift_pct:.2f}%)",
+            f"measured {media.duration:.2f}s vs declared {declared_duration:.2f}s "
+            f"(drift {drift:+.2f}s / {drift_pct:.2f}%)",
         )
 ```
 
-FAIL 기준이 `TARGETDURATION` 인 것은 이 파일에서 **가장 잘 설계된 임계**다.
+That the FAIL basis is `TARGETDURATION` is the **best-designed threshold** in this file.
 
-> **용어** — **EXT-X-TARGETDURATION**: 미디어 플레이리스트가 선언하는 세그먼트 최대
-> 재생 길이(초, 정수). RFC 8216 이 미디어 플레이리스트에 필수로 요구한다.
+> **Term** — **EXT-X-TARGETDURATION**: the maximum segment play length (seconds, integer) a media playlist
+> declares. RFC 8216 requires it of a media playlist.
 
-이 값은 상수가 아니라 **스트림 자신이 선언한 값**이다. 주석이 그 의미를 정확히 적어
-두었다 — "한 세그먼트 이상 어긋났으면 구간 결손으로 본다"([`report.py:266`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L266)). 즉 임계가
-"드리프트가 결손 한 단위를 넘었는가"라는 **물리적 의미**를 갖는다. 6초 세그먼트 스트림과
-10초 세그먼트 스트림에서 자동으로 다른 값이 된다.
+This value is not a constant but **a value the stream itself declared.** The comment wrote its meaning exactly —
+"off by a segment or more → treat as a stretch loss" ([`report.py:266`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L266)). That is, the threshold has a **physical
+meaning**, "did the drift exceed one unit of loss." It automatically becomes a different value on a 6-second
+segment stream and a 10-second segment stream.
 
-그 옆의 `0.5%` 는 다르다. 절대 비율 상수이고 근거가 없다. 그리고 두 규칙이 겹치면 구조적
-이상이 생긴다. WARN 이 나오려면 두 조건이 동시에 성립해야 한다.
+The `0.5%` next to it is different. It is an absolute-ratio constant with no basis. And when the two rules overlap
+a structural anomaly arises. For a WARN, two conditions must hold at once.
 
 ```
-|드리프트| > 선언길이 / 200        (0.5% 초과)
-|드리프트| < TARGETDURATION        (FAIL 이 아님)
+|drift| > declared length / 200        (exceeds 0.5%)
+|drift| < TARGETDURATION                (not a FAIL)
 ```
 
-이 대역이 비어 있지 않으려면 `선언길이 < 200 × TARGETDURATION` 이어야 한다.
+For this band to be non-empty, `declared length < 200 × TARGETDURATION` must hold.
 
-| TARGETDURATION | WARN 대역이 사라지는 길이 |
+| TARGETDURATION | Length at which the WARN band vanishes |
 |---|---|
-| 2s | 400s (약 7분) 이상 |
-| 4s | 800s (약 13분) 이상 |
-| 6s | 1200s (20분) 이상 |
-| 10s | 2000s (약 33분) 이상 |
+| 2s | 400s (about 7 minutes) and up |
+| 4s | 800s (about 13 minutes) and up |
+| 6s | 1200s (20 minutes) and up |
+| 10s | 2000s (about 33 minutes) and up |
 
-즉 **6초 세그먼트로 송출되는 45분짜리 드라마 한 편에서는 WARN 대역이 존재하지 않는다.**
-세 단계 판정이 실질적으로 두 단계로 붕괴한다. 반대로 30초짜리 테스트 스트림에서는 0.15초
-드리프트부터 WARN 이 뜬다 — 마지막 세그먼트가 프레임 경계에서 잘리거나 오디오 프라이밍
-샘플이 붙으면 흔히 나오는 크기다.
+That is, **in a single 45-minute drama delivered in 6-second segments, the WARN band does not exist.** The
+three-level verdict effectively collapses to two levels. Conversely, in a 30-second test stream a WARN appears
+from 0.15-second drift — a size that commonly appears when the last segment is cut at a frame boundary or audio
+priming samples are attached.
 
-조건 하나 더. `if target_duration and ...` 는 `target_duration` 이 0 이면 FAIL 규칙 전체를
-건너뛴다. 기본값이 `0.0` 이고([`playlist.py:156`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L156)) `#EXT-X-TARGETDURATION` 줄에서만 채워지므로
-([`playlist.py:298`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L298)), 그 태그가 없는 비표준 플레이리스트에서는 **강한 판정이 조용히
-사라지고 근거 없는 0.5% 규칙만 남는다.** 좋은 상대 임계에는 이런 종속성이 따라온다 —
-기준이 되는 선언값이 없으면 규칙도 없다.
+One more condition. `if target_duration and ...` skips the entire FAIL rule if `target_duration` is 0. Since the
+default is `0.0` ([`playlist.py:156`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L156)) and it is filled only on the `#EXT-X-TARGETDURATION` line ([`playlist.py:298`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L298)), in
+a nonstandard playlist without that tag **the strong verdict quietly disappears and only the baseless 0.5% rule
+remains.** A good relative threshold comes with this dependency — no declared value to base on, no rule.
 
-### 22.4.2 TTFB p95 3초 — 근거 없는 상수에 맞는 판정 강도
+### 22.4.2 TTFB p95 3 seconds — a verdict strength fitting a baseless constant
 
 ```python
 # report.py:185-187
         rep.add(
-            "응답 지연",
+            "response latency",
             WARN if _quantile(ttfb, 0.95) > 3000 else PASS,
 ```
 
-> **용어** — **TTFB(time to first byte, 첫 바이트 도달 시간)**: 요청을 보낸 시점부터
-> 응답 본문의 첫 바이트가 도착할 때까지의 시간. 서버의 처리 지연을 전송량과 분리해
-> 본다([`fetch.py:84`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L84)).
-> **p95(95백분위수)**: 표본을 정렬했을 때 하위 95% 지점의 값. 꼬리 지연(tail latency)을
-> 보기 위한 지표로, 평균은 이상치를 감춘다(제8장).
+> **Term** — **TTFB (time to first byte)**: the time from sending the request to the first byte of the response
+> body arriving. It views the server's processing delay separated from the transfer volume ([`fetch.py:84`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/fetch.py#L84)).
+> **p95 (95th percentile)**: the value at the lower-95% point when the sample is sorted. It is a metric for
+> viewing the tail latency, since the mean hides outliers (Chapter 8).
 
-`3000` 의 근거는 코드에 없다. 그런데 이 임계가 만드는 판정은 WARN 이고,
+The basis of `3000` is not in the code. But the verdict this threshold makes is WARN, and
 
 ```python
 # cli.py:651-652
@@ -440,13 +440,13 @@ def _exit_code(verdict: str) -> int:
     return {report.PASS: 0, report.WARN: 0, report.FAIL: 2}[verdict]
 ```
 
-**WARN 은 종료 코드 0 이다.** 즉 근거 없는 임계가 자동화 파이프라인을 멈추지 못하는 자리에
-놓여 있다. 이것을 규칙으로 세울 수 있다.
+**WARN is exit code 0.** That is, the baseless threshold is placed where it cannot stop an automation pipeline.
+This can be set as a rule.
 
-> **임계의 근거 강도와, 그 임계가 유발하는 판정의 강도를 맞춰라.** 유도 가능한 임계는
-> FAIL 을 내도 된다. 경험적으로 고른 상수는 WARN 까지다.
+> **Match the basis strength of the threshold and the verdict strength it induces.** A derivable threshold may
+> give a FAIL. An empirically chosen constant goes up to WARN.
 
-한편 p95 라는 지표 자체에도 함정이 있다.
+Meanwhile the metric p95 itself has a trap.
 
 ```python
 # report.py:56-61
@@ -458,87 +458,86 @@ def _quantile(values: list[float], q: float) -> float:
     return s[idx]
 ```
 
-최근접 순위(nearest-rank) 방식이고 보간이 없다. 인덱스를 직접 계산해 보면 이렇다.
+It is nearest-rank and has no interpolation. Compute the index directly and it is this.
 
-| 세그먼트 수 | p95 인덱스 | 최댓값 인덱스 | p95 = 최댓값? |
+| Segment count | p95 index | Max index | p95 = max? |
 |---|---|---|---|
-| 5 | 4 | 4 | **예** |
-| 10 | 9 | 9 | **예** |
-| 11 | 10 | 10 | **예** |
-| 12 | 10 | 11 | 아니오 |
-| 20 | 18 | 19 | 아니오 |
+| 5 | 4 | 4 | **yes** |
+| 10 | 9 | 9 | **yes** |
+| 11 | 10 | 10 | **yes** |
+| 12 | 10 | 11 | no |
+| 20 | 18 | 19 | no |
 
-**세그먼트가 11개 이하이면 "p95"는 백분위수가 아니라 최댓값이다.** 짧은 스트림이나
-`--limit` 표본 실행에서 이 지표는 "가장 느렸던 한 번"이 되고, 서버가 딱 한 번 3초를 넘으면
-WARN 이 뜬다. **꼬리를 보려던 지표가 표본이 작으면 이상치 지표로 바뀐다.** 백분위수를
-쓰는 것만으로는 평균의 문제를 벗어나지 못하고, 표본 수가 함께 보고돼야 한다.
+**If there are 11 segments or fewer, "p95" is not a percentile but the maximum.** In a short stream or a
+`--limit` sample run this metric becomes "the single slowest time," and if the server exceeds 3 seconds just
+once a WARN appears. **A metric meant to view the tail turns into an outlier metric when the sample is small.**
+Using a percentile alone does not escape the mean's problem, and the sample count must be reported together.
 
-### 22.4.3 임계가 아예 없는 검사도 있다
+### 22.4.3 Some checks have no threshold at all
 
-| 검사 | 앵커 | 임계 | 1건일 때 |
+| Check | Anchor | Threshold | When 1 |
 |---|---|---|---|
-| 세그먼트 수신 실패 | [`report.py:167-172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L172) | 없음 | FAIL |
-| 페이로드 유효성(선두 바이트) | [`report.py:199-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L206) | 없음 | FAIL |
-| CC 불연속 | [`report.py:235-236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L235-L236) | 없음 | WARN |
-| 세그먼트 해시 중복 | [`report.py:213-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213-L218) | 없음 | WARN |
-| 전체 디코드 오류 | [`report.py:502-508`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L502-L508) | 없음 | FAIL |
+| segment receive failure | [`report.py:167-172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L172) | none | FAIL |
+| payload validity (leading byte) | [`report.py:199-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L206) | none | FAIL |
+| CC discontinuity | [`report.py:235-236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L235-L236) | none | WARN |
+| segment hash duplicate | [`report.py:213-218`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L213-L218) | none | WARN |
+| full decode error | [`report.py:502-508`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L502-L508) | none | FAIL |
 
-왜 어떤 검사에는 임계가 필요하고 어떤 검사에는 필요 없는가. 답은 관측량의 성질에 있다.
+Why do some checks need a threshold and some do not. The answer is in the nature of the observed quantity.
 
-> **관측량이 이산이고 정상값이 정확히 0 이면 임계가 필요 없다.** HTTP 요청은 성공하거나
-> 실패하고, 정상 스트림의 실패 건수는 0 이다. 반면 프레임 간격은 연속량이고 정상값이
-> 0 이 아니다 — "얼마나 커야 비정상인가"를 누군가 정해야 한다. 그 순간 임계가 생기고,
-> 오탐·미탐 교환이 따라 들어온다.
+> **If the observed quantity is discrete and its normal value is exactly 0, no threshold is needed.** An HTTP
+> request succeeds or fails, and a normal stream's failure count is 0. A frame interval, by contrast, is a
+> continuous quantity whose normal value is not 0 — someone must set "how big is abnormal." At that moment a
+> threshold arises, and the false-positive·false-negative trade comes in with it.
 
-이 구분이 §22.7 의 방어 설계 근거가 된다.
+This distinction becomes §22.7's basis for defense design.
 
-### 22.4.4 근거 등급표 — 전수
+### 22.4.4 The basis-grade table — exhaustive
 
-| 임계 | 앵커 | 형태 | 근거 | 판정 |
+| Threshold | Anchor | Form | Basis | Verdict |
 |---|---|---|---|---|
-| 갭 `factor` 3.0 | `probe.py:191,227` | 상대(자기 중앙값) | 유도 가능 — 3프레임 이상 연속 결손 | FAIL |
-| 갭 `floor` 0.4s | `probe.py:191,227` | **절대** | **없음** | FAIL |
-| 드리프트 FAIL | [`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267) | 상대(TARGETDURATION) | 유도 가능 — 세그먼트 1개분 | FAIL |
-| 드리프트 WARN 0.5% | [`report.py:269`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L269) | 상대 비율 | **없음** | WARN |
-| TTFB p95 3000ms | [`report.py:187`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L187) | **절대** | **없음** | WARN |
-| 자막 이탈 +5.0s / −0.5s | `report.py:360,432` | **절대** | **없음** | **FAIL** |
-| 자막 커버리지 20% | [`report.py:457`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L457) | 절대 비율 | **없음** | WARN |
-| 자막 정렬 표시 0.5s | `report.py:348,405` | 절대 | 표시용 — 판정 아님 | — |
-| CC 불연속·수신 실패 등 | §22.4.3 | 임계 없음 | 해당 없음 | FAIL/WARN |
+| gap `factor` 3.0 | `probe.py:191,227` | relative (own median) | derivable — consecutive loss of 3+ frames | FAIL |
+| gap `floor` 0.4s | `probe.py:191,227` | **absolute** | **none** | FAIL |
+| drift FAIL | [`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267) | relative (TARGETDURATION) | derivable — one segment's worth | FAIL |
+| drift WARN 0.5% | [`report.py:269`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L269) | relative ratio | **none** | WARN |
+| TTFB p95 3000ms | [`report.py:187`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L187) | **absolute** | **none** | WARN |
+| subtitle drift +5.0s / −0.5s | `report.py:360,432` | **absolute** | **none** | **FAIL** |
+| subtitle coverage 20% | [`report.py:457`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L457) | absolute ratio | **none** | WARN |
+| subtitle-alignment display 0.5s | `report.py:348,405` | absolute | for display — not a verdict | — |
+| CC discontinuity·receive failure, etc. | §22.4.3 | no threshold | not applicable | FAIL/WARN |
 
-한 줄이 규칙에서 벗어나 있다. **자막 이탈 임계 `+5.0s` 는 근거 없는 절대 상수인데 FAIL 을
-낸다.** 판정 강도와 근거 강도가 어긋난 유일한 자리다. 다만 이 검사가 재는 것은 "자막이
-영상 범위를 벗어났는가"라는 거의 이산적인 성질이고 5초는 여유분이라는 해석은 가능하다 —
-그 해석의 근거도 코드에는 없다.
+One row departs from the rule. **The subtitle-drift threshold `+5.0s` is a baseless absolute constant, yet it
+gives a FAIL.** It is the only spot where the verdict strength and the basis strength are mismatched. Only, an
+interpretation is possible that what this check measures is the almost-discrete property "did the subtitle go
+outside the video range" and 5 seconds is a margin — the basis for that interpretation is not in the code either.
 
 ---
 
-## 22.5 가변 프레임률에서 무엇이 깨지는가
+## 22.5 What breaks under a variable frame rate
 
-### 22.5.1 VFR 은 무엇이고 왜 생기는가
+### 22.5.1 What VFR is and why it arises
 
-> **용어** — **CFR(constant frame rate, 고정 프레임률)**: 모든 프레임이 동일한 시간
-> 간격으로 표시되는 방식.
-> **VFR(variable frame rate, 가변 프레임률)**: 프레임마다 표시 간격이 다를 수 있는 방식.
-> 컨테이너는 각 프레임의 표시 시각(PTS)을 개별로 담으므로 두 방식 모두 표현할 수 있고,
-> **컨테이너 수준에서 둘은 구별되지 않는다.**
+> **Term** — **CFR (constant frame rate)**: the way where every frame is displayed at the same time interval.
+> **VFR (variable frame rate)**: the way where each frame's display interval can differ. The container carries
+> each frame's presentation time (PTS) individually so it can express both, and **at the container level the two
+> are indistinguishable.**
 
-마지막 문장이 이 절 전체의 씨앗이다. VFR 소스는 실무에서 드물지 않다.
+The last sentence is the seed of this whole section. VFR sources are not rare in practice.
 
-| 발생 원인 | 무엇이 일어나는가 | 나타나는 간격 |
+| Cause | What happens | Interval that appears |
 |---|---|---|
-| 화면 녹화·화면 공유 | 화면이 바뀔 때만 프레임을 만든다 | 정지 구간에서 수 초 |
-| 애니메이션 (2컷·3컷 촬영) | 같은 그림을 2–3프레임 유지 | 66ms · 100ms 혼재 |
-| `mpdecimate` 등 중복 제거 | 동일 프레임을 버려 용량을 줄인다 | 정지 장면에서 수 초 |
-| 3:2 풀다운(telecine) 역변환 | 24fps 소재를 30fps 컨테이너에 담았다 되돌린다 | 41.7ms 와 33.3ms 혼재 |
-| 실시간 카메라·저지연 캡처 | 노출 시간과 버퍼 상태에 따라 간격이 변한다 | 불규칙 |
+| screen recording·screen share | makes a frame only when the screen changes | several seconds in a still stretch |
+| animation (on-2s·on-3s shooting) | holds the same drawing for 2–3 frames | 66ms · 100ms mixed |
+| duplicate removal like `mpdecimate` | throws away identical frames to cut size | several seconds in a still scene |
+| 3:2 pulldown (telecine) inverse | 24fps material put in a 30fps container then undone | 41.7ms and 33.3ms mixed |
+| live camera·low-latency capture | interval varies by exposure time and buffer state | irregular |
 
-### 22.5.2 실습 — 로컬 재현
+### 22.5.2 Lab — local reproduction
 
-외부 사이트 없이 재현할 수 있다. 필요한 것은 `ffmpeg` 와 `python3` 뿐이다.
+Reproducible with no external site. All you need is `ffmpeg` and `python3`.
 
 ```bash
-# 1) 움직임 1초 + 정지 1.5초를 5번 반복하는 CFR 30fps 원본
+# 1) a CFR 30fps original repeating 1s of motion + 1.5s of still 5 times
 for i in 0 1 2 3 4; do
   ffmpeg -v error -y -f lavfi -i "testsrc2=size=320x180:rate=30:duration=1" \
     -c:v libx264 -preset ultrafast -pix_fmt yuv420p m$i.mp4
@@ -550,11 +549,11 @@ for i in 0 1 2 3 4; do printf 'file m%s.mp4\nfile s%s.mp4\n' $i $i >> list.txt; 
 ffmpeg -v error -y -f concat -safe 0 -i list.txt \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 anime_cfr.mp4
 
-# 2) 같은 내용을 VFR 로 — 중복 프레임을 버린다 (데이터 손실 아님)
+# 2) the same content as VFR — throw away duplicate frames (not data loss)
 ffmpeg -v error -y -i anime_cfr.mp4 -vf mpdecimate -fps_mode vfr \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p anime_vfr.mp4
 
-# 3) 둘 다 이 저장소의 갭 스캔에 건다
+# 3) put both into this repository's gap scan
 python3 -c "
 from hlsrecon import probe
 for f in ('anime_cfr.mp4', 'anime_vfr.mp4'):
@@ -563,54 +562,55 @@ for f in ('anime_cfr.mp4', 'anime_vfr.mp4'):
 "
 ```
 
-결과다.
+The result.
 
 ```
 anime_cfr.mp4 375 0 0 0.4
 anime_vfr.mp4 155 4 6.0 0.4
 ```
 
-**보이는 내용이 완전히 같고 데이터 손실이 0 인데, 두 번째 파일은 "결손 4건, 합계 6.00초"로
-보고된다.** `discontinuities` 가 0 이므로 `intended` 가 거짓이 되어([`report.py:309-310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L309-L310))
-판정은 WARN 도 아닌 **FAIL** 이고, 종료 코드는 2 다.
+**The content looks completely the same and the data loss is 0, yet the second file is reported as "4 losses,
+total 6.00 seconds."** Since `discontinuities` is 0, `intended` becomes false ([`report.py:309-310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L309-L310)) so the verdict
+is **FAIL**, not even WARN, and the exit code is 2.
 
-간격 히스토그램을 보면 사정이 분명하다.
+Look at the interval histogram and the situation is clear.
 
-| 파일 | 간격 분포 |
+| File | Interval distribution |
 |---|---|
 | `anime_cfr.mp4` | 33.33ms × 374 |
 | `anime_vfr.mp4` | 33.33ms × 150, **1500.00ms × 4** |
-| `damaged.mp4` (진짜 결손) | 33.33ms × 718, **6033.33ms × 1** |
+| `damaged.mp4` (real loss) | 33.33ms × 718, **6033.33ms × 1** |
 
-두 번째 줄과 세 번째 줄은 **같은 모양의 분포**다. 큰 간격이 몇 개 섞여 있다는 사실만으로는
-둘을 가를 수 없다.
+The second row and the third row are **distributions of the same shape.** The mere fact that a few big intervals
+are mixed in cannot split the two.
 
-### 22.5.3 왜 임계값으로는 고칠 수 없는가
+### 22.5.3 Why the threshold cannot fix it
 
-임계를 1.5초와 6.0초 사이 어딘가로 올리면 이 예제의 오탐은 사라진다. 그러나 그것은 예제에
-맞춘 조정이다. 정지 화면이 7초 이어지는 화면 녹화가 오면 다시 걸린다. 근본 이유는 정보의
-부재에 있다.
+Raise the threshold somewhere between 1.5 and 6.0 seconds and this example's false positive vanishes. But that is
+an adjustment fit to the example. A screen recording with a 7-second still comes and it catches again. The root
+reason is the absence of information.
 
-> **PTS 는 "이 프레임이 언제 표시되는가"만 말한다. "여기에 프레임이 있어야 했는가"는
-> 말하지 않는다.** 사라진 프레임과 애초에 만들어지지 않은 프레임은 타임라인 위에 **완전히
-> 동일한 흔적**을 남긴다.
+> **PTS says only "when is this frame displayed." It does not say "should there have been a frame here."** A
+> vanished frame and a frame never made in the first place leave a **completely identical trace** on the
+> timeline.
 
-그러므로 이것은 임계값 문제가 아니라 **지표의 분리도 문제**(§22.2.2)다. 두 분포가 겹치는
-한 어떤 임계값도 두 오류를 동시에 없애지 못한다. 필요한 것은 **다른 정보원**이다.
+So this is not a threshold problem but a **metric-separability problem** (§22.2.2). As long as the two
+distributions overlap, no threshold can remove both errors at once. What is needed is **a different information
+source.**
 
-| 정보원 | VFR 정상과 진짜 결손을 가를 수 있는가 | 이 코드가 쓰는가 |
+| Information source | Can it split VFR-normal from a real loss | Does this code use it |
 |---|---|---|
-| `EXT-X-DISCONTINUITY` 선언 수 | 편집 이음매만 설명한다 — VFR 은 설명 못 함 | **일부 사용** ([`report.py:309-310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L309-L310)) |
-| 세그먼트 수신 실패 기록 | 전송 중 유실이면 가른다 | 사용 ([`report.py:167-172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L172)) |
-| MPEG-TS continuity counter | 패킷 유실이면 가른다 (16배수 미탐, 제18장) | 사용 ([`report.py:235-236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L235-L236)) |
-| 컨테이너의 선언 프레임률(`r_frame_rate`) | **VFR 에서 의미가 없다** | 쓰지 않음 (제1장에서 이유 명시) |
-| 세그먼트별 `EXTINF` × 프레임률 vs 실제 프레임 수 | **VFR 에서 의미가 없다** | 미구현 |
+| `EXT-X-DISCONTINUITY` declared count | explains only editing seams — cannot explain VFR | **partly used** ([`report.py:309-310`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L309-L310)) |
+| segment receive-failure record | splits if it is an in-transit loss | used ([`report.py:167-172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L172)) |
+| MPEG-TS continuity counter | splits if it is a packet loss (multiple-of-16 miss, Chapter 18) | used ([`report.py:235-236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L235-L236)) |
+| the container's declared frame rate (`r_frame_rate`) | **meaningless under VFR** | not used (reason stated in Chapter 1) |
+| per-segment `EXTINF` × frame rate vs actual frame count | **meaningless under VFR** | unimplemented |
 
-마지막 두 줄이 이 장의 아이러니다. **VFR 오탐을 구별하는 데 쓸 만한 보조 지표가 하필
-VFR 에서 무너진다.** 남는 것은 전송 계층의 증거뿐이고, 그것은 오리진이 이미 프레임을
-빠뜨린 채 만든 스트림에 대해서는 아무 말도 하지 못한다.
+The last two rows are this chapter's irony. **The auxiliary metric usable for distinguishing VFR false positives
+collapses precisely under VFR.** What is left is only the transport layer's evidence, and that says nothing about
+a stream the origin already made with frames missing.
 
-### 22.5.4 `--no-gap-scan` — 한계를 옵션으로 인정한 설계
+### 22.5.4 `--no-gap-scan` — a design acknowledging the limit as an option
 
 ```python
 # cli.py:616
@@ -619,207 +619,215 @@ VFR 에서 무너진다.** 남는 것은 전송 계층의 증거뿐이고, 그�
 
 ```python
 # cli.py:1067
-    ap.add_argument("--no-gap-scan", action="store_true", help="타임라인 결손 스캔 생략")
+    ap.add_argument("--no-gap-scan", action="store_true", help="skip the timeline loss scan")
 ```
 
-그리고 README 가 이 한계를 알려진 한계 목록에 올려 두었다.
+And the README put this limit on its list of known limits.
 
 ```
 # README.md:426-427
-- **타임라인 갭 임계**: 프레임 간격 중앙값의 3배 또는 0.4초 중 큰 값. 가변 프레임률
-  소스에서는 오탐이 날 수 있다 — `--no-gap-scan` 으로 끈다.
+- **timeline gap threshold**: the larger of three times the median frame interval or 0.4 second. A variable
+  frame rate source can false-positive — turn it off with `--no-gap-scan`.
 ```
 
-**한계를 숨기지 않고 문서화한 뒤 사용자에게 제어권을 넘긴 설계**다. 오탐을 억지로 줄이려
-임계를 조정해 미탐을 늘리는 것보다 정직하다. 그러나 대가가 셋 있다.
+It is a **design that documented the limit without hiding it and handed control to the user.** It is more honest
+than forcing false positives down by adjusting the threshold and increasing false negatives. But there are three
+prices.
 
-**첫째, 끄면 미탐률이 100%가 된다.** §22.2.3 에서 말한 전환이 실제로 일어난다.
+**First, turn it off and the false-negative rate becomes 100%.** The transition mentioned in §22.2.3 actually
+occurs.
 
-**둘째, 끈 사실이 리포트에 남지 않는다.** `gaps` 가 `None` 이면 조건문
-([`report.py:304`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L304))이 통째로 건너뛰어져 **`타임라인 연속성` 항목 자체가 사라진다.** JSON 의
-`stats["timeline"]` 도 없다. 같은 파일 안에서 `--limit` 표본 실행은 자막 타임라인 검사에
-대해 명시적으로 "판정 보류"를 출력하는데([`report.py:424-430`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L424-L430)), 갭 스캔은 침묵한다. **"검사
-안 함"과 "통과"가 리포트에서 구별되지 않는 상태**이며, 이는 제38장이 세울 원칙과 어긋난다.
+**Second, the fact of turning it off is not left in the report.** If `gaps` is `None` the conditional
+([`report.py:304`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L304)) is skipped whole and **the `timeline continuity` item itself disappears.** There is no
+`stats["timeline"]` in the JSON either. Within the same file, a `--limit` sample run explicitly outputs "verdict
+withheld" for the subtitle-timeline check ([`report.py:424-430`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L424-L430)), but the gap scan is silent. It is a state where
+**"not checked" and "passed" are indistinguishable in the report**, and this violates the principle Chapter 38
+will set.
 
-**셋째, 이미 습관이 되어 있다.** 이 저장소의 회귀 테스트에서 `--no-gap-scan` 은 9곳에
-붙어 있다(`tests/run.sh:234,239,266,281,290,300,311,493,505`). 자막 검사에 집중하는 실행이고
-속도를 위한 것이므로 정당하지만, **형태는 경보 피로와 같다.** 끄는 것이 기본값이 되는
-경로는 이렇게 시작한다.
+**Third, it is already a habit.** In this repository's regression test, `--no-gap-scan` is attached in 9 places
+(`tests/run.sh:234,239,266,281,290,300,311,493,505`). They are runs focusing on the subtitle check and it is for
+speed so it is justified, but **the form is the same as alert fatigue.** The path where turning it off becomes
+the default starts like this.
 
 ---
 
-## 22.6 일반화 — 임계값 설계의 여섯 규칙
+## 22.6 Generalization — the six rules of threshold design
 
-같은 구조가 나타나는 곳을 나열하면 이 문제가 스트리밍 검증의 문제가 아님이 분명해진다.
+List where the same structure appears and it becomes clear this problem is not a streaming-verification problem.
 
-| 영역 | 관측량 | 임계 | 오탐의 비용 | 미탐의 비용 |
+| Domain | Observed quantity | Threshold | Cost of false positive | Cost of false negative |
 |---|---|---|---|---|
-| 스팸 필터 | 점수 | 스팸 판정선 | 정상 메일 유실 | 스팸 수신 |
-| 침입 탐지(IDS) | 요청률·패턴 점수 | 경보선 | 경보 피로 → 규칙 비활성화 | 침입 미탐지 |
-| 정적 분석기 | 규칙 위반 | 심각도 등급 | 개발자가 도구를 끈다 | 취약점 잔존 |
-| 헬스체크 | 응답 지연 | 타임아웃 | 정상 인스턴스 격리 → 연쇄 장애 | 죽은 인스턴스에 트래픽 |
-| 의료 선별검사 | 표지자 농도 | 양성 기준 | 불필요한 정밀검사·불안 | 진단 지연 |
-| 이상거래 탐지 | 거래 특징 점수 | 차단선 | 정상 거래 차단 | 사기 승인 |
+| spam filter | score | spam-verdict line | legit mail lost | spam received |
+| intrusion detection (IDS) | request rate·pattern score | alert line | alert fatigue → rule disabled | intrusion undetected |
+| static analyzer | rule violation | severity grade | developers turn off the tool | vulnerability remains |
+| health check | response latency | timeout | a normal instance isolated → cascade failure | traffic to a dead instance |
+| medical screening | marker concentration | positive criterion | needless workup·anxiety | diagnosis delayed |
+| fraud detection | transaction feature score | block line | normal transaction blocked | fraud approved |
 
-각 행에서 임계값을 정한 사람은 대개 그 값의 유도를 남기지 않았다. 이 장의 실습에서 얻은
-규칙을 정리한다.
+In each row the person who set the threshold usually left no derivation of the value. Organize the rules obtained
+in this chapter's lab.
 
-1. **상대 임계를 우선한다.** 대상 자신이 선언했거나 스스로 드러낸 값을 기준으로 삼는다.
-   `TARGETDURATION` 과 `중앙값 × 3` 이 그 예다. 상수는 환경이 바뀌면 틀리고, 상대 임계는
-   따라 움직인다.
-2. **절대 상수를 쓸 수밖에 없으면 근거가 없다는 사실을 적는다.** 근거 없는 상수 자체는
-   죄가 아니다. 근거 없는 상수를 근거 있는 것처럼 두는 것이 문제다.
-3. **임계의 근거 강도와 판정의 강도를 맞춘다.** 유도 가능한 임계는 FAIL 을, 경험적 상수는
-   WARN 을 낸다. 이 저장소에서 TTFB 3초가 WARN 인 것은 옳고, 자막 이탈 5초가 FAIL 인 것은
-   어긋난다.
-4. **임계와 그 계산에 쓴 통계량을 출력에 노출한다.** 임계를 감춘 PASS 는 사정거리를 알 수
-   없는 PASS 다.
-5. **임계 있는 검사 옆에 임계 없는 검사를 둔다.** 이산 관측량(요청 실패 수, 매직 넘버
-   일치 여부)에는 임계가 필요 없고, 그런 검사는 회피에도 강하다(§22.7.3).
-6. **끌 수 있게 하되, 끈 사실이 결과에 남게 한다.** 끄는 스위치가 없으면 사용자는 도구
-   전체를 버린다. 스위치의 흔적이 없으면 "검사 안 함"이 "통과"로 읽힌다.
+1. **Prefer relative thresholds.** Base them on a value the target itself declared or itself revealed.
+   `TARGETDURATION` and `median × 3` are the examples. A constant is wrong when the environment changes, and a
+   relative threshold moves along.
+2. **If you must use an absolute constant, write down the fact that it has no basis.** A baseless constant itself
+   is no sin. Leaving a baseless constant looking based is the problem.
+3. **Match the basis strength of the threshold and the verdict strength.** A derivable threshold gives a FAIL, an
+   empirical constant a WARN. That TTFB 3 seconds is WARN in this repository is right, and that subtitle drift 5
+   seconds is FAIL is mismatched.
+4. **Expose the threshold and the statistic used to compute it in the output.** A PASS that hid the threshold is
+   a PASS whose range cannot be known.
+5. **Put a threshold-free check next to a threshold check.** A discrete observed quantity (request-failure
+   count, magic-number match) needs no threshold, and such a check is strong against evasion too (§22.7.3).
+6. **Let it be turned off, but let the fact of turning it off remain in the result.** Without an off switch the
+   user throws away the whole tool. Without a trace of the switch, "not checked" reads as "passed."
 
 ---
 
-## 22.7 보안 — 임계값은 공표된 공격면이다
+## 22.7 Security — a threshold is a published attack surface
 
-### 22.7.1 위협 모델부터
+### 22.7.1 The threat model first
 
-이 도구는 클라이언트 측 검증기다. 여기서 적대적 주체는 **결손이 있는 전달을 정상으로
-통과시키고 싶은 쪽** — 트랜스코더 오작동을 감추려는 운영, 광고 삽입 파이프라인의 이음매,
-품질 기준(SLA)을 맞춰야 하는 전달망이다. 콘텐츠 보호나 키 관리와는 **다른 축의 문제**이며,
-이 장은 그쪽을 다루지 않는다.
+This tool is a client-side verifier. Here the adversarial actor is **the side wanting to pass a delivery with
+loss as normal** — an operation hiding a transcoder malfunction, an ad-insertion pipeline's seam, a delivery
+network that must meet a quality standard (SLA). It is a **problem on a different axis** from content protection
+or key management, and this chapter does not treat that side.
 
-핵심 성질은 이것이다. **이 도구는 임계값을 리포트에 인쇄한다**(§22.3.6). 즉 회피에 필요한
-좌표가 공개돼 있다.
+The core property is this. **This tool prints the threshold in the report** (§22.3.6). That is, the coordinates
+needed for evasion are public.
 
-### 22.7.2 임계 회피(threshold evasion)
+### 22.7.2 Threshold evasion
 
-> **용어** — **임계 회피(threshold evasion)**: 탐지 규칙의 임계값을 알고 있는 주체가,
-> 각각의 행위를 임계 미만으로 잘게 나누어 탐지를 피하는 기법. 속도 제한(rate limit) 아래로
-> 기어가는 스캐닝, 이상 탐지 기준선 아래로 분산시키는 데이터 반출이 같은 형태다.
+> **Term** — **threshold evasion**: the technique where an actor who knows a detection rule's threshold splits
+> each action finely below the threshold to avoid detection. Scanning that crawls below a rate limit, and data
+> exfiltration distributed below an anomaly-detection baseline, are the same form.
 
-§22.3.5 의 실측 경계가 그대로 회피 파라미터가 된다. 30fps 에서 한 번에 **11프레임
-(0.367초)** 까지는 검출되지 않는다. 그리고 이 검사에는 **횟수 제한이 없다** — 각 간격을
-독립적으로 판정할 뿐 총량을 보지 않는다.
+§22.3.5's measured boundary becomes an evasion parameter as-is. At 30fps, up to **11 frames (0.367 second)** at a
+time is not detected. And this check has **no count limit** — it judges each interval independently and does not
+look at the total.
 
-| 30fps 45분(2700초) 영상 | 값 |
+| 30fps 45-minute (2700-second) video | Value |
 |---|---|
-| 10초마다 11프레임씩 제거 | 269곳 |
-| 사라진 총 시간 | 약 98.6초 |
-| 갭 스캔 검출 건수 | **0건** |
-| `길이 정합` 판정 | 드리프트 98.6초 ≥ TARGETDURATION 6초 → **FAIL** |
+| remove 11 frames every 10 seconds | 269 spots |
+| total time vanished | about 98.6 seconds |
+| gap scan detection count | **0** |
+| `length consistency` verdict | drift 98.6 seconds ≥ TARGETDURATION 6 seconds → **FAIL** |
 
-마지막 줄이 중요하다. **갭 스캔 단독으로는 뚫리지만, 길이 검사가 남는다.** 두 검사의
-사각이 다르기 때문이다 — 갭 스캔은 총량을 안 보고 길이 검사는 위치를 안 본다. 총량까지
-숨기려면 사라진 만큼을 다른 곳에서 늘려야 하고, 그러면 다시 간격이 벌어진다.
+The last row is important. **The gap scan alone is pierced, but the length check remains.** Because the two
+checks' blind spots differ — the gap scan does not look at the total and the length check does not look at
+positions. To hide even the total you must grow elsewhere by the amount vanished, and then the interval widens
+again.
 
-**하나의 임계는 뚫리고 서로 사각이 다른 두 임계는 함께 뚫기 어렵다.** 이것이 §22.6 의
-다섯 번째 규칙의 근거다.
+**One threshold is pierced, and two thresholds with mutually different blind spots are hard to pierce together.**
+This is the basis for §22.6's fifth rule.
 
-### 22.7.3 방어 — 임계 있는 검사와 없는 검사를 겹친다
+### 22.7.3 Defense — overlap a threshold check and a threshold-free check
 
-결손이 생기는 지점별로 어느 검사가 잡는지 정리하면, 남는 구멍이 정확히 드러난다.
+Organize which check catches each spot where loss arises, and the remaining hole is revealed exactly.
 
-| 결손이 생긴 곳 | 잡는 검사 | 임계 | 회피 난이도 |
+| Where the loss arose | The catching check | Threshold | Evasion difficulty |
 |---|---|---|---|
-| HTTP 요청 실패 | 세그먼트 수신 ([`report.py:167-172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L172)) | 없음 | 매우 높음 — 이산 사건 |
-| 200 응답인데 미디어가 아님 | 페이로드 유효성 ([`report.py:199-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L206)) | 없음 | 매우 높음 — 선두 바이트 |
-| 전송 중 TS 패킷 유실 | CC 검사 ([`report.py:235-236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L235-L236)) | 없음 | 중간 — 정확히 16의 배수면 미탐(제18장) |
-| 재조립 결과의 총 길이 이상 | 길이 정합 ([`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267)) | TARGETDURATION | 중간 — 총량만 본다 |
-| **오리진이 만든 프레임 결손** | **갭 스캔뿐** | 0.4초 | **낮음 — §22.7.2** |
+| HTTP request failure | segment receive ([`report.py:167-172`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L167-L172)) | none | very high — a discrete event |
+| a 200 response but not media | payload validity ([`report.py:199-206`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L199-L206)) | none | very high — leading byte |
+| TS packet loss in transit | CC check ([`report.py:235-236`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L235-L236)) | none | medium — a miss if exactly a multiple of 16 (Chapter 18) |
+| the reassembled result's total length anomaly | length consistency ([`report.py:267`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/report.py#L267)) | TARGETDURATION | medium — looks only at the total |
+| **a frame loss the origin made** | **the gap scan only** | 0.4 second | **low — §22.7.2** |
 
-마지막 행이 이 저장소가 메우지 못하는 구멍이다. 세그먼트가 전부 도착했고, 패킷도 온전하고,
-총 길이도 맞는데 프레임만 성기게 빠진 스트림은 **임계 있는 검사 하나에만 의존한다.**
+The last row is the hole this repository cannot fill. A stream where every segment arrived, the packets are
+intact, and the total length matches but only the frames are thinly missing **depends on a single threshold
+check.**
 
-보강 후보는 있지만 §22.5.3 의 벽에 다시 부딪힌다 — 세그먼트별 `EXTINF` 와 실제 프레임 수를
-대조하는 검사는 CFR 에서만 성립하고 VFR 에서는 무의미하다. **같은 정보 부재가 오탐의 원인이자
-방어 보강의 장애물**이라는 사실이 이 장의 마지막 대칭이다.
+There is a reinforcement candidate but it hits §22.5.3's wall again — a check comparing per-segment `EXTINF` and
+the actual frame count holds only under CFR and is meaningless under VFR. That **the same absence of information
+is both the cause of the false positive and the obstacle to the defense reinforcement** is this chapter's final
+symmetry.
 
-### 22.7.4 임계 공개의 양면
+### 22.7.4 The two faces of publishing the threshold
 
-| 관점 | 임계를 공개하면 |
+| View | If you publish the threshold |
 |---|---|
-| 감사자 | PASS 의 사정거리를 계산할 수 있다 — 판정을 검증 가능하게 만든다 |
-| 회피자 | 그 아래로 숨을 좌표를 얻는다 |
+| auditor | can compute a PASS's range — makes the verdict verifiable |
+| evader | gains coordinates to hide below |
 
-이 저장소는 공개를 택했고, 그 판단은 역할에서 나온다. **이것은 클라이언트 측 검증
-도구이므로 정보량이 정보 누출을 이긴다** — `cli._diagnose`(제5장)가 실패 원인을 자세히
-찍는 것과 같은 결정이다. 서버 측 이상 탐지 시스템이었다면 반대가 옳다. 탐지 임계를
-응답에 실어 보내는 시스템은 스스로 회피 매뉴얼을 배포하는 셈이다.
+This repository chose publication, and that judgment comes from the role. **This is a client-side verification
+tool so information content beats information leakage** — the same decision as `cli._diagnose` (Chapter 5)
+printing the failure cause in detail. Had it been a server-side anomaly-detection system, the opposite is right.
+A system that sends the detection threshold in the response amounts to distributing its own evasion manual.
 
-> **같은 값의 공개가 역할에 따라 미덕이 되기도 하고 취약점이 되기도 한다.** 제24장의
-> 패딩 오라클, 제16장의 콘텐츠 스니핑과 정확히 같은 형태의 문맥 의존성이다.
+> **Publishing the same value becomes a virtue or a vulnerability depending on the role.** It is context
+> dependence of exactly the same form as Chapter 24's padding oracle and Chapter 16's content sniffing.
 
-### 22.7.5 역할별로 해야 할 일
+### 22.7.5 What to do by role
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **검증 도구 작성자** | 임계와 그 계산에 쓴 통계량을 출력한다. 근거 없는 상수는 근거 없다고 주석에 적고, 그런 상수에는 FAIL 을 물리지 않는다. 임계 있는 검사 하나에 판정을 몰지 않는다 |
-| **CI 운영자** | 검사를 끄는 플래그(`--no-gap-scan` 등)에는 끈 이유를 주석으로 남기고 주기적으로 재검토한다. 끈 검사가 리포트에 "검사하지 않음"으로 남도록 요구한다 — 항목이 사라지는 것과 통과하는 것은 다르다 |
-| **감사자** | 임계값의 출처를 묻는다. "경험적으로 정했다"는 정당한 답일 수 있으나 **기록돼 있어야** 정당하다. PASS 를 볼 때 그 검사의 임계와 표본 수를 함께 요구한다 |
-| **탐지 규칙 설계자** | 이산 관측량으로 표현할 수 있는 검사를 먼저 만든다. 연속량에 임계를 걸 수밖에 없으면, 사각이 다른 검사를 옆에 둔다 |
-| **송출·전달 사업자** | 상대의 검증 도구가 임계 이하 결손을 보지 못한다는 사실이 곧 자사 품질 기준의 허점이다. 통과 = 무결이 아니다 |
+| **verification-tool author** | output the threshold and the statistic used to compute it. write in a comment that a baseless constant has no basis, and do not attach a FAIL to such a constant. do not pile the verdict onto a single threshold check |
+| **CI operator** | leave in a comment why for a flag turning off a check (`--no-gap-scan`, etc.) and re-review periodically. require the turned-off check to remain in the report as "not checked" — an item disappearing and passing are different |
+| **auditor** | ask the threshold's origin. "chosen empirically" can be a valid answer, but it is valid only if it is **recorded.** when you see a PASS, ask for that check's threshold and sample count together |
+| **detection-rule designer** | first make a check expressible with a discrete observed quantity. if you must put a threshold on a continuous quantity, place a check with a different blind spot next to it |
+| **delivery·transport operator** | the fact that the counterpart's verification tool cannot see loss below the threshold is a hole in your own quality standard. passing ≠ intact |
 
 ---
 
-## 22.8 한계와 미해결
+## 22.8 Limits and open questions
 
-정직하게 적어 둔다.
+Written honestly.
 
-- **`factor 3.0` 과 `floor 0.4` 의 출처를 확인하지 못했다.** §22.3.3·§22.3.4 의 유도는
-  값에서 거꾸로 재구성한 것이고, 그것이 설계 의도였다는 증거는 코드·주석·README 어디에도
-  없다. 사후 정당화와 설계 근거는 다르다.
-- **실측은 합성 스트림 여섯 종으로 했다.** `testsrc2` 와 `color` 로 만든 파일이므로 실제
-  방송 소재(3:2 풀다운, 가변 GOP, 광고 삽입 이음매, 장면 전환이 잦은 실사)에서 같은
-  숫자가 나온다는 보장은 없다. 특히 §22.3.1 의 "30fps 에서는 재정렬 도약이 166.7ms"는
-  `-bf 3` 한 조건의 값이고, 계층적 B-프레임(B-pyramid)이나 더 긴 재정렬 지연에서는 커진다.
-- **대안 통계량을 시도하지 않았다.** 중앙값 절대 편차(MAD)나 사분위수 기반 임계가 VFR
-  오탐을 줄이는지는 측정하지 않았다. 줄일 것 같다는 짐작은 근거가 아니다.
-- **p95 의 표본 수 의존성은 코드에서 계산했고 실제 TTFB 분포로 확인하지 않았다.**
-  인덱스 계산은 확실하지만, 실제 송출에서 그 성질이 얼마나 자주 문제가 되는지는 모른다.
-- **§22.7.2 의 회피 시나리오는 부분적으로만 실측이다.** 11프레임 단일 결손이 통과한다는
-  것은 파일을 만들어 확인했다. 269곳에 흩뿌린 경우와 그때의 길이 검사 반응은 산술
-  계산이고 실제로 그런 파일을 만들어 돌려보지 않았다.
-- **`--no-gap-scan` 이 리포트에 흔적을 남기지 않는다는 지적은 코드 독해에서 나온 것이다.**
-  개선안(검사 항목을 "검사하지 않음"으로 추가)의 부작용 — 예컨대 항목 수에 의존하는
-  테스트나 JSON 소비자가 깨지는지 — 은 검토하지 않았다.
-- **자막 임계 5.0s · 0.5s · 20% 의 근거를 찾지 못했다.** 이 장은 이를 "근거 없음"으로
-  분류했지만, 근거가 코드 밖(개발 중 실측)에 있었을 가능성은 배제할 수 없다. 없는 것과
-  기록되지 않은 것은 다르고, 읽는 사람에게는 같다.
-
----
-
-## 22.9 요약
-
-1. **관측 지표를 옳게 골라도 판정은 끝나지 않는다.** 지표 위에 임계를 놓는 순간 오탐과
-   미탐의 교환이 시작되고, 임계값은 그 둘 사이에서 자리만 고를 수 있다. 두 오류를 동시에
-   줄이려면 임계가 아니라 **지표**를 바꿔야 한다.
-2. **검증 도구에서 오탐은 미탐보다 싼 오류가 아니라 지연된 미탐이다.** 오탐이 잦으면
-   사용자가 검사를 끄고, 그 순간 미탐률은 100%가 된다. `--no-gap-scan` 은 그 전환을 코드로
-   인정한 스위치다.
-3. **`max(0.4, 중앙값 × 3)` 에서 factor 는 "3프레임"이라는 개수를, floor 는 "0.4초"라는
-   시간을 고정한다.** 두 값의 교차점은 7.5fps 이고, 실사용 프레임률은 전부 그 위이므로
-   **판정을 실제로 내리는 값은 근거가 약한 `0.4` 하나다.**
-4. **정렬·중앙값·floor 세 결정은 모두 저프레임률과 가변 프레임률이라는 같은 구석에서만
-   차이를 낸다.** 30fps 정상 스트림만으로 시험하면 세 결정을 전부 빼먹어도 증상이 없다.
-   테스트 조건이 설계 결정의 가치를 가린다.
-5. **VFR 오탐은 임계값 문제가 아니다.** PTS 는 "언제 표시되는가"만 말하고 "여기 프레임이
-   있어야 했는가"는 말하지 않는다. 사라진 프레임과 애초에 없던 프레임은 타임라인에 같은
-   흔적을 남기므로, 어떤 임계값도 둘을 가르지 못한다. 실측: 데이터 손실 0 인 VFR 파일이
-   결손 4건·6.00초로 FAIL 을 받는다.
-6. **임계의 근거 강도와 판정의 강도를 맞춰야 한다.** TTFB 3초가 WARN(종료 코드 0)인 것은
-   옳고, 근거 없는 자막 이탈 5초가 FAIL 인 것은 어긋난다. 그리고 상대 임계
-   (`TARGETDURATION`, 자기 중앙값)는 절대 상수보다 언제나 낫다 — 다만 기준이 되는 선언값이
-   없으면 규칙째 사라진다.
-7. **임계값은 공표된 공격면이다.** 30fps 에서 한 번에 11프레임까지는 검출되지 않고 횟수
-   제한도 없다. 방어는 임계를 조이는 것이 아니라 **사각이 다른 검사를 겹치는 것**이다 —
-   임계 없는 이산 검사(수신 실패, 선두 바이트, CC)가 그 역할을 한다.
+- **Could not confirm the origin of `factor 3.0` and `floor 0.4`.** §22.3.3·§22.3.4's derivations are
+  reconstructed backward from the values, and there is no evidence it was the design intent in code·comment·
+  README. Post-hoc justification and design basis are different.
+- **The measurement was done with six kinds of synthetic stream.** They are files made with `testsrc2` and
+  `color`, so there is no guarantee the same numbers come out on real broadcast material (3:2 pulldown, variable
+  GOP, ad-insertion seams, live footage with frequent scene changes). In particular §22.3.1's "at 30fps the
+  reordering jump is 166.7ms" is a value for one condition, `-bf 3`, and it grows with hierarchical B-frames
+  (B-pyramid) or a longer reordering delay.
+- **Did not try alternative statistics.** Whether a median absolute deviation (MAD) or quartile-based threshold
+  reduces VFR false positives was not measured. A guess that it likely would is no basis.
+- **The p95 sample-count dependency was computed in the code and not confirmed with an actual TTFB
+  distribution.** The index computation is certain, but how often that property becomes a problem in real
+  delivery is unknown.
+- **§22.7.2's evasion scenario is only partly measured.** That an 11-frame single loss passes was confirmed by
+  making a file. The case scattered across 269 spots and the length check's reaction then are arithmetic and I
+  did not actually make and run such a file.
+- **The point that `--no-gap-scan` leaves no trace in the report comes from reading the code.** The side effect
+  of the improvement (adding the check item as "not checked") — for instance whether a test or JSON consumer
+  depending on the item count breaks — was not reviewed.
+- **Could not find the basis for the subtitle thresholds 5.0s · 0.5s · 20%.** This chapter classified these as
+  "no basis," but the possibility that the basis was outside the code (measured during development) cannot be
+  excluded. Nonexistent and unrecorded are different, and to the reader they are the same.
 
 ---
 
-**다음 장** — 제4부는 여기서 끝난다. 지금까지의 검사는 모두 **바이트가 무엇인지 볼 수
-있다**는 전제 위에 있었다. 세그먼트가 암호화돼 있으면 그 전제부터 무너진다. 제5부는
-`EXT-X-KEY` 가 지정하는 AES-128-CBC 복호화에서 시작한다. 제23장은 IV(초기화 벡터)가
-명시되지 않았을 때 **media sequence number 를 IV 로 쓴다**는 규칙이 무엇을 뜻하는지,
-예측 가능한 IV 가 언제 문제이고 여기서는 왜 덜 문제인지를 다룬다.
+## 22.9 Summary
+
+1. **Choosing the observation metric right does not finish the verdict.** The moment you put a threshold on the
+   metric, the false-positive·false-negative trade begins, and the threshold can only pick a spot between the
+   two. To reduce both errors at once you must change not the threshold but the **metric.**
+2. **In a verification tool a false positive is not a cheaper error than a false negative but a delayed false
+   negative.** With frequent false positives the user turns off the check, and at that moment the false-negative
+   rate becomes 100%. `--no-gap-scan` is a switch acknowledging that transition in code.
+3. **In `max(0.4, median × 3)` factor fixes a count, "3 frames," and floor a time, "0.4 second."** The two
+   values' crossover is 7.5fps, and real-world frame rates are all above it, so **the value that actually gives
+   the verdict is the one weakly-based `0.4`.**
+4. **The three decisions sort·median·floor all make a difference only in the same corner: low frame rate and
+   variable frame rate.** Test only with a 30fps normal stream and you can omit all three decisions with no
+   symptom. The test condition hides the value of the design decisions.
+5. **A VFR false positive is not a threshold problem.** PTS says only "when is it displayed" and not "should
+   there have been a frame here." A vanished frame and a frame never there leave the same trace on the timeline,
+   so no threshold can split the two. Measured: a VFR file with 0 data loss gets a FAIL with 4 losses·6.00
+   seconds.
+6. **The basis strength of the threshold and the verdict strength must be matched.** That TTFB 3 seconds is WARN
+   (exit code 0) is right, and that a baseless subtitle drift of 5 seconds is FAIL is mismatched. And a relative
+   threshold (`TARGETDURATION`, own median) is always better than an absolute constant — only, if the declared
+   value to base on is absent, the rule vanishes wholesale.
+7. **A threshold is a published attack surface.** At 30fps up to 11 frames at a time is not detected and there is
+   no count limit either. Defense is not tightening the threshold but **overlapping checks with different blind
+   spots** — threshold-free discrete checks (receive failure, leading byte, CC) play that role.
+
+---
+
+**Next chapter** — Part 4 ends here. Every check so far stood on the premise that **you can see what the bytes
+are.** If the segment is encrypted, that premise breaks first. Part 5 begins with the AES-128-CBC decryption
+`EXT-X-KEY` specifies. Chapter 23 covers what the rule "**use the media sequence number as the IV**" means when
+the IV (initialization vector) is not stated, and when a predictable IV is a problem and why it is less of one
+here.

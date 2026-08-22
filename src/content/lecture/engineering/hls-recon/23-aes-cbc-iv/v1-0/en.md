@@ -1,44 +1,42 @@
 ---
-untranslated: ko
-title: "AES-128-CBC 와 IV 유도 규칙"
-description: "media sequence 를 IV 로 쓴다는 것의 의미"
-date: 2026-08-18
+title: "AES-128-CBC and the IV Derivation Rule"
+description: "What it means to use the media sequence as the IV"
+date: 2026-07-11
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-23-aes-cbc-iv.svg
 ---
-## 23.0 이 장에서 답할 것
+## 23.0 What this chapter answers
 
-1. `AES-128-CBC` 는 왜 이름이 둘인가 — 블록 암호와 운용 모드는 각각 무엇을 하는 층인가
-2. IV(초기화 벡터)는 무엇을 막고, 무엇은 막지 못하는가
-3. `EXT-X-KEY` 에 IV 속성이 없으면 **media sequence number 를 IV 로 쓴다**는 규칙은
-   정확히 무엇이며, IV 가 완전히 예측 가능하다는 사실은 여기서 문제인가
-4. 예측 가능한 IV 가 공격이 되는 조건은 무엇이고, 그 조건 중 **어느 것이 여기서
-   성립하지 않는가**
-5. CBC 가 하지 않는 일 — 왜 오늘날의 표준은 AEAD 인가
+1. Why does `AES-128-CBC` have two names — what layer does the block cipher and the mode of operation each do?
+2. What does the IV (initialization vector) block, and what does it fail to block?
+3. When `EXT-X-KEY` has no IV attribute, what exactly is the rule "**use the media sequence number as the IV**",
+   and is the fact that the IV is fully predictable a problem here?
+4. What is the condition under which a predictable IV becomes an attack, and **which of those conditions does not
+   hold here?**
+5. What CBC does not do — why is today's standard AEAD?
 
-4번이 이 장의 정점이다. "예측 가능한 IV 는 위험하다"는 문장은 절반만 맞고, 나머지
-절반을 채우는 것이 위협 모델이다.
+The fourth is this chapter's summit. The sentence "a predictable IV is dangerous" is only half right, and what
+fills the other half is the threat model.
 
 ---
 
-## 23.1 문제 — 암호문 앞에서는 지금까지의 검사가 전부 멈춘다
+## 23.1 The problem — before ciphertext, every check so far halts
 
-제4부의 검사는 모두 같은 전제 위에 서 있었다. **바이트를 볼 수 있다**는 전제다.
-제14장의 선두 바이트 판별은 `0x47` 을 찾고, 제17·18장의 연속성 카운터 검사는 188바이트
-주기로 패킷 헤더를 읽는다. 암호화된 세그먼트에서 그 전제는 첫 바이트부터 무너진다.
+Part 4's checks all stood on the same premise. The premise that **you can see the bytes.** Chapter 14's
+leading-byte determination looks for `0x47`, and Chapters 17·18's continuity-counter check reads packet headers
+at the 188-byte period. In an encrypted segment that premise breaks from the very first byte.
 
-로컬에서 만든 AES-128 스트림의 세그먼트 선두 16바이트를 그대로 옮긴다(실측).
+Copy the leading 16 bytes of a segment from a locally made AES-128 stream as-is (measured).
 
 ```
 $ xxd -l 16 enc/seg000.ts
 00000000: 2f05 b85b 9b27 a315 f60d 8de3 f882 f98e  /..[.'..........
 ```
 
-`0x47` 이 없다. 이 저장소의 `sniff()` 에 그대로 넣으면 `unknown` 이 나온다 — 즉 **검증
-도구가 정상 세그먼트를 "미디어가 아님"으로 판정한다.** 복호화가 먼저 끝나야 제4부의
-검사가 비로소 의미를 갖는다는 뜻이고, 그래서 [`cli.py:456-458`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L456-L458) 의 순서는 협상 대상이
-아니다.
+There is no `0x47`. Put it into this repository's `sniff()` as-is and `unknown` comes out — that is, **the
+verification tool judges a normal segment as "not media."** It means decryption must finish first for Part 4's
+checks to gain meaning at all, and so the order at [`cli.py:456-458`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L456-L458) is not negotiable.
 
 ```python
 # cli.py:456-458
@@ -47,8 +45,8 @@ $ xxd -l 16 enc/seg000.ts
             data = keys.decrypt(data, seg.key, seg.seq)
 ```
 
-무엇으로 복호화할지는 플레이리스트 한 줄이 지시한다. 그 줄을 만들어 내는 자산은
-회귀 테스트가 직접 생성한다.
+What to decrypt with is directed by one line of the playlist. The asset producing that line is generated
+directly by the regression test.
 
 ```bash
 # tests/run.sh:46-49
@@ -58,163 +56,164 @@ ffmpeg -v error -y -i source.mp4 -c copy -f hls -hls_time 6 -hls_playlist_type v
   -hls_key_info_file enc/keyinfo -hls_segment_filename "enc/seg%03d.ts" enc/index.m3u8
 ```
 
-`/dev/urandom` 에서 16바이트를 뽑아 키 파일로 쓰고(§23.8 에서 볼 RFC 8216 §5.1 의
-"16옥텟 배열" 그대로), 키 정보 파일에 **URI 로 쓸 주소**와 **로컬 경로**를 두 줄로
-적어 ffmpeg 에 넘긴다. 같은 방식으로 로컬에 만든 스트림에서 ffmpeg 8.1.1 이 실제로
-써넣은 줄은 이렇다(실측).
+It pulls 16 bytes from `/dev/urandom` and uses them as the key file (exactly the "16-octet array" of RFC 8216
+§5.1 seen in §23.8), and writes into the key-info file **the address to use as the URI** and the **local path**
+in two lines, handing it to ffmpeg. The line ffmpeg 8.1.1 actually wrote in a stream made locally the same way
+is this (measured).
 
 ```
 #EXT-X-KEY:METHOD=AES-128,URI="http://127.0.0.1:8899/enc/enc.key",IV=0x00000000000000000000000000000000
 ```
 
-세 가지가 적혀 있다 — **알고리즘**(`METHOD`), **키를 받을 자리**(`URI`), **IV**. 그런데
-IV 속성은 규격상 **선택**이다. 없으면 어떻게 되는가. 규격이 정해 둔 기본값이 있고,
-그 기본값이 이 장의 주제다.
+Three things are written — the **algorithm** (`METHOD`), the **place to get the key** (`URI`), and the **IV.** And
+yet the IV attribute is **optional** by spec. What happens if it is absent. There is a default the spec set, and
+that default is this chapter's subject.
 
 ---
 
-## 23.2 원리 ① — 블록 암호와 운용 모드는 다른 층이다
+## 23.2 Principle ① — the block cipher and the mode of operation are different layers
 
-`AES-128-CBC` 라는 이름은 두 개의 결정이 붙어 있는 것이다. 둘을 분리하지 않으면 IV 가
-왜 필요한지 설명할 수 없다.
+The name `AES-128-CBC` is two decisions stuck together. Without separating the two you cannot explain why the IV
+is needed.
 
-> **용어** — **블록 암호(block cipher)**: 고정 길이 블록 하나를 키로 치환하는 함수.
-> 평문 블록과 키를 받아 같은 길이의 암호문 블록을 내놓고, 키가 있으면 역함수로 되돌릴
-> 수 있다. AES 의 블록 길이는 **언제나 128비트(16바이트)** 이며 키 길이만 128·192·256비트
-> 중에서 고른다. `AES-128` 의 128 은 **키 길이**이지 블록 길이가 아니다.
+> **Term** — **block cipher**: a function substituting one fixed-length block with a key. It takes a plaintext
+> block and a key and puts out a ciphertext block of the same length, and with the key it can be undone by the
+> inverse function. AES's block length is **always 128 bits (16 bytes)**, and only the key length is chosen from
+> 128·192·256 bits. The 128 in `AES-128` is the **key length**, not the block length.
 
-여기서 곧바로 문제가 생긴다. 세그먼트 하나는 40만 바이트가 넘는다. 16바이트짜리
-함수로 그것을 어떻게 처리하는가. 이 물음에 답하는 규칙이 운용 모드다.
+Here a problem arises immediately. One segment exceeds 400,000 bytes. How do you process that with a 16-byte
+function. The rule answering this question is the mode of operation.
 
-> **용어** — **운용 모드(mode of operation)**: 고정 길이 블록 암호를 임의 길이 메시지에
-> 적용하는 규칙. 블록으로 쪼개는 방법, 각 블록에 무엇을 섞을지, 마지막 블록의 남는
-> 자리를 어떻게 채울지를 정한다. 블록 암호 자체는 모드를 알지 못한다.
+> **Term** — **mode of operation**: the rule applying a fixed-length block cipher to an arbitrary-length message.
+> It sets how to split into blocks, what to mix into each block, and how to fill the last block's leftover slot.
+> The block cipher itself does not know the mode.
 
-### 23.2.1 가장 단순한 모드가 실패하는 방식 — ECB
+### 23.2.1 The way the simplest mode fails — ECB
 
-블록으로 쪼개서 하나씩 그냥 암호화하는 모드가 **ECB(Electronic Codebook)** 다. 구현이
-가장 쉽고, 실패도 가장 유명하다. 같은 평문 블록은 언제나 같은 암호문 블록이 된다.
+The mode that splits into blocks and just encrypts them one by one is **ECB (Electronic Codebook).** It is the
+easiest to implement and its failure is the most famous. The same plaintext block always becomes the same
+ciphertext block.
 
-이것이 실제 세그먼트에서 얼마나 새는지 측정할 수 있다. 로컬 재현 스트림의 세그먼트
-평문(436,348바이트, 온전한 16바이트 블록 27,271개)을 같은 키로 ECB 와 CBC 로 각각
-암호화하고, 블록 중복 통계를 낸 결과다.
+You can measure how much this leaks in an actual segment. The result of encrypting a local reproduction stream's
+segment plaintext (436,348 bytes, 27,271 whole 16-byte blocks) with the same key under ECB and CBC each, and
+producing block-duplication statistics.
 
-| 대상 | 블록 수 | 서로 다른 블록 | 중복 그룹에 속한 블록 | 최다 반복 |
+| Target | Block count | Distinct blocks | Blocks in a duplicate group | Most repeated |
 |---|---|---|---|---|
-| 평문 MPEG-TS | 27,271 | 26,605 | 671 (2.5%) | **662회** |
-| 같은 평문의 ECB 암호문 | 27,271 | **26,605** | **671 (2.5%)** | **662회** |
-| 같은 평문의 CBC 암호문 | 27,271 | 27,271 | 0 (0.0%) | 1회 |
+| plaintext MPEG-TS | 27,271 | 26,605 | 671 (2.5%) | **662 times** |
+| ECB ciphertext of the same plaintext | 27,271 | **26,605** | **671 (2.5%)** | **662 times** |
+| CBC ciphertext of the same plaintext | 27,271 | 27,271 | 0 (0.0%) | 1 time |
 
-**ECB 암호문의 중복 통계가 평문과 한 자리도 다르지 않다.** 662회 반복된 블록은
-`ffffffffffffffffffffffffffffffff` — MPEG-TS 의 adaptation field 채움 바이트다. 암호화한
-뒤에도 "여기 같은 내용이 662번 있다"는 사실이 그대로 남는다.
+**The ECB ciphertext's duplication statistics do not differ from the plaintext by a single digit.** The block
+repeated 662 times is `ffffffffffffffffffffffffffffffff` — MPEG-TS's adaptation-field stuffing bytes. Even after
+encryption the fact "there is the same content here 662 times" remains as-is.
 
-내용을 읽지 못해도 **구조는 읽힌다.** 이것이 ECB 로 암호화한 비트맵 이미지에서 원본
-윤곽이 그대로 보이는 유명한 예시의 정체이고, 위 표는 그 현상이 이 저장소가 다루는
-바로 그 바이트열에서도 일어난다는 실측이다.
+Even unable to read the content, **the structure is read.** This is the identity of the famous example where an
+ECB-encrypted bitmap image still shows the original outline, and the table above is the measurement that this
+phenomenon happens in the very byte string this repository handles.
 
-### 23.2.2 모드별 성질
+### 23.2.2 The properties by mode
 
-| 모드 | 블록 간 결합 | 초기값 | 필요한 성질 | 병렬 복호 | 인증 |
+| Mode | Inter-block coupling | Initial value | Property needed | Parallel decryption | Authentication |
 |---|---|---|---|---|---|
-| **ECB** | 없음 | 없음 | — | 가능 | 없음 |
-| **CBC** | 직전 **암호문** 블록과 XOR | IV | **예측 불가능성** | 가능 | 없음 |
-| **CTR** | 없음(카운터 스트림) | nonce | **유일성** | 가능 | 없음 |
-| **GCM** | CTR + 인증 태그 | nonce | **유일성** | 가능 | **있음** |
+| **ECB** | none | none | — | possible | none |
+| **CBC** | XOR with the previous **ciphertext** block | IV | **unpredictability** | possible | none |
+| **CTR** | none (counter stream) | nonce | **uniqueness** | possible | none |
+| **GCM** | CTR + authentication tag | nonce | **uniqueness** | possible | **yes** |
 
-> **용어** — **nonce(number used once, 논스)**: 같은 키 아래에서 **두 번 쓰이지 않아야
-> 하는** 값. IV 와 혼용되지만 요구 조건이 다르다 — CBC 의 IV 는 예측 불가능해야 하고,
-> CTR·GCM 의 nonce 는 예측 가능해도 되지만 재사용되면 안 된다.
+> **Term** — **nonce (number used once)**: a value that **must not be used twice** under the same key. It is used
+> interchangeably with IV but the requirements differ — CBC's IV must be unpredictable, and CTR·GCM's nonce may
+> be predictable but must not be reused.
 
-HLS 가 고른 것은 CBC 다. 2009년 설계 시점의 하드웨어 복호화 파이프라인이 CBC 를 전제로
-하고 있었고, 그때는 AEAD 가 아직 기본 선택지가 아니었다. 이 선택의 대가는 §23.8 에서
-계산한다.
+What HLS chose is CBC. The hardware-decryption pipeline at the 2009 design time presupposed CBC, and back then
+AEAD was not yet the default choice. The price of this choice is computed in §23.8.
 
 ---
 
-## 23.3 원리 ② — CBC 와 IV 의 자리
+## 23.3 Principle ② — CBC and the IV's slot
 
-CBC(Cipher Block Chaining, 암호 블록 연쇄)는 각 평문 블록을 암호화하기 **전에** 직전
-암호문 블록과 XOR 한다. 식으로 쓰면 이렇다.
+CBC (Cipher Block Chaining) XORs each plaintext block with the previous ciphertext block **before** encrypting
+it. Written as a formula it is this.
 
 ```
-암호화   Cᵢ = E_K(Pᵢ ⊕ Cᵢ₋₁)
-복호화   Pᵢ = D_K(Cᵢ) ⊕ Cᵢ₋₁
+encrypt   Cᵢ = E_K(Pᵢ ⊕ Cᵢ₋₁)
+decrypt   Pᵢ = D_K(Cᵢ) ⊕ Cᵢ₋₁
 ```
 
-첫 블록에는 "직전 암호문"이 없다. 그 빈자리를 외부에서 채워 넣는 값이 IV 다.
+The first block has no "previous ciphertext." The value filling that empty slot from outside is the IV.
 
-> **용어** — **IV(Initialization Vector, 초기화 벡터)**: 운용 모드가 첫 블록을 처리할 때
-> 필요한 초기값. CBC 에서는 `C₀` 의 자리에 들어가며 블록 길이와 같은 16바이트다.
-> **비밀이 아니다** — 복호화하는 쪽이 알아야 하므로 대개 평문으로 함께 전달된다.
+> **Term** — **IV (Initialization Vector)**: the initial value the mode of operation needs when processing the
+> first block. In CBC it goes into `C₀`'s slot and is 16 bytes, the same as the block length. **It is not a
+> secret** — the decrypting side must know it, so it is usually delivered together in plaintext.
 
-![CBC 복호화의 연쇄와 IV 의 자리](/images/lecture/hls-recon/23-cbc-chain.svg)
+![The chaining of CBC decryption and the IV's slot](/images/lecture/hls-recon/23-cbc-chain.svg)
 
-*그림 23-1 — CBC 복호화의 연쇄와 IV 의 자리*
+*Figure 23-1 — the chaining of CBC decryption and the IV's slot*
 
-도식에서 두 가지가 바로 읽힌다. 이 장의 나머지 대부분이 이 둘에서 나온다.
+Two things are read immediately from the diagram. Most of the rest of this chapter comes from these two.
 
-- **IV 는 첫 블록에만 닿는다.** `P₂` 는 `C₁` 만 참조하고 IV 를 보지 않는다. 따라서 IV 가
-  틀리면 어긋나는 것은 `P₁` 뿐이다.
-- **복호화는 앞쪽으로 전파되지 않는다.** `Cᵢ` 를 건드리면 `Pᵢ` 와 `Pᵢ₊₁` 만 영향을 받고
-  그 앞은 멀쩡하다. 오류가 국소화된다.
+- **The IV touches only the first block.** `P₂` references only `C₁` and does not see the IV. So if the IV is
+  wrong, the only thing that goes off is `P₁`.
+- **Decryption does not propagate forward.** Touch `Cᵢ` and only `Pᵢ` and `Pᵢ₊₁` are affected and what is before
+  is fine. The error is localized.
 
-### 23.3.1 IV 가 실제로 무엇을 막는가
+### 23.3.1 What the IV actually blocks
 
-IV 의 임무는 **같은 평문이 같은 암호문이 되는 것을 막는 것**이다. 이것도 측정할 수 있다.
-앞 10블록(160바이트)이 완전히 같고 11번째 블록만 다른 두 평문을 같은 키로 암호화했다.
+The IV's mission is **to block the same plaintext becoming the same ciphertext.** This too can be measured. I
+encrypted two plaintexts, identical in the first 10 blocks (160 bytes) and differing only in the 11th block,
+with the same key.
 
-| 두 평문 | IV | 일치하는 선두 암호문 블록 |
+| Two plaintexts | IV | Matching leading ciphertext blocks |
 |---|---|---|
-| 앞 10블록 동일 | 둘 다 `0x00…00` | **10 / 11** |
-| 앞 10블록 동일 | `0x00…00` 과 `0x00…01` | **0 / 11** |
+| first 10 blocks identical | both `0x00…00` | **10 / 11** |
+| first 10 blocks identical | `0x00…00` and `0x00…01` | **0 / 11** |
 
-같은 IV 를 쓰면 공통 접두의 길이가 암호문에 그대로 노출된다. **"이 두 메시지는 앞
-160바이트가 같다"** 는 정보가 키 없이 읽힌다. IV 를 1 만큼만 바꿔도 첫 블록부터
-달라지므로 그 정보가 사라진다.
+Use the same IV and the common-prefix length is exposed as-is in the ciphertext. The information **"these two
+messages have the same first 160 bytes"** is read without the key. Change the IV by just 1 and it differs from
+the first block so that information vanishes.
 
-즉 IV 가 제공하는 것은 기밀성이 아니라 **비결정성(non-determinism)** 이다. 같은 키로
-같은 평문을 두 번 암호화했을 때 두 암호문이 서로 무관해 보이게 만드는 것.
+That is, what the IV provides is not confidentiality but **non-determinism.** Making two ciphertexts of the same
+plaintext under the same key look mutually unrelated.
 
-### 23.3.2 마지막 블록 — 패딩은 다음 장으로
+### 23.3.2 The last block — padding to the next chapter
 
-CBC 는 평문 길이가 16의 배수여야 한다. MPEG-TS 세그먼트는 188바이트의 배수이고 188은
-16의 배수가 아니므로 거의 언제나 남는다. 그 자리를 채우는 규칙이 PKCS#7 이다.
-실측 예를 하나만 든다.
+CBC requires the plaintext length be a multiple of 16. An MPEG-TS segment is a multiple of 188, and 188 is not a
+multiple of 16, so there is almost always a remainder. The rule filling that slot is PKCS#7. One measured example
+only.
 
 ```
-평문 436,348바이트  (= 188 × 2,321 패킷)
-암호문 436,352바이트 → 차이 4바이트, 값은 04 04 04 04
+plaintext 436,348 bytes  (= 188 × 2,321 packets)
+ciphertext 436,352 bytes → difference 4 bytes, value 04 04 04 04
 ```
 
-패딩 제거가 왜 이 저장소에서 **예외를 던지지 않는 방식**으로 구현되어 있는지는
-제24장 전체의 주제다. 여기서는 "마지막 블록에 규칙에 따른 채움이 들어간다"까지만
-확인하고 넘어간다.
+Why padding removal is implemented in this repository **in a way that does not throw an exception** is the
+subject of all of Chapter 24. Here we confirm only up to "a rule-based fill goes into the last block" and move
+on.
 
-### 23.3.3 세그먼트 경계마다 CBC 를 다시 시작한다
+### 23.3.3 CBC restarts at each segment boundary
 
-RFC 8216 §4.3.2.4 의 문장을 그대로 옮긴다.
+Copy RFC 8216 §4.3.2.4's sentence as-is.
 
 > "CBC is restarted on each segment boundary, using either the Initialization Vector (IV)
 > attribute value or the Media Sequence Number as the IV."
 
-이 한 문장이 이 저장소의 구조 전체를 지탱한다. **세그먼트마다 사슬이 끊긴다**는 것은
-세그먼트 N 을 복호화하는 데 세그먼트 N-1 이 필요 없다는 뜻이다. 그래서
+This one sentence holds up this repository's entire structure. That **the chain breaks per segment** means
+decrypting segment N does not need segment N-1. So
 
-- 제8장의 **병렬 수신**이 성립한다 — 순서와 무관하게 받아서 각자 풀면 된다.
-- **임의 위치 재생**이 성립한다 — 중간부터 틀어도 그 세그먼트만 있으면 된다.
-- **부분 검증**이 성립한다 — 세그먼트 하나만 받아 그것만 복호화해 볼 수 있다.
+- Chapter 8's **parallel receiving** holds — receive out of order and unpack each.
+- **Random-position playback** holds — start from the middle and only that segment is needed.
+- **Partial verification** holds — receive just one segment and decrypt only it.
 
-만약 파일 전체를 하나의 CBC 사슬로 묶었다면 셋 다 불가능하다. 제19장에서 본
-"연결에 대한 닫힘"(유효한 TS 둘을 이어붙이면 다시 유효한 TS)이 암호 층에서도
-유지되도록 규격이 설계된 것이다. **대신 세그먼트 수만큼의 IV 가 필요해진다.**
-그 IV 를 어디서 구할 것인가 — 다음 절의 물음이다.
+Had the whole file been tied into one CBC chain, all three would be impossible. It is that the spec designed the
+"closure under concatenation" (join two valid TS and get valid TS again) seen in Chapter 19 to be maintained at
+the crypto layer too. **In exchange, as many IVs as there are segments become needed.** Where to obtain that IV
+is the next section's question.
 
 ---
 
-## 23.4 규격 — RFC 8216 의 IV 유도 규칙
+## 23.4 The spec — RFC 8216's IV derivation rule
 
-RFC 8216 §5.2 "IV for AES-128" 의 세 문장이 규칙의 전부다. 원문 그대로 옮긴다.
+The three sentences of RFC 8216 §5.2 "IV for AES-128" are the whole rule. Copy the original text as-is.
 
 > "[AES_128] REQUIRES the same 16-octet IV to be supplied when encrypting and decrypting."
 >
@@ -226,70 +225,66 @@ RFC 8216 §5.2 "IV for AES-128" 의 세 문장이 규칙의 전부다. 원문 �
 > Media Segment, by putting its big-endian binary representation into a 16-octet
 > (128-bit) buffer and padding (on the left) with zeros."
 
-![RFC 8216 의 IV 유도 두 갈래](/images/lecture/hls-recon/23-iv-derivation.svg)
+![The two branches of RFC 8216's IV derivation](/images/lecture/hls-recon/23-iv-derivation.svg)
 
-*그림 23-2 — RFC 8216 의 IV 유도 두 갈래*
+*Figure 23-2 — the two branches of RFC 8216's IV derivation*
 
-> **용어** — **media sequence number(미디어 시퀀스 번호)**: 미디어 플레이리스트 안에서
-> 세그먼트마다 부여되는 정수 일련번호. 첫 세그먼트의 번호는 `EXT-X-MEDIA-SEQUENCE`
-> 태그의 값(없으면 0)이고, 이후 세그먼트마다 1씩 증가한다. 라이브 송출에서 창이
-> 밀려도 **같은 세그먼트의 번호는 변하지 않는다** — 그래서 재생기가 어느 조각을
-> 이미 봤는지 판단할 수 있다.
+> **Term** — **media sequence number**: the integer serial number assigned per segment within a media playlist.
+> The first segment's number is the value of the `EXT-X-MEDIA-SEQUENCE` tag (0 if absent), and each subsequent
+> segment increases by 1. Even if the window slides in a live delivery, **the same segment's number does not
+> change** — so the player can judge which piece it has already seen.
 
-두 갈래의 성질을 정리하면 이렇다.
+Organize the two branches' properties and it is this.
 
-| | ① IV 속성이 있을 때 | ② IV 속성이 없을 때 |
+| | ① When the IV attribute is present | ② When the IV attribute is absent |
 |---|---|---|
-| IV 값 | 적힌 16바이트 그대로 | media sequence number 의 128비트 big-endian |
-| 세그먼트 간 변화 | **없음** — 같은 KEY 태그 아래 전부 동일 | 세그먼트마다 정확히 +1 |
-| 예측 가능성 | 플레이리스트를 읽으면 알 수 있다 | **플레이리스트를 읽지 않아도 알 수 있다** |
-| 비밀성 | 없음(평문으로 적힘) | 없음 |
-| 규격 버전 | 2 이상 필요 | 제한 없음 |
+| IV value | the written 16 bytes as-is | the media sequence number's 128-bit big-endian |
+| Change between segments | **none** — all identical under the same KEY tag | exactly +1 per segment |
+| Predictability | knowable by reading the playlist | **knowable without reading the playlist** |
+| Secrecy | none (written in plaintext) | none |
+| Spec version | 2 or higher needed | no restriction |
 
-두 갈래 모두 **IV 는 비밀이 아니다.** ①은 플레이리스트에 평문으로 적혀 있고, ②는
-세그먼트 순번이라는 사실만 알면 계산된다. 규격은 IV 의 기밀성을 애초에 요구하지 않으며,
-요구할 수도 없다 — 복호화하는 쪽이 알아야 하기 때문이다.
+In both branches **the IV is not a secret.** ① is written in the playlist in plaintext, and ② is computed if you
+just know the segment's serial number. The spec does not require the IV's confidentiality in the first place,
+nor can it — because the decrypting side must know it.
 
-차이는 **예측 가능성의 정도**가 아니라 **유일성**에 있다. ②는 세그먼트마다 다른 IV 를
-보장하지만, ①은 같은 KEY 태그가 적용되는 모든 세그먼트에 **같은 IV** 를 쓴다.
-§23.3.1 의 측정에 따르면 ①은 세그먼트들의 공통 접두를 노출한다 — 실제 TS 세그먼트는
-첫 블록부터 연속성 카운터가 달라 접두가 거의 일치하지 않지만, 그것은 우연히 그런
-것이지 규격이 보장하는 성질이 아니다.
+The difference is not in the **degree of predictability** but in **uniqueness.** ② guarantees a different IV per
+segment, but ① uses the **same IV** for all segments the same KEY tag applies to. Per §23.3.1's measurement, ①
+exposes the segments' common prefix — an actual TS segment has a different continuity counter from the first
+block so the prefixes almost never match, but that is by chance, not a property the spec guarantees.
 
-### 23.4.1 규칙이 성립하려면 번호가 있어야 한다
+### 23.4.1 For the rule to hold there must be a number
 
-기본 규칙에는 조용한 전제가 하나 있다. **IV 를 만들려면 그 조각에 번호가 붙어 있어야
-한다.** 번호가 없는 조각이 하나 있다 — fMP4 의 초기화 섹션(`EXT-X-MAP`)이다. 규격은
-이 구멍을 명시적으로 막는다(§4.3.2.5).
+The default rule has one quiet premise. **To make the IV, that piece must have a number.** There is one piece
+with no number — the fMP4 initialization section (`EXT-X-MAP`). The spec explicitly blocks this hole (§4.3.2.5).
 
 > "If the Media Initialization Section declared by an EXT-X-MAP tag is encrypted with a
 > METHOD of AES-128, the IV attribute of the EXT-X-KEY tag that applies to the EXT-X-MAP
 > is REQUIRED."
 
-규칙의 전제가 깨지는 자리에 규격이 예외 조항을 둔 것이다. 이런 조항을 읽는 법은
-"무엇을 요구하는가"가 아니라 **"어떤 전제가 깨져서 이 조항이 생겼는가"** 를 되묻는
-것이다.
+It is that the spec placed an exception clause at the spot where the rule's premise breaks. The way to read such
+a clause is not "what does it require" but to ask back **"what premise broke that this clause arose."**
 
 ---
 
-## 23.5 코드 — 규격이 열다섯 줄에 들어간 자리
+## 23.5 The code — where the spec fits into fifteen lines
 
-### 23.5.1 모듈이 스스로 밝히는 범위
+### 23.5.1 The scope the module states itself
 
 ```python
 # decrypt.py:1-6
-"""HLS AES-128 세그먼트 복호화 (RFC 8216 §4.3.2.4).
+"""HLS AES-128 segment decryption (RFC 8216 §4.3.2.4).
 
-규격상 AES-128-CBC + PKCS7 패딩이고, IV 는 EXT-X-KEY 의 IV 속성을 쓰되
-없으면 해당 세그먼트의 media sequence number 를 128비트 big-endian 으로 채운다.
-키 자체는 평문 16바이트로 URI 에서 내려받는다 — DRM 이 아니라 링크 보호 수준이다.
+By spec it is AES-128-CBC + PKCS7 padding, and the IV uses the EXT-X-KEY's IV attribute,
+or if absent fills that segment's media sequence number as 128-bit big-endian.
+The key itself is downloaded as plaintext 16 bytes from a URI — link-protection level, not DRM.
 """
 ```
 
-독스트링 세 줄이 §23.2–§23.4 의 요약이다. 마지막 줄("DRM 이 아니라 링크 보호 수준")은
-제25장의 명제를 미리 못박아 둔 것이다.
+The docstring's three lines are a summary of §23.2–§23.4. The last line ("link-protection level, not DRM") nails
+down Chapter 25's proposition in advance.
 
-### 23.5.2 복호화 본체
+### 23.5.2 The decryption body
 
 ```python
 # decrypt.py:33-47
@@ -298,8 +293,8 @@ RFC 8216 §5.2 "IV for AES-128" 의 세 문장이 규칙의 전부다. 원문 �
             return data
         if not key.is_supported:
             raise NotImplementedError(
-                f"METHOD={key.method} KEYFORMAT={key.keyformat} 는 세그먼트 단위 "
-                "복호화가 불가능하다 — --mode remux 로 ffmpeg 에 위임할 것"
+                f"METHOD={key.method} KEYFORMAT={key.keyformat} cannot be decrypted "
+                "segment-by-segment — delegate to ffmpeg with --mode remux"
             )
 
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -310,38 +305,37 @@ RFC 8216 §5.2 "IV for AES-128" 의 세 문장이 규칙의 전부다. 원문 �
         return _unpad_pkcs7(plain)
 ```
 
-한 줄씩 짚는다.
+Point at each line.
 
-| 줄 | 하는 일 | 짚을 것 |
+| Line | What it does | To note |
 |---|---|---|
-| `if not key.is_encrypted` | `METHOD=NONE` 이면 통과 | 암호화 여부 판단이 호출자가 아니라 여기 있다 |
-| `if not key.is_supported` | SAMPLE-AES·DRM 거부 | **거부하고 대안을 알려준다.** 제26장의 주제 |
-| 함수 내부 `import` | 필요할 때만 `cryptography` 적재 | 평문 스트림만 다루는 실행은 이 모듈을 열지 않는다 |
-| `seq.to_bytes(16, "big")` | §5.2 의 기본 규칙 | "16옥텟 버퍼에 big-endian, 왼쪽을 0 으로" 가 그대로 한 표현식 |
-| `modes.CBC(iv)` | 모드 지정 | 블록 암호(`algorithms.AES`)와 모드가 **인자로 분리**돼 있다 |
-| `_unpad_pkcs7(plain)` | 패딩 제거 | 제24장 |
+| `if not key.is_encrypted` | pass if `METHOD=NONE` | the encryption judgment is here, not in the caller |
+| `if not key.is_supported` | reject SAMPLE-AES·DRM | **rejects and tells the alternative.** Chapter 26's subject |
+| in-function `import` | load `cryptography` only when needed | a run handling only plaintext streams does not open this module |
+| `seq.to_bytes(16, "big")` | §5.2's default rule | "big-endian in a 16-octet buffer, left padded with zeros" is exactly one expression |
+| `modes.CBC(iv)` | mode specification | the block cipher (`algorithms.AES`) and the mode are **separated as arguments** |
+| `_unpad_pkcs7(plain)` | padding removal | Chapter 24 |
 
-`algorithms.AES(...)` 와 `modes.CBC(...)` 가 서로 다른 인자로 들어간다는 사실이
-§23.2 에서 나눈 두 층을 API 가 그대로 반영한 것이다. 블록 암호를 바꾸는 것과 모드를
-바꾸는 것은 독립적인 결정이다.
+That `algorithms.AES(...)` and `modes.CBC(...)` go in as different arguments is the API reflecting the two layers
+§23.2 split as-is. Changing the block cipher and changing the mode are independent decisions.
 
-함수 안에서 `import` 하는 것은 파이썬에서 흔한 지연 적재 관용구다. 다만 이 저장소는
-`cryptography` 를 선택 의존성으로 두지 않는다.
+`import`ing inside a function is a common lazy-load idiom in Python. Only, this repository does not make
+`cryptography` an optional dependency.
 
 ```toml
 # pyproject.toml:23-25
-# AES-128 세그먼트 복호화에만 쓰이지만(decrypt.py) 없으면 그 지점에서 그대로
-# ModuleNotFoundError 가 난다. 설치본이 반쪽으로 동작하지 않도록 필수로 둔다.
+# Used only for AES-128 segment decryption (decrypt.py), but absent and it raises
+# ModuleNotFoundError right at that spot. Kept required so an install does not work half-broken.
 dependencies = ["cryptography"]
 ```
 
-즉 지연 import 의 이유는 "없어도 되게 하려고"가 아니다. 주석이 없으므로 **의도는
-추론이다** — 남는 설명은 시작 비용(평문 스트림만 다루는 대부분의 실행에서 무거운
-모듈을 열지 않는다) 정도다.
+That is, the reason for the lazy import is not "to make it work without it." Since there is no comment, **the
+intent is inference** — the remaining explanation is about the startup cost (most runs, handling only plaintext
+streams, do not open the heavy module).
 
-### 23.5.3 IV 는 어디서 오는가 — 파싱
+### 23.5.3 Where the IV comes from — parsing
 
-`key.iv` 의 출처는 한 줄이다.
+The origin of `key.iv` is one line.
 
 ```python
 # playlist.py:307-316
@@ -360,7 +354,7 @@ dependencies = ["cryptography"]
 ```python
 # playlist.py:49-64
 class Key:
-    """#EXT-X-KEY — 이후 세그먼트에 적용되는 복호화 정보."""
+    """#EXT-X-KEY — the decryption info applied to subsequent segments."""
 
     method: str  # NONE | AES-128 | SAMPLE-AES
     uri: str | None = None
@@ -373,28 +367,26 @@ class Key:
 
     @property
     def is_supported(self) -> bool:
-        # SAMPLE-AES 는 프레임 단위 부분 암호화라 세그먼트 통째 복호화가 불가능하다.
+        # SAMPLE-AES is per-frame partial encryption so whole-segment decryption is impossible.
         return self.method in ("NONE", "AES-128") and self.keyformat == "identity"
 ```
 
-`iv: bytes | None` 이라는 타입이 규격의 "선택 속성"을 그대로 표현한다. **`None` 은
-"IV 가 0 이다"가 아니라 "IV 속성이 없다"** 이고, 그래서 `decrypt` 가
-`key.iv is not None` 으로 검사한다. 두 상태를 하나의 값으로 뭉개지 않은 것이 여기서
-중요한 이유는 §23.6 에서 측정한다.
+The type `iv: bytes | None` expresses the spec's "optional attribute" as-is. **`None` is not "the IV is 0" but
+"there is no IV attribute"**, and so `decrypt` checks with `key.iv is not None`. Why not mashing the two states
+into one value matters here is measured in §23.6.
 
-`keyformat` 의 기본값이 `"identity"` 인 것도 규격 그대로다(§4.3.2.4 — KEYFORMAT 의
-부재는 `identity` 를 뜻한다). 그리고 §5.2 의 기본 IV 규칙은 **`KEYFORMAT="identity"` 인
-경우에 한정**되는데, 이 코드에서는 `is_supported` 가 이미 `identity` 만 통과시키므로
-조건이 자동으로 만족된다.
+That `keyformat`'s default is `"identity"` is per spec too (§4.3.2.4 — the absence of KEYFORMAT means
+`identity`). And §5.2's default IV rule is **limited to the case `KEYFORMAT="identity"`**, and in this code
+`is_supported` already passes only `identity` so the condition is automatically satisfied.
 
-### 23.5.4 seq 는 어디서 오는가
+### 23.5.4 Where seq comes from
 
 ```python
 # playlist.py:141
-    seq: int  # media sequence number — AES-128 기본 IV 산출에 쓰인다
+    seq: int  # media sequence number — used to compute the AES-128 default IV
 ```
 
-주석이 필드의 존재 이유를 밝힌다. 값은 파싱 중 상태 변수로 매겨진다.
+The comment states the field's reason for existing. The value is assigned as a state variable during parsing.
 
 ```python
 # playlist.py:300-302
@@ -403,217 +395,213 @@ class Key:
             seq = pl.media_sequence
 ```
 
-`seq` 는 파서 지역 변수로 0 에서 시작하고([`playlist.py:220`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L220)), `EXT-X-MEDIA-SEQUENCE` 를
-만나면 그 값으로 재설정되며, 세그먼트를 하나 만들 때마다 1 증가한다
-(`playlist.py:240,248`). 규격의 정의를 그대로 옮긴 상태 기계다.
+`seq` starts at 0 as a parser local variable ([`playlist.py:220`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L220)), is reset to that value when it meets
+`EXT-X-MEDIA-SEQUENCE`, and increases by 1 each time it makes a segment (`playlist.py:240,248`). It is a state
+machine transcribing the spec's definition as-is.
 
-여기에 **순서 의존성**이 있다. `EXT-X-MEDIA-SEQUENCE` 가 첫 세그먼트보다 뒤에 나오면
-앞쪽 세그먼트는 이미 0부터 번호를 받은 뒤다. RFC 8216 은 이 태그가 첫 미디어
-세그먼트보다 앞에 와야 한다고 요구하므로 규격을 지킨 플레이리스트에서는 문제가 없지만,
-파서는 그 요구를 **강제하지 않는다.** 실측으로 확인했다 — 태그를 플레이리스트 끝으로
-옮기면 이렇게 된다.
+Here there is an **order dependency.** If `EXT-X-MEDIA-SEQUENCE` comes after the first segment, the front
+segments have already received numbers from 0. RFC 8216 requires this tag come before the first media segment so
+in a spec-conforming playlist there is no problem, but the parser **does not enforce** that requirement. Confirmed
+by measurement — move the tag to the playlist's end and it becomes this.
 
 ```
-media_sequence = 100   (태그는 읽혔다)
-세그먼트별 seq = [0, 1, 2]   (번호는 이미 매겨진 뒤였다)
+media_sequence = 100   (the tag was read)
+per-segment seq = [0, 1, 2]   (the numbers were already assigned)
 ```
 
-`media_sequence` 는 100 인데 세그먼트의 `seq` 는 0·1·2 다. IV 속성이 없는 스트림이라면
-**세 세그먼트 모두 틀린 IV 로 복호화되고, 오류는 나지 않는다.** 제2장에서 정리한
-"M3U8 파서는 상태 기계일 수밖에 없다"의 대가가 암호 경로에도 그대로 나타난 것이다 —
-`prev_range_end`(오프셋 승계)와 `cur_key`(키 유지)에 이어, `seq` 가 세 번째 상태다.
+`media_sequence` is 100 but the segments' `seq` are 0·1·2. If it is a stream with no IV attribute, **all three
+segments are decrypted with a wrong IV and no error arises.** It is the price of "an M3U8 parser cannot help but
+be a state machine," organized in Chapter 2, appearing as-is on the crypto path too — after `prev_range_end`
+(offset carry-over) and `cur_key` (key persistence), `seq` is the third state.
 
 ---
 
-## 23.6 IV 를 틀리면 무엇이 깨지는가 — 실측
+## 23.6 What breaks if you get the IV wrong — measured
 
-여기가 이 장에서 가장 중요한 측정이다. 그림 23-1 이 예측한 "IV 는 첫 블록에만 닿는다"를
-실제 세그먼트에서 확인하고, 그 결과가 검증 도구에 어떻게 보이는지를 본다.
+This is the most important measurement in this chapter. Confirm on an actual segment the "the IV touches only the
+first block" Figure 23-1 predicted, and see how that result appears to the verification tool.
 
-대상은 로컬 재현 스트림의 두 번째 세그먼트다(암호문 457,984바이트, 평문 457,968바이트
-= 188 × 2,436 패킷). 이 스트림은 `IV=0x00…00` 을 선언하고 있으므로 올바른 IV 는 0 이다.
+The target is the second segment of the local reproduction stream (ciphertext 457,984 bytes, plaintext 457,968
+bytes = 188 × 2,436 packets). This stream declares `IV=0x00…00` so the correct IV is 0.
 
-| 경우 | 어긋난 바이트 | 비율 | `sniff()` | ffmpeg 재생 | 검출되는가 |
+| Case | Bytes off | Ratio | `sniff()` | ffmpeg playback | Detected |
 |---|---|---|---|---|---|
-| 올바른 IV(=0) | 0 | — | `mpegts` | exit 0 · 4.000s | — |
-| **IV 속성을 무시하고 seq(=1) 사용** | **1** (오프셋 15) | 0.00022% | `mpegts` | exit 0 · 4.000s | **아니오** |
-| 무작위 IV | 16 (블록 0 전체) | 0.0035% | **`unknown`** | exit 0 · 4.000s | `sniff()` 만 |
-| 키 자체가 틀림 | 전부 | 100% | `unknown` | (미측정) | `sniff()` |
+| correct IV (=0) | 0 | — | `mpegts` | exit 0 · 4.000s | — |
+| **ignore the IV attribute and use seq(=1)** | **1** (offset 15) | 0.00022% | `mpegts` | exit 0 · 4.000s | **no** |
+| random IV | 16 (all of block 0) | 0.0035% | **`unknown`** | exit 0 · 4.000s | `sniff()` only |
+| wrong key itself | all | 100% | `unknown` | (unmeasured) | `sniff()` |
 
-두 번째 행이 무섭다. IV 를 `0x00…00` 대신 `1` 로 쓰면 XOR 되는 값이 마지막 바이트에서만
-1 만큼 다르므로 **평문에서도 딱 한 바이트, 오프셋 15 만 달라진다.** 값은 정확히
-`0xff → 0xfe`, 즉 XOR 1 이다. 45만 바이트 중 한 바이트다. (seq 가 커지면 달라지는
-바이트가 몇 개로 늘지만 **언제나 블록 0 안**이다 — 두 IV 의 XOR 이 곧 어긋나는 자리다.)
+The second row is frightening. Use `1` instead of `0x00…00` as the IV and the XORed value differs by only 1 in
+the last byte, so **the plaintext too differs in exactly one byte, offset 15 only.** The value is exactly `0xff →
+0xfe`, i.e. XOR 1. One byte of 450,000. (As seq grows the number of differing bytes rises to a few, but it is
+**always inside block 0** — the XOR of the two IVs is exactly the off spot.)
 
-- 선두 바이트 `0x47` 은 그대로 → `sniff()` 통과
-- 188번째 바이트도 그대로 → 두 번째 패킷 확인도 통과
-- 패킷 헤더(0–3바이트)가 아니므로 → 제18장의 연속성 카운터 검사도 무영향
-- ffmpeg 은 종료 코드 0, duration 도 소수점까지 동일
+- the leading byte `0x47` unchanged → `sniff()` passes
+- the 188th byte too unchanged → the second-packet check passes too
+- not a packet header (bytes 0–3) → Chapter 18's continuity-counter check is unaffected too
+- ffmpeg gives exit code 0, and the duration is identical to the decimal
 
-**이 도구의 어떤 검사도 잡지 못한다.** 출력 파일은 조용히 오염된다.
+**No check of this tool catches it.** The output file is quietly contaminated.
 
-세 번째 행은 대조군이다. 무작위 IV 를 쓰면 첫 블록 16바이트가 통째로 무작위가 되고,
-그중 오프셋 0 이 매직 넘버 자리이므로 `sniff()` 가 `unknown` 을 낸다. 다만 이것은
-**운이 좋은 검출**이다 — 손상이 하필 판별 근거가 있는 자리에 떨어졌을 뿐이고,
-무작위 첫 바이트가 우연히 `0x47` 이 될 확률 1/256(≈0.4%) 만큼은 이 검출도 새어 나간다
-(계산값이다. 200회 시행에서 오판은 0회 관측했으나 그 실험은 키까지 무작위로 바꾼
-것이어서 이 확률의 직접 측정은 아니다).
+The third row is the control. Use a random IV and the first block's 16 bytes become random wholesale, and among
+them offset 0 is the magic-number slot so `sniff()` gives `unknown`. Only, this is a **lucky detection** — the
+damage merely happened to fall on a spot with a determination basis, and this detection too leaks by the
+probability 1/256 (≈0.4%) that a random first byte becomes `0x47` by chance (a computed value. In 200 trials I
+observed 0 misjudgments, but that experiment changed the key too randomly so it is not a direct measurement of
+this probability).
 
-여기서 코드의 작은 결정 하나가 값을 갖는다.
+Here one small decision of the code has worth.
 
 > `iv = key.iv if key.iv is not None else seq.to_bytes(16, "big")`
 >
-> **"IV 속성이 없다"와 "IV 가 0 이다"를 구별하지 않는 구현은 위 표의 둘째 행을 매일
-> 생산한다.** 그리고 그 오염은 어떤 검사에도 걸리지 않는다.
+> **An implementation that does not distinguish "there is no IV attribute" from "the IV is 0" produces the
+> table's second row every day.** And that contamination catches on no check.
 
-실제로 이 함정은 가깝다. ffmpeg 8.1.1 의 HLS muxer 는 키 정보 파일에 IV 를 지정하지
-않아도 **언제나 `IV=0x00000000000000000000000000000000` 을 플레이리스트에 적는다**
-(실측). 즉 "IV 가 전부 0 인 스트림"은 예외적 입력이 아니라 흔한 입력이다.
+Actually this trap is close. ffmpeg 8.1.1's HLS muxer **always writes `IV=0x00000000000000000000000000000000`
+into the playlist** even if you do not specify an IV in the key-info file (measured). That is, "a stream whose IV
+is all 0" is not an exceptional input but a common one.
 
-같은 성질이 파싱 쪽에도 있다. [`playlist.py:314`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L314) 는 IV 문자열이 `0x` 로 시작하지 않으면
-`None` 을 넣는다. RFC 8216 은 hexadecimal-sequence 에 `0x`/`0X` 접두를 요구하므로
-접두 없는 IV 는 규격 위반 플레이리스트이지만, 그때의 결과는 **오류가 아니라 다른 IV** 다.
-규격 위반 입력이 예외 대신 조용한 오염으로 이어지는 자리다.
+The same property is on the parsing side too. [`playlist.py:314`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L314) puts `None` if the IV string does not start with
+`0x`. RFC 8216 requires a `0x`/`0X` prefix on a hexadecimal-sequence so a prefix-less IV is a spec-violating
+playlist, but the result then is **not an error but a different IV.** It is a spot where spec-violating input
+leads to quiet contamination instead of an exception.
 
 ---
 
-## 23.7 일반화 — 예측 가능한 IV 는 언제 문제인가
+## 23.7 Generalization — when is a predictable IV a problem
 
-기본 규칙을 쓰면 IV 는 0, 1, 2, 3 … 이다. 암호학 교과서는 CBC 의 IV 가 **예측
-불가능(unpredictable)** 해야 한다고 말한다. 규격이 교과서를 어기고 있는 것처럼 보인다.
-정확히 언제 이것이 문제인지 짚어야 한다.
+Use the default rule and the IV is 0, 1, 2, 3 … . The crypto textbook says CBC's IV must be **unpredictable.** It
+looks as if the spec is violating the textbook. You must point out exactly when this is a problem.
 
-> **용어** — **선택 평문 공격(chosen-plaintext attack, CPA)**: 공격자가 임의의 평문을
-> 골라 **같은 키로** 암호화시키고 그 암호문을 관찰할 수 있다고 가정하는 공격 모형.
-> 현대 암호의 기본 안전성 기준(IND-CPA)이 상정하는 상황이다.
+> **Term** — **chosen-plaintext attack (CPA)**: an attack model assuming the attacker can choose an arbitrary
+> plaintext, get it encrypted **with the same key**, and observe that ciphertext. It is the situation modern
+> crypto's basic security criterion (IND-CPA) presupposes.
 
-CBC 의 CPA 안전성 증명이 요구하는 조건이 바로 "IV 가 예측 불가능할 것"이다. 왜 그런지는
-§23.3 의 암호화 식에서 읽힌다. 공격자가 다음 IV 를 미리 알면, 자기가 넣을 평문 블록을
-`IV_next ⊕ (추측값) ⊕ (앞선 암호문 블록)` 처럼 **조립할 수 있다.** 그러면 암호화 결과가
-과거의 어떤 암호문 블록과 같아지는지 보는 것만으로 "내 추측이 맞았는가"를 판정할 수
-있다. 한 번에 16바이트 전부를 맞혀야 하지만, 블록 경계를 한 칸씩 밀어 미지의 바이트가
-블록 끝에 한 개만 오게 만들면 시도 횟수가 256회 수준으로 떨어진다. TLS 1.0 에 대한
-**BEAST**(2011)가 이 구조였다.
+The condition CBC's CPA-security proof requires is exactly "the IV must be unpredictable." Why is read from
+§23.3's encryption formula. If the attacker knows the next IV in advance, they can **assemble** the plaintext
+block they will inject as `IV_next ⊕ (guess) ⊕ (a prior ciphertext block)`. Then just by seeing which past
+ciphertext block the encryption result equals, they can judge "was my guess right." They must guess all 16 bytes
+at once, but push the block boundary one slot at a time so an unknown byte comes only one at the block's end and
+the number of tries drops to the level of 256. **BEAST** (2011) against TLS 1.0 had this structure.
 
-### 23.7.1 조건을 분해해 비교한다
+### 23.7.1 Decompose the conditions and compare
 
-①–③은 공격이 **기술적으로 성립하기 위한** 조건이고 셋이 모두 필요하다(AND). ④는
-성립하더라도 **공격할 가치가 있는가**를 가르는 별개의 물음이다.
+①–③ are conditions for the attack **to hold technically** and all three are needed (AND). ④ is a separate
+question dividing, even if it holds, **whether it is worth attacking.**
 
-| 조건 | TLS 1.0 브라우저(BEAST) | HLS 세그먼트 AES-128 |
+| Condition | TLS 1.0 browser (BEAST) | HLS segment AES-128 |
 |---|---|---|
-| ① 다음 IV 를 예측할 수 있다 | **성립** (직전 레코드의 마지막 블록이 다음 IV) | **성립** (seq + 1) |
-| ② 암호문을 관찰할 수 있다 | **성립** (같은 네트워크·같은 페이지) | **성립** (CDN 이 공개 배포) |
-| ③ **같은 키로 공격자가 고른 평문을 암호화시킬 수 있다** | **성립** (공격자 JS 가 요청을 만들고, 그 요청에 비밀 쿠키가 함께 실린다) | **성립하지 않음** |
-| ④ 평문에 공격자가 모르는 비밀이 있다 | **성립** (세션 쿠키) | **성립하지 않음** (영상은 시청자에게 공개) |
+| ① the next IV can be predicted | **holds** (the previous record's last block is the next IV) | **holds** (seq + 1) |
+| ② the ciphertext can be observed | **holds** (same network·same page) | **holds** (the CDN distributes publicly) |
+| ③ **the attacker can get a chosen plaintext encrypted with the same key** | **holds** (the attacker's JS makes the request, and a secret cookie rides in that request) | **does not hold** |
+| ④ the plaintext has a secret the attacker does not know | **holds** (the session cookie) | **does not hold** (the video is public to the viewer) |
 
-![평문 주입 경로의 유무가 결론을 가른다](/images/lecture/hls-recon/23-injection-path.svg)
+![The presence or absence of a plaintext-injection path divides the conclusion](/images/lecture/hls-recon/23-injection-path.svg)
 
-*그림 23-3 — 평문 주입 경로의 유무가 결론을 가른다*
+*Figure 23-3 — the presence or absence of a plaintext-injection path divides the conclusion*
 
-③이 이 장의 핵심이다. HLS 세그먼트는 **패키징 시점에 한 번, 오프라인에서** 암호화된다.
-암호화하는 주체는 송출자이고, 공격자가 "이 바이트를 암호화해 주세요"라고 요청할 상대가
-온라인에 존재하지 않는다. 즉 **암호화 오라클이 없다.**
+③ is this chapter's core. An HLS segment is encrypted **once, offline, at packaging time.** The encrypting party
+is the deliverer, and there is no party online for the attacker to ask "please encrypt these bytes." That is,
+**there is no encryption oracle.**
 
-> **용어** — **오라클(oracle)**: 공격자가 질의를 보내면 그에 대한 답을 돌려주는 존재.
-> 암호화 오라클은 "이 평문을 암호화해 다오", 패딩 오라클(제24장)은 "이 암호문의
-> 패딩이 맞느냐"에 답한다. 공격이 성립하려면 대개 **어떤 오라클이 온라인에 있어야
-> 한다.**
+> **Term** — **oracle**: an entity that returns an answer when the attacker sends a query. An encryption oracle
+> answers "encrypt this plaintext for me," and a padding oracle (Chapter 24) answers "is this ciphertext's
+> padding correct." For an attack to hold, usually **some oracle must be online.**
 
-④도 함께 봐야 한다. 설령 주입 경로가 생기더라도, 이 평문에 공격자가 모르는 비밀은
-없다. 영상은 정상 시청자 전원에게 그대로 보인다. **암호화가 지키려는 것이 무엇인가**를
-규정하지 않으면 이 판단 자체가 불가능하다 — 그 물음이 제25장이다.
+④ must be seen together. Even if an injection path arose, this plaintext has no secret the attacker does not
+know. The video is shown as-is to every normal viewer. Without defining **what the encryption is trying to
+protect**, this judgment itself is impossible — that question is Chapter 25.
 
-### 23.7.2 결론의 정확한 형태
+### 23.7.2 The exact form of the conclusion
 
-여기서 결론을 어떻게 쓰느냐가 중요하다.
+Here how you write the conclusion matters.
 
-> ✗ "예측 가능한 IV 는 실은 안전하다"
-> ✗ "HLS 는 IV 를 잘못 쓰고 있지만 어차피 영상이라 괜찮다"
-> ✓ **"예측 가능한 IV 는 선택 평문 공격의 필요조건이고, 이 위협 모델에는 평문 주입
->   경로가 없으므로 그 공격은 성립하지 않는다. 위협 모델이 바뀌면 결론도 바뀐다."**
+> ✗ "A predictable IV is actually safe"
+> ✗ "HLS uses the IV wrong but it is fine since it is video anyway"
+> ✓ **"A predictable IV is a necessary condition for a chosen-plaintext attack, and this threat model has no
+>   plaintext-injection path so that attack does not hold. Change the threat model and the conclusion changes."**
 
-세 번째 문장만이 검증 가능하다. 앞의 둘은 **왜** 안전한지를 말하지 않으므로, 조건이
-달라졌을 때 그것을 알아챌 방법이 없다. 실제로 조건은 자주 달라진다.
+Only the third sentence is verifiable. The first two do not say **why** it is safe, so there is no way to notice
+when the condition changed. In fact the condition changes often.
 
-| 문맥 | IV 규칙 | 주입 경로 | 판정 |
+| Context | IV rule | Injection path | Verdict |
 |---|---|---|---|
-| HLS 세그먼트 | seq 순번 | 없음 | 성립 안 함 |
-| TLS 1.0 레코드 | 직전 암호문 블록 | 브라우저 JS | **BEAST** |
-| 웹 앱의 쿠키·토큰 암호화 | 고정 IV·카운터 | 사용자 입력이 같은 키로 암호화됨 | **성립** |
-| DB 컬럼 결정적 암호화 | IV 고정(검색을 위해) | 사용자가 값을 등록 | 빈도 분석·존재 확인 |
-| CTR·GCM 에서 nonce 재사용 | 유일성 위반 | — | **키 스트림 재사용 — 치명적** |
+| HLS segment | seq serial | none | does not hold |
+| TLS 1.0 record | the previous ciphertext block | browser JS | **BEAST** |
+| a web app's cookie·token encryption | fixed IV·counter | user input encrypted with the same key | **holds** |
+| DB column deterministic encryption | IV fixed (for search) | the user registers a value | frequency analysis·existence confirmation |
+| nonce reuse in CTR·GCM | uniqueness violation | — | **keystream reuse — fatal** |
 
-마지막 행은 방향이 다른 실패다. CBC 는 IV 를 재사용해도 "공통 접두 노출"에서 그치지만,
-CTR 계열에서 nonce 를 재사용하면 두 암호문의 XOR 이 두 평문의 XOR 이 되어 사실상
-무너진다. **모드마다 초기값에 요구하는 성질이 다르고, 어긴 대가도 다르다**(§23.2.2 의 표).
+The last row is a failure in a different direction. CBC stops at "common-prefix exposure" even if you reuse the
+IV, but reuse the nonce in the CTR family and the XOR of two ciphertexts becomes the XOR of two plaintexts and it
+effectively collapses. **Each mode requires a different property of the initial value, and the price for
+violating it differs too** (§23.2.2's table).
 
 ---
 
-## 23.8 보안 — CBC 가 하지 않는 일
+## 23.8 Security — what CBC does not do
 
-### 23.8.1 복호화가 성공했다는 것은 아무것도 증명하지 않는다
+### 23.8.1 That decryption succeeded proves nothing
 
-CBC 는 기밀성만 제공한다. 무결성도, 출처 인증도 제공하지 않는다. 이것은 결함이 아니라
-**설계 범위**이고, 문제는 그 범위를 착각하는 데서 생긴다.
+CBC provides only confidentiality. It provides neither integrity nor origin authentication. This is not a defect
+but a **design scope**, and the problem arises from mistaking that scope.
 
-> **용어** — **가단성(malleability)**: 암호문을 조작해 평문에 **예측 가능한** 변화를
-> 일으킬 수 있는 성질. 공격자가 평문을 몰라도 "특정 비트를 뒤집는" 조작이 가능하다.
+> **Term** — **malleability**: the property that a ciphertext can be manipulated to cause a **predictable** change
+> in the plaintext. Even not knowing the plaintext, the attacker can do a "flip a specific bit" manipulation.
 
-측정했다. 암호문의 100번째 블록에서 한 바이트의 하위 1비트를 뒤집고 정상 키·정상
-IV 로 복호화한 결과다.
+Measured. The result of flipping the low 1 bit of one byte in the ciphertext's 100th block and decrypting with
+the correct key·correct IV.
 
-| 항목 | 값 |
+| Item | Value |
 |---|---|
-| 평문 전체에서 달라진 바이트 | **17개** (457,968 중) |
-| 블록 100 (오프셋 1600–1615) | 16바이트 전부 무작위로 변함 |
-| 블록 101 (오프셋 1619) | **정확히 1비트만 뒤집힘** — 조작한 위치와 같은 자리 |
-| 블록 102 이후 | 변화 없음 |
-| `sniff()` 판정 | `mpegts` — **통과** |
+| bytes changed across the whole plaintext | **17** (of 457,968) |
+| block 100 (offset 1600–1615) | all 16 bytes changed randomly |
+| block 101 (offset 1619) | **exactly 1 bit flipped** — the same spot as the manipulation |
+| block 102 onward | no change |
+| `sniff()` verdict | `mpegts` — **passes** |
 
-그림 23-1 의 식이 그대로 재현된다. `Pᵢ = D_K(Cᵢ) ⊕ Cᵢ₋₁` 에서 `Cᵢ₋₁` 을 건드리면 그
-값이 XOR 로 **1:1 전달**되므로, 다음 블록에서는 공격자가 의도한 비트만 정확히 뒤집힌다.
-그 앞 블록은 대가로 무작위가 된다.
+Figure 23-1's formula is reproduced as-is. In `Pᵢ = D_K(Cᵢ) ⊕ Cᵢ₋₁`, touch `Cᵢ₋₁` and that value is
+**transmitted 1:1** by XOR, so in the next block exactly the bit the attacker intended is flipped. The block
+before it is randomized as the price.
 
-따라서 이렇게 정리된다.
+So it is organized like this.
 
-> **AES-128-CBC 세그먼트의 복호화가 성공했다는 사실은, 그 바이트가 키를 가진 자가
-> 만든 것임을 뜻하지 않는다.** HLS 의 AES-128 에는 MAC 이 없다. 무결성을 검사하는
-> 층이 프로토콜 안에 존재하지 않는다.
+> **The fact that an AES-128-CBC segment's decryption succeeded does not mean those bytes were made by the key
+> holder.** HLS's AES-128 has no MAC. A layer checking integrity does not exist within the protocol.
 
-제2장에서 확인한 "HLS 매니페스트에는 조각 무결성 정보가 없다"(BitTorrent·Git·OCI·APT
-는 목록 안에 해시를 둔다)와 같은 빈칸이 암호 층에도 있다는 뜻이다. 매니페스트에도
-없고 암호 모드에도 없다 — **이 저장소 같은 도구가 존재하는 이유가 여기서 한 겹 더
-분명해진다.**
+It means the same blank as "an HLS manifest has no piece-integrity information" confirmed in Chapter 2
+(BitTorrent·Git·OCI·APT put hashes in the listing) is in the crypto layer too. Not in the manifest and not in the
+crypto mode — **the reason a tool like this repository exists becomes one layer clearer here.**
 
-> **용어** — **AEAD(Authenticated Encryption with Associated Data)**: 기밀성과 무결성·출처
-> 인증을 **하나의 연산으로** 제공하는 암호 구성. AES-GCM, ChaCha20-Poly1305 가 대표이며,
-> 복호화 시 인증 태그가 맞지 않으면 평문을 내놓지 않고 실패한다.
+> **Term** — **AEAD (Authenticated Encryption with Associated Data)**: a crypto construction providing
+> confidentiality and integrity·origin authentication **in one operation.** AES-GCM, ChaCha20-Poly1305 are the
+> representatives, and at decryption, if the authentication tag does not match, it does not put out the plaintext
+> but fails.
 
-AEAD 가 표준이 된 이유는 이론적 우아함이 아니라 **실패의 역사**다. 암호화와 MAC 을
-손으로 조립하면 순서를 틀리고(MAC-then-Encrypt 계열의 패딩 오라클 — 제24장), 태그
-비교를 상수 시간으로 하지 않아 타이밍으로 새고, 연관 데이터를 인증 범위에서 빠뜨린다.
-**틀리기 쉬운 조립을 API 에서 없애 버린 것**이 AEAD 다.
+The reason AEAD became the standard is not theoretical elegance but **a history of failures.** Assemble
+encryption and MAC by hand and you get the order wrong (the padding oracle of the MAC-then-Encrypt family —
+Chapter 24), do not compare the tag in constant time and leak by timing, and leave the associated data out of the
+authentication range. AEAD is **removing the error-prone assembly from the API.**
 
-HLS 가 아직 CBC 인 이유는 세 가지로 정리된다. 확인된 것과 추정을 구분해 적는다.
+The reason HLS is still CBC is organized into three. Written distinguishing confirmed from presumed.
 
-| 이유 | 근거 |
+| Reason | Basis |
 |---|---|
-| 2009년 설계 · 하드웨어 복호화 파이프라인 호환 | 규격 연혁 — 문헌 근거 |
-| 무결성은 전송 계층(HTTPS)에 위임 | 규격이 MAC 을 두지 않은 사실에서의 **추론** |
-| 위협 모델이 변조 방어를 요구하지 않음 | 제25장에서 논증 |
+| 2009 design · hardware-decryption pipeline compatibility | spec history — literature basis |
+| integrity delegated to the transport layer (HTTPS) | **inference** from the fact the spec put no MAC |
+| the threat model does not require tamper defense | argued in Chapter 25 |
 
-두 번째 항목에는 방어자에게 중요한 귀결이 있다. **AES-128 은 TLS 를 대체하지 않는다.**
-평문 HTTP 위에 AES-128 HLS 를 얹으면 내용은 가려지지만, 중간자는 세그먼트를 조작할 수
-있고 복호화는 여전히 "성공"한다. 위 실측이 그 상황의 정확한 모습이다 — 17바이트가
-바뀌었고, 도구는 통과를 냈다.
+The second item has a consequence important to the defender. **AES-128 does not replace TLS.** Put AES-128 HLS
+over plaintext HTTP and the content is masked, but a man-in-the-middle can manipulate the segment and decryption
+still "succeeds." The measurement above is that situation's exact picture — 17 bytes changed and the tool gave a
+pass.
 
-### 23.8.2 키 캐시의 위협 모델
+### 23.8.2 The key cache's threat model
 
 ```python
 # decrypt.py:14-31
 class KeyCache:
-    """같은 키 URI 를 세그먼트마다 다시 받지 않도록 캐시한다."""
+    """Caches so as not to re-fetch the same key URI per segment."""
 
     def __init__(self, fetcher: Fetcher) -> None:
         self._fetcher = fetcher
@@ -621,138 +609,134 @@ class KeyCache:
 
     def material(self, key: Key) -> bytes:
         if not key.uri:
-            raise ValueError("EXT-X-KEY 에 URI 가 없다")
+            raise ValueError("EXT-X-KEY has no URI")
         if key.uri not in self._cache:
             r = self._fetcher.get(key.uri)
             if not r.ok:
-                raise RuntimeError(f"키 요청 실패: {key.uri}\n  {r.error}")
+                raise RuntimeError(f"key request failed: {key.uri}\n  {r.error}")
             if len(r.body) != 16:
-                raise ValueError(f"AES-128 키 길이가 16바이트가 아니다: {len(r.body)}")
+                raise ValueError(f"the AES-128 key length is not 16 bytes: {len(r.body)}")
             self._cache[key.uri] = r.body
         return self._cache[key.uri]
 ```
 
-세 가지를 짚는다.
+Point at three things.
 
-**(1) 길이 검사는 암호 판(版) 의 "200 은 성공이 아니다"다.** `len(r.body) != 16` 은
-RFC 8216 §5.1("[AES_128] encryption uses 16-octet keys… a single packed array of 16 octets
-in binary format")의 직접 적용이면서, 동시에 제5장의 원리다. 키 URI 가 토큰 만료로
-HTML 오류 페이지를 200 으로 돌려주면 본문은 수백 바이트이고, 이 검사가 없으면
-`modes.CBC` 나 `algorithms.AES` 가 훨씬 아래에서 알아보기 어려운 예외를 던진다.
-**틀린 것을 가장 가까운 자리에서 잡는다.**
+**(1) The length check is the crypto edition of "200 is not success."** `len(r.body) != 16` is both a direct
+application of RFC 8216 §5.1 ("[AES_128] encryption uses 16-octet keys… a single packed array of 16 octets in
+binary format") and, at the same time, Chapter 5's principle. If a key URI returns an HTML error page as 200 on
+token expiry, the body is several hundred bytes, and without this check `modes.CBC` or `algorithms.AES` throws a
+hard-to-recognize exception much further down. **It catches the wrong thing at the nearest spot.**
 
-**(2) 평문 키가 프로세스 수명 동안 메모리에 남는다.** `self._cache` 를 비우는 코드는
-없다. 위협 모델별로 판정이 갈린다.
+**(2) The plaintext key stays in memory for the process's lifetime.** There is no code clearing `self._cache`.
+The verdict splits by threat model.
 
-| 위협 | 캐시가 논점이 되는가 | 이유 |
+| Threat | Is the cache a point of contention | Reason |
 |---|---|---|
-| 같은 사용자 권한의 로컬 프로세스 | **아니오** | 그 권한이면 키 URI 를 직접 받으면 된다 |
-| 코어 덤프·스왑 파일에 남음 | 부분적으로 예 | 다만 파이썬의 불변 `bytes` 는 확실히 지울 방법이 없다 |
-| 프로세스 메모리 읽기(디버거 부착) | 부분적으로 예 | 같은 권한이면 위 첫 행과 같아진다 |
-| 리포트·아티팩트 유출 | **아니오** | 확인함 — 아래 (3) |
-| 다른 사용자·원격 공격자 | 아니오 | 도달 경로가 없다 |
+| a local process with the same user privilege | **no** | with that privilege you can just fetch the key URI directly |
+| left in a core dump·swap file | partly yes | only, Python's immutable `bytes` has no sure way to be wiped |
+| process-memory reading (debugger attach) | partly yes | with the same privilege it becomes the same as the first row |
+| report·artifact leak | **no** | confirmed — (3) below |
+| a different user·remote attacker | no | there is no reach path |
 
-캐시를 없애면 어떻게 되는지도 따져야 한다. 세그먼트마다 키를 다시 받으면 메모리
-상주 시간은 줄지만 **네트워크에 키가 오가는 횟수가 세그먼트 수만큼 늘고**, 서버 로그에
-남는 접근 흔적도 같은 배수로 늘어난다. 게다가 파이썬에서 `del` 은 메모리를 덮어쓰지
-않는다. 즉 **캐시 제거는 위협을 줄이지 못하면서 비용만 늘린다.**
+You must also weigh what happens if you remove the cache. Re-fetch the key per segment and the memory-residence
+time shrinks but **the number of times the key travels the network rises by the segment count**, and the access
+trace left in server logs rises by the same multiple. Moreover, in Python `del` does not overwrite memory. That
+is, **removing the cache does not reduce the threat while only raising the cost.**
 
-그리고 더 큰 사실이 이 논점의 크기를 정한다 — 이 키는 애초에 URI 하나로 누구나 받을
-수 있다. 메모리 상주가 중대한 문제가 되려면 키가 먼저 비밀이어야 한다. 제25장이
-답할 물음이다.
+And a bigger fact sets this contention's size — this key can be fetched by anyone with just one URI in the first
+place. For memory residence to become a grave problem, the key must first be a secret. That is the question
+Chapter 25 will answer.
 
-**(3) 키 요청은 세그먼트와 같은 `Fetcher` 를 쓴다**([`decrypt.py:25`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L25)). 따라서 사용자가
-넘긴 쿠키·`Referer` 가 키 요청에도 그대로 붙는다. 제12장의 앰비언트 권한 문제가 키
-배포 경로에도 동일하게 적용된다는 뜻이다. 다만 리포트 쪽은 확인해 두었다 — `report.py`
-가 기록하는 URL 은 자막 트랙(`report.py:475,486`)뿐이고, **키 URI 도 키 바이트도 리포트
-JSON 에 들어가지 않는다.**
+**(3) The key request uses the same `Fetcher` as the segments** ([`decrypt.py:25`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/decrypt.py#L25)). So the cookie·`Referer` the
+user passed attaches to the key request too. It means Chapter 12's ambient-authority problem applies identically
+to the key-distribution path. Only, the report side was confirmed — the URL `report.py` records is only the
+subtitle track (`report.py:475,486`), and **neither the key URI nor the key bytes go into the report JSON.**
 
-### 23.8.3 방어자 관점
+### 23.8.3 The defender's view
 
-| 역할 | 해야 할 일 |
+| Role | What to do |
 |---|---|
-| **송출 사업자** | AES-128 을 TLS 의 대체재로 쓰지 않는다. 변조 방어는 HTTPS 가 하며, AES-128 은 기밀성만 준다. 키 URI 는 세그먼트와 **다른 접근 통제**를 받아야 의미가 있다(제25장) |
-| **플레이어·도구 구현자** | "IV 속성 없음"과 "IV=0"을 절대 같은 값으로 취급하지 않는다. `is not None` 으로 검사하고, IV 길이가 16바이트가 아니면 **거부**한다. 복호화 성공을 무결성 근거로 쓰지 않는다 |
-| **프로토콜 설계자** | 새 설계에서 CBC 를 고르지 않는다. AEAD 를 쓰고, 초기값에 요구되는 성질(유일성인가 예측 불가능성인가)을 규격 본문에 명시한다. HLS 가 `EXT-X-MAP` 에 IV 를 REQUIRED 로 둔 방식이 좋은 예다 |
-| **감사자** | "IV 가 예측 가능하다"만으로 취약점이라 판정하지 않는다. **평문 주입 경로가 있는가**를 먼저 묻고, 없다면 그 사실을 근거로 기록한다. 그래야 나중에 주입 경로가 생겼을 때 판정이 뒤집혀야 한다는 것을 알 수 있다 |
-| **파이프라인 운영자** | 패키저가 IV 를 어떻게 쓰는지 확인한다. 모든 세그먼트에 같은 IV 를 박는 구성(§23.4 의 ①)은 규격 위반은 아니지만 유일성을 잃는다 |
+| **delivery operator** | do not use AES-128 as a substitute for TLS. tamper defense is HTTPS's job, and AES-128 gives only confidentiality. the key URI is meaningful only if it receives **different access control** from the segments (Chapter 25) |
+| **player·tool implementer** | never treat "no IV attribute" and "IV=0" as the same value. check with `is not None`, and if the IV length is not 16 bytes **reject.** do not use decryption success as an integrity basis |
+| **protocol designer** | do not choose CBC in a new design. use AEAD, and state in the spec text the property required of the initial value (uniqueness or unpredictability). the way HLS put IV as REQUIRED on `EXT-X-MAP` is a good example |
+| **auditor** | do not judge it a vulnerability by "the IV is predictable" alone. first ask **is there a plaintext-injection path**, and if not, record that fact as the basis. only then can you know the verdict must flip later when an injection path arises |
+| **pipeline operator** | confirm how the packager uses the IV. a configuration nailing the same IV into every segment (§23.4's ①) is not a spec violation but loses uniqueness |
 
 ---
 
-## 23.9 한계와 미해결
+## 23.9 Limits and open questions
 
-정직하게 적어 둔다.
+Written honestly.
 
-- **이 저장소의 회귀 테스트는 기본 IV 경로를 지나가지 않는다.** ffmpeg 8.1.1 의 HLS
-  muxer 는 키 정보 파일에 IV 줄이 없어도 언제나 `IV=0x00…00` 을 적는다(실측). 따라서
-  `tests/run.sh:46-49` 가 만드는 스트림에서 `key.iv` 는 항상 16바이트이고,
-  `seq.to_bytes(16, "big")` 분기는 **한 번도 실행되지 않는다.** 규격의 기본 규칙을
-  구현한 줄이 테스트로 고정돼 있지 않다는 뜻이다. 덮으려면 IV 속성을 지운 플레이리스트와
-  seq 기반 IV 로 다시 암호화한 세그먼트를 자산으로 따로 만들어야 한다 — 제35장의 결함
-  주입 8종에 없는 항목이다.
-- **IV 문법 오류가 조용한 오염이 된다.** [`playlist.py:314`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L314) 는 `0x` 접두가 없는 IV 를
-  `None` 으로 떨어뜨린다. 규격 위반 입력이지만 결과는 예외가 아니라 다른 IV 이고,
-  §23.6 의 측정대로 어떤 검사도 그것을 잡지 못한다. 진단을 붙이는 편이 옳다고 보지만,
-  **그 변경이 실제 송출에서 오탐을 일으키지 않는지는 확인하지 못했다.**
-- **IV 길이가 16바이트가 아닌 입력에 대한 진단이 없다.** `KeyCache.material` 은 키
-  길이를 검사하지만 IV 길이는 아무도 검사하지 않는다. `modes.CBC` 가 던지는 라이브러리
-  수준 예외가 그대로 사용자에게 간다. [`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102) 의 `_diagnose` 같은 층이 암호
-  경로에는 없다.
-- **`EXT-X-MAP` 은 복호화되지 않는다.** [`cli.py:441-448`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L441-L448) 은 초기화 섹션을 받은 바이트
-  그대로 기록한다. RFC 8216 §4.3.2.5 는 초기화 섹션이 AES-128 로 암호화될 수 있음을
-  전제하고 그 경우 IV 속성을 REQUIRED 로 둔다. 그런 송출을 만나면 암호문이 그대로
-  저장될 것이다. 다만 **그런 스트림을 실제로 만나 확인한 적은 없다** — 확인한 것은
-  코드 경로에 복호화 호출이 없다는 사실뿐이다.
-- **암호학적 주장은 문헌 정리이지 이 장의 증명이 아니다.** CBC 의 CPA 안전성이 IV 의
-  예측 불가능성을 요구한다는 것, BEAST 계열 공격의 성립 조건은 표준 결과를 요약한
-  것이다. 이 장이 실측한 것은 **모드의 동작**(오류 국소화, 가단성, ECB 의 중복 노출)이지
-  안전성 증명이 아니다.
-- **1/256 은 계산값이다.** §23.6 의 "무작위 IV 를 `sniff()` 가 놓칠 확률"은 첫 바이트가
-  우연히 `0x47` 일 확률에서 나온 값이고 직접 측정하지 않았다.
-- **틀린 키에 대한 동작은 부분적으로만 측정했다.** `sniff()` 가 `unknown` 을 내는 것은
-  확인했지만, TS 헤더의 scrambling control 비트를 보는 경로(`tsanalyze.py`)와의 상호작용,
-  그리고 ffmpeg 이 어떤 오류를 내는지는 이 장에서 다루지 않았다.
-- **측정은 모두 로컬 재현 스트림 한 종(ffmpeg 8.1.1 · libx264 · 320x180 · 4초 세그먼트)
-  에서 나왔다.** 블록 중복 통계 같은 값은 콘텐츠에 따라 달라진다. 달라지지 않는 것은
-  구조적 사실(ECB 암호문의 중복 통계가 평문과 일치한다, IV 오류가 첫 블록에 국한된다)
-  이다.
+- **This repository's regression test does not pass through the default IV path.** ffmpeg 8.1.1's HLS muxer
+  always writes `IV=0x00…00` even if the key-info file has no IV line (measured). So in the stream
+  `tests/run.sh:46-49` makes, `key.iv` is always 16 bytes and the `seq.to_bytes(16, "big")` branch is **never
+  executed.** It means the line implementing the spec's default rule is not fixed by a test. To cover it you must
+  separately make, as assets, a playlist with the IV attribute removed and segments re-encrypted with a
+  seq-based IV — an item not among Chapter 35's 8 defect injections.
+- **An IV syntax error becomes quiet contamination.** [`playlist.py:314`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/playlist.py#L314) drops an IV with no `0x` prefix to
+  `None`. It is spec-violating input but the result is a different IV, not an exception, and per §23.6's
+  measurement no check catches it. I think attaching a diagnostic is right, but **I could not confirm whether that
+  change causes false positives in real delivery.**
+- **There is no diagnostic for input whose IV length is not 16 bytes.** `KeyCache.material` checks the key length
+  but no one checks the IV length. The library-level exception `modes.CBC` throws goes straight to the user. A
+  layer like [`cli.py:57-102`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L57-L102)'s `_diagnose` is not on the crypto path.
+- **`EXT-X-MAP` is not decrypted.** [`cli.py:441-448`](https://github.com/hwanyong/hls-recon/blob/910c5a1f23676cdad3ce2c55f65eae37cc2b2a19/hlsrecon/cli.py#L441-L448) records the initialization section as the bytes received.
+  RFC 8216 §4.3.2.5 presupposes the initialization section can be AES-128 encrypted and in that case puts the IV
+  attribute as REQUIRED. Meet such a delivery and the ciphertext would be stored as-is. Only, **I have never
+  actually met such a stream and confirmed** — what I confirmed is only the fact that there is no decryption call
+  on the code path.
+- **The cryptographic claims are literature organization, not this chapter's proof.** That CBC's CPA security
+  requires the IV's unpredictability, and the holding conditions of BEAST-family attacks, are summaries of
+  standard results. What this chapter measured is the **mode's behavior** (error localization, malleability,
+  ECB's duplicate exposure), not a security proof.
+- **1/256 is a computed value.** §23.6's "probability `sniff()` misses a random IV" is a value from the
+  probability the first byte is `0x47` by chance, not directly measured.
+- **The behavior for a wrong key was only partly measured.** That `sniff()` gives `unknown` was confirmed, but
+  the interaction with the path viewing the TS header's scrambling-control bit (`tsanalyze.py`), and what error
+  ffmpeg gives, was not covered in this chapter.
+- **The measurements all came from one local reproduction stream (ffmpeg 8.1.1 · libx264 · 320x180 · 4-second
+  segments).** Values like block-duplication statistics differ by content. What does not differ is the structural
+  fact (the ECB ciphertext's duplication statistics match the plaintext, an IV error is confined to the first
+  block).
 
 ---
 
-## 23.10 요약
+## 23.10 Summary
 
-1. **`AES-128-CBC` 는 두 개의 결정이다.** AES 는 128비트 블록 하나를 치환하는 함수이고,
-   CBC 는 그것을 45만 바이트 메시지에 적용하는 규칙이다. `AES-128` 의 128 은 **키
-   길이**이지 블록 길이가 아니다.
-2. **모드를 쓰지 않으면(ECB) 구조가 샌다.** 실측: 평문 27,271블록 중 671블록이 중복이고
-   최다 662회 반복인데, **ECB 암호문의 통계가 평문과 완전히 같다.** CBC 로 바꾸면
-   중복이 0 이 된다.
-3. **IV 는 비밀이 아니라 비결정성을 만드는 값이다.** 같은 IV 를 쓰면 두 메시지의 공통
-   접두 길이가 암호문에 그대로 노출된다(실측: 10블록 일치 → IV 를 1 바꾸면 0블록).
-4. **RFC 8216 의 규칙은 정확히 둘이다** — IV 속성이 있으면 그 값, 없으면 해당 세그먼트의
-   media sequence number 를 16옥텟 버퍼에 big-endian 으로 넣고 왼쪽을 0 으로 채운다.
-   후자는 **완전히 예측 가능**하다. 코드로는 `seq.to_bytes(16, "big")` 한 표현식이다.
-5. **CBC 는 세그먼트 경계마다 다시 시작한다.** 그래서 병렬 수신·임의 위치 재생·부분
-   검증이 성립한다. 대신 세그먼트 수만큼 IV 가 필요해지고, 그 수요를 채우는 것이 4번의
-   기본 규칙이다.
-6. **IV 오류는 첫 블록에만 남고, 그래서 조용하다.** 실측: IV 속성을 무시하고 seq 를 쓰면
-   45만 바이트 중 **정확히 1바이트**가 어긋나고 `sniff()`·연속성 카운터 검사·ffmpeg 이
-   모두 통과시킨다. "IV 속성 없음"과 "IV=0"을 구별하지 않는 구현이라면 매번 생산됐을
-   오염이다.
-7. **예측 가능한 IV 는 그 자체로 취약점이 아니다.** 선택 평문 공격은 ① 다음 IV 예측
-   ② 암호문 관찰 ③ **같은 키로 공격자 평문을 암호화시킬 수 있을 것** 이 모두 필요하고,
-   HLS 세그먼트에는 ③이 없다(암호화는 패키징 시점 오프라인 1회). TLS 1.0 의 BEAST 는
-   셋이 다 갖춰진 경우였다. **결론은 "안전하다"가 아니라 "이 위협 모델에서는 성립하지
-   않는다"이며, 위협 모델이 바뀌면 결론도 바뀐다.**
-8. **CBC 는 인증하지 않는다.** 실측: 암호문 1비트 조작이 45만 바이트 중 17바이트만
-   바꾸고, 그중 다음 블록의 1비트는 **공격자가 지정한 대로** 뒤집힌다. 검증 도구는
-   통과를 냈다. 복호화 성공은 출처의 증거가 아니며, 그래서 오늘날의 표준은 AEAD 다.
-   **AES-128 은 TLS 를 대체하지 않는다.**
+1. **`AES-128-CBC` is two decisions.** AES is a function substituting one 128-bit block, and CBC is the rule
+   applying it to a 450,000-byte message. The 128 in `AES-128` is the **key length**, not the block length.
+2. **Without a mode (ECB) the structure leaks.** Measured: of the plaintext's 27,271 blocks, 671 are duplicates
+   with a top repeat of 662 times, and **the ECB ciphertext's statistics are completely identical to the
+   plaintext's.** Switch to CBC and duplicates become 0.
+3. **The IV is not a secret but a value that makes non-determinism.** Use the same IV and the common-prefix
+   length of two messages is exposed as-is in the ciphertext (measured: 10 blocks matching → change the IV by 1
+   and 0 blocks).
+4. **RFC 8216's rule is exactly two** — if there is an IV attribute, that value; if not, put that segment's media
+   sequence number into a 16-octet buffer big-endian and left-pad with zeros. The latter is **fully
+   predictable.** In code it is the one expression `seq.to_bytes(16, "big")`.
+5. **CBC restarts at each segment boundary.** So parallel receiving·random-position playback·partial
+   verification hold. In exchange as many IVs as segments become needed, and what fills that demand is point 4's
+   default rule.
+6. **An IV error remains only in the first block, and so it is quiet.** Measured: ignore the IV attribute and use
+   seq and **exactly 1 byte** of 450,000 goes off and `sniff()`·the continuity-counter check·ffmpeg all pass it.
+   It is contamination that would have been produced every time by an implementation not distinguishing "no IV
+   attribute" from "IV=0."
+7. **A predictable IV is not itself a vulnerability.** A chosen-plaintext attack needs all of ① next-IV
+   prediction ② ciphertext observation ③ **being able to get attacker plaintext encrypted with the same key**,
+   and an HLS segment has no ③ (encryption is one offline time at packaging). TLS 1.0's BEAST was a case with all
+   three in place. **The conclusion is not "it is safe" but "it does not hold in this threat model," and change
+   the threat model and the conclusion changes.**
+8. **CBC does not authenticate.** Measured: a 1-bit ciphertext manipulation changes only 17 bytes of 450,000, and
+   among them the next block's 1 bit is flipped **exactly as the attacker specified.** The verification tool gave
+   a pass. Decryption success is not evidence of origin, and so today's standard is AEAD. **AES-128 does not
+   replace TLS.**
 
 ---
 
-**다음 장** — 이 장은 복호화의 마지막 한 줄인 `_unpad_pkcs7(plain)` 을 건너뛰었다.
-그 함수는 패딩이 깨져 있어도 예외를 던지지 않고 원본을 그대로 넘긴다. 서버에서 같은
-동작을 하면 그것이 곧 **패딩 오라클**이라는 고전적 취약점이 되는데, 이 도구에서는
-정반대로 그것이 옳은 설계다. 제24장은 **같은 코드가 역할에 따라 취약점이 되기도 하고
-설계 미덕이 되기도 하는 조건**을 다룬다.
+**Next chapter** — this chapter skipped decryption's last line, `_unpad_pkcs7(plain)`. That function does not
+throw an exception even when the padding is broken and passes the original as-is. Do the same behavior on a
+server and it becomes the classic vulnerability called a **padding oracle**, but in this tool the opposite — it
+is the correct design. Chapter 24 covers **the condition under which the same code becomes a vulnerability or a
+design virtue depending on the role.**
