@@ -24,6 +24,8 @@ export interface UIStrings {
   lists: Record<'log' | 'lecture' | 'project', { description: string }>;
   emptyList: string;
   emptyLecture: string;
+  /** 섹션 줄 끝에서 그 분류 전체로 보내는 링크. */
+  more: string;
   /** 코스는 있는데 아직 차시가 없을 때. */
   emptySessions: string;
   /** 과목 화면의 설명문. 이름은 subjects.ts 의 로케일 표에서 온다. */
@@ -112,6 +114,7 @@ const en: UIStrings = {
   },
   emptyList: 'Nothing here yet.',
   emptyLecture: 'No lectures published yet.',
+  more: 'More',
   emptySessions: 'No sessions published yet.',
   subjectDescription: (name) => `Lectures on ${name}.`,
 
@@ -178,6 +181,7 @@ const ko: UIStrings = {
   },
   emptyList: '아직 없습니다.',
   emptyLecture: '아직 공개한 강의가 없습니다.',
+  more: '더보기',
   emptySessions: '아직 공개한 차시가 없습니다.',
   subjectDescription: (name) => `${name} 강의.`,
 

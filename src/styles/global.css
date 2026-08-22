@@ -221,7 +221,18 @@ a {
   text-decoration: none;
 }
 
-:focus-visible {
+/* ★ 가리킴(hover)과 키보드 포커스는 ★같은 모양★ 이다.
+   Tab · J · K 로 고른 것과 마우스로 가리킨 것이 다르게 보이면, 같은 "지금 이것"
+   상태를 두 가지로 가르치는 셈이다. 그래서 윤곽을 한 선언에서 함께 낸다 —
+   여기가 그 SSOT 이고, 아래 개별 규칙들도 전부 :is(:hover, :focus-visible) 로 짝을 맞춘다.
+
+   :focus-visible 은 키보드에서만 발화하므로 마우스 클릭이 윤곽을 남기지 않는다.
+   hover 쪽은 대상을 직접 적어야 한다 — 포커스 가능한 것과 같은 집합이다. */
+:focus-visible,
+a[href]:hover,
+button:hover,
+summary:hover,
+[tabindex]:not([tabindex='-1']):hover {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -373,7 +384,7 @@ a {
 }
 
 .site-nav a[aria-current='page'],
-.site-nav a:hover {
+.site-nav a:is(:hover, :focus-visible) {
   color: var(--ink);
 }
 
@@ -407,11 +418,31 @@ a {
   opacity: 0.75;
 }
 
+/* 줄 끝의 '더보기'.
+   ★ order: 1 이 없으면 줄을 채우는 ::after 보다 ★앞★ 에 서서 이름 바로 옆에 붙는다.
+     ::after 는 언제나 마지막 자식이라 마크업 순서로는 뒤로 보낼 수 없다.
+     flex 의 order 는 가상 요소에도 적용되므로 이 한 줄이 자리를 맞바꾼다. */
+.section-bar__more {
+  order: 1;
+  flex: none;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+
+.section-bar__more:is(:hover, :focus-visible) {
+  color: var(--ink);
+}
+
 .section-bar::after {
   content: '';
   flex: 1;
   height: 1px;
   background: var(--rule);
+  /* 더보기가 붙는 쪽이라 오른쪽 여백을 준다. 없으면 선이 글자에 닿는다. */
+  margin-inline-end: 0.85rem;
 }
 
 .section-bar + .section-bar {
@@ -689,7 +720,7 @@ img.thumb {
   border-block-end: 1px solid var(--rule);
 }
 
-.rev-jump:hover {
+.rev-jump:is(:hover, :focus-visible) {
   color: var(--ink);
   border-block-end-color: var(--ink);
 }
@@ -867,7 +898,7 @@ img.thumb {
   color: var(--ink-2);
 }
 
-.pager__step:hover {
+.pager__step:is(:hover, :focus-visible) {
   color: var(--ink);
 }
 
@@ -972,7 +1003,7 @@ img.thumb {
   inset: 0;
 }
 
-.card:hover .card__title a {
+.card:is(:hover, :focus-within) .card__title a {
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -1094,7 +1125,7 @@ img.thumb {
   margin-inline-start: 0.7rem;
 }
 
-.revisions li a:hover {
+.revisions li a:is(:hover, :focus-visible) {
   color: var(--ink);
   border-color: var(--ink);
 }
@@ -1136,7 +1167,7 @@ img.thumb {
   transition: background 0.15s ease;
 }
 
-.video__play:hover .video__mark {
+.video__play:is(:hover, :focus-visible) .video__mark {
   background: rgba(0, 0, 0, 0.12);
 }
 
@@ -1480,8 +1511,8 @@ img.accounts__mark {
   color: var(--ink-3);
 }
 
-.accounts a:hover .accounts__go,
-.accounts a:hover .accounts__text b {
+.accounts a:is(:hover, :focus-visible) .accounts__go,
+.accounts a:is(:hover, :focus-visible) .accounts__text b {
   color: var(--ink);
 }
 
@@ -1532,7 +1563,7 @@ img.accounts__mark {
   padding: 0.05rem 0.45rem;
 }
 
-.fact__links a:hover {
+.fact__links a:is(:hover, :focus-visible) {
   color: var(--ink);
   border-color: var(--ink);
 }
@@ -1843,7 +1874,7 @@ img.accounts__mark {
   color: var(--ink-2);
 }
 
-.toc a:hover {
+.toc a:is(:hover, :focus-visible) {
   color: var(--ink);
 }
 
@@ -1910,7 +1941,7 @@ img.accounts__mark {
   white-space: nowrap;
 }
 
-.lang-switch a:hover {
+.lang-switch a:is(:hover, :focus-visible) {
   color: var(--ink);
 }
 

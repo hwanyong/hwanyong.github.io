@@ -53,6 +53,15 @@ const total = sections.reduce((sum, section) => sum + section.courses.length, 0)
                 크기라, 과목마다 그것을 놓으면 빈 과목 수만큼 빈 화면이 쌓인다.
                 섹션 줄 안의 한 마디면 "아직 없다" 는 사실이 그대로 전달된다. */}
             {courses.length === 0 && <em class="section-bar__note">{t.emptyLecture}</em>}
+            {/* 줄 끝의 '더보기'. 과목 이름도 같은 곳으로 가지만, 그 사실은 눌러 보기
+                전에는 알 수 없다 — 이름이 링크처럼 보이지 않기 때문이다.
+                여기 한 마디가 있으면 "이 분류에 더 있다" 가 글자로 읽힌다.
+                코스가 0개인 과목은 URL 자체가 없으므로 내지 않는다. */}
+            {courses.length > 0 && (
+              <a class="section-bar__more" href={subjectHref(locale, subject)}>
+                {t.more} →
+              </a>
+            )}
           </h2>
           {courses.length > 0 && <Gallery locale={locale} cards={courses.map(courseCard)} />}
         </>
