@@ -18,7 +18,7 @@
 // <img> 한 장은 조명 상태를 따라갈 수 없다(테마마다 다른 파일을 줄 방법이 없다).
 // 두 상태 모두에서 버티는 중간색을 찾는 대신 ★종이★ 로 못박았다 —
 // REFLECT 에서는 본문에 잠기고 EMIT 에서는 불 켜진 판이 된다. 둘 다 의도된 모습이다.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const OUT = 'public/images/lecture/thumb';
@@ -323,6 +323,70 @@ const embeddings = () => {
   );
 };
 
+// ── hls-recon (engineering) — 번호 판 ───────────────────────────────────────
+// 다른 과목의 도판은 그 차시가 다루는 수학적 대상의 ★모양★ 이지만, 이 코스는
+// 39차시라 번호가 곧 정체성이다. 그래서 여기만 글자를 쓴다 — 시스템 mono 폰트는
+// <img> SVG 에서도 렌더되므로(웹폰트만 못 불러온다) 카드 격자를 흔들지 않는다.
+// ★ 팔레트는 다른 썸네일과 똑같은 REFLECT 종이 한 벌이다. 액센트 0 — 부(部)는 색이
+//   아니라 라벨로 가른다. 다크 배경 + 부별 강조색은 종이 위에서 튀어 폐기했다.
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+
+const HLS_PARTS = [
+  { max: 3, n: 1, label: 'FOUNDATIONS' },
+  { max: 8, n: 2, label: 'HTTP' },
+  { max: 16, n: 3, label: 'SECURITY' },
+  { max: 22, n: 4, label: 'BINARY' },
+  { max: 26, n: 5, label: 'CRYPTO' },
+  { max: 30, n: 6, label: 'DISTRIBUTED' },
+  { max: 33, n: 7, label: 'PORTABILITY' },
+  { max: 39, n: 8, label: 'VERIFICATION' },
+] as const;
+const hlsPart = (ch: number) => HLS_PARTS.find((p) => ch <= p.max) ?? HLS_PARTS[7];
+
+const txt = (
+  x: number,
+  y: number,
+  size: number,
+  fill: string,
+  s: string,
+  weight = 400,
+  spacing = 0,
+) =>
+  `<text x="${x}" y="${y}" font-family="${MONO}" font-size="${size}" font-weight="${weight}"` +
+  (spacing ? ` letter-spacing="${spacing}"` : '') +
+  ` fill="${fill}">${s}</text>`;
+
+/** 부(部) 진행 표시 — 8칸 중 그 부까지 채운다. 색이 아니라 형태로 부를 가른다. */
+const partTicks = (n: number, y: number) =>
+  Array.from({ length: 8 }, (_, i) => {
+    const cx = 96 + i * 46;
+    return i < n
+      ? `<rect x="${cx}" y="${y}" width="30" height="12" fill="${C.ink}"/>`
+      : `<rect x="${cx}" y="${y}" width="30" height="12" fill="none" stroke="${C.ink2}" stroke-width="2"/>`;
+  }).join('');
+
+const hlsSession = (ch: number) => {
+  const p = hlsPart(ch);
+  const nn = String(ch).padStart(2, '0');
+  return svg(
+    grid() +
+      txt(96, 148, 30, C.ink2, 'hls-recon', 400, 4) +
+      txt(88, 470, 300, C.ink, nn, 700) +
+      partTicks(p.n, 556) +
+      txt(96, 636, 33, C.ink2, `PART ${p.n} · ${p.label}`, 700, 3),
+  );
+};
+
+/** 코스 표지 — 워드마크 한 장. 라벨은 로케일 중립(계기판 어휘)이다. */
+const hlsCover = () =>
+  svg(
+    grid() +
+      txt(96, 150, 30, C.ink2, 'ENG · COURSE', 400, 5) +
+      txt(88, 400, 150, C.ink, 'hls-recon', 700) +
+      partTicks(8, 470) +
+      txt(96, 610, 30, C.ink2, '39 SESSIONS · 8 PARTS', 400, 4),
+  );
+
 const SHEETS: Record<string, () => string> = {
   'linear-algebra': coverLinearAlgebra,
   'linear-algebra-01-vectors': vectors,
@@ -334,6 +398,18 @@ const SHEETS: Record<string, () => string> = {
   'vector-search-01-embeddings': embeddings,
   'vector-search-02-similarity': similarity,
 };
+
+// hls-recon 39차시 + 표지는 콘텐츠 디렉터리에서 slug 을 읽어 등록한다 — 슬러그 목록을
+// 두 벌 갖지 않는다(차시 번호는 slug 앞머리 숫자에서, 부는 hlsPart 에서). 콘텐츠가
+// 아직 없으면 조용히 건너뛴다.
+const HLS_DIR = 'src/content/lecture/engineering/hls-recon';
+if (existsSync(HLS_DIR)) {
+  SHEETS['hls-recon'] = hlsCover;
+  for (const d of readdirSync(HLS_DIR)) {
+    const m = /^(\d+)-/.exec(d);
+    if (m) SHEETS[`hls-recon-${d}`] = () => hlsSession(Number(m[1]));
+  }
+}
 
 mkdirSync(OUT, { recursive: true });
 for (const [name, draw] of Object.entries(SHEETS)) {
