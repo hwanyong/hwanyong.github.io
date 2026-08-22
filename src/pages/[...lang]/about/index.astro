@@ -12,11 +12,21 @@ import type { Locale } from '../../../lib/i18n';
 export const getStaticPaths = () =>
   LOCALE_CODES.map((locale) => ({ params: { lang: langParam(locale) }, props: { locale } }));
 import { UI } from '../../../lib/ui';
+import Toc from '../../../components/Toc.astro';
 import { ROLE, INTRO, CAREER, ACCOUNTS } from '../../../lib/profile';
 
 const { locale } = Astro.props as { locale: Locale };
 const t = UI[locale];
 const alternates = staticAlternates('about');
+
+/* 목차. 이 화면은 마크다운이 아니라 템플릿이라 제목이 render() 를 거치지 않는다.
+   그래서 headings 를 손으로 만든다 — 아래 <h2> 의 id 와 ★반드시★ 같아야 하므로
+   두 곳에 각각 쓰지 않고 이 배열 하나에서 뽑아 쓴다. */
+const sections = [
+  { slug: 'career', text: t.about.career },
+  { slug: 'accounts', text: t.about.accounts },
+] as const;
+const headings = sections.map((s) => ({ depth: 2, slug: s.slug, text: s.text }));
 
 // 아직 채우지 않은 항목 수. 헤더 상태 칸에 그대로 띄워 잊지 못하게 한다.
 ---
@@ -42,7 +52,7 @@ const alternates = staticAlternates('about');
       {INTRO.paragraphs[locale].map((paragraph) => <p>{paragraph}</p>)}
     </section>
 
-    <h2 class="section-bar"><b>{t.about.career}</b></h2>
+    <h2 class="section-bar" id={sections[0].slug}><b>{sections[0].text}</b></h2>
 
     <ol class="career">
       {CAREER.map((entry) => (
@@ -62,7 +72,7 @@ const alternates = staticAlternates('about');
       ))}
     </ol>
 
-    <h2 class="section-bar"><b>{t.about.accounts}</b></h2>
+    <h2 class="section-bar" id={sections[1].slug}><b>{sections[1].text}</b></h2>
 
     <ul class="accounts">
       {ACCOUNTS.map((account) => (
@@ -94,6 +104,13 @@ const alternates = staticAlternates('about');
         </li>
       ))}
     </ul>
+
+    {/* ArticleShell 을 쓰지 않는 화면이라 레일을 여기서 직접 놓는다.
+        자리가 맨 아래인 이유는 다른 상세 화면과 같다 — 사이드 열이 닫히는 좁은
+        화면에서 DOM 순서가 곧 화면 순서이고, 그때 목차는 감춰진다. */}
+    <div class="side-rail">
+      <Toc locale={locale} headings={headings} />
+    </div>
   </div>
 </BaseLayout>
 

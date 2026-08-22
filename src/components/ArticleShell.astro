@@ -107,8 +107,6 @@ const t = UI[locale];
       jumpLabel={jumpLabel}
     />
 
-    <slot name="aside" />
-
     {/* lang 은 ★실제 본문 언어★ 다. 번역이 없어 원문을 그대로 싣고 있으면
         페이지 골격(<html lang>)과 다른 값이 되며, 그것이 정확한 서술이다. */}
     <article lang={untranslated ? LOCALES[untranslated].htmlLang : undefined}>
@@ -140,7 +138,22 @@ const t = UI[locale];
 
     <PostNav locale={locale} href={backHref} label={backLabel} place="foot" />
 
-    <slot name="after" />
+    {/* 사이드 레일 — 넓은 화면에서 3번 트랙에 올라가는 유일한 요소다.
+        목차와 개정 이력을 ★한 상자★ 에 담는 이유: 둘 다 각자 3번 트랙에 놓이면
+        같은 칸에서 겹친다. 그래서 축마다 하나만 골라 싣고 있었고(로그=목차,
+        강의·프로젝트=개정 이력) 그게 화면마다 다른 부속이 뜨는 원인이었다.
+        상자가 하나면 있는 것만 위에서부터 쌓이고, 축이 무엇을 갖든 화면은 같다.
+
+        놓이는 자리가 '본문 뒤 · 댓글 앞' 인 것은 ★좁은 화면★ 때문이다. 사이드 열이
+        닫히면 DOM 순서가 곧 화면 순서인데, 그때 개정 이력은 댓글 바로 위가 맞고
+        목차는 어차피 감춰진다(.toc 의 미디어쿼리). 넓은 화면에서는 명시 배치라
+        DOM 위치와 무관하다. */}
+    {(Astro.slots.has('aside') || Astro.slots.has('after')) && (
+      <div class="side-rail">
+        <slot name="aside" />
+        <slot name="after" />
+      </div>
+    )}
 
     <Comments locale={locale} term={commentTerm} />
 

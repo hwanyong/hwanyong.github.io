@@ -17,6 +17,8 @@ import type { RevisionEntry } from '../lib/content';
 import type { Alternate, Locale } from '../lib/i18n';
 import { revisionHref, type RevisionCollection } from '../lib/routes';
 import { UI } from '../lib/ui';
+import Toc from './Toc.astro';
+import type { MarkdownHeading } from 'astro';
 
 interface Props {
   locale: Locale;
@@ -46,6 +48,14 @@ interface Props {
    */
   upHref: string;
   upLabel: string;
+  /**
+   * 본문의 제목들. 사이드 레일의 목차가 이것으로 만들어진다.
+   *
+   * 부르는 쪽이 넘기는 이유: 여기서 다시 render() 하면 같은 본문을 두 번 렌더하게
+   * 된다. 개정축 페이지들은 이미 render() 로 Content 를 꺼내고 있으므로
+   * 같은 반환값의 headings 를 함께 넘기면 된다.
+   */
+  headings: MarkdownHeading[];
 }
 
 // ★ 헤더 우측 상태 칩(REV n / m)은 두지 않는다. 개정 이력은 아래 #revisions 패널이
@@ -62,6 +72,7 @@ const {
   index,
   upHref,
   upLabel,
+  headings,
 }: Props = Astro.props;
 
 const t = UI[locale];
@@ -93,6 +104,8 @@ const backLabel = isLatest ? upLabel : entry.data.title;
   commentTerm={`${collection}:${identity}`}
   ads={isLatest}
 >
+  <Toc locale={locale} headings={headings} slot="aside" />
+
   <Fragment slot="notice">
     {!isLatest && (
       <p class="stale-notice">
