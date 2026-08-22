@@ -21,11 +21,15 @@
     "check:collisions": "node tools/check-collisions.mjs",
     "i18n:fill": "node tools/i18n-fill.ts",
     "i18n:verify": "node tools/i18n-verify.ts",
+    "images:vault": "node tools/vault-images.ts",
+    "images:check": "node tools/vault-images.ts --check",
+    "images:thumb": "node tools/thumbnails.ts",
     "fonts:build": "node tools/fonts.mjs build",
     "fonts:check": "node tools/fonts.mjs build --check",
     "fonts:fetch": "node tools/fonts.mjs fetch"
   },
   "dependencies": {
+    "@astrojs/markdown-satteri": "^0.3.7",
     "@astrojs/rss": "4.0.19",
     "@astrojs/sitemap": "3.7.3",
     "astro": "7.2.4"
@@ -33,6 +37,7 @@
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "@types/node": "^26.2.0",
+    "katex": "^0.18.4",
     "sharp": "0.35.3",
     "typescript": "6.0.3"
   }

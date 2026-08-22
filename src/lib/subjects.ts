@@ -25,6 +25,7 @@ import type { Locale } from './i18n.ts';
 export const SUBJECT_SLUGS = [
   'math',
   'computer-science',
+  'artificial-intelligence',
   'earth-science',
   'chemistry',
   'physics',
@@ -47,6 +48,10 @@ export interface SubjectMeta {
 export const SUBJECTS: Record<Subject, SubjectMeta> = {
   math: { code: 'MATH', name: { en: 'Mathematics', ko: '수학' } },
   'computer-science': { code: 'CS', name: { en: 'Computer Science', ko: '컴퓨터과학' } },
+  'artificial-intelligence': {
+    code: 'AI',
+    name: { en: 'Artificial Intelligence', ko: '인공지능' },
+  },
   'earth-science': { code: 'EARTH', name: { en: 'Earth Science', ko: '지구과학' } },
   chemistry: { code: 'CHEM', name: { en: 'Chemistry', ko: '화학' } },
   physics: { code: 'PHYS', name: { en: 'Physics', ko: '물리' } },

@@ -792,6 +792,29 @@ img.thumb {
 
 /* 코드 블록 스타일은 src/styles/code.css 에 있다(Prism 토큰 클래스 기반). */
 
+/* 수식 — tools/katex-math.ts 가 빌드 때 MathML 로 렌더한다.
+   규칙이 이만큼뿐인 이유: 조판은 브라우저의 MathML 엔진이 하고 CSS 는 자리만 잡는다.
+   katex.css 도 KaTeX 폰트도 싣지 않는다(그 파일 머리의 설명 참조). */
+.prose .katex {
+  /* KaTeX 가 감싸는 span 이다. 인라인 수식이 줄 안에서 글자처럼 흐르게 둔다. */
+  font-size: 1.05em;
+}
+
+/* 블록 수식은 문단처럼 한 줄을 차지한다. display="block" 은 <math> 에 붙어 있으므로
+   래퍼 span 을 기준으로 잡아야 여백이 두 번 생기지 않는다. */
+.prose .katex:has(> math[display='block']) {
+  display: block;
+  margin-block: 1.6rem;
+  /* 긴 식이 열을 넘기면 잘리는 대신 그 줄만 가로로 흐른다 — 본문은 넘치지 않는다. */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 블록 수식은 브라우저가 가운데로 세운다. 되돌리지 않는다 —
+   조판 관행이 그렇고(LaTeX 도 같다), 실물로 보면 왼끝에 붙이는 쪽이 본문과 엉킨다.
+   ★ 한때 여기 `math[display='block'] { margin-inline: 0 }` 를 두었으나 먹지 않았다.
+     가운데 정렬이 margin 이 아니라 상위 블록에서 오기 때문이다. 지워 두는 이유다. */
+
 /* 빈 목록 안내 */
 .empty {
   margin: 0;

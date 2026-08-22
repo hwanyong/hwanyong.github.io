@@ -128,6 +128,7 @@ pnpm run ci
 |---|---|---|---|
 | `math` | `MATH` | Mathematics | 수학 |
 | `computer-science` | `CS` | Computer Science | 컴퓨터과학 |
+| `artificial-intelligence` | `AI` | Artificial Intelligence | 인공지능 |
 | `earth-science` | `EARTH` | Earth Science | 지구과학 |
 | `chemistry` | `CHEM` | Chemistry | 화학 |
 | `physics` | `PHYS` | Physics | 물리 |
