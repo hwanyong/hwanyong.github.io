@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 500" role="img"
+     aria-label="같은 콘텐츠 스니핑이 두 경로에서 다른 곳으로 흘러가는 대비. 왼쪽 브라우저 경로에서는 응답 바이트를 스니핑한 결과가 파서 선택과 스크립트 실행을 거쳐 문서 출처의 쿠키와 DOM 권한에 도달하고, 오른쪽 이 도구의 경로에서는 같은 판별이 분류값과 리포트 항목에서 멈춘다. nosniff 헤더는 왼쪽 경로의 스니핑 단계를 끊는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .hi    { fill:#ddf4ff; stroke:#54aeff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .pillG { fill:#dafbe1 }
+    .pillB { fill:#ffebe9 }
+    .band  { fill:#eaeef2 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    .cut   { stroke:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .hi    { fill:#123a63; stroke:#1f6feb }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .pillG { fill:#12341f }
+      .pillB { fill:#3c1618 }
+      .band  { fill:#21262d }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+      .cut   { stroke:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="472" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">가르는 것은 스니핑이 아니라, 판별 결과가 흘러 들어가는 곳이다</text>
+
+  <text class="bad" x="44" y="76" font-size="13" font-weight="600">브라우저 — 문서를 여는 경로</text>
+  <text class="good" x="456" y="76" font-size="13" font-weight="600">이 도구 — 세그먼트를 판정하는 경로</text>
+
+  <rect class="box" x="44" y="88" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="62" y="108" font-size="13" font-weight="600">응답 바이트</text>
+  <text class="muted m" x="62" y="126" font-size="11.5">Content-Type: text/plain</text>
+
+  <rect class="box" x="456" y="88" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="474" y="108" font-size="13" font-weight="600">응답 바이트</text>
+  <text class="muted m" x="474" y="126" font-size="11.5">200 · Content-Type: text/html</text>
+
+  <line x1="234" y1="134" x2="234" y2="158" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="214" y1="146" x2="254" y2="146" class="cut" stroke-width="2"/>
+  <text class="bad" x="264" y="150" font-size="11" font-weight="600">nosniff 가 끊는다</text>
+  <line x1="646" y1="134" x2="646" y2="158" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="660" y="150" font-size="11">선언을 보지 않는다</text>
+
+  <rect class="box" x="44" y="158" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="62" y="178" font-size="13" font-weight="600">MIME 스니핑</text>
+  <text class="muted" x="62" y="196" font-size="11.5">내용에서 &lt;script&gt; 를 본다</text>
+
+  <rect class="hi" x="456" y="158" width="380" height="46" rx="8" stroke-width="1.5"/>
+  <text class="ink m" x="474" y="178" font-size="13" font-weight="600">sniff(data)</text>
+  <text class="muted" x="474" y="196" font-size="11.5">선언을 인자로 받지 않는다</text>
+
+  <line x1="234" y1="204" x2="234" y2="228" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="248" y="220" font-size="11">타입이 바뀐다</text>
+  <line x1="646" y1="204" x2="646" y2="228" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="660" y="220" font-size="11">값으로 돌려준다</text>
+
+  <rect class="box" x="44" y="228" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="62" y="248" font-size="13" font-weight="600">파서 선택 — HTML 파서</text>
+  <text class="muted" x="62" y="266" font-size="11.5">선언과 다른 파서가 기동한다</text>
+
+  <rect class="box" x="456" y="228" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="474" y="248" font-size="13" font-weight="600">분류 — mpegts · fmp4 · unknown</text>
+  <text class="muted" x="474" y="266" font-size="11.5">값 하나를 돌려줄 뿐이다</text>
+
+  <line x1="234" y1="274" x2="234" y2="298" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="248" y="290" font-size="11">산출물이 코드다</text>
+  <line x1="646" y1="274" x2="646" y2="298" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="660" y="290" font-size="11">호출부가 기록한다</text>
+
+  <rect class="box" x="44" y="298" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="bad" x="62" y="318" font-size="13" font-weight="600">스크립트 실행</text>
+  <text class="muted" x="62" y="336" font-size="11.5">파싱 결과가 그대로 실행된다</text>
+
+  <rect class="box" x="456" y="298" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="474" y="318" font-size="13" font-weight="600">리포트 항목 — 페이로드 유효성</text>
+  <text class="muted" x="474" y="336" font-size="11.5">FAIL 하나가 더해질 뿐이다</text>
+
+  <line x1="234" y1="344" x2="234" y2="368" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="248" y="360" font-size="11">동일 출처 권한</text>
+  <line x1="646" y1="344" x2="646" y2="368" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="660" y="360" font-size="11">여기서 멈춘다</text>
+
+  <rect class="pillB" x="44" y="368" width="380" height="42" rx="8"/>
+  <text class="bad" x="234" y="394" font-size="13" text-anchor="middle" font-weight="600">문서 출처의 쿠키 · DOM 권한</text>
+
+  <rect class="pillG" x="456" y="368" width="380" height="42" rx="8"/>
+  <text class="good" x="646" y="394" font-size="13" text-anchor="middle" font-weight="600">여기서 끝난다 — 실행 경로 없음</text>
+
+  <rect class="band" x="44" y="428" width="792" height="44" rx="8"/>
+  <text class="ink" x="440" y="456" font-size="13" text-anchor="middle">스니핑 자체는 중립이다 — 결과가 실행을 결정하면 취약점, 분류를 결정하면 미덕이다</text>
+</svg>

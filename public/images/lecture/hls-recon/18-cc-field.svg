@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" role="img"
+     aria-label="MPEG-TS 패킷 헤더 4바이트의 비트 배치. 32비트 중 마지막 4비트가 continuity counter 이며, PID 별로 0에서 15까지 순환하고 payload 를 실은 패킷에서만 1 증가한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .cell  { fill:#eaeef2; stroke:#d8dee6 }
+    .cella { fill:#ddf4ff; stroke:#0969da }
+    .cellb { fill:#ffebe9; stroke:#cf222e }
+    .cellg { fill:#dafbe1; stroke:#1a7f37 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .accs  { stroke:#0969da }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    .mk    { fill:#656d76 }
+    .mka   { fill:#0969da }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .cell  { fill:#21262d; stroke:#30363d }
+      .cella { fill:#123a63; stroke:#4493f8 }
+      .cellb { fill:#4a1c1c; stroke:#f85149 }
+      .cellg { fill:#12331d; stroke:#3fb950 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .accs  { stroke:#4493f8 }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+      .mk    { fill:#8b949e }
+      .mka   { fill:#4493f8 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mka"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="268" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">MPEG-TS 패킷 헤더 4바이트 — 32비트 중 마지막 4비트만이 유실을 셀 수 있다</text>
+  <text class="muted m" x="152" y="72" font-size="11" text-anchor="middle">byte 0</text>
+  <text class="muted m" x="344" y="72" font-size="11" text-anchor="middle">byte 1</text>
+  <text class="muted m" x="536" y="72" font-size="11" text-anchor="middle">byte 2</text>
+  <text class="muted m" x="728" y="72" font-size="11" text-anchor="middle">byte 3</text>
+  <rect class="cell" x="56" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="68" y="103" font-size="10.5" text-anchor="middle">0</text>
+  <rect class="cell" x="80" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="92" y="103" font-size="10.5" text-anchor="middle">1</text>
+  <rect class="cell" x="104" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="116" y="103" font-size="10.5" text-anchor="middle">2</text>
+  <rect class="cell" x="128" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="140" y="103" font-size="10.5" text-anchor="middle">3</text>
+  <rect class="cell" x="152" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="164" y="103" font-size="10.5" text-anchor="middle">4</text>
+  <rect class="cell" x="176" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="188" y="103" font-size="10.5" text-anchor="middle">5</text>
+  <rect class="cell" x="200" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="212" y="103" font-size="10.5" text-anchor="middle">6</text>
+  <rect class="cell" x="224" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="236" y="103" font-size="10.5" text-anchor="middle">7</text>
+  <rect class="cell" x="248" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="260" y="103" font-size="10.5" text-anchor="middle">8</text>
+  <rect class="cell" x="272" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="284" y="103" font-size="10.5" text-anchor="middle">9</text>
+  <rect class="cell" x="296" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="308" y="103" font-size="10.5" text-anchor="middle">10</text>
+  <rect class="cell" x="320" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="332" y="103" font-size="10.5" text-anchor="middle">11</text>
+  <rect class="cell" x="344" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="356" y="103" font-size="10.5" text-anchor="middle">12</text>
+  <rect class="cell" x="368" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="380" y="103" font-size="10.5" text-anchor="middle">13</text>
+  <rect class="cell" x="392" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="404" y="103" font-size="10.5" text-anchor="middle">14</text>
+  <rect class="cell" x="416" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="428" y="103" font-size="10.5" text-anchor="middle">15</text>
+  <rect class="cell" x="440" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="452" y="103" font-size="10.5" text-anchor="middle">16</text>
+  <rect class="cell" x="464" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="476" y="103" font-size="10.5" text-anchor="middle">17</text>
+  <rect class="cell" x="488" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="500" y="103" font-size="10.5" text-anchor="middle">18</text>
+  <rect class="cell" x="512" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="524" y="103" font-size="10.5" text-anchor="middle">19</text>
+  <rect class="cell" x="536" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="548" y="103" font-size="10.5" text-anchor="middle">20</text>
+  <rect class="cell" x="560" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="572" y="103" font-size="10.5" text-anchor="middle">21</text>
+  <rect class="cell" x="584" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="596" y="103" font-size="10.5" text-anchor="middle">22</text>
+  <rect class="cell" x="608" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="620" y="103" font-size="10.5" text-anchor="middle">23</text>
+  <rect class="cell" x="632" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="644" y="103" font-size="10.5" text-anchor="middle">24</text>
+  <rect class="cell" x="656" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="668" y="103" font-size="10.5" text-anchor="middle">25</text>
+  <rect class="cell" x="680" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="692" y="103" font-size="10.5" text-anchor="middle">26</text>
+  <rect class="cell" x="704" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="muted m" x="716" y="103" font-size="10.5" text-anchor="middle">27</text>
+  <rect class="cella" x="728" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="acc m" x="740" y="103" font-size="10.5" text-anchor="middle">28</text>
+  <rect class="cella" x="752" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="acc m" x="764" y="103" font-size="10.5" text-anchor="middle">29</text>
+  <rect class="cella" x="776" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="acc m" x="788" y="103" font-size="10.5" text-anchor="middle">30</text>
+  <rect class="cella" x="800" y="82" width="24" height="32" stroke-width="1"/>
+  <text class="acc m" x="812" y="103" font-size="10.5" text-anchor="middle">31</text>
+  <rect class="cell" x="56" y="122" width="192" height="32" rx="3" stroke-width="1"/>
+  <text class="ink" x="152" y="143" font-size="12.5" text-anchor="middle">sync byte 0x47</text>
+  <rect class="cell" x="248" y="122" width="24" height="32" rx="3" stroke-width="1"/>
+  <text class="muted" x="260" y="143" font-size="12.5" text-anchor="middle">T</text>
+  <rect class="cell" x="272" y="122" width="24" height="32" rx="3" stroke-width="1"/>
+  <text class="muted" x="284" y="143" font-size="12.5" text-anchor="middle">P</text>
+  <rect class="cell" x="296" y="122" width="24" height="32" rx="3" stroke-width="1"/>
+  <text class="muted" x="308" y="143" font-size="12.5" text-anchor="middle">R</text>
+  <rect class="cell" x="320" y="122" width="312" height="32" rx="3" stroke-width="1"/>
+  <text class="ink" x="476" y="143" font-size="12.5" text-anchor="middle">PID (13비트)</text>
+  <rect class="cell" x="632" y="122" width="48" height="32" rx="3" stroke-width="1"/>
+  <text class="muted" x="656" y="143" font-size="12.5" text-anchor="middle">SC</text>
+  <rect class="cell" x="680" y="122" width="48" height="32" rx="3" stroke-width="1"/>
+  <text class="muted" x="704" y="143" font-size="12.5" text-anchor="middle">AFC</text>
+  <rect class="cella" x="728" y="122" width="96" height="32" rx="3" stroke-width="1"/>
+  <text class="acc" x="776" y="143" font-size="12.5" text-anchor="middle" font-weight="600">CC</text>
+  <line class="accs" x1="776" y1="158" x2="776" y2="176" stroke-width="1.5" marker-end="url(#aa)"/>
+  <text class="acc" x="824" y="198" font-size="13.5" text-anchor="end" font-weight="600">continuity counter — 4비트</text>
+  <text class="muted" x="824" y="217" font-size="12.5" text-anchor="end">PID 별 독립 · payload 를 실은 패킷에서만 +1 · 15 다음은 0</text>
+  <line class="rule" x1="44" y1="234" x2="836" y2="234" stroke-width="1"/>
+  <text class="muted" x="44" y="254" font-size="11">T = transport_error_indicator   ·   P = payload_unit_start_indicator   ·   R = transport_priority</text>
+  <text class="muted" x="44" y="272" font-size="11">SC = transport_scrambling_control (2비트)   ·   AFC = adaptation_field_control (2비트)</text>
+</svg>

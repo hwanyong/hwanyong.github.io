@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 304" role="img"
+     aria-label="세그먼트 20건의 TTFB 표본을 로그 축에 늘어놓은 그림. 18건은 41에서 75밀리초 사이에 몰려 있고 2건이 2900과 5200밀리초로 떨어져 있다. 평균 455밀리초는 어떤 실제 표본 근처에도 없고, p50은 56밀리초, p95는 2900밀리초로 판정 임계 3000밀리초 바로 아래에 놓인다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .axis  { stroke:#656d76 }
+    .dot   { fill:#0969da }
+    .acc   { fill:#0969da }
+    .accs  { stroke:#0969da }
+    .warn  { fill:#9a6700 }
+    .warns { stroke:#9a6700 }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .axis  { stroke:#8b949e }
+      .dot   { fill:#4493f8 }
+      .acc   { fill:#4493f8 }
+      .accs  { stroke:#4493f8 }
+      .warn  { fill:#d29922 }
+      .warns { stroke:#d29922 }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="272" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">세그먼트 20건의 TTFB — 같은 표본을 평균 · p50 · p95 로 본 결과 (가로축 로그)</text>
+
+  <text class="muted" x="437" y="116" font-size="11.5" text-anchor="middle">표본 20건 중 이 근처에 있는 것은 하나도 없다</text>
+  <text class="warn" x="437" y="132" font-size="13" text-anchor="middle" font-weight="600">평균 455ms</text>
+  <line class="warns" x1="436.8" y1="140" x2="436.8" y2="206" stroke-width="1.5" stroke-dasharray="5 4"/>
+
+  <text class="bad" x="701" y="118" font-size="13" font-weight="600">판정 임계 3000ms</text>
+  <line class="bads" x1="693.1" y1="126" x2="693.1" y2="206" stroke-width="1.5" stroke-dasharray="5 4"/>
+
+  <text class="acc" x="152" y="156" font-size="13" text-anchor="middle" font-weight="600">p50 56ms</text>
+  <line class="accs" x1="152.1" y1="164" x2="152.1" y2="200" stroke-width="1.5"/>
+
+  <text class="acc" x="681" y="156" font-size="13" text-anchor="end" font-weight="600">p95 2900ms</text>
+  <line class="accs" x1="688.5" y1="164" x2="688.5" y2="200" stroke-width="1.5"/>
+
+  <text class="muted" x="784" y="156" font-size="12" text-anchor="middle">최댓값 5200ms</text>
+  <line class="rule" x1="768" y1="168" x2="768" y2="200" stroke-width="1.5"/>
+
+  <line class="axis" x1="90" y1="200" x2="820" y2="200" stroke-width="1"/>
+
+  <circle class="dot" cx="109.7" cy="178" r="3.5"/>
+  <circle class="dot" cx="119.3" cy="190" r="3.5"/>
+  <circle class="dot" cx="122.5" cy="178" r="3.5"/>
+  <circle class="dot" cx="128.4" cy="190" r="3.5"/>
+  <circle class="dot" cx="131.3" cy="178" r="3.5"/>
+  <circle class="dot" cx="134.1" cy="190" r="3.5"/>
+  <circle class="dot" cx="136.8" cy="178" r="3.5"/>
+  <circle class="dot" cx="142.1" cy="190" r="3.5"/>
+  <circle class="dot" cx="144.7" cy="178" r="3.5"/>
+  <circle class="dot" cx="149.7" cy="190" r="3.5"/>
+  <circle class="dot" cx="152.1" cy="178" r="3.5"/>
+  <circle class="dot" cx="156.9" cy="190" r="3.5"/>
+  <circle class="dot" cx="161.5" cy="178" r="3.5"/>
+  <circle class="dot" cx="165.9" cy="190" r="3.5"/>
+  <circle class="dot" cx="172.2" cy="178" r="3.5"/>
+  <circle class="dot" cx="182.2" cy="190" r="3.5"/>
+  <circle class="dot" cx="186.0" cy="178" r="3.5"/>
+  <circle class="dot" cx="191.5" cy="190" r="3.5"/>
+  <circle class="bad" cx="688.5" cy="178" r="4.5"/>
+  <circle class="bad" cx="768.0" cy="190" r="4.5"/>
+
+  <line class="axis" x1="136.6" y1="200" x2="136.6" y2="207" stroke-width="1"/>
+  <line class="axis" x1="230.9" y1="200" x2="230.9" y2="207" stroke-width="1"/>
+  <line class="axis" x1="449.6" y1="200" x2="449.6" y2="207" stroke-width="1"/>
+  <line class="axis" x1="543.9" y1="200" x2="543.9" y2="207" stroke-width="1"/>
+  <line class="axis" x1="762.6" y1="200" x2="762.6" y2="207" stroke-width="1"/>
+  <text class="muted m" x="136.6" y="222" font-size="11.5" text-anchor="middle">50</text>
+  <text class="muted m" x="230.9" y="222" font-size="11.5" text-anchor="middle">100</text>
+  <text class="muted m" x="449.6" y="222" font-size="11.5" text-anchor="middle">500</text>
+  <text class="muted m" x="543.9" y="222" font-size="11.5" text-anchor="middle">1000</text>
+  <text class="muted m" x="762.6" y="222" font-size="11.5" text-anchor="middle">5000</text>
+  <text class="muted" x="820" y="222" font-size="11.5" text-anchor="end">ms</text>
+
+  <line class="rule" x1="44" y1="244" x2="836" y2="244" stroke-width="1"/>
+  <text x="44" y="268" font-size="13" xml:space="preserve"><tspan class="ink">평균은 </tspan><tspan class="warn" font-weight="600">어떤 실제 응답과도 닮지 않았고</tspan><tspan class="ink">, p95 는 표본 20건에서 </tspan><tspan class="acc" font-weight="600">위에서 두 번째 값</tspan><tspan class="ink">이라 최악의 1건을 보지 못한다.</tspan></text>
+</svg>

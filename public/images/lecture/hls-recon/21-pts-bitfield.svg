@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 296" role="img"
+     aria-label="PES 헤더의 PTS 5바이트 40비트 배치. 4비트 접두 0010, PTS 상위 3비트, 마커 1비트, PTS 15비트, 마커, PTS 15비트, 마커 순으로 33비트가 흩어져 실린다. 실측 바이트 21 00 07 E8 B5 는 128090 tick, 즉 1.423222초다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .good  { fill:#1a7f37 }
+    .cpre  { fill:#eaeef2 }
+    .cpts  { fill:#ddf4ff }
+    .cmk   { fill:#fff8c5 }
+    .sep   { stroke:#8b949e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .good  { fill:#3fb950 }
+      .cpre  { fill:#21262d }
+      .cpts  { fill:#123a63 }
+      .cmk   { fill:#3d2e00 }
+      .sep   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="264" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">33비트 PTS 가 5바이트에 흩어져 실린다 — 바이트 경계에 맞지 않는 값의 대가</text>
+  <text class="muted" x="44" y="70" font-size="12.5">아래 비트는 plain/seg000.ts 의 첫 영상 PES 헤더에서 그대로 읽은 것이다.</text>
+
+  <rect class="cpre" x="60" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="69.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpre" x="79" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="88.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpre" x="98" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="107.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpre" x="117" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="126.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="136" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="145.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="155" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="164.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="174" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="183.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cmk" x="193" y="104" width="18" height="34" rx="2"/>
+  <text class="warn m" x="202.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="212" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="221.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="231" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="240.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="250" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="259.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="269" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="278.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="288" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="297.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="307" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="316.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="326" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="335.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="345" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="354.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="364" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="373.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="383" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="392.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="402" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="411.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="421" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="430.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="440" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="449.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="459" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="468.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="478" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="487.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cmk" x="497" y="104" width="18" height="34" rx="2"/>
+  <text class="warn m" x="506.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="516" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="525.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="535" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="544.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="554" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="563.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="573" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="582.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="592" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="601.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="611" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="620.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="630" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="639.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="649" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="658.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="668" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="677.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="687" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="696.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="706" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="715.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="725" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="734.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="744" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="753.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cpts" x="763" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="772.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+  <rect class="cpts" x="782" y="104" width="18" height="34" rx="2"/>
+  <text class="ink m" x="791.0" y="126" font-size="11.5" text-anchor="middle">0</text>
+  <rect class="cmk" x="801" y="104" width="18" height="34" rx="2"/>
+  <text class="warn m" x="810.0" y="126" font-size="11.5" text-anchor="middle">1</text>
+
+  <line class="sep" x1="211" y1="100" x2="211" y2="142" stroke-width="1"/>
+  <line class="sep" x1="363" y1="100" x2="363" y2="142" stroke-width="1"/>
+  <line class="sep" x1="515" y1="100" x2="515" y2="142" stroke-width="1"/>
+  <line class="sep" x1="667" y1="100" x2="667" y2="142" stroke-width="1"/>
+
+  <text class="acc m" x="126.5" y="96" font-size="12.5" font-weight="600" text-anchor="middle">0x21</text>
+  <text class="acc m" x="278.5" y="96" font-size="12.5" font-weight="600" text-anchor="middle">0x00</text>
+  <text class="acc m" x="430.5" y="96" font-size="12.5" font-weight="600" text-anchor="middle">0x07</text>
+  <text class="acc m" x="582.5" y="96" font-size="12.5" font-weight="600" text-anchor="middle">0xE8</text>
+  <text class="acc m" x="734.5" y="96" font-size="12.5" font-weight="600" text-anchor="middle">0xB5</text>
+
+  <text class="muted m" x="98" y="154" font-size="10.5" text-anchor="middle">'0010'</text>
+  <text class="muted m" x="164.5" y="154" font-size="10.5" text-anchor="middle">[32:30]</text>
+  <text class="warn m" x="202.5" y="154" font-size="10.5" text-anchor="middle">M</text>
+  <text class="muted m" x="354.5" y="154" font-size="10.5" text-anchor="middle">PTS[29:15]</text>
+  <text class="warn m" x="506.5" y="154" font-size="10.5" text-anchor="middle">M</text>
+  <text class="muted m" x="658.5" y="154" font-size="10.5" text-anchor="middle">PTS[14:0]</text>
+  <text class="warn m" x="810.5" y="154" font-size="10.5" text-anchor="middle">M</text>
+
+  <line class="rule" x1="44" y1="176" x2="836" y2="176" stroke-width="1"/>
+
+  <text x="44" y="200" font-size="13" xml:space="preserve"><tspan class="ink">복원 = </tspan><tspan class="acc m">(3비트 &lt;&lt; 30) | (15비트 &lt;&lt; 15) | 15비트</tspan><tspan class="ink"> = </tspan><tspan class="good m" font-weight="600">128090 tick</tspan><tspan class="ink"> = </tspan><tspan class="good m" font-weight="600">1.423222 s</tspan></text>
+  <text x="44" y="224" font-size="13" xml:space="preserve"><tspan class="warn" font-weight="600">M(marker_bit)</tspan><tspan class="ink"> 은 항상 1 이다. 15비트마다 1 이 강제되므로 이 5바이트 안의 최장 0 런은 15 로 묶인다.</tspan></text>
+  <text x="44" y="246" font-size="13" xml:space="preserve"><tspan class="ink">start code 접두 </tspan><tspan class="acc m">00 00 01</tspan><tspan class="ink"> 은 0 이 23개 필요하므로 — </tspan><tspan class="good" font-weight="600">타임스탬프가 시작 코드를 흉내낼 수 없다.</tspan></text>
+  <text class="muted" x="44" y="266" font-size="11.5">비어 보이는 이 한 비트가 파서의 동기 재획득을 지켜 준다.</text>
+</svg>

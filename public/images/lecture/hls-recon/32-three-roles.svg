@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 510" role="img"
+     aria-label="같은 파일명 문자열을 읽는 쪽이 셋이고 문법이 서로 다르다. 사람은 뜻으로 읽어 문제가 없지만, 파일 시스템은 슬래시에서 경로 성분을 가르고, 셸은 공백에서 인자를 가른다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .chip  { fill:#eaeef2 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .chip  { fill:#21262d }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="476" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">같은 문자열을 읽는 쪽이 셋이고, 셋의 문법이 서로를 모른다</text>
+
+  <rect class="panel" x="40" y="68" width="800" height="48" rx="8"/>
+  <text x="60" y="98" font-size="13" xml:space="preserve"><tspan class="muted">사이트가 알려준 이름  </tspan><tspan class="ink m" font-size="13.5">그렌라간: 01/2화.mp4</tspan></text>
+
+  <rect class="panel" x="40" y="130" width="800" height="92" rx="8"/>
+  <text class="ink" x="62" y="160" font-size="14" font-weight="600">사람이 읽는 이름</text>
+  <text class="muted" x="62" y="182" font-size="11.5">표시 · 검색 · 기억</text>
+  <line class="rule" x1="252" y1="146" x2="252" y2="206" stroke-width="1"/>
+  <text class="ink" x="274" y="160" font-size="13">문법이 없다 — 왼쪽부터 뜻으로 읽는다</text>
+  <text class="muted m" x="274" y="182" font-size="12.5">작품명 · 구분 · 화수 · 컨테이너</text>
+  <text class="good" x="274" y="204" font-size="12.5" font-weight="600">뜻이 통한다 — 여기서는 아무 문제가 없다</text>
+
+  <rect class="panel" x="40" y="234" width="800" height="92" rx="8"/>
+  <text class="ink" x="62" y="264" font-size="14" font-weight="600">파일 시스템의 키</text>
+  <text class="muted" x="62" y="286" font-size="11.5">디렉터리 항목의 유일 식별자</text>
+  <line class="rule" x1="252" y1="250" x2="252" y2="310" stroke-width="1"/>
+  <text x="274" y="264" font-size="13" xml:space="preserve"><tspan class="ink">경로 구분자 </tspan><tspan class="bad m" font-weight="600">/</tspan><tspan class="ink"> 를 만나면 이름이 끝나고 다음 성분이 시작한다</tspan></text>
+  <text class="muted m" x="274" y="286" font-size="12.5" xml:space="preserve"><tspan>그렌라간: 01</tspan><tspan class="bad" font-weight="600">  ⟩  </tspan><tspan>2화.mp4</tspan></text>
+  <text class="bad" x="274" y="308" font-size="12.5" font-weight="600">이름 하나가 경로 성분 둘이 된다</text>
+
+  <rect class="panel" x="40" y="338" width="800" height="92" rx="8"/>
+  <text class="ink" x="62" y="368" font-size="14" font-weight="600">셸·명령줄의 인자</text>
+  <text class="muted" x="62" y="390" font-size="11.5">공백으로 갈리는 토큰</text>
+  <line class="rule" x1="252" y1="354" x2="252" y2="414" stroke-width="1"/>
+  <text class="ink" x="274" y="368" font-size="13">따옴표가 없으면 공백이 인자 경계다</text>
+  <text class="muted m" x="274" y="390" font-size="12.5" xml:space="preserve"><tspan>그렌라간:</tspan><tspan class="bad" font-weight="600">  ⟩  </tspan><tspan>01/2화.mp4</tspan></text>
+  <text class="bad" x="274" y="412" font-size="12.5" font-weight="600">한 이름이 인자 둘로 쪼개진다</text>
+
+  <line class="rule" x1="44" y1="452" x2="836" y2="452" stroke-width="1"/>
+  <text x="44" y="476" font-size="13" xml:space="preserve"><tspan class="ink">이식 가능한 이름이란 </tspan><tspan class="acc" font-weight="600">세 문법 어디에서도 특별하지 않은 문자</tspan><tspan class="ink">만 남은 것이다 — 허용 집합의 교집합.</tspan></text>
+</svg>

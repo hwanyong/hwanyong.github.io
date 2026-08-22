@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 468" role="img"
+     aria-label="전용 스트리밍 프로토콜과 HTTP 기반 HLS 의 비교. 전용 프로토콜에서는 서버가 세션과 재생 위치와 비트레이트 결정을 갖고 미디어를 밀어 보내지만, HLS 에서는 서버가 요청마다 독립인 파일 서버가 되고 클라이언트가 매니페스트와 재생 위치와 화질 결정을 모두 갖는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .box   { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .chip  { fill:#eaeef2 }
+    .chipa { fill:#ddf4ff }
+    .mk    { fill:#656d76 }
+    .mka   { fill:#0969da }
+    .ars   { stroke:#656d76 }
+    .arsa  { stroke:#0969da }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .box   { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .chip  { fill:#21262d }
+      .chipa { fill:#123a63 }
+      .mk    { fill:#8b949e }
+      .mka   { fill:#4493f8 }
+      .ars   { stroke:#8b949e }
+      .arsa  { stroke:#4493f8 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mka"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="436" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">같은 영상을 나르는 두 방식 — 옮겨간 것은 데이터가 아니라 결정권이다</text>
+
+  <!-- 왼쪽: 전용 프로토콜 -->
+  <rect class="panel" x="40" y="68" width="384" height="316" rx="8" stroke-width="1"/>
+  <text class="muted" x="56" y="92" font-size="12" font-weight="600">전용 스트리밍 프로토콜 — RTMP · RTSP+RTP</text>
+
+  <rect class="box" x="56" y="106" width="352" height="86" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="326" y="116" width="70" height="20" rx="10"/>
+  <text class="acc" x="361" y="130" font-size="11" text-anchor="middle" font-weight="600">상태 있음</text>
+  <text class="ink" x="72" y="131" font-size="13" font-weight="600">서버</text>
+  <text class="muted" x="72" y="154" font-size="12.5">세션 · 재생 위치 · 다음에 보낼 바이트</text>
+  <text class="muted" x="72" y="174" font-size="12.5">비트레이트 전환 결정</text>
+
+  <line class="ars" x1="72" y1="228" x2="72" y2="208" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="muted" x="92" y="224" font-size="12.5">PLAY 한 번 — 이후는 서버가 이끈다</text>
+  <line class="ars" x1="72" y1="242" x2="72" y2="262" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="muted" x="92" y="258" font-size="12.5">미디어를 계속 밀어 보낸다 (push)</text>
+
+  <rect class="box" x="56" y="278" width="352" height="66" rx="6" stroke-width="1"/>
+  <rect class="chip" x="326" y="288" width="70" height="20" rx="10"/>
+  <text class="muted" x="361" y="302" font-size="11" text-anchor="middle" font-weight="600">상태 없음</text>
+  <text class="ink" x="72" y="303" font-size="13" font-weight="600">클라이언트</text>
+  <text class="muted" x="72" y="326" font-size="12.5">받은 것을 디코딩해 표시한다</text>
+
+  <text class="muted" x="56" y="368" font-size="12">캐시할 단위가 없다 · 확장은 동시 세션 수에 비례한다</text>
+
+  <!-- 오른쪽: HTTP + HLS -->
+  <rect class="panel" x="456" y="68" width="384" height="316" rx="8" stroke-width="1"/>
+  <text class="muted" x="472" y="92" font-size="12" font-weight="600">HTTP 위의 조각 전송 — HLS · MPEG-DASH</text>
+
+  <rect class="box" x="472" y="106" width="352" height="86" rx="6" stroke-width="1"/>
+  <rect class="chip" x="742" y="116" width="70" height="20" rx="10"/>
+  <text class="muted" x="777" y="130" font-size="11" text-anchor="middle" font-weight="600">상태 없음</text>
+  <text class="ink" x="488" y="131" font-size="13" font-weight="600">서버</text>
+  <text class="muted" x="488" y="154" font-size="12.5">파일을 준다. 요청마다 독립이며</text>
+  <text class="muted" x="488" y="174" font-size="12.5">앞 요청도 뒤 요청도 알지 못한다</text>
+
+  <line class="arsa" x1="488" y1="228" x2="488" y2="208" stroke-width="1.5" marker-end="url(#aa)"/>
+  <text x="508" y="224" font-size="12.5" xml:space="preserve"><tspan class="acc" font-weight="600">조각마다 새 요청</tspan><tspan class="muted"> — GET seg042.ts</tspan></text>
+  <line class="arsa" x1="488" y1="242" x2="488" y2="262" stroke-width="1.5" marker-end="url(#aa)"/>
+  <text x="508" y="258" font-size="12.5" xml:space="preserve"><tspan class="muted">200 OK · 바이트. </tspan><tspan class="acc" font-weight="600">응답은 캐시된다</tspan></text>
+
+  <rect class="box" x="472" y="278" width="352" height="66" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="742" y="288" width="70" height="20" rx="10"/>
+  <text class="acc" x="777" y="302" font-size="11" text-anchor="middle" font-weight="600">상태 있음</text>
+  <text class="ink" x="488" y="303" font-size="13" font-weight="600">클라이언트</text>
+  <text class="muted" x="488" y="326" font-size="12.5">매니페스트 · 재생 위치 · 버퍼 · 화질 결정</text>
+
+  <text class="muted" x="472" y="368" font-size="12">응답이 캐시 가능한 객체 · 확장은 CDN 이 이미 해결해 둔 문제</text>
+
+  <line class="rule" x1="44" y1="404" x2="836" y2="404" stroke-width="1"/>
+  <text x="44" y="428" font-size="13" xml:space="preserve"><tspan class="ink">결정권이 클라이언트로 옮겨가면 </tspan><tspan class="acc" font-weight="600">받은 것이 옳은지 판정할 책임</tspan><tspan class="ink">도 함께 옮겨간다. 서버는 더 이상 그것을 알 위치에 있지 않다.</tspan></text>
+</svg>

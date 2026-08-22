@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 396" role="img"
+     aria-label="이 코드가 NFC 로 고정하는 두 지점. 저장 경로에서는 sanitize 가 쓰기 직전에 NFC 로 맞추고, 비교 경로에서는 _key 가 견주기 직전에 NFC 로 맞춘 뒤 구분자 제거와 casefold 까지 더한다. 저장용 표기는 되돌릴 수 있어야 하고 비교용 표기는 되돌릴 필요가 없다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .keybx { fill:#ddf4ff; stroke:#54aeff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .rule  { stroke:#d8dee6 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .keybx { fill:#123a63; stroke:#4493f8 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .rule  { stroke:#30363d }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="364" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">NFC 로 고정하는 지점은 둘이고, 둘이 하는 일은 다르다</text>
+
+  <text class="acc" x="44" y="78" font-size="12" font-weight="600">① 저장 시 — 쓰기 직전</text>
+
+  <rect class="box" x="44" y="90" width="186" height="66" rx="8" stroke-width="1"/>
+  <text class="ink" x="58" y="118" font-size="13">웹이 알려준 작품명</text>
+  <text class="muted" x="58" y="138" font-size="11.5">형태는 서버가 정한다</text>
+
+  <text class="muted m" x="268" y="114" font-size="11" text-anchor="middle">sanitize()</text>
+  <line x1="238" y1="130" x2="298" y2="130" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="keybx" x="306" y="90" width="224" height="66" rx="8" stroke-width="1.5"/>
+  <text class="acc" x="320" y="118" font-size="13" font-weight="600">NFC 로 합성</text>
+  <text class="muted" x="320" y="138" font-size="11.5">예약 문자 → _ · 끝의 점·공백 제거</text>
+
+  <text class="muted" x="568" y="114" font-size="11" text-anchor="middle">쓴다</text>
+  <line x1="538" y1="130" x2="598" y2="130" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="606" y="90" width="230" height="66" rx="8" stroke-width="1"/>
+  <text class="ink" x="620" y="118" font-size="13">디스크에 남는 이름</text>
+  <text class="muted m" x="620" y="138" font-size="11">library.py:23,33</text>
+
+  <text x="44" y="180" font-size="12.5" xml:space="preserve"><tspan class="muted">이 표기가 디스크에 남아 사람이 읽고 다른 도구가 연다. </tspan><tspan class="good" font-weight="600">되돌릴 수 있어야 한다</tspan><tspan class="muted"> — casefold 도 구분자 제거도 하지 않는다.</tspan></text>
+
+  <line class="rule" x1="44" y1="200" x2="836" y2="200" stroke-width="1"/>
+
+  <text class="acc" x="44" y="224" font-size="12" font-weight="600">② 비교 시 — 견주기 직전</text>
+
+  <rect class="box" x="44" y="236" width="186" height="66" rx="8" stroke-width="1"/>
+  <text class="ink" x="58" y="264" font-size="13">디스크에서 읽은 이름</text>
+  <text class="muted" x="58" y="284" font-size="11.5">형태는 볼륨이 정한다</text>
+
+  <text class="muted m" x="268" y="260" font-size="11" text-anchor="middle">_key()</text>
+  <line x1="238" y1="276" x2="298" y2="276" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="keybx" x="306" y="236" width="224" height="66" rx="8" stroke-width="1.5"/>
+  <text class="acc" x="320" y="264" font-size="13" font-weight="600">NFC 로 합성</text>
+  <text class="muted" x="320" y="284" font-size="11.5">구분자 제거 + casefold</text>
+
+  <text class="muted" x="568" y="260" font-size="11" text-anchor="middle">견준다</text>
+  <line x1="538" y1="276" x2="598" y2="276" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="606" y="236" width="230" height="66" rx="8" stroke-width="1"/>
+  <text class="ink" x="620" y="264" font-size="13">같은 작품인가</text>
+  <text class="muted m" x="620" y="284" font-size="11">inventory.py:238-239</text>
+
+  <text x="44" y="326" font-size="12.5" xml:space="preserve"><tspan class="muted">이 표기는 견주고 버린다. </tspan><tspan class="good" font-weight="600">되돌릴 필요가 없으므로 더 뭉갤 수 있다</tspan><tspan class="muted"> — `Sky.Blue` 와 `sky blue` 가 같아진다.</tspan></text>
+
+  <line class="rule" x1="44" y1="344" x2="836" y2="344" stroke-width="1"/>
+  <text x="44" y="366" font-size="13" xml:space="preserve"><tspan class="ink">두 지점 모두 </tspan><tspan class="acc" font-weight="600">경계</tspan><tspan class="ink">다 — 쓰기 직전과 견주기 직전. 그 사이 어디에서도 다시 정규화하지 않는다.</tspan></text>
+</svg>

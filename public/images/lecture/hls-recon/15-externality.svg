@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 344" role="img"
+     aria-label="송출 사업자의 필터 회피가 클라이언트 구현자에게 비용을 전가하는 구조. 송출자가 세그먼트를 html 로 내보내면 클라이언트는 확장자 방어에 막히고, 재생하려면 방어를 꺼야 하므로 CVE-2023-6602 공격면이 열린다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .colA  { fill:#f6f8fa; stroke:#d8dee6 }
+    .colB  { fill:#f6f8fa; stroke:#d8dee6 }
+    .danger{ fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    .mkb   { fill:#cf222e }
+    .arwb  { stroke:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .colA  { fill:#161b22; stroke:#30363d }
+      .colB  { fill:#161b22; stroke:#30363d }
+      .danger{ fill:#3d1518; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+      .mkb   { fill:#f85149 }
+      .arwb  { stroke:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mkb"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="316" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">결정하는 쪽과 비용을 치르는 쪽이 다르다</text>
+
+  <text class="ink" x="180" y="76" font-size="13.5" text-anchor="middle" font-weight="600">송출 사업자</text>
+  <text class="ink" x="672" y="76" font-size="13.5" text-anchor="middle" font-weight="600">클라이언트 구현자</text>
+
+  <rect class="colA" x="56" y="88" width="248" height="38" rx="6" stroke-width="1"/>
+  <text class="muted" x="180" y="112" font-size="12.5" text-anchor="middle">확장자 필터를 회피하고 싶다</text>
+
+  <rect class="colB" x="548" y="88" width="248" height="38" rx="6" stroke-width="1"/>
+  <text class="muted" x="672" y="112" font-size="12.5" text-anchor="middle">정상 재생을 하고 싶다</text>
+
+  <line x1="180" y1="128" x2="180" y2="148" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="colA" x="56" y="152" width="248" height="38" rx="6" stroke-width="1"/>
+  <text x="180" y="176" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="ink">세그먼트를 </tspan><tspan class="ink m" font-weight="600">.html</tspan><tspan class="ink"> 로 내보낸다</tspan></text>
+
+  <path d="M308,171 L536,171" class="arwb" fill="none" stroke-width="1.8" marker-end="url(#arb)"/>
+  <text class="bad" x="422" y="163" font-size="12" text-anchor="middle" font-weight="600">비용 전가</text>
+
+  <rect class="colB" x="548" y="152" width="248" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="672" y="176" font-size="12.5" text-anchor="middle">확장자 방어에 막힌다</text>
+
+  <line x1="672" y1="192" x2="672" y2="212" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="colB" x="548" y="216" width="248" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="672" y="240" font-size="12.5" text-anchor="middle">방어를 끄는 수밖에 없다</text>
+
+  <line x1="672" y1="256" x2="672" y2="272" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="danger" x="548" y="276" width="248" height="36" rx="6" stroke-width="1.5"/>
+  <text class="bad" x="672" y="299" font-size="12.5" text-anchor="middle" font-weight="600">CVE-2023-6602 공격면이 열린다</text>
+
+  <rect class="colA" x="56" y="216" width="248" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="180" y="240" font-size="12.5" text-anchor="middle">목적을 달성한다</text>
+  <text class="muted" x="180" y="296" font-size="12" text-anchor="middle">치른 비용은 보이지 않는다</text>
+</svg>

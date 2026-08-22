@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 358" role="img"
+     aria-label="ABR 의 반응 지연 하한을 보여주는 시간축 도식. 세그먼트 N 을 받는 도중 가용 대역폭이 떨어져도 처리량 측정은 N 의 수신이 끝나야 완성되므로, 새로 고른 화질이 적용되는 첫 조각은 N+1 이다. 반응 지연의 하한은 세그먼트 한 개 길이다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .band  { fill:#dafbe1 }
+    .bandl { fill:#ffebe9 }
+    .blk   { fill:#f6f8fa; stroke:#d8dee6 }
+    .blka  { fill:#ddf4ff; stroke:#0969da }
+    .lock  { fill:#ffdcd7 }
+    .blkl  { stroke:#d8dee6 }
+    .drop  { stroke:#cf222e }
+    .mka   { fill:#0969da }
+    .arsa  { stroke:#0969da }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .band  { fill:#12281d }
+      .bandl { fill:#3a1416 }
+      .blk   { fill:#161b22; stroke:#30363d }
+      .blka  { fill:#123a63; stroke:#4493f8 }
+      .lock  { fill:#4a1a1c }
+      .blkl  { stroke:#30363d }
+      .drop  { stroke:#f85149 }
+      .mka   { fill:#4493f8 }
+      .arsa  { stroke:#4493f8 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mka"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="326" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">ABR 의 반응은 왜 반드시 한 조각 늦는가</text>
+
+  <!-- 가용 대역폭 띠 -->
+  <text class="muted" x="44" y="88" font-size="12">가용 대역폭</text>
+  <rect class="band" x="160" y="74" width="250" height="20" rx="4"/>
+  <rect class="bandl" x="410" y="74" width="420" height="20" rx="4"/>
+  <text class="good" x="180" y="88" font-size="11.5" font-weight="600">충분</text>
+  <text class="bad" x="428" y="88" font-size="11.5" font-weight="600">급락 — 720p 를 감당하지 못한다</text>
+
+  <line class="drop" x1="410" y1="70" x2="410" y2="176" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+  <!-- 세그먼트 블록 -->
+  <text class="muted" x="44" y="146" font-size="12">받는 조각</text>
+  <rect class="blk" x="160" y="112" width="163" height="58" rx="6" stroke-width="1"/>
+  <text class="ink" x="241" y="138" font-size="13" text-anchor="middle" font-weight="600">세그먼트 N−1</text>
+  <text class="muted" x="241" y="157" font-size="11.5" text-anchor="middle">720p</text>
+
+  <rect class="blk" x="329" y="112" width="163" height="58" rx="6" stroke-width="1"/>
+  <rect class="lock" x="410" y="113" width="81" height="56" rx="0"/>
+  <rect class="blkl" x="329" y="112" width="163" height="58" rx="6" fill="none" stroke-width="1"/>
+  <text class="ink" x="369" y="138" font-size="13" text-anchor="middle" font-weight="600">세그먼트 N</text>
+  <text class="muted" x="369" y="157" font-size="11.5" text-anchor="middle">720p</text>
+  <text class="bad" x="451" y="145" font-size="10.5" text-anchor="middle" font-weight="600">고정</text>
+
+  <rect class="blka" x="498" y="112" width="163" height="58" rx="6" stroke-width="1.5"/>
+  <text class="acc" x="579" y="138" font-size="13" text-anchor="middle" font-weight="600">세그먼트 N+1</text>
+  <text class="acc" x="579" y="157" font-size="11.5" text-anchor="middle">360p — 여기서 전환</text>
+
+  <rect class="blk" x="667" y="112" width="163" height="58" rx="6" stroke-width="1"/>
+  <text class="ink" x="748" y="138" font-size="13" text-anchor="middle" font-weight="600">세그먼트 N+2</text>
+  <text class="muted" x="748" y="157" font-size="11.5" text-anchor="middle">360p</text>
+
+  <!-- 결정 경로 -->
+  <path class="arsa" d="M492,178 L492,206 L579,206 L579,178" fill="none" stroke-width="1.5" marker-end="url(#b)"/>
+  <text class="acc" x="536" y="224" font-size="11.5" text-anchor="middle" font-weight="600">측정 → 결정</text>
+
+  <text x="160" y="252" font-size="12.5" xml:space="preserve"><tspan class="muted">① N 을 받는 내내 처리량을 잰다  →  ② 그 측정은 </tspan><tspan class="ink" font-weight="600">N 을 다 받아야</tspan><tspan class="muted"> 완성되고  →  ③ 결정이 닿는 첫 조각은 </tspan><tspan class="acc" font-weight="600">N+1</tspan><tspan class="muted"> 이다</tspan></text>
+  <text x="160" y="274" font-size="12.5" xml:space="preserve"><tspan class="bad" font-weight="600">붉은 구간</tspan><tspan class="muted">은 대역이 이미 떨어졌는데도 앞서 고른 화질로 끝까지 받아야 하는 부분이다 — 되돌릴 수 없다.</tspan></text>
+
+  <line class="rule" x1="44" y1="296" x2="836" y2="296" stroke-width="1"/>
+  <text x="44" y="320" font-size="13" xml:space="preserve"><tspan class="ink">반응 지연의 하한 = </tspan><tspan class="acc" font-weight="600">세그먼트 한 개 길이</tspan><tspan class="ink">. 짧게 하면 반응이 빨라지는 대신 요청 수와 헤더 오버헤드가 늘고, 길게 하면 그 반대다.</tspan></text>
+</svg>

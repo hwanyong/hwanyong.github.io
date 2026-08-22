@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 500" role="img"
+     aria-label="리포트 JSON 한 장에서 편집(redaction)이 닿는 범위. _redact_headers 는 -headers 다음 토큰 하나만 검사하므로 그 안의 Cookie 만 별표로 가려지고, 같은 토큰 안의 X-Auth-Token 은 목록에 없어 그대로 남으며, source 필드와 -i 인자의 서명 URL 은 애초에 검사 범위 밖이다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .accs  { stroke:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .accs  { stroke:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="468" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">편집이 닿는 범위 — 리포트 JSON 한 장</text>
+
+  <rect class="panel" x="44" y="66" width="792" height="252" rx="8"/>
+
+  <text class="muted m" x="64" y="94" font-size="12.5">{</text>
+  <text class="m" x="64" y="120" font-size="12.5" xml:space="preserve"><tspan class="muted">  "source": "https://cdn.example/m.m3u8</tspan><tspan class="bad">?md5=SIGN&amp;expires=17500…</tspan><tspan class="muted">",</tspan></text>
+  <text class="bad" x="596" y="120" font-size="11.5" font-weight="600">✗ 검사 범위 밖</text>
+  <text class="muted m" x="64" y="146" font-size="12.5">  "verdict": "PASS",</text>
+  <text class="muted m" x="64" y="172" font-size="12.5">  "stats": { "mux_command": [</text>
+  <text class="muted m" x="64" y="198" font-size="12.5">    "ffmpeg", "-headers",</text>
+  <text class="m" x="64" y="230" font-size="12.5" xml:space="preserve"><tspan class="muted">    "User-Agent: …\r\nCookie: </tspan><tspan class="good" font-weight="600">***</tspan><tspan class="muted">\r\nX-Auth-Token: </tspan><tspan class="bad" font-weight="600">deadbeef</tspan><tspan class="muted">\r\n",</tspan></text>
+  <text class="m" x="64" y="262" font-size="12.5" xml:space="preserve"><tspan class="muted">    "-i", "https://cdn.example/m.m3u8</tspan><tspan class="bad">?md5=SIGN&amp;expires=17500…</tspan><tspan class="muted">"</tspan></text>
+  <text class="bad" x="596" y="262" font-size="11.5" font-weight="600">✗ 검사 범위 밖</text>
+  <text class="muted m" x="64" y="292" font-size="12.5">  ] } }</text>
+
+  <rect class="accs" x="56" y="212" width="516" height="26" rx="5" fill="none" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text class="acc" x="580" y="230" font-size="11.5" font-weight="600">← 검사되는 토큰은 이것 하나</text>
+
+  <line class="rule" x1="44" y1="336" x2="836" y2="336" stroke-width="1"/>
+
+  <text x="44" y="362" font-size="13" xml:space="preserve"><tspan class="ink">① </tspan><tspan class="acc" font-weight="600">_redact_headers</tspan><tspan class="ink"> 는 </tspan><tspan class="acc" font-weight="600">-headers</tspan><tspan class="ink"> 바로 다음 토큰만 열어 본다 — 명령의 나머지 인자는 손대지 않는다.</tspan></text>
+  <text x="44" y="388" font-size="13" xml:space="preserve"><tspan class="ink">② 그 토큰 안에서도 </tspan><tspan class="good" font-weight="600">열거된 4개</tspan><tspan class="ink">(cookie · authorization · proxy-authorization · x-api-key)만 가린다.</tspan></text>
+  <text x="44" y="414" font-size="13" xml:space="preserve"><tspan class="ink">③ 열거되지 않은 헤더(</tspan><tspan class="bad" font-weight="600">X-Auth-Token</tspan><tspan class="ink">)와 URL 질의문자열의 서명(</tspan><tspan class="bad" font-weight="600">md5·expires</tspan><tspan class="ink">)은 평문으로 남는다.</tspan></text>
+
+  <text x="44" y="452" font-size="13" xml:space="preserve"><tspan class="ink">목록 기반 편집은 </tspan><tspan class="bad" font-weight="600">열거되지 않은 것을 놓치는 방향</tspan><tspan class="ink">으로 실패한다 — 실패가 조용하다는 것이 이 방식의 성질이다.</tspan></text>
+</svg>

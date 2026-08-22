@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 452" role="img"
+     aria-label="네트워크 계층별 무결성 검사의 범위. 이더넷 CRC-32, IP 헤더 체크섬, TCP 16비트 체크섬, TLS 레코드 인증 태그, HTTP 본문 길이는 모두 전송 단위 하나의 완결성만 보증한다. 선언된 세그먼트 N개가 모두 도착했는가에 답하는 계층은 존재하지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .hole  { fill:#fff5f5; stroke:#cf222e }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .hole  { fill:#2b1214; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="420" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">각 계층의 검사는 &#8220;이 하나가 온전한가&#8221;에만 답한다</text>
+
+  <text class="muted" x="56" y="76" font-size="11.5" font-weight="600">계층</text>
+  <text class="muted" x="240" y="76" font-size="11.5" font-weight="600">검사 수단</text>
+  <text class="muted" x="482" y="76" font-size="11.5" font-weight="600">무엇의 완결성을 보증하는가</text>
+
+  <rect class="hole" x="40" y="86" width="800" height="44" rx="8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text class="bad"   x="56"  y="114" font-size="13.5" font-weight="600">응용 &#8212; 플레이리스트</text>
+  <text class="bad"   x="240" y="114" font-size="13">규격에 없음</text>
+  <text class="bad"   x="482" y="114" font-size="13.5" font-weight="600">선언된 세그먼트 N개가 모두 왔는가</text>
+
+  <rect class="panel" x="40" y="136" width="800" height="44" rx="8"/>
+  <text class="ink"   x="56"  y="164" font-size="13.5">HTTP 메시지</text>
+  <text class="muted m" x="240" y="164" font-size="12.5">Content-Length / chunked</text>
+  <text class="ink"   x="482" y="164" font-size="13">본문 1건이 선언 길이만큼 왔는가</text>
+
+  <rect class="panel" x="40" y="186" width="800" height="44" rx="8"/>
+  <text class="ink"   x="56"  y="214" font-size="13.5">TLS 레코드</text>
+  <text class="muted" x="240" y="214" font-size="13">AEAD 인증 태그</text>
+  <text class="ink"   x="482" y="214" font-size="13">레코드 1개가 위·변조되지 않았는가</text>
+
+  <rect class="panel" x="40" y="236" width="800" height="44" rx="8"/>
+  <text class="ink"   x="56"  y="264" font-size="13.5">TCP 세그먼트</text>
+  <text class="muted" x="240" y="264" font-size="13">16비트 1의 보수 합</text>
+  <text class="ink"   x="482" y="264" font-size="13">세그먼트 1개의 비트 오류 &#8212; 약하게</text>
+
+  <rect class="panel" x="40" y="286" width="800" height="44" rx="8"/>
+  <text class="ink"   x="56"  y="314" font-size="13.5">IP 데이터그램</text>
+  <text class="muted" x="240" y="314" font-size="13">헤더 체크섬</text>
+  <text class="ink"   x="482" y="314" font-size="13">헤더만. 페이로드는 검사하지 않는다</text>
+
+  <rect class="panel" x="40" y="336" width="800" height="44" rx="8"/>
+  <text class="ink"   x="56"  y="364" font-size="13.5">이더넷 프레임</text>
+  <text class="muted m" x="240" y="364" font-size="12.5">CRC-32 (FCS)</text>
+  <text class="ink"   x="482" y="364" font-size="13">프레임 1개가 링크 한 구간을 건넜는가</text>
+
+  <line class="rule" x1="44" y1="396" x2="836" y2="396" stroke-width="1"/>
+  <text x="44" y="420" font-size="12.5" xml:space="preserve"><tspan class="ink">아래 다섯 층은 전부 </tspan><tspan class="acc" font-weight="600">&#8220;하나&#8221;</tspan><tspan class="ink">의 완결성이다. </tspan><tspan class="bad" font-weight="600">N개의 집합</tspan><tspan class="ink">은 어느 층의 전송 단위도 아니므로, 세는 일은 응용의 몫으로 남는다.</tspan></text>
+</svg>

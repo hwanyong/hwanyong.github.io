@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" role="img"
+     aria-label="바깥에서 온 세 종류의 문자열이 sanitize 라는 단일 관문을 지나 디스크 경로가 된다. 관문은 유니코드 정규화와 예약 문자 치환을 하지만, 예약 장치명과 이름 길이 상한은 걸러내지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .gate  { fill:#ddf4ff }
+    .band  { fill:#fff8c5 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#656d76 }
+    .arrow { stroke:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .gate  { fill:#123a63 }
+      .band  { fill:#2d2503 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#8b949e }
+      .arrow { stroke:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a32" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="386" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">사용자 문자열이 경로가 되는 지점 — 관문은 하나여야 한다</text>
+
+  <rect class="panel" x="40" y="70" width="200" height="180" rx="8"/>
+  <text class="muted" x="58" y="94" font-size="11.5" font-weight="600">신뢰 밖 — 우리가 정하지 않았다</text>
+  <text class="ink" x="58" y="122" font-size="12.5">시리즈 페이지의 title 태그</text>
+  <text class="muted m" x="58" y="138" font-size="10.5">series.py:194</text>
+  <text class="ink" x="58" y="168" font-size="12.5">플레이어 설정의 title 값</text>
+  <text class="muted m" x="58" y="184" font-size="10.5">series.py:310-316</text>
+  <text class="ink" x="58" y="214" font-size="12.5">-o 로 받은 파일 이름</text>
+  <text class="muted m" x="58" y="230" font-size="10.5">cli.py:662-665</text>
+
+  <line class="arrow" x1="244" y1="160" x2="304" y2="160" stroke-width="1.4" marker-end="url(#a32)"/>
+  <text class="muted" x="274" y="148" font-size="10.5" text-anchor="middle">예외 없이</text>
+
+  <rect class="gate" x="310" y="70" width="250" height="180" rx="8"/>
+  <text class="acc m" x="330" y="98" font-size="14" font-weight="600">sanitize()</text>
+  <text class="muted m" x="330" y="116" font-size="10.5">naming.py:120-130</text>
+  <text class="ink" x="330" y="146" font-size="12.5">1. NFC 로 정규화</text>
+  <text x="330" y="172" font-size="12.5" xml:space="preserve"><tspan class="ink">2. 예약 문자 → </tspan><tspan class="ink m">_</tspan></text>
+  <text class="ink" x="330" y="198" font-size="12.5">3. 앞뒤 공백·끝의 점 제거</text>
+  <text x="330" y="224" font-size="12.5" xml:space="preserve"><tspan class="ink">4. 빈 이름 → </tspan><tspan class="ink m">untitled</tspan></text>
+
+  <line class="arrow" x1="564" y1="160" x2="624" y2="160" stroke-width="1.4" marker-end="url(#a32)"/>
+  <text class="muted" x="594" y="148" font-size="10.5" text-anchor="middle">경로로 결합</text>
+
+  <rect class="panel" x="630" y="70" width="210" height="180" rx="8"/>
+  <text class="muted" x="648" y="94" font-size="11.5" font-weight="600">디스크에 남는 경로</text>
+  <text class="ink m" x="648" y="126" font-size="11.5">base/&lt;시리즈&gt;/&lt;이름&gt;.mp4</text>
+  <text class="muted m" x="648" y="146" font-size="10.5">library.py:26-33</text>
+  <text class="good" x="648" y="180" font-size="12" font-weight="600">경로 성분이 각각 하나다</text>
+  <text class="muted" x="648" y="200" font-size="11.5">구분자가 남지 않으므로</text>
+  <text class="muted" x="648" y="216" font-size="11.5">깊이가 늘어날 수 없다</text>
+
+  <rect class="band" x="40" y="272" width="800" height="62" rx="8"/>
+  <text class="warn" x="60" y="296" font-size="12.5" font-weight="600">관문을 통과해 그대로 남는 것</text>
+  <text class="muted m" x="60" y="320" font-size="12">CON · PRN · NUL (Windows 예약 장치명)   ·   이름 길이 상한   ·   선행 점   ·   치환이 만든 이름 충돌</text>
+
+  <line class="rule" x1="44" y1="352" x2="836" y2="352" stroke-width="1"/>
+  <text x="44" y="376" font-size="13" xml:space="preserve"><tspan class="ink">정제하는 자리가 </tspan><tspan class="acc" font-weight="600">둘이면 하나는 반드시 빠뜨린다</tspan><tspan class="ink">. 빠뜨린 그 경로가 곧 우회 경로다.</tspan></text>
+</svg>

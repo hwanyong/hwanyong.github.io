@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 372" role="img"
+     aria-label="없는 항목은 통과가 아니다. 세 가지 경우가 있다. 첫째 검사가 수행되고 결함이 없으면 PASS 항목이 리포트에 남는다. 둘째 옵션이나 모드 때문에 검사 자체가 수행되지 않으면 항목이 아예 만들어지지 않아 집계에 기여하지 않는다. 셋째 검사가 수행되고 결함을 검출하면 FAIL 항목이 남는다. 첫째와 둘째는 모두 종료 코드 0 으로 합쳐지므로, 종료 코드만 보면 두 경우가 구별되지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .void  { fill:none; stroke:#9a6700 }
+    .neut  { fill:#eaeef2 }
+    .hl    { fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .void  { fill:none; stroke:#d29922 }
+      .neut  { fill:#21262d }
+      .hl    { fill:#3c1618; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="344" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">없는 항목은 통과가 아니다</text>
+
+  <rect class="panel" x="44" y="66" width="248" height="126" rx="8" stroke-width="1"/>
+  <text class="ink" x="64" y="100" font-size="12.5">① 수행 — 결함 없음</text>
+  <text class="good m" x="64" y="128" font-size="11.5">Check(name, PASS, detail)</text>
+  <text class="muted" x="64" y="156" font-size="11.5">리포트에 ✓ 로 남는다</text>
+
+  <rect class="void" x="316" y="66" width="248" height="126" rx="8" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text class="ink" x="336" y="94" font-size="12.5">② 검사가 수행되지 않았다</text>
+  <text class="warn m" x="336" y="120" font-size="11">--no-gap-scan · --mode remux</text>
+  <text class="warn m" x="336" y="144" font-size="11">gap_scan ok=False · fMP4</text>
+  <text class="muted" x="336" y="170" font-size="11.5">항목이 만들어지지 않는다</text>
+
+  <rect class="panel" x="588" y="66" width="248" height="126" rx="8" stroke-width="1"/>
+  <text class="ink" x="608" y="100" font-size="12.5">③ 수행 — 결함 검출</text>
+  <text class="bad m" x="608" y="128" font-size="11.5">Check(name, FAIL, detail)</text>
+  <text class="muted" x="608" y="156" font-size="11.5">리포트에 ✗ 로 남는다</text>
+
+  <path d="M168,192 L168,222 Q168,232 178,232 L260,232 Q270,232 270,242 L270,262" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="good m" x="178" y="210" font-size="11">PASS</text>
+
+  <path d="M440,192 L440,222 Q440,232 430,232 L348,232 Q338,232 338,242 L338,262" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="warn" x="450" y="210" font-size="11">집계에 기여 없음</text>
+
+  <path d="M712,192 L712,262" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="bad m" x="722" y="210" font-size="11">FAIL</text>
+
+  <rect class="neut" x="100" y="262" width="408" height="52" rx="8"/>
+  <text class="ink m" x="304" y="285" font-size="13" text-anchor="middle" font-weight="600">exit 0</text>
+  <text class="bad" x="304" y="304" font-size="11" text-anchor="middle">①과 ②가 구별되지 않는다</text>
+
+  <rect class="hl" x="588" y="262" width="248" height="52" rx="8" stroke-width="1.4"/>
+  <text class="bad m" x="712" y="285" font-size="13" text-anchor="middle" font-weight="600">exit 2</text>
+  <text class="muted" x="712" y="304" font-size="11" text-anchor="middle">FAIL 항목이 하나 이상</text>
+
+  <text x="44" y="340" font-size="12.5" xml:space="preserve"><tspan class="ink" font-weight="600">종료 코드 0 은 “검사가 통과했다”가 아니다</tspan><tspan class="muted"> — “수행된 검사가 결함을 지목하지 않았다”는 뜻이다.</tspan></text>
+</svg>

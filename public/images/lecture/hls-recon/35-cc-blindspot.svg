@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 330" role="img"
+     aria-label="세그먼트 한가운데에서 TS 패킷을 n 개 들어냈을 때 continuity counter 검사가 반응하는지를 n 이 1부터 17까지일 때에 대해 표시한 그림. n 이 15 와 16 일 때만 검출되지 않으며 나머지는 모두 검출된다. 15 는 카운터가 직전 값과 같아져 규격이 허용한 중복 패킷으로 읽히기 때문이고, 16 은 0에서 15를 한 바퀴 돌아 제자리로 오기 때문이다. 이 저장소가 고른 값 12 는 두 사각지대에서 떨어져 있다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .cOk   { fill:#dafbe1; stroke:#1a7f37 }
+    .cNo   { fill:#ffebe9; stroke:#cf222e }
+    .cPick { fill:#dafbe1; stroke:#0969da }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .cOk   { fill:#12341f; stroke:#3fb950 }
+      .cNo   { fill:#3c1618; stroke:#f85149 }
+      .cPick { fill:#12341f; stroke:#4493f8 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="14" width="840" height="298" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">몇 개를 들어내야 보이는가 — 4비트 카운터의 두 사각지대</text>
+  <text class="muted" x="44" y="66" font-size="12">세그먼트 한가운데에서 같은 PID 의 패킷 n 개를 들어낸 뒤 CC 검사를 돌린 결과 (실측, ffmpeg 8.1.1 로 만든 스트림)</text>
+
+  <circle class="cOk"   cx="100" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="100" y="117" font-size="11.5" text-anchor="middle" font-weight="600">1</text>
+  <circle class="cOk"   cx="144" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="144" y="117" font-size="11.5" text-anchor="middle" font-weight="600">2</text>
+  <circle class="cOk"   cx="188" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="188" y="117" font-size="11.5" text-anchor="middle" font-weight="600">3</text>
+  <circle class="cOk"   cx="232" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="232" y="117" font-size="11.5" text-anchor="middle" font-weight="600">4</text>
+  <circle class="cOk"   cx="276" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="276" y="117" font-size="11.5" text-anchor="middle" font-weight="600">5</text>
+  <circle class="cOk"   cx="320" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="320" y="117" font-size="11.5" text-anchor="middle" font-weight="600">6</text>
+  <circle class="cOk"   cx="364" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="364" y="117" font-size="11.5" text-anchor="middle" font-weight="600">7</text>
+  <circle class="cOk"   cx="408" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="408" y="117" font-size="11.5" text-anchor="middle" font-weight="600">8</text>
+  <circle class="cOk"   cx="452" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="452" y="117" font-size="11.5" text-anchor="middle" font-weight="600">9</text>
+  <circle class="cOk"   cx="496" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="496" y="117" font-size="11.5" text-anchor="middle" font-weight="600">10</text>
+  <circle class="cOk"   cx="540" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="540" y="117" font-size="11.5" text-anchor="middle" font-weight="600">11</text>
+  <circle class="cPick" cx="584" cy="112" r="14" stroke-width="3"/>
+  <text class="acc"  x="584" y="117" font-size="11.5" text-anchor="middle" font-weight="600">12</text>
+  <circle class="cOk"   cx="628" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="628" y="117" font-size="11.5" text-anchor="middle" font-weight="600">13</text>
+  <circle class="cOk"   cx="672" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="672" y="117" font-size="11.5" text-anchor="middle" font-weight="600">14</text>
+  <circle class="cNo"   cx="716" cy="112" r="13" stroke-width="1.5"/>
+  <text class="bad"  x="716" y="117" font-size="11.5" text-anchor="middle" font-weight="600">15</text>
+  <circle class="cNo"   cx="760" cy="112" r="13" stroke-width="1.5"/>
+  <text class="bad"  x="760" y="117" font-size="11.5" text-anchor="middle" font-weight="600">16</text>
+  <circle class="cOk"   cx="804" cy="112" r="13" stroke-width="1.5"/>
+  <text class="good" x="804" y="117" font-size="11.5" text-anchor="middle" font-weight="600">17</text>
+
+  <circle class="cOk" cx="100" cy="152" r="8" stroke-width="1.5"/>
+  <text class="muted" x="114" y="156" font-size="11.5">검출됨</text>
+  <circle class="cNo" cx="200" cy="152" r="8" stroke-width="1.5"/>
+  <text class="muted" x="214" y="156" font-size="11.5">검출되지 않음 — 사각지대</text>
+  <circle class="cPick" cx="400" cy="152" r="8" stroke-width="2.5"/>
+  <text class="muted" x="414" y="156" font-size="11.5">이 저장소가 고른 값</text>
+
+  <rect class="box" x="44" y="176" width="396" height="82" rx="8" stroke-width="1"/>
+  <text class="bad" x="64" y="200" font-size="13" font-weight="600">n = 15 — 직전 값과 같아진다</text>
+  <text class="muted" x="64" y="222" font-size="11.5" xml:space="preserve"><tspan>다음 패킷의 카운터가 </tspan><tspan class="m">cc == prev</tspan><tspan> 가 되는데,</tspan></text>
+  <text class="muted" x="64" y="242" font-size="11.5">이는 규격이 허용한 중복 패킷이라 세지 않는다.</text>
+
+  <rect class="box" x="456" y="176" width="380" height="82" rx="8" stroke-width="1"/>
+  <text class="bad" x="476" y="200" font-size="13" font-weight="600">n = 16 — 한 바퀴 돌아 제자리</text>
+  <text class="muted" x="476" y="222" font-size="11.5" xml:space="preserve"><tspan class="m">cc == expected</tspan><tspan> 가 되어 유실의 흔적이</tspan></text>
+  <text class="muted" x="476" y="242" font-size="11.5">스트림 어디에도 남지 않는다. 4비트의 한계다.</text>
+
+  <text class="ink" x="44" y="288" font-size="12.5" font-weight="600">일반해: n 이 16 의 배수이거나 16 으로 나눈 나머지가 15 면 보이지 않는다 — 16 개 값 중 2 개. 12 는 양쪽 어느 쪽도 아니다.</text>
+</svg>

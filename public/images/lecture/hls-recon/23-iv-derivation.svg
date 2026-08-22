@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" role="img"
+     aria-label="RFC 8216 의 IV 유도 두 갈래. EXT-X-KEY 에 IV 속성이 있으면 그 값을 그대로 쓰고 그 키 태그가 적용되는 모든 세그먼트가 같은 IV 를 공유한다. IV 속성이 없으면 해당 세그먼트의 media sequence number 를 16옥텟 버퍼에 big-endian 으로 넣고 왼쪽을 0 으로 채운 값이 IV 가 된다. 후자는 세그먼트마다 1씩 증가하므로 유일하지만 완전히 예측 가능하다.">
+  <defs>
+    <marker id="d23a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#eaeef2; stroke:#d8dee6 }
+    .chipa { fill:#ddf4ff; stroke:#0969da }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .rules { stroke:#656d76 }
+    .mk    { fill:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#21262d; stroke:#30363d }
+      .chipa { fill:#123a63; stroke:#4493f8 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .rules { stroke:#8b949e }
+      .mk    { fill:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="348" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">IV 는 어디서 오는가 — RFC 8216 §5.2 의 두 갈래</text>
+  <text class="muted" x="44" y="66" font-size="11.5">KEYFORMAT="identity" 인 EXT-X-KEY 에 한정된 규칙이다</text>
+
+  <rect class="panel" x="44" y="80" width="792" height="30" rx="5" stroke-width="1"/>
+  <text class="ink m" x="56" y="100" font-size="12">#EXT-X-KEY:METHOD=AES-128,URI="key.bin"[,IV=0x…]</text>
+
+  <text class="ink" x="440" y="130" font-size="12.5" text-anchor="middle" font-weight="600">IV 속성이 있는가</text>
+  <polyline class="rules" points="440,136 234,136 234,158" fill="none" stroke-width="1.3" marker-end="url(#d23a)"/>
+  <polyline class="rules" points="440,136 646,136 646,158" fill="none" stroke-width="1.3" marker-end="url(#d23a)"/>
+  <text class="muted" x="318" y="132" font-size="11.5">있다</text>
+  <text class="muted" x="562" y="132" font-size="11.5">없다</text>
+
+  <!-- 왼쪽 갈래 -->
+  <rect class="panel" x="44" y="162" width="380" height="164" rx="8" stroke-width="1"/>
+  <text class="acc" x="64" y="186" font-size="13" font-weight="600">① 적힌 값을 그대로 쓴다</text>
+  <rect class="chipa" x="64" y="198" width="340" height="30" rx="5" stroke-width="1.3"/>
+  <text class="ink m" x="234" y="218" font-size="12" text-anchor="middle">IV=0x9A5F…C3  →  그 16바이트</text>
+  <text class="muted" x="64" y="250" font-size="11.5">이 KEY 태그가 적용되는 모든 세그먼트가</text>
+  <text class="muted" x="64" y="268" font-size="11.5">같은 IV 를 공유한다 — 세그먼트별로 다르지 않다</text>
+  <text class="warn" x="64" y="296" font-size="11.5">ffmpeg 8.1.1 의 HLS muxer 는 언제나 이쪽이다.</text>
+  <text class="warn" x="64" y="314" font-size="11.5">지정하지 않으면 IV=0x00…00 을 적는다 (실측)</text>
+
+  <!-- 오른쪽 갈래 -->
+  <rect class="panel" x="456" y="162" width="380" height="164" rx="8" stroke-width="1"/>
+  <text class="acc" x="476" y="186" font-size="13" font-weight="600">② media sequence number 를 쓴다</text>
+  <text class="muted" x="476" y="206" font-size="11.5">seq = 42 를 16옥텟 버퍼에 big-endian 으로 넣고</text>
+  <text class="muted" x="476" y="224" font-size="11.5">왼쪽을 0 으로 채운다</text>
+
+  <rect class="chip" x="486" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="506" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="526" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="546" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="566" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="586" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="606" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="626" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="646" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="666" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="686" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="706" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="726" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="746" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chip" x="766" y="236" width="20" height="26" stroke-width="1"/>
+  <rect class="chipa" x="786" y="236" width="20" height="26" stroke-width="1.3"/>
+  <text class="muted m" x="496" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="516" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="536" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="556" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="576" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="596" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="616" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="636" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="656" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="676" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="696" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="716" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="736" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="756" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="muted m" x="776" y="253" font-size="8.5" text-anchor="middle">00</text>
+  <text class="acc m" x="796" y="253" font-size="8.5" text-anchor="middle" font-weight="700">2A</text>
+  <text class="muted" x="646" y="278" font-size="11" text-anchor="middle">← 왼쪽 15바이트는 0 · 맨 오른쪽에 42</text>
+  <text class="warn" x="476" y="304" font-size="11.5">세그먼트마다 정확히 1씩 증가한다 —</text>
+  <text class="warn" x="476" y="320" font-size="11.5">유일하지만 완전히 예측 가능하다</text>
+
+  <text class="muted" x="44" y="348" font-size="11.5">초기화 섹션(EXT-X-MAP)에는 media sequence number 가 없다 — 그래서 그것을 암호화하려면 IV 속성이 REQUIRED 다 (§4.3.2.5)</text>
+</svg>

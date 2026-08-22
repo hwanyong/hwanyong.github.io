@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" role="img"
+     aria-label="임계 400밀리초 하나가 네 경우를 가른다. 30fps 정상은 PASS, 6초 결손은 FAIL 정탐, 가변 프레임률 정상은 FAIL 오탐, 60fps 100밀리초 결손은 PASS 미탐이 된다. 오탐과 미탐이 같은 임계선의 양쪽에서 동시에 발생한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .warns { stroke:#9a6700 }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .dotn  { fill:#8c959f }
+    .dotg  { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .warns { stroke:#d29922 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .dotn  { fill:#6e7681 }
+      .dotg  { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="368" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">임계 400ms 선 하나가 네 경우를 가른다 — 모두 로컬 실측값</text>
+
+  <text class="muted" x="44" y="76" font-size="11.5" font-weight="600">경우</text>
+  <text class="muted" x="210" y="76" font-size="11.5" font-weight="600">프레임 간격 분포 (가로축 로그, ms)</text>
+  <text class="muted" x="770" y="76" font-size="11.5" font-weight="600">판정</text>
+
+  <rect class="panel" x="200" y="88" width="294" height="176" rx="4"/>
+  <line class="warns" x1="494" y1="88" x2="494" y2="296" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text class="warn" x="494" y="82" font-size="11.5" font-weight="600" text-anchor="middle">임계 400ms</text>
+
+  <text class="ink" x="44" y="110" font-size="12.5">30fps 정상 (CFR)</text>
+  <circle class="dotn" cx="296" cy="106" r="7"/>
+  <text class="muted m" x="310" y="110" font-size="11">899 × 33.33ms</text>
+  <text class="good" x="770" y="110" font-size="12" font-weight="600">PASS 옳음</text>
+
+  <text class="ink" x="44" y="156" font-size="12.5">30fps · 6초 세그먼트 결손</text>
+  <circle class="dotn" cx="296" cy="152" r="7"/>
+  <circle class="dotg" cx="710" cy="152" r="5"/>
+  <text class="muted m" x="310" y="156" font-size="11">718 × 33.33</text>
+  <text class="bad m" x="640" y="156" font-size="11" text-anchor="end">1 × 6033ms</text>
+  <text class="good" x="770" y="156" font-size="12" font-weight="600">FAIL 정탐</text>
+
+  <text class="ink" x="44" y="202" font-size="12.5">VFR 정상 · 정지 화면 1.5초</text>
+  <circle class="dotn" cx="296" cy="198" r="7"/>
+  <circle class="dotg" cx="599" cy="198" r="5"/>
+  <text class="muted m" x="310" y="202" font-size="11">150 × 33.33</text>
+  <text class="bad m" x="588" y="188" font-size="11" text-anchor="end">4 × 1500ms</text>
+  <text class="bad" x="770" y="202" font-size="12" font-weight="600">FAIL 오탐</text>
+
+  <text class="ink" x="44" y="248" font-size="12.5">60fps · 5프레임 결손</text>
+  <circle class="dotn" cx="241" cy="244" r="7"/>
+  <circle class="dotg" cx="383" cy="244" r="5"/>
+  <text class="muted m" x="253" y="248" font-size="11">593 × 16.67</text>
+  <text class="bad m" x="395" y="248" font-size="11">1 × 100ms</text>
+  <text class="bad" x="770" y="248" font-size="12" font-weight="600">PASS 미탐</text>
+
+  <line class="rule" x1="200" y1="290" x2="750" y2="290" stroke-width="1"/>
+  <line class="rule" x1="241" y1="286" x2="241" y2="294" stroke-width="1"/>
+  <line class="rule" x1="296" y1="286" x2="296" y2="294" stroke-width="1"/>
+  <line class="rule" x1="383" y1="286" x2="383" y2="294" stroke-width="1"/>
+  <line class="rule" x1="599" y1="286" x2="599" y2="294" stroke-width="1"/>
+  <line class="rule" x1="710" y1="286" x2="710" y2="294" stroke-width="1"/>
+  <text class="muted m" x="241" y="308" font-size="10.5" text-anchor="middle">16.7</text>
+  <text class="muted m" x="296" y="308" font-size="10.5" text-anchor="middle">33.3</text>
+  <text class="muted m" x="383" y="308" font-size="10.5" text-anchor="middle">100</text>
+  <text class="warn m" x="494" y="308" font-size="10.5" text-anchor="middle" font-weight="600">400</text>
+  <text class="muted m" x="599" y="308" font-size="10.5" text-anchor="middle">1500</text>
+  <text class="muted m" x="710" y="308" font-size="10.5" text-anchor="middle">6033</text>
+
+  <line class="rule" x1="44" y1="328" x2="836" y2="328" stroke-width="1"/>
+  <text x="44" y="352" font-size="13" xml:space="preserve"><tspan class="ink">③은 데이터 손실이 </tspan><tspan class="acc" font-weight="600">0</tspan><tspan class="ink">인데 FAIL 이고, ④는 프레임 5개가 실제로 없는데 PASS 다. </tspan><tspan class="bad" font-weight="600">오탐과 미탐은 같은 선의 양쪽</tspan><tspan class="ink">에서 함께 생긴다.</tspan></text>
+  <text class="muted" x="44" y="371" font-size="12">임계를 오른쪽으로 옮기면 ③은 고쳐지고 ②가 위험해진다. 왼쪽으로 옮기면 ④가 고쳐지고 ③이 악화된다 — 손잡이는 하나뿐이다.</text>
+</svg>

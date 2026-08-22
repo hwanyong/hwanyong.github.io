@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 484" role="img"
+     aria-label="HLS 의 2단 간접 참조와 base URL 승계. 마스터에 적힌 상대 URI 는 마스터 주소로, variant 플레이리스트에 적힌 세그먼트 URI 는 variant 주소로 절대화된다. base 를 층마다 갱신하지 않으면 하위 경로가 통째로 어긋나 전량 404 가 된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .mk    { fill:#656d76 }
+    .mks   { stroke:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .mk    { fill:#8b949e }
+      .mks   { stroke:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="452" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">간접 두 단계 — 상대 URI 는 그것이 적힌 문서의 주소로 절대화된다</text>
+
+  <line class="rule" x1="500" y1="64" x2="500" y2="392" stroke-width="1"/>
+
+  <rect class="panel" x="44" y="68" width="432" height="86" rx="8" stroke-width="1"/>
+  <text class="ink" x="60" y="92" font-size="13.5" font-weight="600">① 마스터 플레이리스트</text>
+  <text class="muted m" x="60" y="114" font-size="12">https://cdn/show/master.m3u8</text>
+  <text x="60" y="138" font-size="12.5" xml:space="preserve"><tspan class="muted">안에 적힌 줄 </tspan><tspan class="acc m">hd/index.m3u8</tspan></text>
+
+  <line class="mks" x1="120" y1="154" x2="120" y2="194" stroke-width="1.4" marker-end="url(#a)"/>
+  <text class="muted" x="136" y="180" font-size="12">절대화 → 요청</text>
+
+  <rect class="panel" x="44" y="196" width="432" height="86" rx="8" stroke-width="1"/>
+  <text class="ink" x="60" y="220" font-size="13.5" font-weight="600">② 미디어 플레이리스트 (variant)</text>
+  <text class="acc m" x="60" y="242" font-size="12">https://cdn/show/hd/index.m3u8</text>
+  <text x="60" y="266" font-size="12.5" xml:space="preserve"><tspan class="muted">안에 적힌 줄 </tspan><tspan class="acc m">seg000.ts</tspan></text>
+
+  <line class="mks" x1="120" y1="282" x2="120" y2="322" stroke-width="1.4" marker-end="url(#a)"/>
+  <text class="muted" x="136" y="308" font-size="12">절대화 → 요청</text>
+
+  <rect class="panel" x="44" y="324" width="432" height="62" rx="8" stroke-width="1"/>
+  <text class="ink" x="60" y="348" font-size="13.5" font-weight="600">③ 세그먼트</text>
+  <text class="acc m" x="60" y="370" font-size="12">https://cdn/show/hd/seg000.ts</text>
+
+  <text class="muted" x="520" y="88" font-size="11.5" font-weight="600">parse() 에 넘기는 base_url</text>
+
+  <text x="520" y="118" font-size="12.5" xml:space="preserve"><tspan class="ink">① </tspan><tspan class="acc m">base_url = 소스 주소</tspan></text>
+  <text class="muted m" x="520" y="136" font-size="11.5">cli.py:138</text>
+
+  <text x="520" y="246" font-size="12.5" xml:space="preserve"><tspan class="ink">② </tspan><tspan class="acc m">base_url = chosen.uri</tspan></text>
+  <text class="muted m" x="520" y="264" font-size="11.5">cli.py:189</text>
+  <text class="muted" x="520" y="284" font-size="11.5">— ①의 주소가 아니라 ①이 낳은 주소다</text>
+
+  <text class="muted" x="520" y="356" font-size="12.5">③ 은 파싱하지 않는다 — 바이트다</text>
+  <text class="muted m" x="520" y="374" font-size="11.5">playlist.py:30-38  _absolute</text>
+
+  <line class="rule" x1="44" y1="406" x2="836" y2="406" stroke-width="1"/>
+  <text x="44" y="430" font-size="13" xml:space="preserve"><tspan class="ink">base 를 층마다 갱신하지 않고 ①의 주소를 계속 쓰면 — </tspan><tspan class="acc m">subko/index.m3u8</tspan><tspan class="ink"> 안의 </tspan><tspan class="acc m">seg000.vtt</tspan><tspan class="ink"> 가</tspan></text>
+  <text x="44" y="452" font-size="13" xml:space="preserve"><tspan class="acc m">…/subko/seg000.vtt</tspan><tspan class="ink"> 가 아니라 </tspan><tspan class="bad m">…/seg000.vtt</tspan><tspan class="ink"> 로 풀린다. </tspan><tspan class="bad" font-weight="600">자막 전량 404.</tspan></text>
+</svg>

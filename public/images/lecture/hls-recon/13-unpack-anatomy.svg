@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 432" role="img"
+     aria-label="packed JS 호출의 네 부분과 복원 절차 네 단계. 본문 payload, 진법 base, 사전 크기 count, 사전 words 가 함께 실려 오며, 복원은 토큰 자르기, 진법 표기 해석, 사전 색인, 낱말 치환 순으로 진행된다. 어느 단계에도 실행이 없다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#ddf4ff; stroke:#54aeff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .ok    { fill:#1a7f37 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#0c2d6b; stroke:#4493f8 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .ok    { fill:#3fb950 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="404" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="42" font-size="15" font-weight="600">한 줄 안에 본문과 사전이 함께 실려 온다</text>
+
+  <text class="m" x="440" y="74" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="muted">}('</tspan><tspan class="acc">0 1 = 2 3(…)</tspan><tspan class="muted">',</tspan><tspan class="warn">62</tspan><tspan class="muted">,</tspan><tspan class="muted">16</tspan><tspan class="muted">,'</tspan><tspan class="ok">var|player|new|…</tspan><tspan class="muted">'.split('|')</tspan></text>
+
+  <rect class="box" x="44" y="90" width="186" height="74" rx="8" stroke-width="1"/>
+  <text class="acc m" x="60" y="112" font-size="13" font-weight="600">p</text>
+  <text class="ink" x="60" y="132" font-size="12.5">본문(payload)</text>
+  <text class="muted" x="60" y="151" font-size="11">사전 번호로 바뀐 소스</text>
+
+  <rect class="box" x="246" y="90" width="186" height="74" rx="8" stroke-width="1"/>
+  <text class="warn m" x="262" y="112" font-size="13" font-weight="600">a</text>
+  <text class="ink" x="262" y="132" font-size="12.5">진법(base)</text>
+  <text class="muted" x="262" y="151" font-size="11">대개 62 — 36 을 넘는다</text>
+
+  <rect class="box" x="448" y="90" width="186" height="74" rx="8" stroke-width="1"/>
+  <text class="muted m" x="464" y="112" font-size="13" font-weight="600">c</text>
+  <text class="ink" x="464" y="132" font-size="12.5">사전 크기(count)</text>
+  <text class="muted" x="464" y="151" font-size="11">이 코드는 쓰지 않는다</text>
+
+  <rect class="box" x="650" y="90" width="186" height="74" rx="8" stroke-width="1"/>
+  <text class="ok m" x="666" y="112" font-size="13" font-weight="600">k</text>
+  <text class="ink" x="666" y="132" font-size="12.5">사전(words)</text>
+  <text class="muted m" x="666" y="151" font-size="11">'|' 로 이은 낱말표</text>
+
+  <line x1="440" y1="166" x2="440" y2="186" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="44" y="190" width="792" height="38" rx="8" stroke-width="1"/>
+  <circle class="chip" cx="68" cy="209" r="11" stroke-width="1"/>
+  <text class="acc" x="68" y="214" font-size="12" text-anchor="middle" font-weight="600">1</text>
+  <text class="ink" x="92" y="214" font-size="12.5">본문을 낱말 단위로 자른다</text>
+  <text class="muted m" x="820" y="214" font-size="11.5" text-anchor="end">re.sub(r"\b\w+\b", …, flags=re.ASCII)</text>
+
+  <rect class="box" x="44" y="236" width="792" height="38" rx="8" stroke-width="1"/>
+  <circle class="chip" cx="68" cy="255" r="11" stroke-width="1"/>
+  <text class="acc" x="68" y="260" font-size="12" text-anchor="middle" font-weight="600">2</text>
+  <text class="ink" x="92" y="260" font-size="12.5">낱말을 진법 표기로 읽어 정수를 얻는다</text>
+  <text class="muted m" x="820" y="260" font-size="11.5" text-anchor="end">0-9 a-z A-Z 자릿수 표를 직접 둔다</text>
+
+  <rect class="box" x="44" y="282" width="792" height="38" rx="8" stroke-width="1"/>
+  <circle class="chip" cx="68" cy="301" r="11" stroke-width="1"/>
+  <text class="acc" x="68" y="306" font-size="12" text-anchor="middle" font-weight="600">3</text>
+  <text class="ink" x="92" y="306" font-size="12.5">정수를 사전의 색인으로 쓴다</text>
+  <text class="muted m" x="820" y="306" font-size="11.5" text-anchor="end">words[i]</text>
+
+  <rect class="box" x="44" y="328" width="792" height="38" rx="8" stroke-width="1"/>
+  <circle class="chip" cx="68" cy="347" r="11" stroke-width="1"/>
+  <text class="acc" x="68" y="352" font-size="12" text-anchor="middle" font-weight="600">4</text>
+  <text class="ink" x="92" y="352" font-size="12.5">낱말로 바꿔 넣는다 — 범위 밖이거나 비어 있으면 원문을 남긴다</text>
+  <text class="muted m" x="820" y="352" font-size="11.5" text-anchor="end">i is None or i &gt;= len(words)</text>
+
+  <text x="440" y="396" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="muted">네 단계 어디에도 </tspan><tspan class="acc" font-weight="600">실행이 없다</tspan><tspan class="muted"> — 표 조회와 문자열 치환뿐이다</tspan></text>
+</svg>

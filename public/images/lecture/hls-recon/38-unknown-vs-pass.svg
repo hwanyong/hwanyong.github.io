@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 350" role="img"
+     aria-label="판정 이전에 전제 게이트가 있다. 계측이 끝나면 먼저 기준선이 성립하는지를 묻고, 성립하지 않으면 판정 보류라는 세 번째 결과를 낸다. 성립할 때에만 자막 끝이 기준선을 넘었는지를 물어 FAIL 또는 PASS 를 낸다. 다만 현재 구현은 판정 보류를 PASS 로 실어 보내므로, 리포트를 읽는 쪽에서는 검사하지 않았다와 검사해서 이상 없다가 같은 기호로 보인다.">
+  <style>
+    .bg      { fill:#ffffff; stroke:#d8dee6 }
+    .box     { fill:#f6f8fa; stroke:#d8dee6 }
+    .hl      { fill:#ddf4ff; stroke:#54aeff }
+    .boxwarn { fill:#fff8c5; stroke:#d4a72c }
+    .boxbad  { fill:#ffebe9; stroke:#ff8182 }
+    .boxgood { fill:#dafbe1; stroke:#4ac26b }
+    .ink     { fill:#1f2328 }
+    .muted   { fill:#656d76 }
+    .acc     { fill:#0969da }
+    .warn    { fill:#9a6700 }
+    .bad     { fill:#cf222e }
+    .good    { fill:#1a7f37 }
+    .mk      { fill:#8c959f }
+    .mkw     { fill:#9a6700 }
+    .arw     { stroke:#8c959f }
+    .arww    { stroke:#9a6700 }
+    @media (prefers-color-scheme: dark) {
+      .bg      { fill:#0d1117; stroke:#30363d }
+      .box     { fill:#161b22; stroke:#30363d }
+      .hl      { fill:#0c2d6b; stroke:#4493f8 }
+      .boxwarn { fill:#3b2300; stroke:#d29922 }
+      .boxbad  { fill:#3c1618; stroke:#f85149 }
+      .boxgood { fill:#0f2f1a; stroke:#3fb950 }
+      .ink     { fill:#e6edf3 }
+      .muted   { fill:#8b949e }
+      .acc     { fill:#4493f8 }
+      .warn    { fill:#d29922 }
+      .bad     { fill:#f85149 }
+      .good    { fill:#3fb950 }
+      .mk      { fill:#6e7681 }
+      .mkw     { fill:#d29922 }
+      .arw     { stroke:#6e7681 }
+      .arww    { stroke:#d29922 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="b38a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="b38w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mkw"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="310" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">판정 규칙보다 먼저 오는 것 — 전제 게이트</text>
+
+  <rect class="box" x="44" y="92" width="118" height="48" rx="8" stroke-width="1"/>
+  <text class="ink" x="103" y="121" font-size="12.5" text-anchor="middle">계측 완료</text>
+  <path d="M162,116 H190" class="arw" fill="none" stroke-width="1.2" marker-end="url(#b38a)"/>
+
+  <rect class="hl" x="196" y="84" width="186" height="64" rx="8" stroke-width="1.4"/>
+  <text class="ink" x="289" y="110" font-size="12.5" text-anchor="middle">기준선이 성립하는가</text>
+  <text class="muted" x="289" y="130" font-size="11" text-anchor="middle">표본 실행이면 성립하지 않는다</text>
+
+  <path d="M382,104 L622,90" class="arww" fill="none" stroke-width="1.4" marker-end="url(#b38w)"/>
+  <text class="warn" x="494" y="86" font-size="11.5" text-anchor="middle">아니오 — 검사할 수 없다</text>
+
+  <rect class="boxwarn" x="628" y="60" width="180" height="52" rx="8" stroke-width="1.2"/>
+  <text class="warn" x="718" y="82" font-size="12.5" text-anchor="middle" font-weight="600">판정 보류 (UNKNOWN)</text>
+  <text class="muted" x="718" y="100" font-size="11">검사하지 않았다</text>
+
+  <path d="M289,148 L396,182" class="arw" fill="none" stroke-width="1.2" marker-end="url(#b38a)"/>
+  <text class="acc" x="326" y="176" font-size="11.5">예</text>
+
+  <rect class="box" x="400" y="170" width="186" height="64" rx="8" stroke-width="1"/>
+  <text class="ink m" x="493" y="196" font-size="12" text-anchor="middle">자막 끝 &gt; 기준선 + 5.0s</text>
+  <text class="muted" x="493" y="216" font-size="11" text-anchor="middle">여기서부터가 판정 규칙</text>
+
+  <path d="M586,192 L622,176" class="arw" fill="none" stroke-width="1.2" marker-end="url(#b38a)"/>
+  <text class="muted" x="604" y="168" font-size="11" text-anchor="middle">예</text>
+  <rect class="boxbad" x="628" y="142" width="180" height="52" rx="8" stroke-width="1.2"/>
+  <text class="bad" x="718" y="164" font-size="12.5" text-anchor="middle" font-weight="600">FAIL</text>
+  <text class="muted" x="718" y="182" font-size="11">검사했고 결함이 있다</text>
+
+  <path d="M586,212 L622,236" class="arw" fill="none" stroke-width="1.2" marker-end="url(#b38a)"/>
+  <text class="muted" x="600" y="250" font-size="11" text-anchor="middle">아니오</text>
+  <rect class="boxgood" x="628" y="214" width="180" height="52" rx="8" stroke-width="1.2"/>
+  <text class="good" x="718" y="236" font-size="12.5" text-anchor="middle" font-weight="600">PASS</text>
+  <text class="muted" x="718" y="254" font-size="11">검사했고 이상이 없다</text>
+
+  <path d="M808,86 H832 V240 H814" class="arww" fill="none" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#b38w)"/>
+  <text class="warn" x="848" y="163" font-size="11" text-anchor="middle" transform="rotate(-90 848 163)">현재 구현은 여기로 접는다</text>
+
+  <text x="44" y="288" font-size="12.5" xml:space="preserve"><tspan class="warn" font-weight="600">전제 게이트가 없으면</tspan><tspan class="muted"> 표본 실행의 정상 스트림이 FAIL 로 나온다 — 검사할 수 없었던 것을 결함으로 보고한다.</tspan></text>
+  <text x="44" y="310" font-size="12.5" xml:space="preserve"><tspan class="warn" font-weight="600">보류를 PASS 로 접으면</tspan><tspan class="muted"> 반대 방향으로 틀린다 — 검사하지 못한 것을 통과로 보고한다.</tspan></text>
+</svg>

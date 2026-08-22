@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 402" role="img"
+     aria-label="최상위 박스가 파일을 빈틈 없이 덮는 성질. faststart 파일과 기본 먹싱 파일은 박스 순서가 다르지만 경계의 합이 파일 크기와 맞으므로 둘 다 온전으로 판정되고, 먹싱 도중 끊긴 파일은 mdat 박스가 선언한 끝이 실제 파일 끝을 넘어가므로 잘린 파일로 판정된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .accs  { stroke:#0969da }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    .good  { fill:#1a7f37 }
+    .chip  { fill:#eaeef2 }
+    .chipa { fill:#ddf4ff }
+    .mk    { fill:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .accs  { stroke:#4493f8 }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+      .good  { fill:#3fb950 }
+      .chip  { fill:#21262d }
+      .chipa { fill:#123a63 }
+      .mk    { fill:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="a20" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="370" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">최상위 박스는 파일을 빈틈도 겹침도 없이 덮는다 — 그 합이 파일 크기와 맞는지만 본다</text>
+
+  <text class="ink" x="60" y="80" font-size="13" font-weight="600">정상 · faststart 로 만든 파일 (moov 가 mdat 앞)</text>
+  <text class="good" x="836" y="80" font-size="13" font-weight="600" text-anchor="end">온전</text>
+  <rect class="chipa" x="61"  y="90" width="38"  height="34" rx="4"/>
+  <rect class="chip"  x="101" y="90" width="118" height="34" rx="4"/>
+  <rect class="panel" x="221" y="90" width="538" height="34" rx="4"/>
+  <text class="acc m"   x="80"  y="112" font-size="11" text-anchor="middle">ftyp</text>
+  <text class="ink m"   x="160" y="112" font-size="12" text-anchor="middle">moov</text>
+  <text class="muted"   x="490" y="112" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="m">mdat</tspan><tspan> — 본문 (파일의 99%)</tspan></text>
+  <line class="rule" x1="221" y1="140" x2="753" y2="140" stroke-width="1.2" marker-end="url(#a20)"/>
+  <text class="muted" x="490" y="158" font-size="12" text-anchor="middle">머리 8바이트만 읽고 본문은 seek 으로 건너뛴다 — 박스 하나당 8바이트</text>
+
+  <text class="ink" x="60" y="190" font-size="13" font-weight="600">정상 · 기본 먹싱 (moov 가 mdat 뒤)</text>
+  <text class="good" x="836" y="190" font-size="13" font-weight="600" text-anchor="end">온전</text>
+  <rect class="chipa" x="61"  y="200" width="38"  height="34" rx="4"/>
+  <rect class="panel" x="101" y="200" width="538" height="34" rx="4"/>
+  <rect class="chip"  x="641" y="200" width="118" height="34" rx="4"/>
+  <text class="acc m"   x="80"  y="222" font-size="11" text-anchor="middle">ftyp</text>
+  <text class="muted"   x="370" y="222" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="m">mdat</tspan><tspan> — 본문</tspan></text>
+  <text class="ink m"   x="700" y="222" font-size="12" text-anchor="middle">moov</text>
+  <text class="muted" x="60" y="252" font-size="12" xml:space="preserve"><tspan>순서가 다르지만 판정은 같다 — 코드는 종류의 </tspan><tspan class="acc" font-weight="600">집합</tspan><tspan>만 보고 나열 순서는 보지 않는다.</tspan></text>
+
+  <text class="ink" x="60" y="284" font-size="13" font-weight="600">먹싱 도중 끊긴 파일 — 60% 지점에서 잘림</text>
+  <text class="bad" x="836" y="284" font-size="13" font-weight="600" text-anchor="end">잘린 파일</text>
+  <rect class="chipa" x="61"  y="294" width="38"  height="34" rx="4"/>
+  <rect class="panel" x="101" y="294" width="378" height="34" rx="4"/>
+  <rect class="bads"  x="480" y="294" width="159" height="34" rx="4" fill="none" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text class="acc m"   x="80"  y="316" font-size="11" text-anchor="middle">ftyp</text>
+  <text class="muted"   x="290" y="316" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="m">mdat</tspan><tspan> — 실제로 쓰인 부분</tspan></text>
+  <text class="bad"     x="560" y="316" font-size="12" text-anchor="middle">쓰이지 못한 부분</text>
+  <line class="bads" x1="479" y1="288" x2="479" y2="340" stroke-width="1.5"/>
+  <line class="bads" x1="639" y1="288" x2="639" y2="340" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text class="bad" x="479" y="354" font-size="11.5" text-anchor="middle">실제 파일 끝(EOF)</text>
+  <text class="bad" x="639" y="354" font-size="11.5" text-anchor="middle">mdat 가 선언한 끝</text>
+
+  <text x="60" y="378" font-size="12.5" xml:space="preserve"><tspan class="ink">판정 근거는 하나 — </tspan><tspan class="bad" font-weight="600">offset + box_size &gt; size</tspan><tspan class="ink">. 본문을 한 바이트도 읽지 않고 잘림이 드러난다.</tspan></text>
+</svg>

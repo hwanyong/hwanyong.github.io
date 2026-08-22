@@ -99,6 +99,16 @@ const lectureCourse = defineCollection({
      *  Thumb 의 이름 플레이트로 자리를 지킬 수 있다.)
      */
     thumbnail: z.string().startsWith('/'),
+    /**
+     * 이 강의가 파생된 project 축 계열의 슬러그. 선택.
+     *
+     * ★ 정체성이 아니라 ★관계★ 다. 프론트매터 한 곳(강의 표지)에만 적고,
+     *   content.ts 의 getLectureCourses 가 그 계열이 실재하는지 빌드에서 강제한다
+     *   (없으면 죽는다 — 끊긴 링크를 배포하지 않는다). 링크는 양방향으로 렌더된다:
+     *   표지에 "바탕 프로젝트 →", 프로젝트 상세에 "딸림 강의 →".
+     *   역방향은 프로젝트 쪽에 아무것도 적지 않고 이 필드를 되짚어 만든다.
+     */
+    project: z.string().optional(),
   }),
 });
 

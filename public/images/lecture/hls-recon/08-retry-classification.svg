@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 330" role="img"
+     aria-label="한 번의 HTTP 시도가 끝났을 때 재시도 루프가 갈리는 세 갈래. 성공은 즉시 반환, 408과 429를 뺀 4xx 영속 실패는 즉시 중단, 5xx와 타임아웃과 408·429 일시 실패는 지수 백오프 뒤 재시도한다. 두 실패 경로는 같은 결과 객체로 합류한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="296" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">한 번의 시도가 끝났을 때 — 루프는 세 갈래로만 갈린다</text>
+
+  <rect class="panel" x="40" y="66" width="800" height="190" rx="8"/>
+  <text class="muted" x="88" y="90" font-size="11.5" font-weight="600">판정</text>
+  <text class="muted" x="200" y="90" font-size="11.5" font-weight="600">조건</text>
+  <text class="muted" x="520" y="90" font-size="11.5" font-weight="600">루프 동작</text>
+
+  <circle class="good" cx="64" cy="118" r="5"/>
+  <text class="ink" x="88" y="123" font-size="14" font-weight="600">성공</text>
+  <text class="ink" x="200" y="123" font-size="13">응답 수신 + 압축 해제 성공</text>
+  <text class="good m" x="520" y="123" font-size="13" font-weight="600">return FetchResult(ok=True)</text>
+  <text class="muted" x="200" y="140" font-size="11.5">2xx 는 물론 3xx 도 urllib 이 따라간 뒤 여기로 온다</text>
+  <text class="muted" x="520" y="140" font-size="11.5">이때의 시도 번호가 attempts 로 기록된다</text>
+
+  <circle class="bad" cx="64" cy="170" r="5"/>
+  <text class="ink" x="88" y="175" font-size="14" font-weight="600">영속 실패</text>
+  <text class="bad m" x="200" y="175" font-size="13" font-weight="600">400 &lt;= e.code &lt; 500</text>
+  <text class="bad m" x="520" y="175" font-size="13" font-weight="600">break</text>
+  <text class="muted m" x="200" y="192" font-size="12">e.code not in (408, 429)</text>
+  <text class="muted" x="520" y="192" font-size="11.5">같은 요청을 다시 보내도 답이 같다 — 남은 시도를 버린다</text>
+
+  <circle class="warn" cx="64" cy="222" r="5"/>
+  <text class="ink" x="88" y="227" font-size="14" font-weight="600">일시 실패</text>
+  <text class="ink" x="200" y="227" font-size="13">5xx · 타임아웃 · 연결 오류 · 408 · 429</text>
+  <text class="warn m" x="520" y="227" font-size="13" font-weight="600">sleep(backoff * 2 ** (n-1))</text>
+  <text class="muted" x="200" y="244" font-size="11.5">408·429 는 서버가 다시 오라고 말한 것이다</text>
+  <text class="muted" x="520" y="244" font-size="11.5">0.8s → 1.6s. 마지막 시도 뒤에는 자지 않는다</text>
+
+  <line class="rule" x1="44" y1="274" x2="836" y2="274" stroke-width="1"/>
+  <text x="44" y="298" font-size="13" xml:space="preserve"><tspan class="ink">두 실패 경로는 </tspan><tspan class="bad" font-weight="600">하나의 FetchResult(ok=False)</tspan><tspan class="ink"> 로 합류한다 — 그래서 실제 시도 수와 무관하게 </tspan><tspan class="bad" font-weight="600">attempts 가 retries 로</tspan><tspan class="ink"> 보고된다.</tspan></text>
+</svg>

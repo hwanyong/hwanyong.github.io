@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 452" role="img"
+     aria-label="같은 해시 함수로 만든 세 가지 서명 구성의 비교. 첫째, 비밀 키를 메시지 앞에 붙여 해시하는 구성은 해시 내부 상태가 출력으로 드러나지 않기를 요구하는데 Merkle-Damgard 구성에서는 그것이 성립하지 않아 길이 확장 공격을 허용한다. 둘째, 비밀 키를 메시지 뒤에 붙이는 구성은 해시의 충돌 저항성에 안전성을 의존하는데 MD5 의 충돌은 실용적으로 만들어진다. 셋째, HMAC 은 키를 두 번 섞어 해시를 두 겹으로 적용하는 표준 구성으로 내부 압축 함수가 유사난수함수이기만 하면 되고 충돌 저항성을 요구하지 않으며 길이 확장이 성립하지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="420" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">같은 해시 함수, 세 가지 구성 — 안전성을 무엇에 의존하는가</text>
+
+  <rect class="panel" x="44" y="68" width="792" height="92" rx="8" stroke-width="1"/>
+  <rect class="bad" x="44" y="68" width="5" height="92" stroke="none"/>
+  <text x="64" y="94" font-size="13" xml:space="preserve"><tspan class="ink" font-weight="600">① 비밀을 앞에 붙인 해시  </tspan><tspan class="acc m">md5(K ‖ 경로 ‖ 만료)</tspan></text>
+  <text class="muted" x="64" y="118" font-size="12">의존 — 해시 내부 상태가 출력으로 드러나지 않을 것. Merkle–Damgård 구성에서는 성립하지 않는다</text>
+  <text class="bad" x="64" y="142" font-size="12" font-weight="600">길이 확장 공격 — 키를 모르는 채로 “뒤에 덧붙인 메시지”의 서명을 만들 수 있다</text>
+
+  <rect class="panel" x="44" y="172" width="792" height="92" rx="8" stroke-width="1"/>
+  <rect class="bad" x="44" y="172" width="5" height="92" stroke="none"/>
+  <text x="64" y="198" font-size="13" xml:space="preserve"><tspan class="ink" font-weight="600">② 비밀을 뒤에 붙인 해시  </tspan><tspan class="acc m">md5(경로 ‖ 만료 ‖ K)</tspan></text>
+  <text class="muted" x="64" y="222" font-size="12">의존 — 해시의 충돌 저항성. MD5 의 충돌은 실용적으로 만들어진다(선택 접두사 충돌)</text>
+  <text class="bad" x="64" y="246" font-size="12" font-weight="600">같은 서명을 갖는 서로 다른 두 메시지를 만들 수 있다 — 길이 확장은 막지만 이쪽이 남는다</text>
+
+  <rect class="panel" x="44" y="276" width="792" height="104" rx="8" stroke-width="1"/>
+  <rect class="good" x="44" y="276" width="5" height="104" stroke="none"/>
+  <text class="ink" x="64" y="302" font-size="13" font-weight="600">③ HMAC — 표준 구성 (RFC 2104)</text>
+  <text class="acc m" x="64" y="324" font-size="12.5">HMAC(K, M) = H( (K ⊕ opad) ‖ H( (K ⊕ ipad) ‖ M ) )</text>
+  <text class="muted" x="64" y="348" font-size="12">의존 — 내부 압축 함수가 유사난수함수(PRF)일 것. 충돌 저항성을 요구하지 않는다</text>
+  <text class="good" x="64" y="370" font-size="12" font-weight="600">길이 확장이 성립하지 않는다. 해시를 SHA-256 으로 바꾸면 구성을 그대로 두고 강해진다</text>
+
+  <line class="rule" x1="44" y1="398" x2="836" y2="398" stroke-width="1"/>
+  <text x="44" y="422" font-size="13" xml:space="preserve"><tspan class="warn" font-weight="600">키를 붙인 해시는 MAC 이 아니다.</tspan><tspan class="ink"> MAC 이 필요하면 HMAC 을 쓴다 — 구성이 알고리즘보다 먼저다.</tspan></text>
+</svg>

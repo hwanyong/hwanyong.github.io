@@ -19,7 +19,7 @@ import type { LectureCourse } from '../../../../../lib/content';
 import { LOCALE_CODES, LOCALES } from '../../../../../lib/i18n';
 import type { Locale } from '../../../../../lib/i18n';
 import { formatDate, isoDate } from '../../../../../lib/date';
-import { courseAlternates, langParam, subjectHref } from '../../../../../lib/routes';
+import { courseAlternates, langParam, revisionHref, subjectHref } from '../../../../../lib/routes';
 import { SUBJECTS } from '../../../../../lib/subjects';
 import { UI } from '../../../../../lib/ui';
 
@@ -69,6 +69,15 @@ const alternates = courseAlternates(course.subject, course.course);
         </div>
         <h1 class="post-header__title">{data.title}</h1>
         <p class="post-header__lead">{data.description}</p>
+        {/* 바탕이 된 프로젝트로 가는 링크. 연결의 출처는 표지 프론트매터의 project 이고
+            (content.ts 가 실재를 강제한다), 프로젝트 상세는 이것을 되짚어 "딸림 강의" 를 낸다. */}
+        {data.project && (
+          <p class="post-header__origin">
+            <a href={revisionHref(locale, 'project', data.project, null)}>
+              {t.basedOnProject}: {data.project} →
+            </a>
+          </p>
+        )}
       </header>
 
       {

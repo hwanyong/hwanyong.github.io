@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-label="hls-recon 제34장 테스트 오라클 문제">
+  <style>
+    .bg{fill:#0d1117}.ink{fill:#e6edf3}.muted{fill:#8b949e}.acc{fill:#db6d28}
+  </style>
+  <rect class="bg" width="1280" height="720"/>
+  <rect class="acc" x="0" y="0" width="18" height="720"/>
+  <text class="muted" x="96" y="150" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="30" letter-spacing="4">hls-recon</text>
+  <text class="ink" x="88" y="500" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="300" font-weight="700">34</text>
+  <text class="acc" x="96" y="600" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700" letter-spacing="3">PART 8 · VERIFICATION</text>
+</svg>

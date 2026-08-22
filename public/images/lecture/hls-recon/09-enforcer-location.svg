@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 344" role="img"
+     aria-label="Referer 값을 정하는 것은 서버가 아니라 요청자다. 브라우저 안에서 도는 요청자는 브라우저가 값을 쓰고 페이지 스크립트가 고칠 수 없으므로 서버의 검사가 성립한다. 브라우저 밖의 요청자는 값을 스스로 쓰므로 검사가 걸러내는 것이 없다. 집행 지점이 방어자 쪽이 아니라 요청자 쪽에 있는 통제라는 뜻이다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .good  { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .good  { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="312" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">Referer 를 쓰는 것은 서버가 아니라 요청자다 — 집행자가 어디 있는가</text>
+
+  <rect class="panel" x="40" y="66" width="390" height="182" rx="8"/>
+  <text class="ink" x="58" y="92" font-size="14" font-weight="600">브라우저 안에서 도는 요청자</text>
+  <text class="muted" x="58" y="110" font-size="11.5">남의 페이지에 심긴 video 태그 · 스크립트의 요청</text>
+  <line class="rule" x1="56" y1="122" x2="414" y2="122" stroke-width="1"/>
+  <text class="muted" x="58" y="146" font-size="11.5">값을 쓰는 주체</text>
+  <text class="ink" x="196" y="146" font-size="12.5">브라우저</text>
+  <text class="muted" x="58" y="170" font-size="11.5">요청자가 고칠 수 있는가</text>
+  <text class="ink" x="196" y="170" font-size="12.5" font-weight="600">아니오</text>
+  <text class="muted" x="58" y="194" font-size="11.5">근거</text>
+  <text class="ink" x="196" y="194" font-size="12.5">Fetch 규격의 금지 헤더 이름</text>
+  <text class="good" x="58" y="228" font-size="13" font-weight="600">→ 서버의 Referer 검사가 성립한다</text>
+
+  <rect class="panel" x="450" y="66" width="390" height="182" rx="8"/>
+  <text class="ink" x="468" y="92" font-size="14" font-weight="600">브라우저 밖의 요청자</text>
+  <text class="muted m" x="468" y="110" font-size="11.5">curl · python urllib · ffmpeg</text>
+  <line class="rule" x1="466" y1="122" x2="824" y2="122" stroke-width="1"/>
+  <text class="muted" x="468" y="146" font-size="11.5">값을 쓰는 주체</text>
+  <text class="ink" x="606" y="146" font-size="12.5">요청자 자신</text>
+  <text class="muted" x="468" y="170" font-size="11.5">요청자가 고칠 수 있는가</text>
+  <text class="ink" x="606" y="170" font-size="12.5" font-weight="600">예</text>
+  <text class="muted" x="468" y="194" font-size="11.5">근거</text>
+  <text class="ink m" x="606" y="194" font-size="12">curl -e 'https://site/'</text>
+  <text class="bad" x="468" y="228" font-size="13" font-weight="600">→ 검사가 걸러내는 것이 없다</text>
+
+  <line class="rule" x1="44" y1="270" x2="836" y2="270" stroke-width="1"/>
+  <text x="44" y="292" font-size="13" xml:space="preserve"><tspan class="ink">서버는 이 값을 읽을 뿐 정할 수 없다 — 집행 지점이 </tspan><tspan class="bad" font-weight="600">방어자가 아니라 요청자 쪽</tspan><tspan class="ink">에 있다.</tspan></text>
+  <text class="muted" x="44" y="312" font-size="12">그래서 같은 헤더가 CSRF 방어에서는 유효하고 핫링크 차단에서는 무력하다 — 위협 모델이 다르기 때문이다.</text>
+</svg>

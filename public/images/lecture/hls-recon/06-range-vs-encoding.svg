@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 418" role="img"
+     aria-label="같은 바이트 범위 요청이 두 개의 좌표계를 가리키는 그림. HLS EXT-X-BYTERANGE 는 압축되지 않은 자원의 오프셋을 세고, HTTP Range 는 gzip 으로 인코딩된 선택된 표현의 오프셋을 센다. 두 좌표계의 원점이 달라 같은 숫자가 다른 곳을 가리키며, 인코딩된 표현에서는 그 위치가 아예 존재하지 않을 수도 있다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .track { fill:#eaeef2 }
+    .hlg   { fill:#aceebb }
+    .good  { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .badS  { stroke:#cf222e }
+    .goodS { stroke:#1a7f37 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .track { fill:#21262d }
+      .hlg   { fill:#1b4721 }
+      .good  { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .badS  { stroke:#f85149 }
+      .goodS { stroke:#3fb950 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="386" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">한 줄의 요청, 두 개의 좌표계</text>
+  <text x="44" y="70" font-size="12.5" xml:space="preserve"><tspan class="muted">서버에 놓인 자원 하나(4,000,000 B)의 세그먼트 #3 — 플레이리스트에는 </tspan><tspan class="acc m">#EXT-X-BYTERANGE:500000@1500000</tspan><tspan class="muted"> 이라고 적혀 있다</tspan></text>
+
+  <text class="ink" x="44" y="106" font-size="13" font-weight="600">① 자원 그대로 — identity</text>
+  <rect class="track" x="44" y="116" width="790" height="32" rx="4"/>
+  <rect class="hlg" x="340" y="116" width="99" height="32" rx="4"/>
+  <text class="good m" x="389" y="136" font-size="12" text-anchor="middle" font-weight="600">세그먼트 #3</text>
+  <text class="muted m" x="44" y="164" font-size="11">0</text>
+  <text class="muted m" x="340" y="164" font-size="11" text-anchor="middle">1,500,000</text>
+  <text class="muted m" x="439" y="164" font-size="11" text-anchor="middle">2,000,000</text>
+  <text class="muted m" x="834" y="164" font-size="11" text-anchor="end">4,000,000</text>
+  <text x="44" y="186" font-size="12.5" xml:space="preserve"><tspan class="good" font-weight="600">HLS 가 뜻한 것</tspan><tspan class="muted"> — 오프셋은 </tspan><tspan class="ink">자원(resource)</tspan><tspan class="muted">의 처음부터 센다. RFC 8216 §4.3.2.2</tspan></text>
+
+  <line class="badS" x1="340" y1="196" x2="340" y2="240" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line class="badS" x1="439" y1="196" x2="439" y2="240" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text class="bad" x="452" y="216" font-size="11.5">같은 숫자를 아래 축에 그대로 내려보면</text>
+
+  <text class="ink" x="44" y="262" font-size="13" font-weight="600">② gzip 으로 인코딩된 표현 — Content-Encoding: gzip</text>
+  <rect class="track" x="44" y="272" width="237" height="32" rx="4"/>
+  <rect x="340" y="272" width="99" height="32" rx="4" fill="none" class="badS" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text class="muted m" x="281" y="320" font-size="11" text-anchor="middle">1,200,000 (끝)</text>
+  <text class="bad" x="389" y="292" font-size="11.5" text-anchor="middle" font-weight="600">존재하지 않는 구간</text>
+  <text x="44" y="342" font-size="12.5" xml:space="preserve"><tspan class="acc" font-weight="600">HTTP 가 뜻한 것</tspan><tspan class="muted"> — 오프셋은 </tspan><tspan class="ink">선택된 표현(selected representation)</tspan><tspan class="muted">, 즉 인코딩된 바이트를 센다. RFC 9110</tspan></text>
+
+  <line class="rule" x1="44" y1="358" x2="836" y2="358" stroke-width="1"/>
+  <text x="44" y="382" font-size="13" xml:space="preserve"><tspan class="ink">범위 요청에서는 협상을 포기한다 — </tspan><tspan class="acc m" font-weight="600">Accept-Encoding: identity</tspan><tspan class="ink"> (</tspan><tspan class="muted m">fetch.py:155-161</tspan><tspan class="ink">). ①과 ②가 같아지면 좌표계는 하나다.</tspan></text>
+</svg>

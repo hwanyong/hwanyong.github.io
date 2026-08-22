@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" role="img"
+     aria-label="같은 정규식이 파이썬 기본 유니코드 모드와 re.ASCII 모드에서 다르게 끊긴다. 유니코드 모드에서는 한글과 붙은 색인 글자가 한 덩어리로 잡혀 복원되지 않고 회차 번호가 사라지지만, re.ASCII 를 붙이면 색인 글자만 따로 잡혀 원본 이름이 그대로 복원된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#ddf4ff; stroke:#54aeff }
+    .danger{ fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .ok    { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .rule  { stroke:#d8dee6 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#0c2d6b; stroke:#4493f8 }
+      .danger{ fill:#3d1518; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .ok    { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .rule  { stroke:#30363d }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="14" width="840" height="332" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="42" font-size="15" font-weight="600">같은 정규식이 두 곳에서 끊긴다 — 플래그 하나가 회차 번호를 지운다</text>
+  <text class="m" x="44" y="68" font-size="12.5" xml:space="preserve"><tspan class="muted">본문 조각: </tspan><tspan class="ink">"d":"그렌라간e.f"</tspan><tspan class="muted">   (e·f 는 사전 색인)</tspan></text>
+
+  <rect class="box" x="44" y="80" width="792" height="110" rx="8" stroke-width="1"/>
+  <text class="m" x="64" y="104" font-size="12" xml:space="preserve"><tspan class="bad" font-weight="600">flags 없음</tspan><tspan class="muted"> — 파이썬 기본 \w 는 한글을 포함한다</tspan></text>
+  <rect class="danger" x="64" y="116" width="84" height="30" rx="6" stroke-width="1.2"/>
+  <text class="bad m" x="106" y="136" font-size="13" text-anchor="middle">그렌라간e</text>
+  <text class="muted m" x="154" y="136" font-size="13">.</text>
+  <rect class="chip" x="166" y="116" width="28" height="30" rx="6" stroke-width="1.2"/>
+  <text class="acc m" x="180" y="136" font-size="13" text-anchor="middle">f</text>
+  <text class="muted" x="64" y="172" font-size="11.5">한 덩어리로 잡혀 사전 색인으로 읽히지 않는다 → 그대로 남는다</text>
+  <line x1="560" y1="88" x2="560" y2="182" class="rule" stroke-width="1"/>
+  <text class="muted" x="590" y="108" font-size="11.5">복원 결과</text>
+  <text class="bad m" x="590" y="138" font-size="14" font-weight="600">그렌라간e.mkv</text>
+  <text class="bad" x="590" y="166" font-size="12">화수가 사라진다</text>
+
+  <rect class="box" x="44" y="200" width="792" height="110" rx="8" stroke-width="1"/>
+  <text class="m" x="64" y="224" font-size="12" xml:space="preserve"><tspan class="ok" font-weight="600">flags=re.ASCII</tspan><tspan class="muted"> — 압축한 쪽(자바스크립트)과 같은 규칙</tspan></text>
+  <text class="muted m" x="74" y="256" font-size="13">그렌라간</text>
+  <rect class="chip" x="130" y="236" width="28" height="30" rx="6" stroke-width="1.2"/>
+  <text class="acc m" x="144" y="256" font-size="13" text-anchor="middle">e</text>
+  <text class="muted m" x="164" y="256" font-size="13">.</text>
+  <rect class="chip" x="176" y="236" width="28" height="30" rx="6" stroke-width="1.2"/>
+  <text class="acc m" x="190" y="256" font-size="13" text-anchor="middle">f</text>
+  <text class="muted m" x="64" y="292" font-size="11.5">e → words[14] = "01"    f → words[15] = "mkv"</text>
+  <line x1="560" y1="208" x2="560" y2="302" class="rule" stroke-width="1"/>
+  <text class="muted" x="590" y="228" font-size="11.5">복원 결과</text>
+  <text class="ok m" x="590" y="258" font-size="14" font-weight="600">그렌라간01.mkv</text>
+  <text class="ok" x="590" y="286" font-size="12">원본과 한 글자도 다르지 않다</text>
+
+  <text x="44" y="334" font-size="12" xml:space="preserve"><tspan class="muted">재현 실험 — 위쪽 규칙에서는 1·2·3화가 모두 </tspan><tspan class="bad" font-weight="600">그렌라간e</tspan><tspan class="muted"> 로 나와 한 파일에 덮어쓰인다</tspan></text>
+</svg>

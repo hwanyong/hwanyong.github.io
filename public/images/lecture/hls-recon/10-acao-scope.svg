@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 366" role="img"
+     aria-label="ACAO 가 작용하는 지점의 비교. 브라우저에서는 요청이 서버에 도달하고 응답이 만들어진 뒤, 동일 출처 정책 관문에서 ACAO 를 대조해 페이지 JS 의 읽기만 막는다. hls-recon 같은 비브라우저 클라이언트에는 그 관문 자체가 없어 ACAO 가 아무것도 막지 않는다. 1단계부터 3단계까지는 양쪽이 동일하다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .cell  { fill:#f6f8fa; stroke:#d8dee6 }
+    .cellh { fill:#ddf4ff; stroke:#0969da }
+    .cellx { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .cell  { fill:#161b22; stroke:#30363d }
+      .cellh { fill:#123a63; stroke:#4493f8 }
+      .cellx { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a10a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="334" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">ACAO 는 요청을 막지 않는다 — 작용하는 지점은 브라우저 안 한 곳뿐이다</text>
+
+  <text class="muted" x="44" y="74" font-size="11.5" font-weight="600">브라우저 안에서 — 페이지 JS 가 fetch() 로 부를 때</text>
+  <rect class="cell"  x="44"  y="84" width="142" height="58" rx="7" stroke-width="1"/>
+  <rect class="cell"  x="206" y="84" width="142" height="58" rx="7" stroke-width="1"/>
+  <rect class="cell"  x="368" y="84" width="142" height="58" rx="7" stroke-width="1"/>
+  <rect class="cellh" x="530" y="84" width="142" height="58" rx="7" stroke-width="1.5"/>
+  <rect class="cell"  x="692" y="84" width="142" height="58" rx="7" stroke-width="1"/>
+  <text class="ink"   x="115" y="110" font-size="12.5" text-anchor="middle">① 요청을 보낸다</text>
+  <text class="ink"   x="277" y="110" font-size="12.5" text-anchor="middle">② 서버에 도달</text>
+  <text class="ink"   x="439" y="110" font-size="12.5" text-anchor="middle">③ 응답 생성</text>
+  <text class="muted" x="439" y="128" font-size="11" text-anchor="middle">200 · 403 + ACAO</text>
+  <text class="acc"   x="601" y="110" font-size="12.5" text-anchor="middle" font-weight="600">④ ACAO 대조</text>
+  <text class="muted" x="601" y="128" font-size="11" text-anchor="middle">동일 출처 정책 관문</text>
+  <text class="ink"   x="763" y="110" font-size="12.5" text-anchor="middle">⑤ JS 가 읽는다</text>
+  <text class="bad"   x="763" y="128" font-size="11" text-anchor="middle">또는 여기서 차단</text>
+  <line class="rule" x1="190" y1="113" x2="202" y2="113" stroke-width="1.2" marker-end="url(#a10a)"/>
+  <line class="rule" x1="352" y1="113" x2="364" y2="113" stroke-width="1.2" marker-end="url(#a10a)"/>
+  <line class="rule" x1="514" y1="113" x2="526" y2="113" stroke-width="1.2" marker-end="url(#a10a)"/>
+  <line class="rule" x1="676" y1="113" x2="688" y2="113" stroke-width="1.2" marker-end="url(#a10a)"/>
+
+  <text class="muted" x="44" y="176" font-size="11.5" font-weight="600">hls-recon 에서 — 같은 URL 을 같은 방법으로 부를 때</text>
+  <rect class="cell"  x="44"  y="186" width="142" height="58" rx="7" stroke-width="1"/>
+  <rect class="cell"  x="206" y="186" width="142" height="58" rx="7" stroke-width="1"/>
+  <rect class="cell"  x="368" y="186" width="142" height="58" rx="7" stroke-width="1"/>
+  <rect class="cellx" x="530" y="186" width="142" height="58" rx="7" stroke-width="1" stroke-dasharray="5 4"/>
+  <rect class="cell"  x="692" y="186" width="142" height="58" rx="7" stroke-width="1"/>
+  <text class="ink"   x="115" y="212" font-size="12.5" text-anchor="middle">① 요청을 보낸다</text>
+  <text class="ink"   x="277" y="212" font-size="12.5" text-anchor="middle">② 서버에 도달</text>
+  <text class="ink"   x="439" y="212" font-size="12.5" text-anchor="middle">③ 응답 생성</text>
+  <text class="muted" x="439" y="230" font-size="11" text-anchor="middle">200 · 403 + ACAO</text>
+  <text class="muted" x="601" y="212" font-size="12.5" text-anchor="middle">④ 관문이 없다</text>
+  <text class="muted" x="601" y="230" font-size="11" text-anchor="middle">ACAO 를 보지도 않는다</text>
+  <text class="good"  x="763" y="212" font-size="12.5" text-anchor="middle" font-weight="600">⑤ 그대로 읽는다</text>
+  <text class="muted" x="763" y="230" font-size="11" text-anchor="middle">헤더도 본문도 전부</text>
+  <line class="rule" x1="190" y1="215" x2="202" y2="215" stroke-width="1.2" marker-end="url(#a10a)"/>
+  <line class="rule" x1="352" y1="215" x2="364" y2="215" stroke-width="1.2" marker-end="url(#a10a)"/>
+  <line class="rule" x1="514" y1="215" x2="526" y2="215" stroke-width="1.2" marker-end="url(#a10a)"/>
+  <line class="rule" x1="676" y1="215" x2="688" y2="215" stroke-width="1.2" marker-end="url(#a10a)"/>
+
+  <text x="44" y="272" font-size="12.5" xml:space="preserve"><tspan class="acc" font-weight="600">④ 만이</tspan><tspan class="ink"> ACAO 가 관여하는 지점이고, 그것은 </tspan><tspan class="ink" font-weight="600">응답이 이미 만들어진 뒤</tspan><tspan class="ink">다.</tspan></text>
+  <text x="44" y="292" font-size="12.5" xml:space="preserve"><tspan class="ink">① ~ ③ 은 양쪽이 완전히 같다 — 요청은 서버에 닿았고, 서버는 판정을 내렸고, 본문은 회선을 지나왔다.</tspan></text>
+
+  <line class="rule" x1="44" y1="310" x2="836" y2="310" stroke-width="1"/>
+  <text x="44" y="334" font-size="13" xml:space="preserve"><tspan class="ink">CORS 는 동일 출처 정책을 </tspan><tspan class="acc" font-weight="600">완화하는</tspan><tspan class="ink"> 장치다. 접근을 </tspan><tspan class="bad" font-weight="600">제한하는</tspan><tspan class="ink"> 장치가 아니다 — 제한은 ③ 이전에 서버가 해야 한다.</tspan></text>
+</svg>

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" role="img"
+     aria-label="이름 하나가 HTTP 요청줄이 되기까지의 세 단계. 인코더는 정확히 한 번만 적용해야 하고, 정규화기는 몇 번 적용해도 결과가 같다. 인코더를 두 번 적용하면 퍼센트 20 이 퍼센트 2520 이 되어 다른 자원을 가리킨다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#656d76 }
+    .arw   { stroke:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#8b949e }
+      .arw   { stroke:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="a7" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="368" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">이름 하나가 요청줄이 되기까지 — 인코딩은 정확히 한 번, 정규화는 몇 번이든</text>
+
+  <rect class="panel" x="44" y="70" width="356" height="46" rx="7"/>
+  <text class="ink m" x="62" y="99" font-size="13">에피소드 01</text>
+  <text class="ink" x="424" y="90" font-size="13.5" font-weight="600">① 이름 — 사람이 정한 데이터</text>
+  <text class="muted" x="424" y="109" font-size="12.5">URI 가 아니다. 한글과 공백이 들어 있다</text>
+
+  <line class="arw" x1="209" y1="116" x2="209" y2="150" stroke-width="1.4" marker-end="url(#a7)"/>
+  <text class="ink m" x="228" y="130" font-size="12">quote(name, safe="")</text>
+  <text x="228" y="147" font-size="12" xml:space="preserve"><tspan class="acc" font-weight="600">정확히 한 번</tspan><tspan class="muted"> — 반복하면 다른 이름이 된다</tspan></text>
+
+  <rect class="panel" x="44" y="152" width="356" height="46" rx="7"/>
+  <text class="ink m" x="62" y="181" font-size="13">%EC%97%90%ED%94%BC…%EB%93%9C%2001</text>
+  <text class="ink" x="424" y="172" font-size="13.5" font-weight="600">② URI 조각 — 전부 ASCII</text>
+  <text class="muted" x="424" y="191" font-size="12.5">subtitles.py:408 이 만든다 (safe 를 비워 통째로)</text>
+
+  <line class="arw" x1="209" y1="198" x2="209" y2="232" stroke-width="1.4" marker-end="url(#a7)"/>
+  <text class="ink m" x="228" y="212" font-size="12">normalize_url(url)</text>
+  <text x="228" y="229" font-size="12" xml:space="preserve"><tspan class="good" font-weight="600">몇 번이든</tspan><tspan class="muted"> — f(f(x)) = f(x), 지나가도 값이 안 변한다</tspan></text>
+
+  <rect class="panel" x="44" y="234" width="356" height="46" rx="7"/>
+  <text class="ink m" x="62" y="263" font-size="13">/subtitles/old/%EC%97%90…%2001.srt</text>
+  <text class="ink" x="424" y="254" font-size="13.5" font-weight="600">③ 요청줄 — 이 바이트열 그대로 나간다</text>
+  <text class="muted" x="424" y="273" font-size="12.5">fetch.py:151 이 한 번 더 건다. ffmpeg 도 같은 규칙을 쓴다</text>
+
+  <line class="rule" x1="44" y1="300" x2="836" y2="300" stroke-width="1"/>
+  <text x="44" y="326" font-size="13" xml:space="preserve"><tspan class="ink">②에 인코더를 한 번 더 걸면 </tspan><tspan class="bad m" font-weight="600">%25EC%2597%2590…%2520</tspan><tspan class="ink"> 이 되고, 서버에 그런 이름의 자원은 없다.</tspan></text>
+  <text x="44" y="350" font-size="13" xml:space="preserve"><tspan class="ink">정규화기를 한 번 더 걸면 </tspan><tspan class="good" font-weight="600">아무 일도 일어나지 않는다</tspan><tspan class="ink">. 이 장은 그 차이 하나를 다룬다.</tspan></text>
+</svg>

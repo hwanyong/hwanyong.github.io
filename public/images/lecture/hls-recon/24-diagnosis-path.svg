@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 472" role="img"
+     aria-label="같은 손상된 세그먼트가 두 설계에서 어떻게 다르게 진단되는지 비교한다. 패딩 오류에 예외를 던지는 설계에서는 예외가 잡히는 곳 없이 전파되어 복호화 실패라는 잘못된 진단으로 끝나고, 예외를 던지지 않는 이 코드에서는 원본이 그대로 넘어가 컨테이너 판별과 TS 연속성 검사를 거쳐 패킷 유실로 진단된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .pillR { fill:#ffebe9; stroke:#ff8182 }
+    .pillG { fill:#dafbe1; stroke:#4ac26b }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .acc   { fill:#0969da }
+    .rule  { stroke:#d8dee6 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .pillR { fill:#3c1618; stroke:#a8353a }
+      .pillG { fill:#12341f; stroke:#2ea043 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .acc   { fill:#4493f8 }
+      .rule  { stroke:#30363d }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar24" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="442" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="42" font-size="15" font-weight="600">손상 하나가 어디에서 이름을 얻는가</text>
+
+  <rect class="box" x="44" y="56" width="792" height="40" rx="8" stroke-width="1"/>
+  <text class="ink" x="440" y="81" font-size="13" text-anchor="middle">입력 — 끝이 1,024바이트 잘린 AES-128 세그먼트 (실제 원인은 전송 결손이다)</text>
+
+  <line class="arw" x1="234" y1="96" x2="234" y2="122" stroke-width="1.2" marker-end="url(#ar24)"/>
+  <line class="arw" x1="646" y1="96" x2="646" y2="122" stroke-width="1.2" marker-end="url(#ar24)"/>
+  <text class="muted" x="440" y="115" font-size="11.5" text-anchor="middle">같은 바이트열이 두 설계로 들어간다</text>
+
+  <text class="bad"  x="234" y="142" font-size="13" text-anchor="middle" font-weight="600">패딩 오류에 예외를 던진다면</text>
+  <text class="good" x="646" y="142" font-size="13" text-anchor="middle" font-weight="600">예외를 던지지 않는다 — 이 코드</text>
+
+  <!-- 왼쪽 흐름 -->
+  <rect class="box" x="44" y="152" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink m" x="60" y="172" font-size="12.5">_unpad_pkcs7 — 패딩 불일치</text>
+  <text class="muted" x="60" y="190" font-size="11.5">그 자리에서 ValueError 를 던진다</text>
+  <line class="arw" x1="234" y1="198" x2="234" y2="212" stroke-width="1.2" marker-end="url(#ar24)"/>
+
+  <rect class="box" x="44" y="214" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="60" y="234" font-size="12.5">예외가 그대로 전파된다</text>
+  <text class="muted m" x="60" y="252" font-size="11.5">cli.py:458 → 587 → 678 · 잡는 곳이 없다</text>
+  <line class="arw" x1="234" y1="260" x2="234" y2="274" stroke-width="1.2" marker-end="url(#ar24)"/>
+
+  <rect class="box" x="44" y="276" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink" x="60" y="296" font-size="12.5">스택 트레이스로 종료</text>
+  <text class="muted" x="60" y="314" font-size="11.5">배치 모드는 남은 회차까지 함께 죽는다</text>
+  <line class="arw" x1="234" y1="322" x2="234" y2="336" stroke-width="1.2" marker-end="url(#ar24)"/>
+
+  <rect class="pillR" x="44" y="338" width="380" height="56" rx="8" stroke-width="1.5"/>
+  <text class="bad" x="60" y="360" font-size="13" font-weight="600">진단 — “복호화 실패”</text>
+  <text class="muted" x="60" y="380" font-size="11.5">틀린 원인이 붙는다. 전송 결손은 가려진다</text>
+
+  <!-- 오른쪽 흐름 -->
+  <rect class="box" x="456" y="152" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink m" x="472" y="172" font-size="12.5">_unpad_pkcs7 — 패딩 불일치</text>
+  <text class="muted" x="472" y="190" font-size="11.5">자르지 않고 원본을 그대로 넘긴다</text>
+  <line class="arw" x1="646" y1="198" x2="646" y2="212" stroke-width="1.2" marker-end="url(#ar24)"/>
+
+  <rect class="box" x="456" y="214" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink m" x="472" y="234" font-size="12.5">sniff(data) → mpegts</text>
+  <text class="muted" x="472" y="252" font-size="11.5">선두 0x47 은 온전하다 — 저장하고 계속한다</text>
+  <line class="arw" x1="646" y1="260" x2="646" y2="274" stroke-width="1.2" marker-end="url(#ar24)"/>
+
+  <rect class="box" x="456" y="276" width="380" height="46" rx="8" stroke-width="1"/>
+  <text class="ink m" x="472" y="296" font-size="12.5">analyze(data, cc_state)</text>
+  <text class="muted" x="472" y="314" font-size="11.5">세그먼트 경계를 넘는 CC 상태가 점프를 잡는다</text>
+  <line class="arw" x1="646" y1="322" x2="646" y2="336" stroke-width="1.2" marker-end="url(#ar24)"/>
+
+  <rect class="pillG" x="456" y="338" width="380" height="56" rx="8" stroke-width="1.5"/>
+  <text class="good" x="472" y="360" font-size="13" font-weight="600">진단 — “TS 무결성: CC 불연속 1건”</text>
+  <text class="muted" x="472" y="380" font-size="11.5">원인이 관측된 층에서 이름을 얻는다</text>
+
+  <line class="rule" x1="44" y1="410" x2="836" y2="410" stroke-width="1"/>
+  <text class="acc" x="44" y="430" font-size="12">실측 — 이 세그먼트만 단독으로 분석하면 CC 이상은 0건이다.</text>
+  <text class="muted" x="44" y="448" font-size="12">세그먼트 경계를 넘겨 cc_state 를 이어 주기 때문에 누적 1건으로 드러난다.</text>
+</svg>

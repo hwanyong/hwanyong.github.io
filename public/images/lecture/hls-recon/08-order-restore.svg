@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 372" role="img"
+     aria-label="병렬 수신에서 완료 순서를 입력 순서로 되돌리는 방법. as_completed 는 완료가 빠른 것부터 내주므로 순서가 뒤섞이지만, 미리 잡아 둔 결과 배열의 인덱스에 각 결과를 되돌려 놓으면 입력 순서가 복원된다. 매핑의 키는 URL 이 아니라 Future 객체다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#eaeef2; stroke:#d8dee6 }
+    .chipa { fill:#ddf4ff; stroke:#0969da }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .mk    { fill:#656d76 }
+    .wire  { stroke:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#21262d; stroke:#30363d }
+      .chipa { fill:#123a63; stroke:#4493f8 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .mk    { fill:#8b949e }
+      .wire  { stroke:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a8" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="340" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">완료 순서는 뒤섞인다 — 자리를 미리 잡아 두면 순서는 복원된다</text>
+
+  <text class="muted" x="94" y="86" font-size="11.5" font-weight="600">① as_completed 가 내주는 순서 — 완료가 빠른 것부터 (실측: 8건이 완전한 역순으로 도착)</text>
+
+  <rect class="chip" x="94"  y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="182" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="270" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="358" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="446" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="534" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="622" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chip" x="710" y="98" width="76" height="30" rx="6" stroke-width="1"/>
+  <text class="ink m" x="132" y="118" font-size="13" text-anchor="middle">res 7</text>
+  <text class="ink m" x="220" y="118" font-size="13" text-anchor="middle">res 6</text>
+  <text class="ink m" x="308" y="118" font-size="13" text-anchor="middle">res 5</text>
+  <text class="ink m" x="396" y="118" font-size="13" text-anchor="middle">res 4</text>
+  <text class="ink m" x="484" y="118" font-size="13" text-anchor="middle">res 3</text>
+  <text class="ink m" x="572" y="118" font-size="13" text-anchor="middle">res 2</text>
+  <text class="ink m" x="660" y="118" font-size="13" text-anchor="middle">res 1</text>
+  <text class="ink m" x="748" y="118" font-size="13" text-anchor="middle">res 0</text>
+
+  <line class="wire" x1="132" y1="130" x2="748" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="220" y1="130" x2="660" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="308" y1="130" x2="572" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="396" y1="130" x2="484" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="484" y1="130" x2="396" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="572" y1="130" x2="308" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="660" y1="130" x2="220" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+  <line class="wire" x1="748" y1="130" x2="132" y2="226" marker-end="url(#a8)" stroke-width="1.2"/>
+
+  <rect class="panel" x="332" y="164" width="216" height="30" rx="8" stroke-width="1"/>
+  <text class="acc m" x="440" y="184" font-size="13" text-anchor="middle" font-weight="600">i = futures[fut]</text>
+
+  <rect class="chipa" x="94"  y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="182" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="270" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="358" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="446" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="534" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="622" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <rect class="chipa" x="710" y="228" width="76" height="30" rx="6" stroke-width="1"/>
+  <text class="acc m" x="132" y="248" font-size="13" text-anchor="middle" font-weight="600">res 0</text>
+  <text class="acc m" x="220" y="248" font-size="13" text-anchor="middle" font-weight="600">res 1</text>
+  <text class="acc m" x="308" y="248" font-size="13" text-anchor="middle" font-weight="600">res 2</text>
+  <text class="acc m" x="396" y="248" font-size="13" text-anchor="middle" font-weight="600">res 3</text>
+  <text class="acc m" x="484" y="248" font-size="13" text-anchor="middle" font-weight="600">res 4</text>
+  <text class="acc m" x="572" y="248" font-size="13" text-anchor="middle" font-weight="600">res 5</text>
+  <text class="acc m" x="660" y="248" font-size="13" text-anchor="middle" font-weight="600">res 6</text>
+  <text class="acc m" x="748" y="248" font-size="13" text-anchor="middle" font-weight="600">res 7</text>
+
+  <text class="muted m" x="132" y="274" font-size="11.5" text-anchor="middle">[0]</text>
+  <text class="muted m" x="220" y="274" font-size="11.5" text-anchor="middle">[1]</text>
+  <text class="muted m" x="308" y="274" font-size="11.5" text-anchor="middle">[2]</text>
+  <text class="muted m" x="396" y="274" font-size="11.5" text-anchor="middle">[3]</text>
+  <text class="muted m" x="484" y="274" font-size="11.5" text-anchor="middle">[4]</text>
+  <text class="muted m" x="572" y="274" font-size="11.5" text-anchor="middle">[5]</text>
+  <text class="muted m" x="660" y="274" font-size="11.5" text-anchor="middle">[6]</text>
+  <text class="muted m" x="748" y="274" font-size="11.5" text-anchor="middle">[7]</text>
+
+  <text class="muted" x="94" y="298" font-size="11.5" font-weight="600">② results — 자리는 제출 시점에 이미 잡혀 있다. 도착 시각은 어느 칸에 들어가는지에 영향을 주지 않는다</text>
+
+  <line class="rule" x1="44" y1="316" x2="836" y2="316" stroke-width="1"/>
+  <text x="44" y="340" font-size="13" xml:space="preserve"><tspan class="ink">매핑의 키는 </tspan><tspan class="bad" font-weight="600">URL 이 아니라 Future 객체</tspan><tspan class="ink">다 — EXT-X-BYTERANGE 세그먼트는 </tspan><tspan class="bad" font-weight="600">전부 같은 URL</tspan><tspan class="ink"> 이므로 URL 을 키로 잡으면 뭉개진다.</tspan></text>
+</svg>

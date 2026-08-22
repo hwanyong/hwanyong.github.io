@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 334" role="img"
+     aria-label="결함 네 종을 한 스트림에 함께 주입했을 때 관측치가 섞이는 모습. 다섯 세그먼트 중 seg000 은 그대로이고, seg001 은 404 로 사라졌으며, seg002 는 패킷 12개가 빠졌고, seg003 은 HTML 이라 분석에서 제외되며, seg004 는 seg000 의 복제다. continuity counter 불연속 기여는 각각 0, 없음, 6, 제외, 5 로 합계 11 건이며 그중 패킷 제거의 몫은 1 건뿐이다. 패킷 제거 결함을 빼고 다시 돌려도 10 건이 남아 같은 검사가 울린다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .bxW   { fill:#fff8c5; stroke:#d4a72c }
+    .bxB   { fill:#ffebe9; stroke:#cf222e }
+    .cell  { fill:#eaeef2; stroke:#d8dee6 }
+    .note  { fill:#ddf4ff; stroke:#54aeff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .bxW   { fill:#3b2300; stroke:#9e6a03 }
+      .bxB   { fill:#3c1618; stroke:#f85149 }
+      .cell  { fill:#21262d; stroke:#30363d }
+      .note  { fill:#123a63; stroke:#1f6feb }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="14" width="840" height="302" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">한 스트림에 넷을 함께 넣으면 관측치가 섞인다</text>
+  <text class="muted" x="44" y="66" font-size="12">damaged 스트림의 다섯 조각과, 각 조각이 CC 불연속 집계에 보탠 몫 (실측)</text>
+
+  <rect class="box" x="44" y="80" width="150" height="84" rx="8" stroke-width="1"/>
+  <text class="ink m" x="119" y="104" font-size="13" text-anchor="middle" font-weight="600">seg000</text>
+  <text class="muted" x="119" y="126" font-size="12" text-anchor="middle">그대로</text>
+  <text class="muted" x="119" y="148" font-size="11.5" text-anchor="middle">결함 없음</text>
+
+  <rect class="bxB" x="204" y="80" width="150" height="84" rx="8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text class="ink m" x="279" y="104" font-size="13" text-anchor="middle" font-weight="600">seg001</text>
+  <text class="muted" x="279" y="126" font-size="12" text-anchor="middle">받지 못함</text>
+  <text class="bad" x="279" y="148" font-size="11.5" text-anchor="middle" font-weight="600">결함 3 · 404</text>
+
+  <rect class="bxW" x="364" y="80" width="150" height="84" rx="8" stroke-width="1.5"/>
+  <text class="ink m" x="439" y="104" font-size="13" text-anchor="middle" font-weight="600">seg002</text>
+  <text class="muted" x="439" y="126" font-size="12" text-anchor="middle">패킷 12개 없음</text>
+  <text class="warn" x="439" y="148" font-size="11.5" text-anchor="middle" font-weight="600">결함 1 · 유실</text>
+
+  <rect class="bxB" x="524" y="80" width="150" height="84" rx="8" stroke-width="1.5"/>
+  <text class="ink m" x="599" y="104" font-size="13" text-anchor="middle" font-weight="600">seg003</text>
+  <text class="muted" x="599" y="126" font-size="12" text-anchor="middle">미디어가 아님</text>
+  <text class="bad" x="599" y="148" font-size="11.5" text-anchor="middle" font-weight="600">결함 4 · HTML</text>
+
+  <rect class="bxW" x="684" y="80" width="150" height="84" rx="8" stroke-width="1.5"/>
+  <text class="ink m" x="759" y="104" font-size="13" text-anchor="middle" font-weight="600">seg004</text>
+  <text class="muted" x="759" y="126" font-size="12" text-anchor="middle">seg000 과 동일</text>
+  <text class="warn" x="759" y="148" font-size="11.5" text-anchor="middle" font-weight="600">결함 2 · 중복</text>
+
+  <rect class="cell" x="44" y="178" width="150" height="34" rx="6" stroke-width="1"/>
+  <text class="muted" x="119" y="200" font-size="12" text-anchor="middle">CC 기여 0</text>
+  <rect class="cell" x="204" y="178" width="150" height="34" rx="6" stroke-width="1"/>
+  <text class="muted" x="279" y="200" font-size="12" text-anchor="middle">조각 자체가 없음</text>
+  <rect class="cell" x="364" y="178" width="150" height="34" rx="6" stroke-width="1"/>
+  <text class="ink" x="439" y="200" font-size="12" text-anchor="middle" font-weight="600">CC 기여 6</text>
+  <rect class="cell" x="524" y="178" width="150" height="34" rx="6" stroke-width="1"/>
+  <text class="muted" x="599" y="200" font-size="12" text-anchor="middle">분석에서 제외</text>
+  <rect class="cell" x="684" y="178" width="150" height="34" rx="6" stroke-width="1"/>
+  <text class="ink" x="759" y="200" font-size="12" text-anchor="middle" font-weight="600">CC 기여 5</text>
+
+  <text class="ink" x="44" y="238" font-size="12.5" font-weight="600">합계 11 건. seg002 의 6 = 5(seg001 결손이 만든 경계 점프) + 1(패킷 제거). 결함 1 의 몫은 11 분의 1 이다.</text>
+
+  <rect class="note" x="44" y="252" width="790" height="52" rx="8" stroke-width="1.5"/>
+  <text class="acc" x="64" y="274" font-size="12.5" font-weight="600">패킷 제거만 빼고 다시 돌리면 CC 불연속 10 건 — 같은 검사가 그대로 울린다(실측).</text>
+  <text class="muted" x="64" y="294" font-size="11.5">즉 이 확인 문장은 결함 1 이 없어도 통과한다. 대응표의 1:1 은 설계 의도이지 관측으로 확인된 사실이 아니다.</text>
+</svg>

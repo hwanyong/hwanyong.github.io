@@ -756,6 +756,18 @@ img.thumb {
   margin: 0.9rem 0 0;
 }
 
+/* 강의 표지 → 바탕이 된 프로젝트. 계기판 어휘가 아니라 관계를 밝히는 한 줄이다.
+   가리킴·포커스 윤곽은 전역 규칙(a[href]:hover / :focus-visible)이 그대로 준다. */
+.post-header__origin {
+  font-size: 13.5px;
+  margin: 0.8rem 0 0;
+}
+
+.post-header__origin a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ─── 본문 ─────────────────────────────────────────────────── */
 
 .prose > * {

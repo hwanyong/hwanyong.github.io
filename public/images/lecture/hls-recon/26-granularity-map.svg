@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 404" role="img"
+     aria-label="같은 세그먼트를 두 방식으로 암호화했을 때 암호문이 차지하는 자리의 대비. AES-128 은 세그먼트 전체가 하나의 CBC 체인이라 첫 바이트부터 끝까지 암호문이고, SAMPLE-AES 는 TS·PES 헤더와 NAL 리더가 평문으로 남고 미디어 샘플의 몸통만 암호문이라 암호문 구간이 컨테이너 구조 사이사이에 흩어져 있다.">
+  <style>
+    .bg     { fill:#ffffff; stroke:#d8dee6 }
+    .plain  { fill:#f6f8fa; stroke:#656d76 }
+    .cipher { fill:#fff8c5; stroke:#9a6700 }
+    .ink    { fill:#1f2328 }
+    .muted  { fill:#656d76 }
+    .acc    { fill:#0969da }
+    .warn   { fill:#9a6700 }
+    .rule   { stroke:#d8dee6 }
+    @media (prefers-color-scheme: dark) {
+      .bg     { fill:#0d1117; stroke:#30363d }
+      .plain  { fill:#161b22; stroke:#8b949e }
+      .cipher { fill:#3d2e00; stroke:#d29922 }
+      .ink    { fill:#e6edf3 }
+      .muted  { fill:#8b949e }
+      .acc    { fill:#4493f8 }
+      .warn   { fill:#d29922 }
+      .rule   { stroke:#30363d }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m  { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="372" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">같은 세그먼트 — 암호문이 차지하는 자리가 방식마다 다르다</text>
+
+  <text class="acc" x="48" y="80" font-size="13" font-weight="600">① AES-128 — 입자는 세그먼트</text>
+  <rect class="cipher" x="48" y="90" width="784" height="42" rx="3" stroke-width="1.2"/>
+  <text class="warn" x="440" y="116" font-size="13" text-anchor="middle">세그먼트 전체가 하나의 CBC 체인 — 첫 바이트부터 끝까지 암호문</text>
+  <text x="48" y="152" font-size="12.5" xml:space="preserve"><tspan class="muted">복호화에 필요한 지식 — </tspan><tspan class="ink">키 16바이트와 IV 16바이트. 그것이 전부다.</tspan></text>
+
+  <line class="rule" x1="44" y1="172" x2="836" y2="172" stroke-width="1"/>
+
+  <text class="acc" x="48" y="200" font-size="13" font-weight="600">② SAMPLE-AES — 입자는 샘플(프레임)</text>
+  <rect class="plain"  x="48"  y="210" width="60"  height="42" rx="3" stroke-width="1"/>
+  <rect class="plain"  x="108" y="210" width="40"  height="42" rx="3" stroke-width="1"/>
+  <rect class="cipher" x="148" y="210" width="150" height="42" rx="3" stroke-width="1.2"/>
+  <rect class="plain"  x="298" y="210" width="40"  height="42" rx="3" stroke-width="1"/>
+  <rect class="cipher" x="338" y="210" width="120" height="42" rx="3" stroke-width="1.2"/>
+  <rect class="plain"  x="458" y="210" width="54"  height="42" rx="3" stroke-width="1"/>
+  <rect class="plain"  x="512" y="210" width="40"  height="42" rx="3" stroke-width="1"/>
+  <rect class="cipher" x="552" y="210" width="160" height="42" rx="3" stroke-width="1.2"/>
+  <rect class="plain"  x="712" y="210" width="40"  height="42" rx="3" stroke-width="1"/>
+  <rect class="cipher" x="752" y="210" width="80"  height="42" rx="3" stroke-width="1.2"/>
+
+  <text class="muted m" x="78"  y="235" font-size="9.5" text-anchor="middle">TS/PES</text>
+  <text class="muted m" x="128" y="235" font-size="9.5" text-anchor="middle">리더</text>
+  <text class="warn"    x="223" y="236" font-size="12" text-anchor="middle">샘플 몸통</text>
+  <text class="muted m" x="318" y="235" font-size="9.5" text-anchor="middle">리더</text>
+  <text class="warn"    x="398" y="236" font-size="12" text-anchor="middle">샘플 몸통</text>
+  <text class="muted m" x="485" y="235" font-size="9.5" text-anchor="middle">PES</text>
+  <text class="muted m" x="532" y="235" font-size="9.5" text-anchor="middle">리더</text>
+  <text class="warn"    x="632" y="236" font-size="12" text-anchor="middle">샘플 몸통</text>
+  <text class="muted m" x="732" y="235" font-size="9.5" text-anchor="middle">리더</text>
+
+  <rect class="plain"  x="48"  y="266" width="16" height="12" rx="2" stroke-width="1"/>
+  <text class="muted"  x="70"  y="277" font-size="12">평문 — 컨테이너 구조·헤더·NAL 리더</text>
+  <rect class="cipher" x="300" y="266" width="16" height="12" rx="2" stroke-width="1"/>
+  <text class="muted"  x="322" y="277" font-size="12">암호문 — 미디어 샘플의 몸통만</text>
+
+  <text x="48" y="302" font-size="12.5" xml:space="preserve"><tspan class="muted">복호화에 필요한 지식 — </tspan><tspan class="ink">키·IV 에 더해 TS 패킷 경계, PES 경계, NAL 경계, 그리고 코덱마다 다른 부분 암호화 규칙.</tspan></text>
+
+  <line class="rule" x1="44" y1="322" x2="836" y2="322" stroke-width="1"/>
+  <text x="48" y="348" font-size="13" xml:space="preserve"><tspan class="ink" font-weight="600">①은 통째로 풀린다</tspan><tspan class="ink"> — 암호 계층이 컨테이너를 한 글자도 몰라도 된다.</tspan></text>
+  <text x="48" y="372" font-size="13" xml:space="preserve"><tspan class="ink" font-weight="600">②는 파싱하지 않으면 한 바이트도 못 푼다</tspan><tspan class="ink"> — 암호 계층이 컨테이너·코덱 계층에 의존하게 된다.</tspan></text>
+</svg>
