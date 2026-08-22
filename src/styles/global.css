@@ -370,18 +370,6 @@ a {
   color: var(--ink);
 }
 
-/* 우측 시스템 상태 표시 (about 의 직함 · 방침 시행일 · 404).
-   ★ 다른 데 이미 있는 사실은 여기 오지 않는다 — 목록의 총 개수는 .pager 가,
-      개정본의 위치는 .revisions 패널이 말한다. */
-.site-status {
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
-  color: var(--ink-3);
-  border: 1px solid var(--rule);
-  padding: 0.15rem 0.5rem;
-  white-space: nowrap;
-}
-
 /* ─── 섹션 바 (NieR 헤더 블록) ─────────────────────────────── */
 
 .section-bar {
@@ -1475,10 +1463,6 @@ img.accounts__mark {
     margin-inline-start: 0;
   }
 
-  .site-status {
-    margin-inline-start: auto;
-  }
-
   .post-header__title {
     font-size: 28px;
   }
@@ -1723,14 +1707,14 @@ img.accounts__mark {
 }
 
 /*
-  언어 칩. .site-status 뒤에 온다 — 그 앞에 끼우면 .site-nav 의
-  margin-inline-start: auto 가 만드는 우측 정렬 사이에 들어가 헤더 배치가 흐트러진다.
+  언어 칩. 헤더 우측에 남은 유일한 칩이다(.site-status 는 없앴다 — 이유는 BaseLayout 주석).
+  .site-nav 의 margin-inline-start: auto 가 만드는 우측 정렬 뒤에 온다.
 
   링크는 하나다. 로케일을 나열하지 않고 ★다음★ 언어만 가리키며 누르면 회전한다
   (무늬·조명 칩과 같은 방식). 그래서 로케일이 늘어도 헤더 폭이 늘지 않는다.
 
-  치수를 .site-status 와 맞춘 것은 의도다 — 같은 계기판 줄에 놓이는 칩이라
-  글자 크기·자간·테두리·안여백이 어긋나면 둘이 다른 물건으로 읽힌다.
+  치수는 네비 링크(.site-nav a)와 같은 계열이되 테두리를 둘러 "누르면 상태가 바뀌는 것"
+  임을 알린다 — 옆의 네비는 이동이고 이것은 전환이라 같은 모양이면 안 된다.
 
   저하(*) 표시가 없는 이유: 완전쌍 불변식 덕분에 모든 화면에 정확한 짝이 있다.
   남는 것은 개정 시차(data-behind) 하나뿐이다.

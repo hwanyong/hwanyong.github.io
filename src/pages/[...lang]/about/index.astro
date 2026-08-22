@@ -19,7 +19,6 @@ const t = UI[locale];
 const alternates = staticAlternates('about');
 
 // 아직 채우지 않은 항목 수. 헤더 상태 칸에 그대로 띄워 잊지 못하게 한다.
-const pending = (INTRO.draft ? 1 : 0) + CAREER.filter((entry) => entry.draft).length;
 ---
 
 <BaseLayout
@@ -28,7 +27,6 @@ const pending = (INTRO.draft ? 1 : 0) + CAREER.filter((entry) => entry.draft).le
   title="About"
   description={`${SITE.author} — ${ROLE}`}
   section="about"
-  status={pending > 0 ? `${pending} TBD` : ROLE.toUpperCase()}
 >
   <div class="column">
     <header class="post-header">
