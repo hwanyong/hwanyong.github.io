@@ -1,7 +1,7 @@
 ---
 title: 내적
 description: 두 벡터를 한 숫자로 압축한다. 그 숫자의 부호가 사잇각을 말한다.
-date: 2026-08-21
+date: 2026-07-27
 version: '1.0'
 tags: ['수학', '선형대수', '벡터']
 thumbnail: /images/lecture/thumb/linear-algebra-05-dot-product.svg

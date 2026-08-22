@@ -1,151 +1,156 @@
 ---
-untranslated: ko
-title: 벡터 연산
-description: 덧셈·뺄셈·스케일링·전치·브로드캐스팅. 그중 진짜 원시 연산은 둘뿐이다.
-date: 2026-08-21
+title: Vector Operations
+description: Addition, subtraction, scaling, transpose, broadcasting. Only two of them are primitive.
+date: 2026-07-13
 version: '1.0'
-tags: ['수학', '선형대수', '벡터']
+tags: ['mathematics', 'linear algebra', 'vectors']
 thumbnail: /images/lecture/thumb/linear-algebra-03-vector-operations.svg
 ---
 
-벡터를 만들었고([01](/ko/lecture/math/linear-algebra/01-vectors/)) 잴 수 있게 됐다
-([02](/ko/lecture/math/linear-algebra/02-norm/)). 이제 **다룰** 차례다.
+We made vectors ([01](/lecture/math/linear-algebra/01-vectors/)) and we can measure them
+([02](/lecture/math/linear-algebra/02-norm/)). Now we **operate** on them.
 
-이 차시에서 연산 다섯 개를 본다. 그리고 마지막에 그중 **진짜는 둘뿐**이라는 것을 본다.
+This session covers five operations. And at the end, it shows that only **two of them are real.**
 
-## 왜 이걸 배우나
+## Why you need this
 
-데이터를 벡터로 담아 놓기만 해서는 아무 일도 일어나지 않는다. 합치고, 차이를 재고,
-키우고, 축을 맞추고, 모양이 다른 것끼리 계산해야 한다.
+Putting data into vectors doesn't accomplish anything by itself. You have to combine them,
+measure differences, scale them, line up axes, and compute across mismatched shapes.
 
-1. 벡터 하나로는 여러 데이터를 합칠 수 없다 → 결합 연산 → **덧셈**
-2. 두 데이터가 얼마나, 어느 쪽으로 다른지 → 차이 연산 → **뺄셈**
-3. 크기를 조절해야 한다(평균의 $1/N$, 가중치) → 길이 조절 → **스케일링**
-4. 행과 열이 안 맞아 곱셈이 성립하지 않는다 → 축을 눕히기 → **전치**
-5. 모양이 다른 배열을 루프 없이 계산 → 자동 확장 → **브로드캐스팅**
+1. One vector can't combine several pieces of data → a combining operation → **addition**
+2. How much and in which direction two data points differ → a difference operation → **subtraction**
+3. You need to adjust magnitude (the $1/N$ in a mean, weights) → **scaling**
+4. Rows and columns don't line up so the product isn't defined → tip the axis over → **transpose**
+5. Compute across mismatched shapes without a loop → automatic expansion → **broadcasting**
 
-## 덧셈 — 꼬리를 머리에 잇는다
+## Addition — tail onto head
 
-원소끼리 더한다. 같은 차원끼리만 된다.
+Add element by element. Only between equal dimensions.
 
 $$
 \begin{bmatrix} 1 \\ 3 \end{bmatrix} + \begin{bmatrix} 4 \\ 1 \end{bmatrix}
 = \begin{bmatrix} 5 \\ 4 \end{bmatrix}
 $$
 
-기하로는 첫 벡터의 **머리에 둘째 벡터의 꼬리를 붙이고**, 처음 꼬리에서 마지막 머리까지
-새 화살표를 긋는 것이다. 썸네일이 그 삼각형이다.
+Geometrically you attach the **tail of the second vector to the head of the first** and draw a
+new arrow from the first tail to the last head. That triangle is what the thumbnail shows.
 
-![머리-꼬리 덧셈](/images/figures/md4-4-5-addition-head-to-tail.png)
+![Head-to-tail addition](/images/figures/md4-4-5-addition-head-to-tail.png)
 
-순서를 바꿔도 결과가 같다($v + w = w + v$). 두 순서를 겹쳐 그리면 평행사변형이 되는데,
-"평행사변형 법칙" 과 "머리-꼬리 법칙" 은 다른 규칙이 아니라 **같은 그림의 다른 이름**이다.
+Swapping the order gives the same result ($v + w = w + v$). Overlay both orders and you get a
+parallelogram — the "parallelogram rule" and the "head-to-tail rule" are not two rules but
+**two names for the same picture.**
 
-![교환법칙](/images/figures/md4-6-commutative-law.png)
+![The commutative law](/images/figures/md4-6-commutative-law.png)
 
-## 뺄셈 — 두 머리를 잇는 선
+## Subtraction — the line between two heads
 
-$a - b$ 는 원소별 차다. 기하로는 **$b$ 의 머리에서 $a$ 의 머리로 가는 화살표**다.
+$a - b$ is the element-wise difference. Geometrically it's **the arrow from the head of $b$ to
+the head of $a$.**
 
-방향을 헷갈리기 쉬운데, $b + (a-b) = a$ 라고 생각하면 된다. $b$ 에서 출발해 $a$ 에
-도착하는 것이 $a-b$ 다.
+The direction is easy to get backwards; think of it as $b + (a-b) = a$. Starting at $b$ and
+arriving at $a$ is what $a-b$ does.
 
-![덧셈과 뺄셈](/images/figures/la1-2-vector-add-sub.png)
+![Addition and subtraction](/images/figures/la1-2-vector-add-sub.png)
 
-이 "두 점 사이의 화살표" 가 나중에 아주 많이 나온다. 두 데이터의 차이, 예측과 정답의
-차이(잔차), 이동량이 전부 뺄셈이다.
+This "arrow between two points" turns up constantly later. The difference between two data
+points, the gap between a prediction and the truth (a residual), a displacement — all
+subtraction.
 
-## 스케일링 — 길이만 바꾼다
+## Scaling — length only
 
-스칼라 하나를 모든 원소에 곱한다.
+Multiply every element by a single scalar.
 
 $$
 2 \begin{bmatrix} 1 \\ 3 \end{bmatrix} = \begin{bmatrix} 2 \\ 6 \end{bmatrix}
 $$
 
-길이만 변하고 방향은 그대로다. 단 **음수를 곱하면 화살표가 반대로 뒤집힌다.**
-여기서 중요한 것은 뒤집혀도 **같은 직선 위에 남는다**는 점이다.
+Only the length changes; the direction is untouched. Except that **multiplying by a negative
+flips the arrow around.** The important part is that even flipped, it **stays on the same line.**
 
-![스칼라 곱](/images/figures/la1-3-scalar-vector-product.png)
+![Scalar multiplication](/images/figures/la1-3-scalar-vector-product.png)
 
-$v$ 를 아무 수로나 곱해서 만들 수 있는 벡터를 전부 모으면 원점을 지나는 직선 하나가
-된다. 이 사실이 선형 종속·기저 이야기의 씨앗이다.
+Collect every vector you can make by scaling $v$ by any number and you get a single line
+through the origin. That fact is the seed of linear dependence and bases.
 
-## 전치 — 눕히고 세우기
+## Transpose — laying flat and standing up
 
-전치($\mathsf{T}$)는 행과 열을 뒤집는다. 열벡터는 행벡터가 되고, 행벡터는 열벡터가 된다.
-두 번 하면 제자리다.
+Transpose ($\mathsf{T}$) swaps rows and columns. A column vector becomes a row vector and vice
+versa. Do it twice and you're back where you started.
 
 $$
 (v^{\mathsf{T}})^{\mathsf{T}} = v
 $$
 
-이게 왜 연산 취급을 받나 싶겠지만, 전치가 있어야 노름을 곱셈으로 쓸 수 있다.
+You might wonder why this counts as an operation. Because without it you can't write the norm
+as a product.
 
 $$
 \lVert v \rVert^2 = v^{\mathsf{T}} v
 $$
 
-[02 의 $\sum v_i^2$](/ko/lecture/math/linear-algebra/02-norm/) 와 같은 값이다.
-표기가 바뀌었을 뿐인데, 이 형태라야 행렬로 넘어갔을 때 그대로 확장된다.
+Same value as [the $\sum v_i^2$ in 02](/lecture/math/linear-algebra/02-norm/). Only the notation
+changed — but it's this form that carries over unchanged once we move to matrices.
 
-## 브로드캐스팅 — 편하지만 조용히 문다
+## Broadcasting — convenient, and quietly biting
 
-NumPy 는 모양이 다른 배열끼리도 계산해 준다. 작은 쪽을 자동으로 늘려서 맞춘다.
+NumPy will compute across mismatched shapes, stretching the smaller side to fit.
 
 ```python
 np.array([1, 2, 3]) + 10        # array([11, 12, 13])
 ```
 
-수학에서 스칼라와 벡터를 더하는 것은 정의되지 않는다. 파이썬은 해 준다. 편하지만,
-**칠판 수학과 코드 수학이 갈라지는 지점**이라는 것은 알고 있어야 한다.
+Adding a scalar to a vector is undefined in mathematics. Python does it anyway. Convenient — but
+be aware this is **where whiteboard mathematics and code mathematics part ways.**
 
-진짜 함정은 방향이 섞일 때다.
+The real trap is when orientations mix.
 
 ```python
-col = np.array([[1], [2], [3]])   # (3, 1) 열벡터
-row = np.array([[10, 20, 30]])    # (1, 3) 행벡터
+col = np.array([[1], [2], [3]])   # (3, 1) column vector
+row = np.array([[10, 20, 30]])    # (1, 3) row vector
 
 col + row
 # array([[11, 21, 31],
 #        [12, 22, 32],
-#        [13, 23, 33]])   ← (3, 3) 행렬!
+#        [13, 23, 33]])   ← a (3, 3) matrix!
 ```
 
-벡터 두 개를 더했는데 **행렬이 나왔다.** 에러도 경고도 없다.
-[01 에서 방향을 따로 배운 이유](/ko/lecture/math/linear-algebra/01-vectors/) 가 이것이다.
-방향이 결과의 **모양 자체**를 바꾼다.
+You added two vectors and got **a matrix.** No error, no warning. This is
+[why 01 taught orientation separately](/lecture/math/linear-algebra/01-vectors/): orientation
+changes the **shape of the result.**
 
-## 다섯 중 진짜는 둘뿐이다
+## Only two of the five are real
 
-여기까지 연산 다섯을 봤다. 그런데 벡터 공간의 정의에 실제로 들어 있는 것은 둘뿐이다.
+We've now seen five operations. Only two of them actually appear in the definition of a vector
+space.
 
-| 연산 | 지위 |
+| Operation | Status |
 |---|---|
-| **덧셈** | 원시 연산 — 정의에 있다 |
-| **스케일링** | 원시 연산 — 정의에 있다 |
-| 뺄셈 | 파생 — $a + (-1)b$ |
-| 평균 | 파생 — 다 더하고 $1/N$ 곱 |
-| 전치 | 표기 도구 — 새 벡터를 만들지 않는다 |
-| 브로드캐스팅 | 구현 도구 — NumPy 의 편의 기능이다 |
+| **Addition** | primitive — in the definition |
+| **Scaling** | primitive — in the definition |
+| Subtraction | derived — $a + (-1)b$ |
+| Mean | derived — sum then multiply by $1/N$ |
+| Transpose | notation — it doesn't make a new vector |
+| Broadcasting | implementation — a NumPy convenience |
 
-왜 이게 중요한가. 이 둘에 **닫혀 있다**는 성질이 곧 **선형성**이고, 이 둘을 한 번에
-섞어 쓰는 것이 **선형 결합**이다. 선형대수라는 이름의 '선형' 이 정확히 이 둘을 가리킨다.
+Why this matters: being **closed** under those two is exactly **linearity**, and using both at
+once is a **linear combination**. The "linear" in linear algebra points precisely at these two.
 
-앞으로 새 연산을 만날 때마다 물어볼 것이 생겼다. **이건 원시인가 파생인가.**
+From now on you have a question to ask of every new operation you meet: **is this primitive or
+derived?**
 
-## 한 장 요약
+## Recap
 
-| 물으면 | 답한다 |
+| Question | Answer |
 |---|---|
-| 덧셈 | 원소별 합. 기하는 머리-꼬리. 교환법칙 성립 |
-| 뺄셈 | 원소별 차. 기하는 $b$ 머리 → $a$ 머리 |
-| 스케일링 | 길이만 변한다. 음수는 반전 — 단 같은 직선 위 |
-| 전치 | 행↔열. $(v^{\mathsf{T}})^{\mathsf{T}} = v$. $\lVert v \rVert^2 = v^{\mathsf{T}}v$ |
-| 브로드캐스팅 | 열벡터 + 행벡터 = **행렬**. 조용히 일어난다 |
-| 원시 연산 | **덧셈과 스케일링 둘뿐.** 나머지는 파생·도구 |
+| Addition | Element-wise sum. Geometrically head-to-tail. Commutative |
+| Subtraction | Element-wise difference. Geometrically head of $b$ → head of $a$ |
+| Scaling | Length changes only. Negative flips — but stays on the same line |
+| Transpose | Row↔column. $(v^{\mathsf{T}})^{\mathsf{T}} = v$. $\lVert v \rVert^2 = v^{\mathsf{T}}v$ |
+| Broadcasting | Column + row = **matrix**. Silently |
+| Primitives | **Addition and scaling, only.** The rest are derived or tooling |
 
-## 다음
+## Next
 
-연산을 봤으니, 이 연산들이 지켜야 하는 규칙을 볼 차례다.
-→ [04 벡터 공리](/ko/lecture/math/linear-algebra/04-vector-axioms/)
+We've seen the operations. Now the rules they have to obey.
+→ [04 Vector Axioms](/lecture/math/linear-algebra/04-vector-axioms/)

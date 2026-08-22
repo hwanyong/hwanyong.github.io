@@ -1,7 +1,7 @@
 ---
 title: 벡터 — 정의·차원·방향
 description: 벡터는 순서대로 늘어놓은 수다. 차원은 그 개수, 방향은 세로냐 가로냐다.
-date: 2026-08-21
+date: 2026-06-29
 version: '1.0'
 tags: ['수학', '선형대수', '벡터']
 thumbnail: /images/lecture/thumb/linear-algebra-01-vectors.svg

@@ -1,33 +1,34 @@
 ---
-untranslated: ko
-title: 벡터 — 정의·차원·방향
-description: 벡터는 순서대로 늘어놓은 수다. 차원은 그 개수, 방향은 세로냐 가로냐다.
-date: 2026-08-21
+title: Vectors — Definition, Dimension, Orientation
+description: A vector is numbers laid out in order. Dimension is how many; orientation is upright or flat.
+date: 2026-06-29
 version: '1.0'
-tags: ['수학', '선형대수', '벡터']
+tags: ['mathematics', 'linear algebra', 'vectors']
 thumbnail: /images/lecture/thumb/linear-algebra-01-vectors.svg
 ---
 
-벡터는 **순서대로 늘어놓은 수**다. 그게 전부다.
+A vector is **numbers laid out in order.** That's all.
 
-이 정의가 시시하게 들린다면 좋은 신호다. 선형대수의 첫 부품은 실제로 시시하고,
-어려워지는 것은 이 시시한 것 여럿을 한꺼번에 다루기 시작할 때다.
+If that definition sounds trivial, good. The first component of linear algebra really is
+trivial; what gets hard is handling many of these trivial things at once.
 
-## 왜 이걸 배우나
+## Why you need this
 
-데이터를 수학으로 다루려면, 먼저 데이터를 담을 **하나의 대상**이 있어야 한다.
+To handle data with mathematics, you first need **a single object** to hold it in.
 
-키 172, 몸무게 68, 나이 34. 이 셋은 한 사람에 관한 것이니 같이 다녀야 하는데,
-변수 세 개로 흩어 놓으면 "이 사람" 이라는 단위가 코드에서 사라진다. 함수에 넘길 때도
-셋을 각각 넘겨야 하고, 두 사람을 비교하려면 세 번 비교해야 한다.
+Height 172, weight 68, age 34. These three belong to one person, so they should travel
+together — but scattered across three variables, the unit "this person" disappears from your
+code. You pass three arguments to every function, and comparing two people means comparing
+three times.
 
-1. 여러 수를 하나로 다뤄야 한다 → 묶을 형태가 필요하다 → **벡터**
-2. "정보가 몇 개냐" 를 세야 한다 → 개수를 세는 척도가 필요하다 → **차원**
-3. 같은 수라도 가로냐 세로냐에 따라 곱셈 결과가 달라진다 → 세우는 규약이 필요하다 → **방향**
+1. Several numbers must be handled as one → you need a container → **vector**
+2. You must count "how many pieces of information" → you need a measure → **dimension**
+3. The same numbers multiply differently depending on flat or upright → you need a convention → **orientation**
 
-한 줄로: 수를 한 덩이로 묶고(벡터), 몇 개인지 세고(차원), 어느 쪽으로 세울지 정한다(방향).
+In one line: bundle numbers into one object (vector), count them (dimension), decide which way
+they stand (orientation).
 
-## 벡터의 두 성질
+## Two properties of a vector
 
 $$
 x = \begin{bmatrix} 1 \\ 4 \\ 5 \\ 6 \end{bmatrix}, \qquad
@@ -35,99 +36,104 @@ y = \begin{bmatrix} 0.3 \\ -7 \end{bmatrix}, \qquad
 z = \begin{bmatrix} 1 & 4 & 5 & 6 \end{bmatrix}
 $$
 
-**차원(dimensionality)** 은 원소의 개수다. $x$ 는 4차원, $y$ 는 2차원이다.
-$N$ 차원 실수 벡터의 집합을 $\mathbb{R}^N$ 이라 쓴다. $y \in \mathbb{R}^2$ 다.
+**Dimensionality** is the number of elements. $x$ is 4-dimensional, $y$ is 2-dimensional. The
+set of $N$-dimensional real vectors is written $\mathbb{R}^N$, so $y \in \mathbb{R}^2$.
 
-**방향(orientation)** 은 세로로 세웠는지 가로로 눕혔는지다. 세로면 **열벡터**,
-가로면 **행벡터** 라 부른다. $x$ 는 열벡터, $z$ 는 행벡터다.
+**Orientation** is whether it stands upright or lies flat. Upright is a **column vector**, flat
+is a **row vector**. $x$ is a column vector, $z$ is a row vector.
 
-여기서 처음 걸려 넘어질 곳이 나온다.
+Here's the first place you can trip.
 
-> $x$ 와 $z$ 는 **다른 벡터다.** 같은 수가 같은 순서로 들어 있어도, 방향이 다르면 다르다.
+> $x$ and $z$ are **different vectors.** Same numbers in the same order — but different
+> orientation means different.
 
-지금은 트집처럼 보일 것이다. 내적을 배우는 [05 내적](/ko/lecture/math/linear-algebra/05-dot-product/)
-에서 이 구분이 결과의 모양 자체를 바꾼다.
+Right now that looks like nitpicking. In
+[05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/), that distinction changes
+the *shape* of the result.
 
-![벡터의 정의와 예시](/images/figures/md4-1-2-vector-basics-and-examples.png)
+![The definition of a vector, with examples](/images/figures/md4-1-2-vector-basics-and-examples.png)
 
-## 함정 하나 — '차원' 이 두 곳에서 다른 뜻이다
+## Trap one — "dimension" means two different things
 
-수학이 말하는 차원과 NumPy 가 말하는 차원이 다르다. 이걸 모르면 디버깅에서 시간을 버린다.
+What mathematics calls dimension and what NumPy calls dimension are different. Not knowing this
+costs you debugging time.
 
-| | 무엇을 세나 | 4원소 벡터에서 |
+| | What it counts | For a 4-element vector |
 |---|---|---|
-| 수학의 차원 | **원소의 개수** | 4 |
-| NumPy 의 `ndim` | **축의 개수** | 1 |
+| Mathematical dimension | **number of elements** | 4 |
+| NumPy's `ndim` | **number of axes** | 1 |
 
-NumPy 에서 원소 개수는 차원이 아니라 `shape` 이나 `len()` 이 말한다.
+In NumPy the element count is reported by `shape` or `len()`, not by dimension.
 
 ```python
 import numpy as np
 
 v = np.array([1, 4, 5, 6])
-v.ndim      # 1   ← 축이 하나. 수학의 '차원' 이 아니다
-v.shape     # (4,) ← 여기 있는 4 가 수학의 차원
+v.ndim      # 1    ← one axis. Not the mathematical "dimension"
+v.shape     # (4,) ← the 4 here is the mathematical dimension
 len(v)      # 4
 ```
 
-칠판에서 "4차원 벡터" 라고 말한 것이 코드에서는 `ndim == 1` 로 나온다.
-같은 단어가 두 자리에서 다른 것을 세고 있을 뿐, 어느 쪽도 틀리지 않았다.
+What you called a "4-dimensional vector" at the whiteboard reports `ndim == 1` in code. The same
+word is counting different things in two places; neither is wrong.
 
-## 방향을 코드에서 드러내기
+## Making orientation visible in code
 
-NumPy 에서 벡터를 만드는 방법은 네 가지고, 넷이 같은 것이 아니다.
+There are four ways to make a vector in NumPy, and they are not the same thing.
 
 ```python
-[1, 4, 5, 6]                      # 파이썬 리스트 — 아직 벡터가 아니다
-np.array([1, 4, 5, 6])            # shape (4,)   방향이 없다
-np.array([[1, 4, 5, 6]])          # shape (1, 4) 행벡터
-np.array([[1], [4], [5], [6]])    # shape (4, 1) 열벡터
+[1, 4, 5, 6]                      # Python list — not a vector yet
+np.array([1, 4, 5, 6])            # shape (4,)   no orientation
+np.array([[1, 4, 5, 6]])          # shape (1, 4) row vector
+np.array([[1], [4], [5], [6]])    # shape (4, 1) column vector
 ```
 
-`shape` 이 `(행, 열)` 이라 방향이 눈에 보인다. 세 번째 것은 행이 1개, 네 번째 것은
-열이 1개다.
+Because `shape` is `(rows, columns)`, the orientation is visible. The third has one row; the
+fourth has one column.
 
-두 번째 `(4,)` 가 미묘하다. 이것은 **방향이 없는** 1차원 배열이다. 수학의 열벡터도
-행벡터도 아니다. 편해서 실무에서 많이 쓰지만, 전치를 해도 아무 일이 일어나지 않고
-(`v.T` 가 그대로 `(4,)` 다) 어떤 선형대수 함수는 이걸 받고 에러를 낸다.
+The second, `(4,)`, is the subtle one. It's a 1-D array with **no orientation** — neither a
+mathematical column vector nor a row vector. It's convenient and widely used in practice, but
+transposing it does nothing (`v.T` is still `(4,)`) and some linear algebra functions will
+reject it.
 
-이 강의에서 **수식이 열벡터라고 말하면 코드도 `(N, 1)` 로 쓴다.** 번거롭지만
-수식과 코드가 어긋나지 않는 편이 결국 싸다.
+In this course, **when the formula says column vector, the code writes `(N, 1)`.** It's more
+typing, but keeping formula and code aligned is cheaper in the end.
 
-## 화살표로 보는 벡터
+## Vectors as arrows
 
-$\mathbb{R}^2$ 나 $\mathbb{R}^3$ 의 벡터는 그림으로 그릴 수 있다. **꼬리**에서 출발해
-**머리**로 가는 화살표다.
+Vectors in $\mathbb{R}^2$ or $\mathbb{R}^3$ can be drawn: an arrow from a **tail** to a **head**.
 
-중요한 것은 화살표가 **어디 놓여 있든 같은 벡터**라는 점이다. $[2, 3]$ 은 "오른쪽으로 2,
-위로 3" 이라는 이동이지 특정 위치가 아니다. 종이 위 어디에 그려도 길이와 기울기가 같으면
-같은 벡터다.
+The important part is that the arrow is **the same vector wherever you put it.** $[2, 3]$ means
+"2 to the right, 3 up" — a displacement, not a location. Draw it anywhere on the page and it's
+the same vector as long as the length and slope match.
 
-꼬리를 원점에 둔 상태를 **기준 위치(standard position)** 라 한다. 특별해서가 아니라,
-모두가 같은 자리에 두기로 약속하면 비교가 쉬워서다.
+Putting the tail at the origin is called **standard position**. Not because it's special, but
+because if everyone agrees to place them in the same spot, comparison gets easy.
 
-![3차원 벡터](/images/figures/md4-3-3d-vector.png)
+![A three-dimensional vector](/images/figures/md4-3-3d-vector.png)
 
-4차원부터는 그릴 수 없다. 그래도 계산은 똑같이 된다 — 그림은 이해를 돕는 도구지
-정의가 아니다. 이 사실이 나중에 384차원 임베딩을 다룰 때 마음을 편하게 해 준다.
+From four dimensions on, you can't draw it. The arithmetic works exactly the same — the picture
+is an aid to understanding, not the definition. That fact makes 384-dimensional embeddings much
+less alarming later.
 
-## 한 장 요약
+## Recap
 
-| 물으면 | 답한다 |
+| Question | Answer |
 |---|---|
-| 벡터란 | 순서대로 늘어놓은 수 |
-| 차원 | 원소의 개수 ($\mathbb{R}^N$ 의 $N$) |
-| 방향 | 열(세로) 또는 행(가로) |
-| $x$ 와 $x^{\mathsf{T}}$ | 방향이 다르므로 **다른 벡터** |
-| 수학의 차원 ↔ NumPy | 원소 수 ↔ `shape`, 축 수 ↔ `ndim` |
-| `(4,)` 는 | 방향 없는 1차원 배열. 열벡터가 아니다 |
+| What is a vector | Numbers laid out in order |
+| Dimension | Number of elements (the $N$ in $\mathbb{R}^N$) |
+| Orientation | Column (upright) or row (flat) |
+| $x$ vs $x^{\mathsf{T}}$ | Different orientation, therefore **different vectors** |
+| Mathematical dimension ↔ NumPy | Element count ↔ `shape`, axis count ↔ `ndim` |
+| What `(4,)` is | A 1-D array with no orientation. Not a column vector |
 
-## 이 개념이 일하는 곳
+## Where this shows up
 
-- **인공지능 » 벡터 검색 01 임베딩** — 문장 하나가 384개의 수로 바뀌어 이 강의의 벡터가 된다.
-  → [/ko/lecture/artificial-intelligence/vector-search/01-embeddings/](/ko/lecture/artificial-intelligence/vector-search/01-embeddings/)
+- **Artificial Intelligence » Vector Search 01 Embeddings** — one sentence turns into 384
+  numbers and becomes a vector in exactly this sense.
+  → [/lecture/artificial-intelligence/vector-search/01-embeddings/](/lecture/artificial-intelligence/vector-search/01-embeddings/)
 
-## 다음
+## Next
 
-벡터가 생겼으니 이제 잴 수 있어야 한다.
-→ [02 노름과 단위벡터](/ko/lecture/math/linear-algebra/02-norm/)
+We have vectors. Now we need to be able to measure them.
+→ [02 Norms and Unit Vectors](/lecture/math/linear-algebra/02-norm/)

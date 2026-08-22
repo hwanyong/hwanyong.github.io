@@ -1,7 +1,7 @@
 ---
 title: 임베딩
 description: 문장 하나가 384개의 수가 된다. 그 수들이 왜 뜻을 담게 되는가.
-date: 2026-08-21
+date: 2026-08-06
 version: '1.0'
 tags: ['인공지능', '임베딩', '검색']
 thumbnail: /images/lecture/thumb/vector-search-01-embeddings.svg
@@ -36,7 +36,7 @@ embed("강아지가 공원에서 뛴다")
 두 문장 사이에 뺄셈이 없다.
 
 벡터는 다르다. 벡터에는 이미 도구가 갖춰져 있다. 더할 수 있고, 뺄 수 있고, 길이를
-잴 수 있고, 사잇각을 잴 수 있다. [선형대수 01~05](/ko/lecture/math/linear-algebra/)
+잴 수 있고, 사잇각을 잴 수 있다. [선형대수 01–05](/ko/lecture/math/linear-algebra/)
 가 만든 도구가 전부 그대로 쓰인다.
 
 그래서 임베딩이 하는 일은 이렇게 요약된다.

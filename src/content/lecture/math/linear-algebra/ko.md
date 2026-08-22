@@ -1,7 +1,7 @@
 ---
 title: 선형대수
 description: 벡터 하나에서 시작해 행렬까지. 개발자가 AI 로 내려가기 전에 지나야 하는 길.
-date: 2026-08-21
+date: 2026-06-27
 tags: ['수학', '선형대수']
 thumbnail: /images/lecture/thumb/linear-algebra.svg
 ---
@@ -50,8 +50,11 @@ thumbnail: /images/lecture/thumb/linear-algebra.svg
 옮기지 않았다 — 수식과 정의는 누구의 것도 아니지만 문장과 그림은 그렇지 않다.
 더 깊이 보려면 원서를 권한다.
 
-- 《개발자를 위한 실전 선형대수학》 — 이 강의의 척추
-- 《개발자를 위한 필수 수학》
-- 《AI 를 위한 필수 수학》
+- 마이크 X 코헨, 《개발자를 위한 실전 선형대수학》, 장정호 옮김, 한빛미디어, 2023
+  — 원서 *Practical Linear Algebra for Data Science*. **이 강의의 척추다.**
+- 토머스 닐드, 《개발자를 위한 필수 수학》, 박해선 옮김, 한빛미디어, 2024
+  — 원서 *Essential Math for Data Science*
+- 할라 넬슨, 《AI 를 위한 필수 수학》, 안민재 옮김, 한빛미디어, 2024
+  — 원서 *Essential Math for AI*
 
 그림은 전부 직접 그렸다. 책 도판을 스캔해 싣지 않았다.

@@ -1,101 +1,105 @@
 ---
-untranslated: ko
-title: LLM 전체 그림
-description: 벡터·행렬·통계·미적분이 각각 파이프라인의 어느 구간을 맡는가.
-date: 2026-08-21
-tags: ['AI', 'LLM', '로드맵']
+title: The Whole Picture of an LLM
+description: Which stretch of the pipeline do vectors, matrices, statistics and calculus each control?
+date: 2026-08-19
+tags: ['AI', 'LLM', 'roadmap']
 ---
 
-수학을 다시 공부하기 시작하고 몇 달이 지났을 때, 진도는 나가는데 **답답함이 줄지 않는**
-구간이 있었다.
+A few months into going back to mathematics, I hit a stretch where the progress was real but
+**the frustration wasn't going away.**
 
-벡터를 안다. 행렬곱을 안다. 그런데 "그래서 이게 LLM 어디에서 쓰이는데?" 라는 질문에
-답을 못 했다. 부품은 손에 있는데 **완성품의 도면이 없는** 상태였다.
+I knew what a vector was. I knew matrix multiplication. And I still couldn't answer "so where
+does this show up in an LLM?" I had the parts in hand but **no drawing of the finished machine.**
 
-그래서 도면부터 그렸다. 아직 배우지 않은 칸까지 포함해서.
+So I drew the machine first. Including the cells I hadn't learned yet.
 
-![LLM 파이프라인에서 벡터·행렬·통계·미적분이 제어하는 구간](/images/figures/llm-pipeline-roadmap-vector-matrix-stats-control.png)
+![Which stretches of the LLM pipeline vectors, matrices, statistics and calculus control](/images/figures/llm-pipeline-roadmap-vector-matrix-stats-control.png)
 
-## 한 줄로 줄이면
+## In one sentence
 
-> LLM 은 **벡터**(데이터)가 **행렬**(가중치)을 지나며 변형되고, **통계**가 그것을 확률과
-> "틀린 정도" 로 바꾸며, **미적분**이 그 행렬을 고쳐 나가는 파이프라인이다.
+> An LLM is a pipeline where **vectors** (data) are transformed as they pass through
+> **matrices** (weights), **statistics** turns that into probability and a measure of
+> wrongness, and **calculus** goes back and fixes the matrices.
 
-네 재료가 각자 다른 구간을 맡는다. 이 문장을 이해하는 것이 도면을 읽는 일이다.
+Four ingredients, each owning a different stretch. Understanding that sentence is what reading
+the drawing means.
 
-## 구간별로
+## Stretch by stretch
 
-| # | 단계 | 하는 일 | 제어 주체 |
+| # | Stage | What it does | Controlled by |
 |---:|---|---|:---:|
-| 1 | 토큰 | 글자를 정수 ID 로 | (원자료) |
-| 2 | 임베딩 | 토큰을 의미 벡터 $x$ 로 | **벡터** |
-| 3 | 층 $Wx+b$ | 벡터를 가중치로 변환 | **행렬** |
-| 4 | 층을 $N$ 개 | 변환의 합성 | **행렬** |
-| 5 | 어텐션 | 토큰끼리의 관계 $QK^{\mathsf{T}}$ | **행렬** |
-| 6 | 로짓 | 최종 점수 벡터 | **벡터** |
-| 7 | 소프트맥스 | 점수를 확률분포로 | **통계** |
-| 8 | 손실 | 틀린 정도를 수로 | **통계** |
-| 9 | 역전파 | 연쇄법칙으로 기울기 | **미적분** |
-| 10 | 가중치 갱신 | $W$ 를 고치고 다시 1번으로 | **행렬** |
+| 1 | Tokens | characters to integer IDs | (raw input) |
+| 2 | Embedding | tokens to a meaning vector $x$ | **vectors** |
+| 3 | Layer $Wx+b$ | transform the vector by weights | **matrices** |
+| 4 | $N$ layers | composition of transforms | **matrices** |
+| 5 | Attention | relations between tokens, $QK^{\mathsf{T}}$ | **matrices** |
+| 6 | Logits | the final score vector | **vectors** |
+| 7 | Softmax | scores to a probability distribution | **statistics** |
+| 8 | Loss | how wrong, as a number | **statistics** |
+| 9 | Backpropagation | gradients via the chain rule | **calculus** |
+| 10 | Weight update | fix $W$, go back to 1 | **matrices** |
 
-위쪽 1~6이 **순전파**, 아래쪽 7~10이 **학습 루프**다. 추론할 때는 위쪽만 돈다.
+Stages 1–6 are the **forward pass**; 7–10 are the **training loop**. At inference time only
+the top half runs.
 
-## 도면을 그리고 알게 된 것
+## What drawing it taught me
 
-### 하나. 재료마다 담당 구간이 다르다
+### One. Each ingredient owns a different stretch
 
-선형대수만 파면 LLM 이 보일 거라고 막연히 생각했다. 도면을 그려 보니 **선형대수가 맡는
-것은 3·4·5·10번뿐**이었다.
+I had vaguely assumed that digging into linear algebra would eventually make LLMs visible.
+Drawing the map showed that **linear algebra owns only 3, 4, 5 and 10.**
 
-출력이 어떻게 확률이 되는지(7), 틀림을 어떻게 재는지(8) 는 **통계**다. 그 오차로 행렬을
-어떻게 고치는지(9)는 **미적분**이다. 선형대수를 아무리 깊게 파도 이 칸들은 안 채워진다.
+How output becomes probability (7) and how wrongness gets measured (8) are **statistics**. How
+that error is used to fix the matrices (9) is **calculus**. No amount of linear algebra fills
+those cells.
 
-"뭔가 계속 부족하다" 는 느낌의 정체가 이거였다. 부족한 게 아니라 **아직 안 배운 과목이
-있었던 것**이다.
+That was the real identity of the "something is still missing" feeling. Nothing was missing —
+**there were subjects I hadn't started yet.**
 
-### 둘. 전체가 안 보이는 게 정상이었다
+### Two. Not seeing the whole thing was correct
 
-커리큘럼이 조각을 순서대로 쌓는 구조라 그렇다.
+The curriculum stacks pieces in order, so that's expected.
 
 ```
-1단계  재료      벡터 · 행렬 · 내적
-2단계  학습 엔진  미적분 · 통계 · 역전파
-3단계  조립      어텐션 · 트랜스포머
+Stage 1  materials      vectors · matrices · dot product
+Stage 2  training engine calculus · statistics · backpropagation
+Stage 3  assembly       attention · transformers
 ```
 
-재료를 모으고 한 층까지 조립한 지점에서 전체 기계가 안 보이는 것은 **진도의 문제지
-이해 실패가 아니다.** 이 구분이 생각보다 중요했다. 안 보이는 이유가 "내가 못 해서" 인지
-"아직 안 배워서" 인지에 따라 다음 행동이 완전히 달라진다.
+Standing where you've gathered the materials and assembled one layer, not seeing the whole
+machine is **a fact about progress, not a failure of understanding.** That distinction mattered
+more than I expected. Whether you can't see it because *you're not capable* or because *you
+haven't got there yet* leads to completely different next actions.
 
-### 셋. 빈칸이 있는 지도가 빈칸 없는 목록보다 낫다
+### Three. A map with blanks beats a list without them
 
-목차만 있으면 지금 배우는 게 어디에 쓰일지 모른 채 따라가게 된다. 도면이 있으면
-**내적을 배울 때 5번 칸이 떠오른다.** 같은 공부인데 붙는 자리가 있는 것과 없는 것의
-차이가 크다.
+With only a table of contents, you follow along without knowing where any of it lands. With a
+map, **learning the dot product makes cell 5 light up.** Same study; very different when it has
+a place to attach.
 
-그래서 이 그림에서 중요한 것은 채워진 칸이 아니라 **비어 있는 칸**이다.
-7번 소프트맥스가 뭔지 아직 모르지만, 그게 "점수를 확률로 바꾸는 자리" 라는 것은 안다.
-나중에 소프트맥스를 배우면 그 칸에 그대로 들어간다.
+Which means the important part of this drawing isn't the filled cells — it's **the empty ones.**
+I don't yet know what softmax is, but I know it's "the place where scores become probabilities."
+When I learn it, it drops straight into that cell.
 
-## 이 지도를 다시 보는 시점
+## When I'll look at this again
 
-2단계(미적분·통계·역전파)를 끝내면 7~10번을 채우고 학습 루프를 직접 설명해 볼 참이다.
-3단계(어텐션)를 끝내면 5~6번이 채워진다.
+After stage 2 (calculus, statistics, backpropagation) I plan to fill in 7–10 and explain the
+training loop out loud. After stage 3 (attention), 5 and 6 get filled.
 
-복습할 때마다 채워진 칸이 늘어나는 것이 그대로 성장 게이지가 된다. 진도표보다 이게
-정직하다 — 진도표는 페이지를 세지만 이 지도는 **설명할 수 있는 것**을 센다.
+More filled cells on each review is a progress gauge in itself, and it's a more honest one than
+a checklist — a checklist counts pages, this map counts **what you can explain.**
 
 ---
 
-지금 채워 나가고 있는 부품들은 [수학 » 선형대수](/ko/lecture/math/linear-algebra/) 에,
-2번 임베딩 칸의 이야기는 [인공지능 » 벡터 검색](/ko/lecture/artificial-intelligence/vector-search/)
-에 정리하고 있다.
+The parts I'm currently filling in live in [Mathematics » Linear Algebra](/lecture/math/linear-algebra/),
+and the story of cell 2, embeddings, is in
+[Artificial Intelligence » Vector Search](/lecture/artificial-intelligence/vector-search/).
 
 ---
 
-**개발자가 수학으로 내려가는 이유** — 네 편 묶음
+**Why a developer goes down into mathematics** — a four-part set
 
-1. [왜 선형대수인가](/ko/log/why-linear-algebra/)
-2. [벡터의 한 뿌리](/ko/log/one-root-of-vectors/)
-3. [신경망은 왜 행렬인가](/ko/log/why-neural-nets-are-matrices/)
-4. **LLM 전체 그림** ← 지금 글
+1. [Why Linear Algebra](/log/why-linear-algebra/)
+2. [The One Root of Vectors](/log/one-root-of-vectors/)
+3. [Why Neural Networks Are Matrices](/log/why-neural-nets-are-matrices/)
+4. **The Whole Picture of an LLM** ← you are here

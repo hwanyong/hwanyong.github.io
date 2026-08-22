@@ -1,108 +1,112 @@
 ---
-untranslated: ko
-title: 벡터의 한 뿌리
-description: 고등학교 피타고라스와 AI 의 코사인 유사도는 같은 식의 다른 나이다.
-date: 2026-08-21
-tags: ['선형대수', '수학', '기하']
+title: The One Root of Vectors
+description: The Pythagorean theorem from school and cosine similarity in AI are the same formula at different ages.
+date: 2026-07-09
+tags: ['linear algebra', 'mathematics', 'geometry']
 ---
 
-선형대수를 다시 펴면서 이상한 기시감이 계속 들었다. 노름을 배우는데 어디서 본 것 같고,
-코사인 유사도를 배우는데 또 어디서 본 것 같았다.
+Going back through linear algebra, I kept getting an odd sense of déjà vu. Learning the norm,
+I felt I'd seen it before. Learning cosine similarity, same thing.
 
-착각이 아니었다. **둘 다 고등학교에서 이미 배운 것**이었다. 이름만 바뀌어 있었다.
+It wasn't déjà vu. **I had already learned both in high school.** Only the names had changed.
 
-## 벡터는 세 군데에서 각각 배운다
+## Vectors get taught in three different rooms
 
-같은 대상을 세 과목이 따로 가르친다.
+Three subjects teach the same object separately.
 
-**기하** — 평면 위의 화살표다. 길이와 각도가 있고, 자와 각도기로 잰다.
+**Geometry** — an arrow on a plane. It has a length and an angle; you measure them with a ruler
+and a protractor.
 
-**물리** — 힘이고 속도다. 두 힘이 동시에 작용하면 성분별로 더해서 합력을 구한다.
+**Physics** — a force, a velocity. Two forces acting at once add component by component to give
+a resultant.
 
-**선형대수** — 수의 나열이다. 데이터 하나의 특징들을 늘어놓은 것이고, 차원은 384일 수도
-있다.
+**Linear algebra** — a list of numbers. The features of one data point laid out in a row, and
+the dimension might be 384.
 
-셋을 배울 때 나는 이것들이 관련 있다는 말을 들은 기억이 없다. 각각 다른 학기에,
-다른 선생님에게, 다른 시험으로 배웠다.
+I don't remember anyone telling me these were related. I learned them in different terms, from
+different teachers, on different exams.
 
-## 다리 하나 — 피타고라스가 자라면 노름이 된다
+## Bridge one — Pythagoras grows up into the norm
 
-직각삼각형에서 시작한다.
+Start with a right triangle.
 
 $$
 c = \sqrt{a^2 + b^2}
 $$
 
-평면 위 벡터의 길이도 같은 식이다. 성분이 $x$ 와 $y$ 면 길이는 $\sqrt{x^2+y^2}$ 다.
-물리의 합력 크기도 같다. $\sqrt{F_x^2 + F_y^2}$.
+The length of a vector in the plane is the same formula. With components $x$ and $y$, the
+length is $\sqrt{x^2+y^2}$. The magnitude of a resultant force in physics is the same:
+$\sqrt{F_x^2 + F_y^2}$.
 
-그리고 노름은 이렇다.
+And here's the norm.
 
 $$
 \lVert v \rVert = \sqrt{\sum_{i=1}^{n} v_i^2}
 $$
 
-**항의 개수만 늘었다.** 2개면 피타고라스고, 3개면 공간 대각선이고, 384개면 노름이다.
-새 개념이 아니라 **같은 식의 일반형**이다.
+**Only the number of terms grew.** Two is Pythagoras, three is the diagonal of a box, 384 is
+the norm. Not a new concept — **the general form of the same formula.**
 
-이걸 알고 나니 384차원이 덜 무서워졌다. 그릴 수 없을 뿐이지 계산은 중학교 때 하던 것과
-같다. 그림을 못 그리는 것과 이해를 못 하는 것은 다르다.
+Once I saw that, 384 dimensions got less frightening. You can't draw it, but the arithmetic is
+what you were doing in middle school. Being unable to picture something and being unable to
+understand it are not the same thing.
 
-## 다리 둘 — 코사인이 자라면 유사도가 된다
+## Bridge two — cosine grows up into similarity
 
-두 번째 다리가 더 놀라웠다.
+The second bridge surprised me more.
 
-삼각비에서 코사인은 **밑변 나누기 빗변**이다. 각도가 작으면 1에 가깝고, 직각이면 0이고,
-둔각이면 음수다.
+In trigonometry, cosine is **adjacent over hypotenuse**. Near 1 for a small angle, 0 at a right
+angle, negative past that.
 
 $$
 \cos\theta = \frac{A \cdot B}{\lVert A \rVert \, \lVert B \rVert}
 $$
 
-이게 코사인 유사도다. AI 문서 검색에서 "두 문장이 얼마나 비슷한가" 를 재는 그 값이,
-**삼각비에서 이름을 바꾼 것**이다.
+That's cosine similarity. The number AI document search uses to ask "how alike are these two
+sentences" is **trigonometry with a new name**.
 
-값의 뜻도 그대로다. 1에 가까우면 같은 방향, 0이면 직각, 음수면 반대. 각도가 작을수록
-비슷하다는 판정도 그대로다. 달라진 것은 **눈으로 각도를 못 본다**는 것뿐이다.
+The meaning of the values carries over too. Near 1 means the same direction, 0 means
+perpendicular, negative means opposed. Smaller angle means more alike, same as ever. The one
+thing that changed is that **you can no longer see the angle.**
 
-2차원에서는 각도를 그려서 보면 된다. 384차원에서는 그럴 수 없으니 **식으로 간접 측정**한다.
-그게 전부다.
+In two dimensions you draw it and look. In 384 you can't, so you **measure it indirectly with
+the formula.** That's the whole difference.
 
-## 왜 아무도 이걸 말해 주지 않았나
+## Why did nobody say this
 
-세 과목이 서로를 모르는 척한다.
+The three subjects pretend not to know each other.
 
-기하는 **눈으로 보는 것**이 목적이라 2·3차원에 머문다. 물리는 **현실을 설명하는 것**이
-목적이라 힘과 속도라는 이름을 쓴다. 선형대수는 **일반화**가 목적이라 그림을 버리고
-$n$ 차원으로 간다.
+Geometry is aimed at **seeing**, so it stays in two and three dimensions. Physics is aimed at
+**explaining the world**, so it uses the words force and velocity. Linear algebra is aimed at
+**generality**, so it throws away the picture and goes to $n$ dimensions.
 
-목적이 다르니 어휘가 다르고, 어휘가 다르니 같은 것인지 알아보지 못한다. 나는 세 번
-배우고도 이게 하나라는 걸 서른 넘어서 알았다.
+Different aims give different vocabularies, and different vocabularies hide the fact that it's
+one thing. I learned it three times and didn't notice until my thirties.
 
-## 그래서 얻은 것
+## What I got out of it
 
-| 고등학교에서 배운 것 | AI 에서 부르는 이름 |
+| What you learned in school | What AI calls it |
 |---|---|
-| 피타고라스 $\sqrt{a^2+b^2}$ | 노름 $\lVert v \rVert$ |
-| 코사인 $\cos\theta$ | 코사인 유사도 |
-| 성분 분해 | 좌표 · 기저 |
-| 합력 | 벡터 덧셈 |
+| Pythagoras $\sqrt{a^2+b^2}$ | Norm $\lVert v \rVert$ |
+| Cosine $\cos\theta$ | Cosine similarity |
+| Resolving into components | Coordinates · basis |
+| Resultant force | Vector addition |
 
-왼쪽을 안다면 오른쪽은 **새로 배우는 게 아니라 확장하는 것**이다.
+If you know the left column, the right column isn't something new to learn — **it's something
+to extend.**
 
-수학을 다시 시작하려는 사람이 가장 먼저 부딪히는 벽은 난이도가 아니라 **"내가 이걸
-할 수 있을까"** 라는 질문이다. 그 벽 앞에서 이 사실이 도움이 됐다. 이미 알고 있다.
-이름을 아직 못 들었을 뿐이다.
+The first wall anyone hits when going back to mathematics isn't difficulty. It's the question
+**"can I actually do this?"** Standing at that wall, this fact helped. You already know it.
+You just haven't heard the name yet.
 
-노름은 [선형대수 02](/ko/lecture/math/linear-algebra/02-norm/) 에서,
-코사인 유사도는 [05 내적](/ko/lecture/math/linear-algebra/05-dot-product/) 에서
-자세히 다룬다.
+The norm is covered in [Linear Algebra 02](/lecture/math/linear-algebra/02-norm/), and cosine
+similarity in [05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/).
 
 ---
 
-**개발자가 수학으로 내려가는 이유** — 네 편 묶음
+**Why a developer goes down into mathematics** — a four-part set
 
-1. [왜 선형대수인가](/ko/log/why-linear-algebra/)
-2. **벡터의 한 뿌리** ← 지금 글
-3. [신경망은 왜 행렬인가](/ko/log/why-neural-nets-are-matrices/)
-4. [LLM 전체 그림](/ko/log/llm-big-picture/)
+1. [Why Linear Algebra](/log/why-linear-algebra/)
+2. **The One Root of Vectors** ← you are here
+3. [Why Neural Networks Are Matrices](/log/why-neural-nets-are-matrices/)
+4. [The Whole Picture of an LLM](/log/llm-big-picture/)

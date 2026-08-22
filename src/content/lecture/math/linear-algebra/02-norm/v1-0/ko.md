@@ -1,7 +1,7 @@
 ---
 title: 노름과 단위벡터
 description: 벡터의 길이를 재는 자. 그리고 길이를 버리고 방향만 남기는 법.
-date: 2026-08-21
+date: 2026-07-06
 version: '1.0'
 tags: ['수학', '선형대수', '벡터']
 thumbnail: /images/lecture/thumb/linear-algebra-02-norm.svg
