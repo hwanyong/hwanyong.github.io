@@ -76,6 +76,9 @@
   /* 사이드 열(목차·개정 이력). 0 이면 열리지 않고 본문 흐름으로 들어간다. */
   --aside: 0rem;
   --aside-gap: 0rem;
+  /* fixed 인 커맨드 바가 차지하는 높이. 본문 아래 여백과 스크롤이 멈출 자리가
+     이 값 하나에서 나온다 — 둘에 따로 적으면 한쪽만 고쳐도 아무 데서도 안 걸린다. */
+  --cmd-h: 3.25rem;
 }
 
 *,
@@ -86,12 +89,15 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* 커맨드 바가 fixed 라 화면 아래를 덮는다. J 로 포커스가 내려갈 때, 그리고
+     #revisions 같은 앵커로 뛸 때 대상이 바 밑으로 들어가지 않게 멈출 자리를 미리 잡는다. */
+  scroll-padding-block-end: var(--cmd-h);
 }
 
 body {
   margin: 0;
   /* 커맨드 바가 fixed 이므로 본문 끝이 가리지 않게 확보한다 */
-  padding-block-end: 3.25rem;
+  padding-block-end: var(--cmd-h);
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-serif), 'Apple SD Gothic Neo', serif;
@@ -511,57 +517,51 @@ img.thumb {
 }
 
 /* NieR 선택 상태 — 행 반전 + 좌측 커서.
-   hover 는 약하게(밑줄), 키보드 포커스와 명시적 선택만 완전 반전한다.
+   hover 는 약하게(밑줄), 키보드 포커스만 완전 반전한다.
    스크롤 중 마우스가 지나갈 때마다 판이 뒤집히면 번쩍여서 읽기를 방해한다.
 
-   선택 여부는 클래스가 아니라 [data-active] 로 표현한다.
-   클래스는 "무엇인가"(.entry), data-* 는 "지금 어떤 상태인가"를 나타낸다. */
+   ★ 선택 상태를 따로 만들지 않는다. 브라우저의 포커스가 곧 선택이다 —
+     J K(scripts/keyboard.ts)가 Tab 처럼 포커스를 옮기므로 키보드로 고른 것과
+     Tab 으로 고른 것이 같은 상태이고, 그래서 같은 모양이어야 한다.
+     예전에는 data-active 라는 두 번째 상태가 있었고 이 규칙마다 짝이 붙어 있었다. */
 .entry:hover .entry__title {
   text-decoration: underline;
   text-underline-offset: 5px;
 }
 
-.entry[data-active] .entry__body,
 .entry:focus-within .entry__body {
   background: var(--ink);
   color: var(--bg);
 }
 
-.entry[data-active] .entry__meta,
 .entry:focus-within .entry__meta,
-.entry[data-active] .entry__tags,
 .entry:focus-within .entry__tags {
   color: var(--bg-3);
 }
 
-.entry[data-active] .rev-count,
 .entry:focus-within .rev-count {
   color: var(--bg);
   border-color: var(--bg-3);
 }
 
 /* 행이 반전되면 플레이트도 같이 뒤집혀야 한다 — 혼자 밝게 남으면 구멍처럼 보인다 */
-.entry[data-active] .thumb,
 .entry:focus-within .thumb {
   border-color: var(--bg-3);
 }
 
-.entry[data-active] .thumb--plate,
 .entry:focus-within .thumb--plate {
   background: transparent;
 }
 
-.entry[data-active] .thumb__label,
 .entry:focus-within .thumb__label {
   color: var(--bg);
 }
 
-.entry[data-active] .thumb__sub,
 .entry:focus-within .thumb__sub {
   color: var(--bg-3);
 }
 
-.entry[data-active] .entry__marks::before {
+.entry:focus-within .entry__marks::before {
   content: '▶';
   position: absolute;
   left: 0;
@@ -1194,11 +1194,6 @@ img.thumb {
   gap: 0.4rem;
 }
 
-/* display:flex 가 [hidden] 의 기본 display:none 을 이긴다. 명시적으로 되돌린다. */
-.command-bar__item[hidden] {
-  display: none;
-}
-
 .command-bar kbd {
   font: inherit;
   background: var(--cmd-fg);
@@ -1565,11 +1560,13 @@ img.accounts__mark {
     padding-inline: 1rem;
   }
 
+  /* 칩이 손가락 크기(2.75rem)로 커지면서 바가 높아진다.
+     바 높이 = 위아래 패딩 0.8rem + 칩 2.75rem + 위 테두리 1px, 실측 58px ≈ 3.6rem. */
+  :root {
+    --cmd-h: 4.25rem;
+  }
+
   body {
-    /* 커맨드 바에 본문 끝이 가리지 않게 확보한다.
-       바 높이 = 위아래 패딩 0.8rem + 칩 2.75rem + 위 테두리 1px ≈ 3.6rem.
-       칩 크기를 바꾸면 이 값도 함께 올릴 것 — 실측은 58px(약 3.6rem)이다. */
-    padding-block-end: 4.25rem;
     font-size: 16px;
   }
 

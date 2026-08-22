@@ -186,11 +186,11 @@ const t = UI[locale];
       NieR 커맨드 힌트 바.
       각인은 src/lib/shortcuts.ts 의 HINTS 를 그대로 읽는다 — 안내와 동작이 같은 표에서
       나오므로 어긋날 수 없다. 항목을 추가할 때는 그 표와 scripts/keyboard.ts 의 동작을 함께 넣을 것.
-      (검색 `/` 은 아직 미구현이라 의도적으로 빼두었다.)
+      (검색 `/` 은 검색 자체가 없어서 없다. 검색이 생기면 그때 표에 한 줄이 는다.)
     */}
     <div class="command-bar">
       {HINTS.map((hint) => (
-        <span class="command-bar__item" data-needs={hint.needs}>
+        <span class="command-bar__item">
           {hint.keys.map((binding) => <kbd>{binding.cap}</kbd>)}
           {t.hints[hint.labelKey]}
         </span>

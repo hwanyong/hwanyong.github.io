@@ -11,12 +11,13 @@
 //
 // 번역하지 않는 어휘군(계기판 표기): Log/Lecture/Project/About/Privacy ·
 //   N ENTRIES / N SERIES · REV n/m · PAGE n / m · PREV/NEXT · v1.0 · REFLECT/EMIT ·
-//   언어 코드(EN KO) · 키캡(J K ↵ T) · 날짜 YYYY.MM.DD.
+//   언어 코드(EN KO) · 키캡(J K H L ↵ B S T) · 날짜 YYYY.MM.DD.
 //   목록에서 세로로 줄이 맞아야 하는 값들이라 언어에 따라 폭이 달라지면 안 된다.
 //
 // Record<Locale, UIStrings> 이므로 LOCALE_CODES 에 언어를 추가하는 순간
 // 이 표가 TypeScript 에러로 막는다 — 번역 없이는 로케일을 켤 수 없다.
 import type { Locale } from './i18n';
+import type { HintLabel } from './shortcuts';
 
 export interface UIStrings {
   site: { title: string; description: string };
@@ -58,8 +59,11 @@ export interface UIStrings {
     count: (n: number) => string;
   };
 
-  /** 커맨드 바 각인 옆 설명. 키캡 자체는 번역하지 않는다. */
-  hints: Record<'move' | 'open' | 'backlight', string>;
+  /**
+   * 커맨드 바 각인 옆 설명. 키캡 자체는 번역하지 않는다.
+   * 키는 shortcuts.ts 의 HintLabel 이라, 안내를 하나 더하면 두 언어가 함께 막힌다.
+   */
+  hints: Record<HintLabel, string>;
 
   about: { career: string; accounts: string; tbdNote: string; present: string };
 
@@ -130,7 +134,14 @@ const en: UIStrings = {
     count: (n) => ` · ${n} revisions`,
   },
 
-  hints: { move: 'move', open: 'open', backlight: 'backlight' },
+  hints: {
+    move: 'move',
+    ends: 'first / last',
+    open: 'open',
+    back: 'back',
+    pattern: 'pattern',
+    backlight: 'backlight',
+  },
 
   about: {
     career: 'Career',
@@ -189,7 +200,14 @@ const ko: UIStrings = {
     count: (n) => ` · 개정 ${n}`,
   },
 
-  hints: { move: '이동', open: '열기', backlight: '백라이트' },
+  hints: {
+    move: '이동',
+    ends: '처음 / 끝',
+    open: '열기',
+    back: '뒤로',
+    pattern: '무늬',
+    backlight: '백라이트',
+  },
 
   about: {
     career: '근무 이력',
