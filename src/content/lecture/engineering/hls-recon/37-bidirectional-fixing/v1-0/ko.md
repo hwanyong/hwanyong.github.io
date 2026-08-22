@@ -1,7 +1,7 @@
 ---
 title: "양방향 고정"
 description: "오탐과 미탐을 함께 테스트한다"
-date: 2026-08-20
+date: 2026-08-13
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-37-bidirectional-fixing.svg

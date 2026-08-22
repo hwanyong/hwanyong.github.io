@@ -1,7 +1,7 @@
 ---
 title: "자기동기 포맷과 연결의 대수"
 description: "왜 바이트를 그냥 이어붙여도 되는가"
-date: 2026-08-17
+date: 2026-07-02
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-19-self-synchronizing.svg

@@ -1,7 +1,7 @@
 ---
 title: "무상태성과 무결성 보증의 부재"
 description: "HTTP 는 무엇을 보증하고 무엇을 보증하지 않는가"
-date: 2026-08-15
+date: 2026-05-27
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-04-statelessness.svg

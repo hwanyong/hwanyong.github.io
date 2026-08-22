@@ -1,7 +1,7 @@
 ---
 title: "대조군"
 description: "\"ffmpeg 은 놓친다\"를 테스트로 고정하기"
-date: 2026-08-20
+date: 2026-08-11
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-36-control-group.svg

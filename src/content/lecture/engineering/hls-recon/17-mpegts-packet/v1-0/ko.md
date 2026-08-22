@@ -1,7 +1,7 @@
 ---
 title: "MPEG-TS 패킷 해부"
 description: "188바이트의 구조"
-date: 2026-08-17
+date: 2026-06-27
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-17-mpegts-packet.svg

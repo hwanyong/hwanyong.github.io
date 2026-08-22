@@ -1,7 +1,7 @@
 ---
 title: "33비트 래핑과 신뢰할 수 없는 입력"
 description: "범위 검사가 없으면 계산은 조용히 틀린다"
-date: 2026-08-18
+date: 2026-07-23
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-28-33bit-wrap.svg

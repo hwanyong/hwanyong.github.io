@@ -1,7 +1,7 @@
 ---
 title: "PTS 와 90kHz"
 description: "왜 총 길이로는 결손을 못 잡는가"
-date: 2026-08-17
+date: 2026-07-06
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-21-pts-and-90khz.svg

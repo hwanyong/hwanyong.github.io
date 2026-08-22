@@ -1,7 +1,7 @@
 ---
 title: "HTTP 위에서 스트리밍을 흉내내기"
 description: "ABR 과 HLS 의 발명"
-date: 2026-08-15
+date: 2026-05-22
 version: '1.0'
 tags: ['streaming', 'foundations']
 thumbnail: /images/lecture/thumb/hls-recon-02-abr-and-hls.svg

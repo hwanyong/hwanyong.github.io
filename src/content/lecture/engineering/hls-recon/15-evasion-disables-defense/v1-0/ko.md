@@ -1,7 +1,7 @@
 ---
 title: "회피가 방어를 끄게 만들 때"
 description: "CVE-2023-6602 와 allowed_extensions ALL, 그리고 측정되지 않은 개선"
-date: 2026-08-17
+date: 2026-06-22
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-15-evasion-disables-defense.svg

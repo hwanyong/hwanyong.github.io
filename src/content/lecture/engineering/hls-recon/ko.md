@@ -1,7 +1,7 @@
 ---
 title: hls-recon 강의 — 스트림에서 파일로
 description: hls-recon 프로젝트의 코드를 교재 삼아, HLS 스트림을 로컬 파일로 되돌리고 그것이 온전한지 검증하며 배우는 컴퓨터 과학과 웹 보안.
-date: 2026-08-15
+date: 2026-05-18
 version: '1.0'
 tags: ['streaming', 'web-security', 'computer-science']
 thumbnail: /images/lecture/thumb/hls-recon.svg

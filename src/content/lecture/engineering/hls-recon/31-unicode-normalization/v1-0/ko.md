@@ -1,7 +1,7 @@
 ---
 title: "유니코드 정규화"
 description: "NFC/NFD 와 정규화 공격"
-date: 2026-08-19
+date: 2026-07-30
 version: '1.0'
 tags: ['streaming', 'portability']
 thumbnail: /images/lecture/thumb/hls-recon-31-unicode-normalization.svg

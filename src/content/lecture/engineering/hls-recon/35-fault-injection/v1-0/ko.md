@@ -1,7 +1,7 @@
 ---
 title: "결함 주입 설계"
 description: "8종의 대응표, 그리고 주입의 정교함"
-date: 2026-08-19
+date: 2026-08-09
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-35-fault-injection.svg

@@ -1,7 +1,7 @@
 ---
 title: "서명 URL"
 description: "시간 제한 능력의 설계"
-date: 2026-08-16
+date: 2026-06-13
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-11-signed-url.svg

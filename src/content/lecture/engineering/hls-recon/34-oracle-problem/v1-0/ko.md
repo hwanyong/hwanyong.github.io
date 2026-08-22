@@ -1,7 +1,7 @@
 ---
 title: "테스트 오라클 문제"
 description: "검증기를 검증하기"
-date: 2026-08-19
+date: 2026-08-06
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-34-oracle-problem.svg

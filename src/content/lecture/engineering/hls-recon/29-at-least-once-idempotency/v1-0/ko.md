@@ -1,7 +1,7 @@
 ---
 title: "at-least-once 와 멱등성"
 description: "경계 중복 큐, 그리고 정규화와 비교의 순서"
-date: 2026-08-19
+date: 2026-07-25
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-29-at-least-once-idempotency.svg

@@ -1,7 +1,7 @@
 ---
 title: "패딩 오라클의 반대편"
 description: "왜 여기서는 예외를 던지지 않는가"
-date: 2026-08-18
+date: 2026-07-13
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-24-padding-oracle-inverse.svg

@@ -1,7 +1,7 @@
 ---
 title: "AES-128-CBC 와 IV 유도 규칙"
 description: "media sequence 를 IV 로 쓴다는 것의 의미"
-date: 2026-08-18
+date: 2026-07-11
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-23-aes-cbc-iv.svg

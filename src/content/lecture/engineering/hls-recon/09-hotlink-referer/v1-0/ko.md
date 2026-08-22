@@ -1,7 +1,7 @@
 ---
 title: "핫링크 차단의 해부"
 description: "Referer 라는 자기 신고"
-date: 2026-08-16
+date: 2026-06-08
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-09-hotlink-referer.svg

@@ -1,7 +1,7 @@
 ---
 title: "상태 코드의 의미론적 붕괴"
 description: "200 은 성공이 아니다"
-date: 2026-08-15
+date: 2026-05-29
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-05-status-code-collapse.svg

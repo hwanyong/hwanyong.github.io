@@ -1,7 +1,7 @@
 ---
 title: "AES-128 은 DRM 이 아니다"
 description: "위협 모델과 Kerckhoffs 원리"
-date: 2026-08-18
+date: 2026-07-16
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-25-aes128-is-not-drm.svg

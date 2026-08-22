@@ -1,7 +1,7 @@
 ---
 title: "임계값 설계"
 description: "중앙값의 3배, 그리고 오탐"
-date: 2026-08-18
+date: 2026-07-09
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-22-threshold-design.svg

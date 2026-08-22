@@ -1,7 +1,7 @@
 ---
 title: "병렬성·재시도·계측"
 description: "관측하는 다운로더"
-date: 2026-08-16
+date: 2026-06-06
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-08-parallel-retry-measure.svg

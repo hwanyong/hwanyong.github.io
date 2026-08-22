@@ -1,7 +1,7 @@
 ---
 title: "CORS 헤더가 흘리는 것"
 description: "ACAO 의 오독과 정보 누출"
-date: 2026-08-16
+date: 2026-06-10
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-10-cors-leak.svg

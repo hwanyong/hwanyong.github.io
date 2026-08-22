@@ -1,7 +1,7 @@
 ---
 title: "위임의 경계"
 description: "라이브러리가 하지 않는 일을 아는 것"
-date: 2026-08-19
+date: 2026-07-28
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-30-delegation-boundary.svg

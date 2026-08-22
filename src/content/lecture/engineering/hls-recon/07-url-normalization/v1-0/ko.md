@@ -1,7 +1,7 @@
 ---
 title: "URL 정규화와 멱등성"
 description: "%20 과 %2520"
-date: 2026-08-15
+date: 2026-06-03
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-07-url-normalization.svg

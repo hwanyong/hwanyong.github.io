@@ -1,7 +1,7 @@
 ---
 title: "콘텐츠 협상의 부작용"
 description: "압축, 범위, 그리고 충돌"
-date: 2026-08-15
+date: 2026-06-01
 version: '1.0'
 tags: ['streaming', 'http']
 thumbnail: /images/lecture/thumb/hls-recon-06-content-negotiation.svg

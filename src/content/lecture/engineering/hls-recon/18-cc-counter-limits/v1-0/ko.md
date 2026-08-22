@@ -1,7 +1,7 @@
 ---
 title: "4비트 순환 카운터의 한계"
 description: "검사기의 미탐률을 수로 적는다"
-date: 2026-08-17
+date: 2026-06-29
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-18-cc-counter-limits.svg

@@ -1,7 +1,7 @@
 ---
 title: "정규식의 정확도가 곧 오분류율"
 description: "(?<!\\d) 하나가 막는 것"
-date: 2026-08-19
+date: 2026-08-04
 version: '1.0'
 tags: ['streaming', 'portability']
 thumbnail: /images/lecture/thumb/hls-recon-33-regex-accuracy.svg

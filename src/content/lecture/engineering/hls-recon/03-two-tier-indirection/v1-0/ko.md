@@ -1,7 +1,7 @@
 ---
 title: "RFC 8216 의 2계층 간접 참조"
 description: "마스터/미디어 분리가 만드는 것과 잃는 것"
-date: 2026-08-15
+date: 2026-05-25
 version: '1.0'
 tags: ['streaming', 'foundations']
 thumbnail: /images/lecture/thumb/hls-recon-03-two-tier-indirection.svg

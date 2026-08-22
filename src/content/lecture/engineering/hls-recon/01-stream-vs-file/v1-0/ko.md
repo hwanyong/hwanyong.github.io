@@ -1,7 +1,7 @@
 ---
 title: "스트림과 파일"
 description: "두 존재론"
-date: 2026-08-15
+date: 2026-05-20
 version: '1.0'
 tags: ['streaming', 'foundations']
 thumbnail: /images/lecture/thumb/hls-recon-01-stream-vs-file.svg

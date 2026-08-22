@@ -1,7 +1,7 @@
 ---
 title: "파일명이라는 인터페이스"
 description: "예약 문자와 이식성"
-date: 2026-08-19
+date: 2026-08-01
 version: '1.0'
 tags: ['streaming', 'portability']
 thumbnail: /images/lecture/thumb/hls-recon-32-filename-interface.svg

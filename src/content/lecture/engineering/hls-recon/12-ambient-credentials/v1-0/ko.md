@@ -1,7 +1,7 @@
 ---
 title: "자격증명의 앰비언트 권한"
 description: "쿠키, 프로세스 목록, 아티팩트"
-date: 2026-08-16
+date: 2026-06-15
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-12-ambient-credentials.svg

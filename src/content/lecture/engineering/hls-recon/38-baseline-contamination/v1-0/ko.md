@@ -1,7 +1,7 @@
 ---
 title: "기준선 오염과 판정 보류"
 description: "알 수 없음과 통과를 구별하기"
-date: 2026-08-20
+date: 2026-08-16
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-38-baseline-contamination.svg

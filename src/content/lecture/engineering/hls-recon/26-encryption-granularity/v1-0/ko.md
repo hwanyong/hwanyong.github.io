@@ -1,7 +1,7 @@
 ---
 title: "암호화 입자가 구조를 결정한다"
 description: "SAMPLE-AES 가 거부되는 이유"
-date: 2026-08-18
+date: 2026-07-18
 version: '1.0'
 tags: ['streaming', 'cryptography']
 thumbnail: /images/lecture/thumb/hls-recon-26-encryption-granularity.svg

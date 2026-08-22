@@ -1,7 +1,7 @@
 ---
 title: "판정의 종합"
 description: "임계값에서 종료 코드까지"
-date: 2026-08-20
+date: 2026-08-18
 version: '1.0'
 tags: ['streaming', 'verification']
 thumbnail: /images/lecture/thumb/hls-recon-39-verdict-synthesis.svg

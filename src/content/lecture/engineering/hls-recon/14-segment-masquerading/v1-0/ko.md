@@ -1,7 +1,7 @@
 ---
 title: "세그먼트 확장자 위장"
 description: "이름·선언·내용이 갈라질 때"
-date: 2026-08-16
+date: 2026-06-20
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-14-segment-masquerading.svg

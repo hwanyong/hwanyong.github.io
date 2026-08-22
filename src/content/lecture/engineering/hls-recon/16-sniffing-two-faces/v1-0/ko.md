@@ -1,7 +1,7 @@
 ---
 title: "콘텐츠 스니핑의 양면"
 description: "언제 미덕이고 언제 취약점인가"
-date: 2026-08-17
+date: 2026-06-25
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-16-sniffing-two-faces.svg

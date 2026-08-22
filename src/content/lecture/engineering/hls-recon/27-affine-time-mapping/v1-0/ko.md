@@ -1,7 +1,7 @@
 ---
 title: "두 시간축의 아핀 대응"
 description: "X-TIMESTAMP-MAP 과 오프셋 식의 유도"
-date: 2026-08-18
+date: 2026-07-21
 version: '1.0'
 tags: ['streaming', 'distributed-systems']
 thumbnail: /images/lecture/thumb/hls-recon-27-affine-time-mapping.svg

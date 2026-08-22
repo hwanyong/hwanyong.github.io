@@ -1,7 +1,7 @@
 ---
 title: "난독화는 보안이 아니다"
 description: "packed JS 와 신뢰 경계"
-date: 2026-08-16
+date: 2026-06-17
 version: '1.0'
 tags: ['streaming', 'security']
 thumbnail: /images/lecture/thumb/hls-recon-13-obfuscation-not-security.svg

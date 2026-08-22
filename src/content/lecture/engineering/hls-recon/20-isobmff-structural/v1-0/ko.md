@@ -1,7 +1,7 @@
 ---
 title: "ISO-BMFF: 재귀 TLV 구조와 구조적 완결성 검사"
 description: "본문을 읽지 않고 온전함을 판정하는 법"
-date: 2026-08-17
+date: 2026-07-04
 version: '1.0'
 tags: ['streaming', 'binary']
 thumbnail: /images/lecture/thumb/hls-recon-20-isobmff-structural.svg
