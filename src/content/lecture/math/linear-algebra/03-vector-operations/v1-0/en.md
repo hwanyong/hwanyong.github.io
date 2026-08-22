@@ -150,7 +150,6 @@ derived?**
 | Broadcasting | Column + row = **matrix**. Silently |
 | Primitives | **Addition and scaling, only.** The rest are derived or tooling |
 
-## Next
+---
 
 We've seen the operations. Now the rules they have to obey.
-→ [04 Vector Axioms](/lecture/math/linear-algebra/04-vector-axioms/)

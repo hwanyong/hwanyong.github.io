@@ -166,8 +166,7 @@ Trust the `shape`, not the name.
   uses to pick "the nearest document" is this one dot product.
   → [/lecture/artificial-intelligence/vector-search/02-similarity/](/lecture/artificial-intelligence/vector-search/02-similarity/)
 
-## Next
+---
 
 That's the published opening. From 06, orthogonal decomposition onward, sessions go up as
 they're written.
-→ [Course index](/lecture/math/linear-algebra/)

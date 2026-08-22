@@ -106,6 +106,9 @@ const backLabel = isLatest ? upLabel : entry.data.title;
 >
   <Toc locale={locale} headings={headings} slot="aside" />
 
+  {/* 축마다 다른 부속을 그대로 통과시킨다 — 강의 차시는 앞·다음 판을 여기 넣는다. */}
+  <slot name="footer" slot="footer" />
+
   <Fragment slot="notice">
     {!isLatest && (
       <p class="stale-notice">

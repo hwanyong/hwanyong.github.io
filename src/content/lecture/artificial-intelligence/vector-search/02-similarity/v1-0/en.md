@@ -158,7 +158,6 @@ signal or noise belongs to whoever knows the domain.
 | Normalising up front | Search becomes one matrix product (`index @ q`) |
 | When to use distance | When magnitude itself is information (coordinates, sensors) |
 
-## Next
+---
 
-We have a similarity measure. Time to assemble the engine.
-→ 03 RAG engine (coming)
+We have a similarity measure. Time to assemble the engine — the RAG engine session (03) is on the way.

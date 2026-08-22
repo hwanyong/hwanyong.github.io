@@ -133,7 +133,6 @@ less alarming later.
   numbers and becomes a vector in exactly this sense.
   → [/lecture/artificial-intelligence/vector-search/01-embeddings/](/lecture/artificial-intelligence/vector-search/01-embeddings/)
 
-## Next
+---
 
 We have vectors. Now we need to be able to measure them.
-→ [02 Norms and Unit Vectors](/lecture/math/linear-algebra/02-norm/)

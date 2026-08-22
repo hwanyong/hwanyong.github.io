@@ -1967,3 +1967,64 @@ img.accounts__mark {
   color: var(--ink-3);
   vertical-align: middle;
 }
+
+/* ─── 앞·다음 차시 ─────────────────────────────────────────── */
+/* 본문 끝의 평문 링크는 눌러 보기 전에 링크인지 알 수 없다는 지적을 받았다.
+   판으로 만들어 "여기를 누르면 옮겨간다" 가 형태로 읽히게 한다.
+   가리킴·포커스 윤곽은 전역 규칙(:focus-visible / a[href]:hover)이 준다. */
+
+.session-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-block-start: 3rem;
+}
+
+.session-nav__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+  /* 판이 세로로 늘어나도 방향 라벨은 위, 제목은 아래에 붙어 있게 한다 */
+  justify-content: flex-start;
+}
+
+/* 다음 판은 오른끝 정렬 — 왼쪽=앞, 오른쪽=다음이라는 사실을 글자 정렬로도 말한다.
+   한쪽이 없을 때 빈 <div> 가 자리를 지키므로 남은 판이 가운데로 흘러오지 않는다. */
+.session-nav__item--next {
+  text-align: end;
+  align-items: flex-end;
+}
+
+.session-nav__dir {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.session-nav__title {
+  font-size: 15.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.session-nav__item:is(:hover, :focus-visible) {
+  border-color: var(--ink-3);
+}
+
+/* 좁은 화면에서는 두 판을 세로로 쌓는다. 나란히 두면 제목이 두세 줄로 접혀
+   판 높이가 들쭉날쭉해지고, 어느 쪽이 앞인지 읽기 더 어려워진다. */
+@media (max-width: 34rem) {
+  .session-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .session-nav__item--next {
+    text-align: start;
+    align-items: flex-start;
+  }
+}

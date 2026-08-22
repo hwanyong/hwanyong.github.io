@@ -124,7 +124,6 @@ np.linalg.norm(vecs[0] - vecs[2])   # 크다 — 하나는 코드 이야기
 | 모델을 바꾸면 | 저장된 벡터를 **전부 다시 만들어야 한다** |
 | 차원 수 | 모델이 정한다. 높을수록 좋은 게 아니라 필요한 만큼 |
 
-## 다음
+---
 
 같은 공간에 점들을 놓았다. 이제 '가깝다' 를 정의해야 한다.
-→ [02 유사도](/ko/lecture/artificial-intelligence/vector-search/02-similarity/)

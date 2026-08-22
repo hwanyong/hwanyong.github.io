@@ -8,6 +8,8 @@
 // ★ getStaticPaths 는 격리 호이스팅된다 — import 와 함수 내부 선언만 쓴다.
 import { render } from 'astro:content';
 import RevisionPage from '../../../../../../components/RevisionPage.astro';
+import SessionNav from '../../../../../../components/SessionNav.astro';
+import type { SessionLink } from '../../../../../../components/SessionNav.astro';
 import {
   getLectureCourses,
   getSeriesHistories,
@@ -15,7 +17,7 @@ import {
   versionSlug,
 } from '../../../../../../lib/content';
 import type { LectureEntry } from '../../../../../../lib/content';
-import { courseHref, langParam } from '../../../../../../lib/routes';
+import { courseHref, langParam, revisionHref } from '../../../../../../lib/routes';
 import { DEFAULT_LOCALE, LOCALE_CODES } from '../../../../../../lib/i18n';
 import type { Alternate, Locale } from '../../../../../../lib/i18n';
 import type { Subject } from '../../../../../../lib/subjects';
@@ -26,7 +28,22 @@ export const getStaticPaths = async () => {
 
   for (const locale of LOCALE_CODES) {
     for (const course of await getLectureCourses(locale)) {
-      for (const { session, history } of course.sessions) {
+      for (const [order, { session, history }] of course.sessions.entries()) {
+        /* 앞·다음은 ★디렉터리 이름 오름차순★ 인 course.sessions 의 이웃이다
+           (docs/lecture.md). 제목은 그 차시의 최신 개정본에서 가져온다 —
+           구 개정본의 제목이 바뀌었을 수 있고, 이동은 언제나 최신으로 간다. */
+        const neighbour = (at: number): SessionLink | null => {
+          const near = course.sessions[at];
+          if (!near) return null;
+          const latest = near.history.revisions[0];
+          if (!latest) return null;
+          return {
+            href: revisionHref(locale, 'lecture', near.history.path, null),
+            title: latest.data.title,
+          };
+        };
+        const prev = neighbour(order - 1);
+        const next = neighbour(order + 1);
         for (const [index, entry] of history.revisions.entries()) {
           // 최신(index 0)은 version 을 비워 차시 루트로 낸다.
           // rest 파라미터는 빈 세그먼트도 매칭하므로 라우트 하나가 둘 다 낸다.
@@ -47,6 +64,8 @@ export const getStaticPaths = async () => {
               path: history.path,
               revisions: history.revisions,
               index,
+              prev,
+              next,
               alternates: revisionAlternates(
                 histories,
                 history.path,
@@ -72,11 +91,24 @@ type Props = {
   path: string;
   revisions: LectureEntry[];
   index: number;
+  prev: SessionLink | null;
+  next: SessionLink | null;
   alternates: Alternate[];
 };
 
-const { locale, subject, course, session, courseTitle, path, revisions, index, alternates }: Props =
-  Astro.props;
+const {
+  locale,
+  subject,
+  course,
+  session,
+  courseTitle,
+  path,
+  revisions,
+  index,
+  prev,
+  next,
+  alternates,
+}: Props = Astro.props;
 
 const { Content, headings } = await render(revisions[index]!);
 ---
@@ -93,5 +125,6 @@ const { Content, headings } = await render(revisions[index]!);
   upHref={courseHref(locale, subject, course)}
   upLabel={courseTitle}
 >
+  <SessionNav locale={locale} prev={prev} next={next} slot="footer" />
   <Content />
 </RevisionPage>

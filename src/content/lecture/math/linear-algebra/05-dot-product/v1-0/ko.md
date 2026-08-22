@@ -161,7 +161,6 @@ v @ w.T        # 외적       → (3, 3)
 - **인공지능 » 벡터 검색 02 유사도** — 검색 엔진이 "가장 가까운 문서" 를 고르는 계산이
   이 내적 하나다. → [/ko/lecture/artificial-intelligence/vector-search/02-similarity/](/ko/lecture/artificial-intelligence/vector-search/02-similarity/)
 
-## 다음
+---
 
 여기까지가 지금 공개된 앞머리다. 06 직교 분해부터는 쓰는 대로 붙는다.
-→ [강의 목록](/ko/lecture/math/linear-algebra/)
