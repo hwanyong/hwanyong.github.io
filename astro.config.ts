@@ -1,6 +1,8 @@
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
+import { satteri } from '@astrojs/markdown-satteri';
 import { DEFAULT_LOCALE, LOCALES, ORIGIN, SITEMAP_LOCALES } from './src/lib/i18n';
+import { katexMath } from './tools/katex-math';
 
 export default defineConfig({
   // GitHub Pages user site(hwanyong/hwanyong.github.io) 이므로
@@ -134,10 +136,21 @@ export default defineConfig({
     //           heading ID 자동 생성, frontmatter 파싱.
     // 기본 비활성: math, wikilinks, directive, headingAttributes,
     //             superscript, subscript, definitionList, rawHtml.
-    //   → 이것들을 쓰려면 `pnpm add @astrojs/markdown-satteri` 후
-    //     markdown.processor 를 satteri({ features: { math: true } }) 로 명시해야 한다.
     //   → remark/rehype 플러그인이 필요하면 `pnpm add @astrojs/markdown-remark` 후
     //     markdown.processor 를 unified() 로 되돌려야 한다(더 이상 기본 설치 아님).
+    //
+    // ★ math 를 켠 이유: 강의 축(수학 30차시)이 전부 LaTeX 다. 끄면 달러 기호가
+    //   그대로 찍힌다. 단 `features.math` 는 ★표시일 뿐 렌더가 아니다★ —
+    //   실제 조판은 katexMath() 가 빌드 때 MathML 로 한다(`tools/katex-math.ts`).
+    //
+    // ★ wikilinks 는 켜지 않는다. 소재가 옵시디언 볼트라 켜고 싶은 유혹이 있지만,
+    //   볼트의 [[링크]] 대상 상당수가 블로그에 없는 노트(MOC·용어집·암기장)다.
+    //   켜면 그것들이 조용히 죽은 링크가 된다. 링크는 옮길 때 손으로 고친다.
+    processor: satteri({
+      features: { math: true },
+      mdastPlugins: [katexMath()],
+    }),
+
     // 'shiki'(기본) | 'prism' | false
     //
     // Shiki 를 쓰지 않는 이유: dual theme(themes:{light,dark})는 구조상 토큰마다
@@ -148,6 +161,9 @@ export default defineConfig({
     //
     // Astro 는 Prism 테마 CSS 를 번들하지 않는다 → src/styles/code.css 에 직접 쓴다.
     // 어차피 "명도만으로 구문을 구분하는" 자체 팔레트가 필요했으므로 손해가 없다.
+    //
+    // 수식 때문에 excludeLangs 를 넣을 필요는 없다 — katexMath() 가 mdast 에서
+    // 먼저 걷어내므로 highlight 는 수식과 마주치지 않는다. 이유는 그 파일 머리에.
     syntaxHighlight: 'prism',
   },
 });
