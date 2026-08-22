@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 372" role="img"
+     aria-label="세그먼트 하나가 빠진 스트림을 MP4 로 재조립할 때 구멍이 살아남는 경로. MPEG-TS 는 절대 좌표라 뒤 조각의 PTS 가 그대로이고, MP4 는 상대 지속이라 빠진 6초가 한 샘플의 지속 543000 tick 에 흡수된다. 양쪽 모두 합계는 2,700,000 tick 으로 정상본과 같다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    .warn  { fill:#9a6700 }
+    .good  { fill:#1a7f37 }
+    .seg   { fill:#ddf4ff; stroke:#0969da }
+    .gone  { fill:none; stroke:#cf222e }
+    .samp  { fill:#eaeef2; stroke:#8b949e }
+    .hole  { fill:#fff8c5; stroke:#9a6700 }
+    .mk    { fill:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+      .warn  { fill:#d29922 }
+      .good  { fill:#3fb950 }
+      .seg   { fill:#123a63; stroke:#4493f8 }
+      .gone  { fill:none; stroke:#f85149 }
+      .samp  { fill:#21262d; stroke:#6e7681 }
+      .hole  { fill:#3d2e00; stroke:#d29922 }
+      .mk    { fill:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="a21h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="340" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">표현을 바꿔도 구멍은 총량에 나타나지 않는다</text>
+
+  <text class="acc" x="44" y="76" font-size="12.5" font-weight="600">① MPEG-TS — 절대 좌표 (PTS, 90kHz tick)</text>
+  <rect class="seg"  x="60"  y="86" width="150" height="38" rx="4" stroke-width="1"/>
+  <rect class="gone" x="212" y="86" width="150" height="38" rx="4" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <rect class="seg"  x="364" y="86" width="150" height="38" rx="4" stroke-width="1"/>
+  <rect class="seg"  x="516" y="86" width="150" height="38" rx="4" stroke-width="1"/>
+  <rect class="seg"  x="668" y="86" width="150" height="38" rx="4" stroke-width="1"/>
+  <text class="ink m"  x="135" y="110" font-size="12" text-anchor="middle">seg000</text>
+  <text class="bad m"  x="287" y="110" font-size="12" text-anchor="middle" font-weight="600">404</text>
+  <text class="ink m"  x="439" y="110" font-size="12" text-anchor="middle">seg002</text>
+  <text class="ink m"  x="591" y="110" font-size="12" text-anchor="middle">seg003</text>
+  <text class="ink m"  x="743" y="110" font-size="12" text-anchor="middle">seg004</text>
+  <text class="muted m" x="135" y="140" font-size="11" text-anchor="middle">128090</text>
+  <text class="bad m"   x="287" y="140" font-size="11" text-anchor="middle">(668090)</text>
+  <text class="acc m"   x="439" y="140" font-size="11" text-anchor="middle" font-weight="600">1208090</text>
+  <text class="muted m" x="591" y="140" font-size="11" text-anchor="middle">1748090</text>
+  <text class="muted m" x="743" y="140" font-size="11" text-anchor="middle">2288090</text>
+  <text x="44" y="164" font-size="12.5" xml:space="preserve"><tspan class="ink">뒤 조각의 좌표는 </tspan><tspan class="acc" font-weight="600">당겨지지 않는다</tspan><tspan class="ink"> — 1208090 은 결손본에서도 1208090 이다.</tspan></text>
+
+  <line class="rule" x1="440" y1="176" x2="440" y2="206" stroke-width="1.5" marker-end="url(#a21h)"/>
+  <text class="muted" x="456" y="196" font-size="12.5">ffmpeg -c copy — 좌표의 나열을 지속(duration)의 나열로 바꾼다</text>
+
+  <text class="acc" x="44" y="230" font-size="12.5" font-weight="600">② MP4 — 상대 지속 (stts 의 sample_delta)</text>
+  <rect class="samp" x="60"  y="240" width="151" height="38" rx="4" stroke-width="1"/>
+  <rect class="hole" x="211" y="240" width="153" height="38" rx="4" stroke-width="1.5"/>
+  <rect class="samp" x="364" y="240" width="456" height="38" rx="4" stroke-width="1"/>
+  <text class="ink m"  x="135" y="264" font-size="11.5" text-anchor="middle">3000 × 179</text>
+  <text class="warn m" x="287" y="264" font-size="11.5" text-anchor="middle" font-weight="600">543000 × 1</text>
+  <text class="ink m"  x="592" y="264" font-size="11.5" text-anchor="middle">3000 × 540</text>
+  <text x="44" y="300" font-size="12.5" xml:space="preserve"><tspan class="ink">빠진 6초는 </tspan><tspan class="warn" font-weight="600">샘플 하나의 지속에 흡수된다</tspan><tspan class="ink"> — 543000 = 3000 + 540000.</tspan></text>
+
+  <line class="rule" x1="44" y1="314" x2="836" y2="314" stroke-width="1"/>
+  <text x="44" y="338" font-size="13" xml:space="preserve"><tspan class="ink">지속의 합 = </tspan><tspan class="good m" font-weight="600">2,700,000 tick = 30.000000 s</tspan><tspan class="ink"> — 정상본(3000 × 900)과 </tspan><tspan class="good" font-weight="600">tick 단위까지 같다.</tspan></text>
+</svg>

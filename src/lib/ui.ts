@@ -32,6 +32,10 @@ export interface UIStrings {
   next: string;
   /** 코스는 있는데 아직 차시가 없을 때. */
   emptySessions: string;
+  /** 표지: 이 강의가 파생된 프로젝트로 보내는 링크의 라벨. */
+  basedOnProject: string;
+  /** 프로젝트 상세: 이 프로젝트에서 파생된 강의로 보내는 링크의 라벨. */
+  companionCourse: string;
   /** 과목 화면의 설명문. 이름은 subjects.ts 의 로케일 표에서 온다. */
   subjectDescription: (subjectName: string) => string;
 
@@ -123,6 +127,8 @@ const en: UIStrings = {
   prev: 'Previous',
   next: 'Next',
   emptySessions: 'No sessions published yet.',
+  basedOnProject: 'Based on the project',
+  companionCourse: 'Companion course',
   subjectDescription: (name) => `Lectures on ${name}.`,
 
   toc: 'Contents',
@@ -193,6 +199,8 @@ const ko: UIStrings = {
   prev: '이전',
   next: '다음',
   emptySessions: '아직 공개한 차시가 없습니다.',
+  basedOnProject: '바탕이 된 프로젝트',
+  companionCourse: '딸림 강의',
   subjectDescription: (name) => `${name} 강의.`,
 
   toc: '목차',

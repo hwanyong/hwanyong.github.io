@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 388" role="img"
+     aria-label="segments 모드와 remux 모드의 비대칭. 직접 수신하는 segments 모드는 선두 바이트로 판별해 어떤 위장에도 통하지만, ffmpeg 에 위임하는 remux 모드는 ffmpeg 의 확장자 정책을 상속해 일부 위장에 막힌다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .pillG { fill:#dafbe1 }
+    .pillB { fill:#ffebe9 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .pillG { fill:#12341f }
+      .pillB { fill:#3d1518 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="356" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">같은 위장 스트림, 갈라지는 두 경로</text>
+
+  <text class="acc m" x="234" y="76" font-size="13" text-anchor="middle" font-weight="600">--mode segments</text>
+  <text class="acc m" x="650" y="76" font-size="13" text-anchor="middle" font-weight="600">--mode remux</text>
+
+  <rect class="box" x="44" y="88" width="380" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="234" y="112" font-size="12.5" text-anchor="middle">Fetcher 가 직접 HTTP GET 한다</text>
+  <rect class="box" x="460" y="88" width="376" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="648" y="112" font-size="12.5" text-anchor="middle">플레이리스트 URL 을 ffmpeg 에 넘긴다</text>
+
+  <line x1="234" y1="128" x2="234" y2="146" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="648" y1="128" x2="648" y2="146" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="44" y="150" width="380" height="38" rx="6" stroke-width="1"/>
+  <text x="234" y="174" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="m ink">tsanalyze.sniff()</tspan><tspan class="ink"> — 선두 바이트로 판별</tspan></text>
+  <rect class="box" x="460" y="150" width="376" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="648" y="174" font-size="12.5" text-anchor="middle">ffmpeg 의 확장자 정책이 적용된다</text>
+
+  <line x1="234" y1="190" x2="234" y2="208" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="648" y1="190" x2="648" y2="208" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="44" y="212" width="380" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="234" y="236" font-size="12.5" text-anchor="middle" font-weight="600">확장자를 아예 보지 않는다</text>
+  <rect class="box" x="460" y="212" width="376" height="38" rx="6" stroke-width="1"/>
+  <text class="ink" x="648" y="236" font-size="12.5" text-anchor="middle" font-weight="600">확장자가 관문이 된다</text>
+
+  <line x1="234" y1="252" x2="234" y2="270" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="648" y1="252" x2="648" y2="270" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="pillG" x="44" y="274" width="380" height="40" rx="8"/>
+  <text class="good" x="234" y="299" font-size="13" text-anchor="middle" font-weight="600">어떤 위장에도 통한다</text>
+  <rect class="pillB" x="460" y="274" width="376" height="40" rx="8"/>
+  <text x="648" y="299" font-size="13" text-anchor="middle" xml:space="preserve"><tspan class="bad m" font-weight="600">.html</tspan><tspan class="bad" font-weight="600"> 은 통하고 </tspan><tspan class="bad m" font-weight="600">.txt .png</tspan><tspan class="bad" font-weight="600"> 는 막힌다</tspan></text>
+
+  <text x="44" y="346" font-size="13" xml:space="preserve"><tspan class="ink" font-weight="600">위임에는 대가가 있다</tspan><tspan class="muted"> — 위임받은 쪽의 정책까지 함께 상속한다.</tspan></text>
+</svg>

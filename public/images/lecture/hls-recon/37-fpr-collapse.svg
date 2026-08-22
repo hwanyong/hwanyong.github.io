@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 306" role="img"
+     aria-label="오탐이 실질 재현율을 0 으로 무너뜨리는 되먹임 고리. 정밀도가 낮아 오탐이 쏟아지면 사람이 경보를 하나씩 무시하게 되고, 이어서 규칙을 끄거나 예외 목록을 넓히게 되며, 그 결과 정탐이 사람에게 도달하지 않아 실질 재현율이 0 이 된다. 그동안 시험 환경에서 잰 명목 재현율은 바뀌지 않으므로 이 붕괴는 어떤 지표에도 잡히지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .endbx { fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    .dash  { stroke:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .endbx { fill:#3d1417; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+      .dash  { stroke:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar37b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="278" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">오탐은 재현율을 갉아먹는다 — 지표에 보이지 않는 경로로</text>
+
+  <rect class="box" x="40" y="72" width="186" height="82" rx="8" stroke-width="1"/>
+  <text class="muted" x="56" y="96" font-size="11.5">①</text>
+  <text class="ink" x="56" y="118" font-size="12.5">정밀도가 낮다</text>
+  <text class="muted" x="56" y="138" font-size="12">오탐이 쏟아진다</text>
+
+  <rect class="box" x="246" y="72" width="186" height="82" rx="8" stroke-width="1"/>
+  <text class="muted" x="262" y="96" font-size="11.5">②</text>
+  <text class="ink" x="262" y="118" font-size="12.5">경보 피로</text>
+  <text class="muted" x="262" y="138" font-size="12">하나씩 무시한다</text>
+
+  <rect class="box" x="452" y="72" width="186" height="82" rx="8" stroke-width="1"/>
+  <text class="muted" x="468" y="96" font-size="11.5">③</text>
+  <text class="ink" x="468" y="118" font-size="12.5">규칙을 끈다</text>
+  <text class="muted" x="468" y="138" font-size="12">예외 목록을 넓힌다</text>
+
+  <rect class="endbx" x="658" y="72" width="186" height="82" rx="8" stroke-width="1.3"/>
+  <text class="muted" x="674" y="96" font-size="11.5">④</text>
+  <text class="bad" x="674" y="118" font-size="12.5" font-weight="600">실질 재현율 0</text>
+  <text class="muted" x="674" y="138" font-size="12">정탐이 도달하지 않는다</text>
+
+  <path d="M226,113 L242,113" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37b)"/>
+  <path d="M432,113 L448,113" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37b)"/>
+  <path d="M638,113 L654,113" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37b)"/>
+
+  <path d="M751,154 L751,190 L133,190 L133,154" class="dash" fill="none" stroke-width="1.2"
+        stroke-dasharray="5 4" marker-end="url(#ar37b)"/>
+  <text class="bad" x="442" y="184" font-size="12" text-anchor="middle">③이 다시 ①의 조건이 된다 — 남은 규칙이 더 성기게 잡는다</text>
+
+  <text x="44" y="228" font-size="12.5" xml:space="preserve"><tspan class="acc" font-weight="600">명목 재현율</tspan><tspan class="muted"> — 시험 환경에서 잰 값. ②③이 진행되는 동안 </tspan><tspan class="ink">한 자리도 움직이지 않는다.</tspan></text>
+  <text x="44" y="252" font-size="12.5" xml:space="preserve"><tspan class="bad" font-weight="600">실질 재현율</tspan><tspan class="muted"> — 운영 중 사람에게 도달한 정탐의 비율. </tspan><tspan class="ink">아무도 이 값을 재지 않는다.</tspan></text>
+  <text class="warn" x="44" y="276" font-size="12.5">그래서 오탐은 정밀도의 문제로 보이지만, 실제로 무너지는 것은 재현율이다.</text>
+</svg>

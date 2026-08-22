@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 330" role="img"
+     aria-label="90kHz 눈금의 유래. MPEG-2 시스템 클럭 27MHz 를 300 으로 나눈 값이 90kHz 이고, PCR 은 33비트 base(90kHz)와 9비트 extension(27MHz 나머지)으로 쪼개 싣는다. PTS와 DTS는 base 쪽 눈금만 쓴다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .accs  { stroke:#0969da }
+    .good  { fill:#1a7f37 }
+    .chip  { fill:#eaeef2 }
+    .chipa { fill:#ddf4ff }
+    .mk    { fill:#656d76 }
+    .mka   { fill:#0969da }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .accs  { stroke:#4493f8 }
+      .good  { fill:#3fb950 }
+      .chip  { fill:#21262d }
+      .chipa { fill:#123a63 }
+      .mk    { fill:#8b949e }
+      .mka   { fill:#4493f8 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="a21c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="a21ca" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mka"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="298" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">90kHz 는 어디서 왔는가 — 27MHz 시스템 클럭을 300 으로 나눈 눈금</text>
+
+  <rect class="chip" x="44" y="68" width="238" height="56" rx="8"/>
+  <text class="ink" x="60" y="92" font-size="14" font-weight="600">시스템 클럭 (STC)</text>
+  <text class="acc m" x="60" y="112" font-size="14" font-weight="600">27,000,000 Hz</text>
+
+  <line class="accs" x1="163" y1="124" x2="163" y2="166" stroke-width="1.5" marker-end="url(#a21ca)"/>
+  <text class="acc m" x="176" y="150" font-size="13" font-weight="600">÷ 300</text>
+
+  <rect class="chipa" x="44" y="168" width="238" height="56" rx="8"/>
+  <text class="ink" x="60" y="192" font-size="14" font-weight="600">PTS · DTS 의 눈금</text>
+  <text class="acc m" x="60" y="212" font-size="14" font-weight="600">90,000 Hz</text>
+
+  <line class="rule" x1="306" y1="66" x2="306" y2="238" stroke-width="1"/>
+
+  <text class="muted" x="330" y="86" font-size="11.5" font-weight="600">PCR 은 27MHz 를 두 조각으로 쪼개 싣는다</text>
+  <rect class="chipa" x="330" y="98" width="196" height="46" rx="6"/>
+  <text class="acc m" x="344" y="118" font-size="12.5" font-weight="600">program_clock_reference_base</text>
+  <text class="muted" x="344" y="136" font-size="12">33비트 · 90kHz 눈금</text>
+  <rect class="chip" x="538" y="98" width="150" height="46" rx="6"/>
+  <text class="ink m" x="552" y="118" font-size="12.5" font-weight="600">…_extension</text>
+  <text class="muted" x="552" y="136" font-size="12">9비트 · 0~299 나머지</text>
+
+  <text class="ink m" x="330" y="172" font-size="13" xml:space="preserve"><tspan>PCR = base × 300 + extension</tspan><tspan class="muted" font-size="12"> (27MHz 로 복원)</tspan></text>
+  <text x="330" y="196" font-size="13" xml:space="preserve"><tspan class="ink">PTS · DTS 는 </tspan><tspan class="acc" font-weight="600">base 쪽 눈금만</tspan><tspan class="ink"> 쓴다 — 확장 9비트가 없다.</tspan></text>
+  <text class="muted" x="330" y="216" font-size="12.5">프레임 표시 시각에 37ns 해상도는 필요 없기 때문이다.</text>
+
+  <line class="rule" x1="44" y1="250" x2="836" y2="250" stroke-width="1"/>
+  <text x="44" y="274" font-size="13" xml:space="preserve"><tspan class="ink">300 을 고른 결과로 </tspan><tspan class="good" font-weight="600">90,000 은 24·25·30·50·60 fps 의 프레임 간격을 모두 정수 tick 으로 표현한다</tspan><tspan class="ink">.</tspan></text>
+  <text class="muted m" x="44" y="296" font-size="12.5">90000/24=3750   90000/25=3600   90000/30=3000   90000/50=1800   90000/60=1500</text>
+</svg>

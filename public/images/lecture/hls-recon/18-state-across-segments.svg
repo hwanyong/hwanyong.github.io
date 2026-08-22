@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 428" role="img"
+     aria-label="continuity counter 상태를 세그먼트 경계 너머로 이어 넘기면 세그먼트 하나가 통째로 유실된 것도 검출되지만, 세그먼트마다 상태를 새로 시작하면 경계를 넘은 유실은 전부 보이지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .cell  { fill:#eaeef2; stroke:#d8dee6 }
+    .cella { fill:#ddf4ff; stroke:#0969da }
+    .cellb { fill:#ffebe9; stroke:#cf222e }
+    .cellg { fill:#dafbe1; stroke:#1a7f37 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .accs  { stroke:#0969da }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    .mk    { fill:#656d76 }
+    .mka   { fill:#0969da }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .cell  { fill:#21262d; stroke:#30363d }
+      .cella { fill:#123a63; stroke:#4493f8 }
+      .cellb { fill:#4a1c1c; stroke:#f85149 }
+      .cellg { fill:#12331d; stroke:#3fb950 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .accs  { stroke:#4493f8 }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+      .mk    { fill:#8b949e }
+      .mka   { fill:#4493f8 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mka"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="396" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">카운터 상태를 세그먼트 경계 너머로 잇는가 — 같은 결손, 다른 결론</text>
+  <text class="acc" x="44" y="84" font-size="13" font-weight="600">① cli.py:438·465 — 같은 cc_state 를 매 호출에 넘긴다</text>
+  <rect class="cell" x="56" y="96" width="228" height="52" rx="6" stroke-width="1"/>
+  <text class="ink m" x="170" y="128" font-size="13" text-anchor="middle">seg000.ts  수신</text>
+  <rect class="cellb" x="316" y="96" width="228" height="52" rx="6" stroke-width="1" stroke-dasharray="5 4"/>
+  <text class="bad m" x="430" y="128" font-size="13" text-anchor="middle">seg001.ts  404 유실</text>
+  <rect class="cell" x="576" y="96" width="228" height="52" rx="6" stroke-width="1"/>
+  <text class="ink m" x="690" y="128" font-size="13" text-anchor="middle">seg002.ts  수신</text>
+  <rect class="cella" x="56" y="160" width="748" height="26" rx="6" stroke-width="1"/>
+  <text class="acc m" x="430" y="178" font-size="12" text-anchor="middle">cc_state = {PID: 직전 CC} — 같은 dict 가 세 호출을 관통한다</text>
+  <text class="good" x="44" y="216" font-size="13" font-weight="600">실측 CC 불연속 12건 — 경계를 넘은 유실까지 잡는다</text>
+  <line class="rule" x1="44" y1="240" x2="836" y2="240" stroke-width="1"/>
+  <text class="muted" x="44" y="272" font-size="13" font-weight="600">② analyze(data) — 세그먼트마다 상태를 새로 시작한다면</text>
+  <rect class="cell" x="56" y="284" width="228" height="52" rx="6" stroke-width="1"/>
+  <text class="ink m" x="170" y="316" font-size="13" text-anchor="middle">seg000.ts  수신</text>
+  <rect class="cellb" x="316" y="284" width="228" height="52" rx="6" stroke-width="1" stroke-dasharray="5 4"/>
+  <text class="bad m" x="430" y="316" font-size="13" text-anchor="middle">seg001.ts  404 유실</text>
+  <rect class="cell" x="576" y="284" width="228" height="52" rx="6" stroke-width="1"/>
+  <text class="ink m" x="690" y="316" font-size="13" text-anchor="middle">seg002.ts  수신</text>
+  <rect class="cell" x="56" y="348" width="228" height="26" rx="6" stroke-width="1"/>
+  <text class="muted m" x="170" y="366" font-size="12" text-anchor="middle">state = None (새 dict)</text>
+  <rect class="cell" x="316" y="348" width="228" height="26" rx="6" stroke-width="1"/>
+  <text class="muted m" x="430" y="366" font-size="12" text-anchor="middle">state = None (새 dict)</text>
+  <rect class="cell" x="576" y="348" width="228" height="26" rx="6" stroke-width="1"/>
+  <text class="muted m" x="690" y="366" font-size="12" text-anchor="middle">state = None (새 dict)</text>
+  <text class="bad" x="44" y="404" font-size="13" font-weight="600">실측 CC 불연속 2건 — seg002 내부 결손만. 경계 유실은 전부 미탐</text>
+</svg>

@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 388" role="img"
+     aria-label="정규화 시점과 검증 시점의 순서. 검증한 뒤에 정규화하면 검증을 통과한 문자열과 실제로 쓰이는 문자열이 달라져 우회가 성립한다. 정규화를 먼저 하고 검증하면 검증한 문자열이 곧 쓰이는 문자열이 된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .danger{ fill:#ffebe9; stroke:#ff8182 }
+    .safe  { fill:#dafbe1; stroke:#4ac26b }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .rule  { stroke:#d8dee6 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .danger{ fill:#3d1518; stroke:#f85149 }
+      .safe  { fill:#0f2f1a; stroke:#3fb950 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .rule  { stroke:#30363d }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="356" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">같은 두 단계, 순서만 다르다 — 그리고 그 순서가 취약점을 만든다</text>
+
+  <text class="bad" x="44" y="78" font-size="12" font-weight="600">검증 → 정규화</text>
+
+  <rect class="box" x="44" y="90" width="168" height="58" rx="8" stroke-width="1"/>
+  <text class="muted" x="58" y="112" font-size="11.5">입력</text>
+  <text class="ink m" x="58" y="134" font-size="13">．．／etc</text>
+
+  <line x1="218" y1="119" x2="246" y2="119" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="252" y="90" width="168" height="58" rx="8" stroke-width="1"/>
+  <text class="muted" x="266" y="112" font-size="11.5">검증</text>
+  <text x="266" y="134" font-size="12.5" xml:space="preserve"><tspan class="m ink">../</tspan><tspan class="muted"> 없음 → </tspan><tspan class="bad" font-weight="600">통과</tspan></text>
+
+  <line x1="426" y1="119" x2="454" y2="119" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="460" y="90" width="168" height="58" rx="8" stroke-width="1"/>
+  <text class="muted" x="474" y="112" font-size="11.5">정규화</text>
+  <text class="ink m" x="474" y="134" font-size="13">NFKC</text>
+
+  <line x1="634" y1="119" x2="662" y2="119" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="danger" x="668" y="90" width="168" height="58" rx="8" stroke-width="1.5"/>
+  <text class="muted" x="682" y="112" font-size="11.5">사용</text>
+  <text class="bad m" x="682" y="134" font-size="13" font-weight="600">../etc</text>
+
+  <text x="44" y="172" font-size="12.5" xml:space="preserve"><tspan class="muted">검증을 통과한 문자열과 실제로 쓰이는 문자열이 </tspan><tspan class="bad" font-weight="600">다르다</tspan><tspan class="muted">. 검증기는 자기가 무엇을 통과시켰는지 알 수 없다.</tspan></text>
+
+  <line class="rule" x1="44" y1="192" x2="836" y2="192" stroke-width="1"/>
+
+  <text class="good" x="44" y="216" font-size="12" font-weight="600">정규화 → 검증</text>
+
+  <rect class="box" x="44" y="228" width="168" height="58" rx="8" stroke-width="1"/>
+  <text class="muted" x="58" y="250" font-size="11.5">입력</text>
+  <text class="ink m" x="58" y="272" font-size="13">．．／etc</text>
+
+  <line x1="218" y1="257" x2="246" y2="257" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="252" y="228" width="168" height="58" rx="8" stroke-width="1"/>
+  <text class="muted" x="266" y="250" font-size="11.5">정규화</text>
+  <text class="ink m" x="266" y="272" font-size="13">NFKC</text>
+
+  <line x1="426" y1="257" x2="454" y2="257" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="safe" x="460" y="228" width="168" height="58" rx="8" stroke-width="1.5"/>
+  <text class="muted" x="474" y="250" font-size="11.5">검증</text>
+  <text x="474" y="272" font-size="12.5" xml:space="preserve"><tspan class="m ink">../</tspan><tspan class="muted"> 있음 → </tspan><tspan class="good" font-weight="600">거부</tspan></text>
+
+  <line x1="634" y1="257" x2="662" y2="257" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="668" y="228" width="168" height="58" rx="8" stroke-width="1"/>
+  <text class="muted" x="682" y="250" font-size="11.5">사용</text>
+  <text class="muted" x="682" y="272" font-size="12.5">도달하지 않는다</text>
+
+  <text x="44" y="310" font-size="12.5" xml:space="preserve"><tspan class="muted">검증한 문자열이 곧 쓰이는 문자열이다. 이후 어떤 단계도 문자열을 </tspan><tspan class="good" font-weight="600">더 바꾸지 않는다</tspan><tspan class="muted">.</tspan></text>
+
+  <line class="rule" x1="44" y1="330" x2="836" y2="330" stroke-width="1"/>
+  <text x="44" y="354" font-size="13" xml:space="preserve"><tspan class="ink">제7장의 URL 정규화와 </tspan><tspan class="acc" font-weight="600">같은 구조</tspan><tspan class="ink">다 — 변환은 경계에서 한 번, 그리고 검증보다 먼저.</tspan></text>
+</svg>

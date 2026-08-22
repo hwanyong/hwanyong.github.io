@@ -8,11 +8,17 @@
 import { render } from 'astro:content';
 import RevisionPage from '../../../../components/RevisionPage.astro';
 import VideoFacade from '../../../../components/VideoFacade.astro';
-import { getSeriesHistories, revisionAlternates, versionSlug } from '../../../../lib/content';
+import {
+  getCompanionCourse,
+  getSeriesHistories,
+  revisionAlternates,
+  versionSlug,
+} from '../../../../lib/content';
 import type { ProjectEntry } from '../../../../lib/content';
 import { langParam, sectionHref, sectionLabel } from '../../../../lib/routes';
 import { DEFAULT_LOCALE } from '../../../../lib/i18n';
 import type { Alternate, Locale } from '../../../../lib/i18n';
+import { UI } from '../../../../lib/ui';
 
 export const getStaticPaths = async () => {
   const histories = await getSeriesHistories('project');
@@ -58,6 +64,11 @@ const entry = revisions[index]!;
 const { Content, headings } = await render(entry);
 
 const { stack, links, thumbnail, video } = entry.data;
+const t = UI[locale];
+
+// 이 프로젝트에서 파생된 강의(있으면). 연결은 강의 표지의 project 필드가 SSOT 이고,
+// 여기서 그것을 되짚어 "딸림 강의 →" 를 낸다 — 프로젝트 쪽엔 아무것도 적지 않는다.
+const companion = await getCompanionCourse(locale, path);
 
 // 링크는 스키마 순서가 아니라 여기 정한 순서로 나온다.
 // 라벨을 마크업에 흩뿌리지 않으려고 한 표로 모아 둔다.
@@ -85,7 +96,7 @@ const linkRow = LINK_LABELS.flatMap(([key, label]) => {
   upHref={sectionHref(locale, 'project')}
   upLabel={sectionLabel('project')}
 >
-  {(stack.length > 0 || linkRow.length > 0) && (
+  {(stack.length > 0 || linkRow.length > 0 || companion) && (
     <dl class="fact" slot="lead">
       {stack.length > 0 && (
         <div class="fact__row">
@@ -100,6 +111,15 @@ const linkRow = LINK_LABELS.flatMap(([key, label]) => {
             {linkRow.map(({ href, label }) => (
               <a href={href} rel="noopener noreferrer" target="_blank">{label}</a>
             ))}
+          </dd>
+        </div>
+      )}
+      {/* 딸림 강의는 같은 사이트 안이라 새 탭으로 열지 않는다(외부 링크와 구분). */}
+      {companion && (
+        <div class="fact__row">
+          <dt>{t.companionCourse}</dt>
+          <dd class="fact__links">
+            <a href={companion.href}>{companion.title} →</a>
           </dd>
         </div>
       )}

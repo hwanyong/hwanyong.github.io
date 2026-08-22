@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 462" role="img"
+     aria-label="한 번의 세그먼트 요청에서 성공을 말하는 네 층위. 연결 성립, HTTP 200, Content-Type 선언, 페이로드 선두 바이트가 각각 다른 명제이며 앞 층의 참이 뒤 층의 참을 함의하지 않는다. 200 하나로 마지막 층을 단정하는 도약이 의미론적 붕괴다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .knock { fill:#ffffff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .link  { stroke:#656d76 }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    .chip  { fill:#eaeef2 }
+    .chipa { fill:#ddf4ff }
+    .mkb   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .knock { fill:#0d1117 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .link  { stroke:#8b949e }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+      .chip  { fill:#21262d }
+      .chipa { fill:#123a63 }
+      .mkb   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mkb"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="430" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">각 층이 참이라고 말하는 명제는 서로 다르다 — 앞 층의 참은 뒤 층의 참을 함의하지 않는다</text>
+
+  <line class="link" x1="92" y1="130" x2="92" y2="164" stroke-width="1"/>
+  <line class="link" x1="92" y1="218" x2="92" y2="252" stroke-width="1"/>
+  <line class="link" x1="92" y1="306" x2="92" y2="340" stroke-width="1"/>
+
+  <rect class="panel" x="64" y="76" width="440" height="54" rx="8"/>
+  <circle class="chip" cx="92" cy="103" r="13"/>
+  <text class="muted" x="92" y="108" font-size="13" text-anchor="middle" font-weight="600">1</text>
+  <text class="ink" x="118" y="98" font-size="13.5" font-weight="600">TCP · TLS 연결 성립</text>
+  <text class="muted" x="118" y="118" font-size="12.5">바이트가 오갔다</text>
+  <text class="muted" x="520" y="108" font-size="12.5">전송 계층이 말한다</text>
+
+  <circle class="knock" cx="92" cy="147" r="9"/>
+  <line class="bads" x1="86" y1="141" x2="98" y2="153" stroke-width="1.6"/>
+  <line class="bads" x1="98" y1="141" x2="86" y2="153" stroke-width="1.6"/>
+  <text class="muted" x="136" y="152" font-size="12.5">연결이 성립했다고 요청이 처리된 것은 아니다</text>
+
+  <rect class="panel" x="64" y="164" width="440" height="54" rx="8"/>
+  <circle class="chip" cx="92" cy="191" r="13"/>
+  <text class="muted" x="92" y="196" font-size="13" text-anchor="middle" font-weight="600">2</text>
+  <text class="ink m" x="118" y="186" font-size="13" font-weight="600">HTTP/1.1 200 OK</text>
+  <text class="muted" x="118" y="206" font-size="12.5">서버가 요청을 처리했다</text>
+  <text class="muted" x="520" y="196" font-size="12.5">서버가 말한다 — 강제 수단이 없다</text>
+
+  <circle class="knock" cx="92" cy="235" r="9"/>
+  <line class="bads" x1="86" y1="229" x2="98" y2="241" stroke-width="1.6"/>
+  <line class="bads" x1="98" y1="229" x2="86" y2="241" stroke-width="1.6"/>
+  <text class="muted" x="136" y="240" font-size="12.5">요청이 처리됐다고 본문이 요청한 그것인 것은 아니다</text>
+
+  <rect class="panel" x="64" y="252" width="440" height="54" rx="8"/>
+  <circle class="chip" cx="92" cy="279" r="13"/>
+  <text class="muted" x="92" y="284" font-size="13" text-anchor="middle" font-weight="600">3</text>
+  <text class="ink m" x="118" y="274" font-size="13" font-weight="600">Content-Type: video/mp2t</text>
+  <text class="muted" x="118" y="294" font-size="12.5">본문은 이 미디어 타입이다</text>
+  <text class="muted" x="520" y="284" font-size="12.5">서버가 말한다 — 강제 수단이 없다</text>
+
+  <circle class="knock" cx="92" cy="323" r="9"/>
+  <line class="bads" x1="86" y1="317" x2="98" y2="329" stroke-width="1.6"/>
+  <line class="bads" x1="98" y1="317" x2="86" y2="329" stroke-width="1.6"/>
+  <text class="muted" x="136" y="328" font-size="12.5">타입을 선언했다고 본문이 그 타입인 것은 아니다</text>
+
+  <rect class="panel" x="64" y="340" width="440" height="54" rx="8"/>
+  <circle class="chipa" cx="92" cy="367" r="13"/>
+  <text class="acc" x="92" y="372" font-size="13" text-anchor="middle" font-weight="600">4</text>
+  <text class="acc m" x="118" y="362" font-size="13" font-weight="600">47 40 11 10</text>
+  <text class="ink" x="118" y="382" font-size="12.5">본문은 실제로 MPEG-TS 다</text>
+  <text class="muted" x="520" y="372" font-size="12.5">데이터 자신이 말한다 — 위조하면 재생이 깨진다</text>
+
+  <path class="bads" d="M64,191 H40 V367 H58" fill="none" stroke-width="1.8" marker-end="url(#ab)"/>
+
+  <line class="rule" x1="44" y1="406" x2="836" y2="406" stroke-width="1"/>
+  <line class="bads" x1="44" y1="426" x2="76" y2="426" stroke-width="1.8"/>
+  <text x="86" y="430" font-size="13" xml:space="preserve"><tspan class="bad" font-weight="600">붉은 경로</tspan><tspan class="ink"> — ② 하나를 근거로 ④ 를 단정하는 도약. 두 고리를 건너뛰었고, 그 도약에는 근거가 없다.</tspan></text>
+</svg>

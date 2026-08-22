@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 448" role="img"
+     aria-label="HLS AES-128 과 DRM 일반 구조의 신뢰 가정 비교. AES-128 에서는 서버만 신뢰 영역이고 애플리케이션·복호화·출력은 모두 신뢰하지 않는 영역인 반면, DRM 에서는 라이선스 서버와 신뢰 실행 환경과 출력 보호가 신뢰 영역이고 애플리케이션만 신뢰하지 않는 영역이다.">
+  <style>
+    .bg      { fill:#ffffff; stroke:#d8dee6 }
+    .trust   { fill:#ddf4ff; stroke:#54aeff }
+    .untrust { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink     { fill:#1f2328 }
+    .muted   { fill:#656d76 }
+    .arw     { stroke:#8c959f }
+    .mk      { fill:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg      { fill:#0d1117; stroke:#30363d }
+      .trust   { fill:#0c2d6b; stroke:#4493f8 }
+      .untrust { fill:#161b22; stroke:#30363d }
+      .ink     { fill:#e6edf3 }
+      .muted   { fill:#8b949e }
+      .arw     { stroke:#6e7681 }
+      .mk      { fill:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="420" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="42" font-size="15" font-weight="600">달라지는 것은 암호가 아니라 신뢰 가정의 위치다</text>
+
+  <rect class="trust" x="48" y="53" width="13" height="13" rx="3" stroke-width="1"/>
+  <text class="muted" x="68" y="65" font-size="11.5">사업자가 무결성을 가정하는 영역</text>
+  <rect class="untrust" x="278" y="53" width="13" height="13" rx="3" stroke-width="1"/>
+  <text class="muted" x="298" y="65" font-size="11.5">가정하지 않는 영역</text>
+
+  <text class="ink" x="236" y="92" font-size="13.5" text-anchor="middle" font-weight="600" xml:space="preserve"><tspan>HLS AES-128 </tspan><tspan class="m" font-size="12">(KEYFORMAT=identity)</tspan></text>
+  <text class="ink" x="644" y="92" font-size="13.5" text-anchor="middle" font-weight="600">DRM 일반 구조</text>
+
+  <rect class="trust" x="48" y="104" width="376" height="48" rx="6" stroke-width="1.2"/>
+  <text class="ink" x="68" y="125" font-size="12.5" font-weight="600">송출·키 서버</text>
+  <text class="muted" x="68" y="143" font-size="11.5">키 URI 가 평문 16바이트를 반환한다</text>
+
+  <line x1="120" y1="156" x2="120" y2="178" class="arw" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text class="muted" x="136" y="172" font-size="11.5">평문 16바이트 키</text>
+
+  <rect class="untrust" x="48" y="182" width="376" height="48" rx="6" stroke-width="1"/>
+  <text class="ink" x="68" y="203" font-size="12.5" font-weight="600">애플리케이션 (프로세스 메모리)</text>
+  <text class="muted" x="68" y="221" font-size="11.5">키 바이트가 그대로 보인다</text>
+
+  <line x1="120" y1="234" x2="120" y2="256" class="arw" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text class="muted" x="136" y="250" font-size="11.5">키 · 암호문</text>
+
+  <rect class="untrust" x="48" y="260" width="376" height="48" rx="6" stroke-width="1"/>
+  <text class="ink" x="68" y="281" font-size="12.5" font-weight="600">범용 CPU 에서 복호화</text>
+  <text class="muted" x="68" y="299" font-size="11.5">평문 세그먼트가 메모리에 존재한다</text>
+
+  <line x1="120" y1="312" x2="120" y2="334" class="arw" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text class="muted" x="136" y="328" font-size="11.5">평문 프레임</text>
+
+  <rect class="untrust" x="48" y="338" width="376" height="48" rx="6" stroke-width="1"/>
+  <text class="ink" x="68" y="359" font-size="12.5" font-weight="600">출력</text>
+  <text class="muted" x="68" y="377" font-size="11.5">복호화 이후 경로에 통제가 없다</text>
+
+  <text class="muted" x="48" y="408" font-size="12">신뢰 가정: 서버가 요청자를 인증할 수 있다는 것뿐</text>
+
+  <rect class="trust" x="456" y="104" width="376" height="48" rx="6" stroke-width="1.2"/>
+  <text class="ink" x="476" y="125" font-size="12.5" font-weight="600">라이선스 서버</text>
+  <text class="muted" x="476" y="143" font-size="11.5">요청마다 정책을 판단해 라이선스를 발급한다</text>
+
+  <line x1="528" y1="156" x2="528" y2="178" class="arw" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text class="muted" x="544" y="172" font-size="11.5">기기 전용 라이선스</text>
+
+  <rect class="untrust" x="456" y="182" width="376" height="48" rx="6" stroke-width="1"/>
+  <text class="ink" x="476" y="203" font-size="12.5" font-weight="600">애플리케이션</text>
+  <text class="muted" x="476" y="221" font-size="11.5">전달만 한다 — 키를 보지 못한다</text>
+
+  <line x1="528" y1="234" x2="528" y2="256" class="arw" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text class="muted" x="544" y="250" font-size="11.5">그대로 전달</text>
+
+  <rect class="trust" x="456" y="260" width="376" height="48" rx="6" stroke-width="1.2"/>
+  <text class="ink" x="476" y="281" font-size="12.5" font-weight="600">신뢰 실행 환경(TEE)</text>
+  <text class="muted" x="476" y="299" font-size="11.5">복호화가 이 안에서 일어난다</text>
+
+  <line x1="528" y1="312" x2="528" y2="334" class="arw" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text class="muted" x="544" y="328" font-size="11.5">보호된 경로</text>
+
+  <rect class="trust" x="456" y="338" width="376" height="48" rx="6" stroke-width="1.2"/>
+  <text class="ink" x="476" y="359" font-size="12.5" font-weight="600">출력 보호</text>
+  <text class="muted" x="476" y="377" font-size="11.5">복호화 이후까지 규칙이 이어진다</text>
+
+  <text class="muted" x="456" y="408" font-size="12">신뢰 가정: 기기 하드웨어의 무결성</text>
+</svg>

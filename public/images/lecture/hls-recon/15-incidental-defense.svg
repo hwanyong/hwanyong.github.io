@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 348" role="img"
+     aria-label="우연한 방어. allowed_extensions 를 ALL 로 두든 열거로 좁히든 둘 다 둘째 층을 통과하고 셋째 층인 포맷-확장자 일치 검사에서 거부되므로, 둘째 층을 좁힌 효과가 관측되지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .danger{ fill:#ffebe9; stroke:#ff8182 }
+    .neut  { fill:#eaeef2 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .danger{ fill:#3d1518; stroke:#f85149 }
+      .neut  { fill:#21262d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="320" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">우연한 방어 — ②는 ③에 가려져 있다</text>
+
+  <rect class="neut" x="320" y="56" width="240" height="34" rx="6"/>
+  <text x="440" y="78" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="ink m" font-weight="600">.avi</tspan><tspan class="ink"> 확장자 + MPEG-TS 내용</tspan></text>
+
+  <path d="M400,92 L400,104 Q400,112 390,112 L250,112 Q240,112 240,120 L240,132" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <path d="M480,92 L480,104 Q480,112 490,112 L630,112 Q640,112 640,120 L640,132" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="60" y="136" width="360" height="52" rx="8" stroke-width="1"/>
+  <text class="muted" x="240" y="156" font-size="11.5" text-anchor="middle">변경 전</text>
+  <text x="240" y="176" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="ink m">② allowed_extensions = ALL</tspan><tspan class="good" font-weight="600">  → 통과</tspan></text>
+
+  <rect class="box" x="460" y="136" width="360" height="52" rx="8" stroke-width="1"/>
+  <text class="muted" x="640" y="156" font-size="11.5" text-anchor="middle">변경 후</text>
+  <text x="640" y="176" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="ink m">② 열거 목록</tspan><tspan class="good" font-weight="600">  → 통과</tspan></text>
+
+  <path d="M240,190 L240,208 Q240,216 250,216 L390,216 Q400,216 400,224 L400,236" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <path d="M640,190 L640,208 Q640,216 630,216 L490,216 Q480,216 480,224 L480,236" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="danger" x="200" y="240" width="480" height="48" rx="8" stroke-width="1.5"/>
+  <text class="ink" x="440" y="262" font-size="12.5" text-anchor="middle" font-weight="600">③ 포맷–확장자 일치 검사</text>
+  <text class="bad" x="440" y="280" font-size="12.5" text-anchor="middle" font-weight="600">양쪽 모두 거부 — 관측 가능한 차이가 없다</text>
+
+  <text class="warn" x="44" y="314" font-size="12.5" xml:space="preserve"><tspan font-weight="600">측정하지 않은 보안 개선은 개선이라 부를 수 없다.</tspan><tspan class="muted"> 측정하지 않았다면 이 변경은 "공격면을 줄였다"로 기록됐을 것이다 — 참인 근거가 없는 문장으로.</tspan></text>
+</svg>

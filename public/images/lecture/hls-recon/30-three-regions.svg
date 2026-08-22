@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 372" role="img"
+     aria-label="위임이 넘겨주는 세 가지. 능력은 세그먼트 병합과 타임스탬프 정규화처럼 규격대로 이미 구현된 것이고, 제약은 확장자 허용 정책과 옵션 스키마처럼 이쪽이 정하지 않은 규칙이며, 침묵은 X-TIMESTAMP-MAP 정렬과 전송 계측처럼 하지도 않고 하지 않는다고 말하지도 않는 영역이다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    .pillG { fill:#dafbe1 }
+    .pillW { fill:#fff8c5 }
+    .pillB { fill:#ffebe9 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+      .pillG { fill:#12341f }
+      .pillW { fill:#3a2d04 }
+      .pillB { fill:#3d1518 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="336" rx="10" stroke-width="1"/>
+  <text x="48" y="46" font-size="15" font-weight="600" xml:space="preserve"><tspan class="ink">컨테이너 작업을 </tspan><tspan class="ink m">ffmpeg</tspan><tspan class="ink"> 에 위임하면 함께 넘어오는 세 가지</tspan></text>
+
+  <rect class="box" x="48" y="68" width="783" height="70" rx="8" stroke-width="1"/>
+  <rect class="pillG" x="64" y="86" width="92" height="34" rx="8"/>
+  <text class="good" x="110" y="108" font-size="13" text-anchor="middle" font-weight="600">능력</text>
+  <text class="ink" x="176" y="100" font-size="13" font-weight="600">세그먼트 병합 · 타임스탬프 정규화 · 컨테이너 변환 · 자막 조각 이어붙이기</text>
+  <text class="muted" x="176" y="122" font-size="11.5">규격대로 이미 구현돼 있다 — 다시 만들 이유가 없다. 이것을 얻으려고 위임한다</text>
+
+  <rect class="box" x="48" y="150" width="783" height="70" rx="8" stroke-width="1"/>
+  <rect class="pillW" x="64" y="168" width="92" height="34" rx="8"/>
+  <text class="warn" x="110" y="190" font-size="13" text-anchor="middle" font-weight="600">제약</text>
+  <text class="ink" x="176" y="182" font-size="13" font-weight="600">확장자 허용 정책 · 옵션 스키마 · 버전별 동작</text>
+  <text class="muted" x="176" y="204" font-size="11.5">이쪽이 정하지 않은 규칙이 결과를 좌우한다 — 상류가 바꾸면 이쪽 동작이 바뀐다</text>
+
+  <rect class="box" x="48" y="232" width="783" height="70" rx="8" stroke-width="1"/>
+  <rect class="pillB" x="64" y="250" width="92" height="34" rx="8"/>
+  <text class="bad" x="110" y="272" font-size="13" text-anchor="middle" font-weight="600">침묵</text>
+  <text x="176" y="264" font-size="13" font-weight="600" xml:space="preserve"><tspan class="ink m">X-TIMESTAMP-MAP</tspan><tspan class="ink"> 정렬 · 경계 중복 큐 · 조각 헤더 · 전송 계측</tspan></text>
+  <text class="muted" x="176" y="286" font-size="11.5">하지 않으면서, 하지 않는다고 말하지도 않는다 — 오류로 나타나지 않는다</text>
+
+  <text x="48" y="330" font-size="12.5" xml:space="preserve"><tspan class="ink" font-weight="600">능력만 보고 위임하면</tspan><tspan class="muted"> 제약은 재현하기 어려운 실패로 오고, 침묵은 영원히 오지 않는다.</tspan></text>
+</svg>

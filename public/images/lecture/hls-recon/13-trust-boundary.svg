@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 432" role="img"
+     aria-label="같은 원격 스크립트를 두 방식으로 다룰 때의 차이. 파싱만 하면 상대가 얻는 능력은 문자열 치환뿐이고 최악의 결과는 빈 문자열이다. eval 로 실행하면 상대 서버가 이 프로세스의 실행 권한을 얻고 최악의 결과는 임의 코드 실행이다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .safe  { fill:#e6f4ea; stroke:#4ac26b }
+    .danger{ fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .ok    { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .safe  { fill:#12291c; stroke:#3fb950 }
+      .danger{ fill:#3d1518; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .ok    { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="404" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">같은 바이트열, 두 개의 경계 — 데이터로 두는가 코드로 올리는가</text>
+
+  <rect class="box" x="270" y="58" width="340" height="54" rx="8" stroke-width="1"/>
+  <text class="ink" x="440" y="80" font-size="13" text-anchor="middle">원격 서버가 보낸 스크립트 텍스트</text>
+  <text class="muted" x="440" y="99" font-size="11.5" text-anchor="middle">신뢰할 수 없는 입력 — 내용은 상대가 정한다</text>
+
+  <path d="M360,114 L360,128 Q360,136 350,136 L250,136 Q240,136 240,144 L240,156" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <path d="M520,114 L520,128 Q520,136 530,136 L630,136 Q640,136 640,144 L640,156" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="60" y="160" width="360" height="46" rx="8" stroke-width="1"/>
+  <text class="ok" x="240" y="180" font-size="13" text-anchor="middle" font-weight="600">① 파싱한다</text>
+  <text class="muted m" x="240" y="198" font-size="11.5" text-anchor="middle">re.sub + 사전 표 조회</text>
+
+  <rect class="box" x="460" y="160" width="360" height="46" rx="8" stroke-width="1"/>
+  <text class="bad" x="640" y="180" font-size="13" text-anchor="middle" font-weight="600">② 실행한다</text>
+  <text class="muted m" x="640" y="198" font-size="11.5" text-anchor="middle">eval · JS 엔진에 위임</text>
+
+  <line x1="240" y1="208" x2="240" y2="226" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="640" y1="208" x2="640" y2="226" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="safe" x="60" y="230" width="360" height="62" rx="8" stroke-width="1.5"/>
+  <text class="muted" x="240" y="252" font-size="11.5" text-anchor="middle">상대가 이 프로세스에서 얻는 능력</text>
+  <text class="ok" x="240" y="275" font-size="13.5" text-anchor="middle" font-weight="600">문자열 치환. 그 이상은 없다</text>
+
+  <rect class="danger" x="460" y="230" width="360" height="62" rx="8" stroke-width="1.5"/>
+  <text class="muted" x="640" y="252" font-size="11.5" text-anchor="middle">상대가 이 프로세스에서 얻는 능력</text>
+  <text class="bad" x="640" y="275" font-size="13.5" text-anchor="middle" font-weight="600">이 프로세스가 가진 전부</text>
+
+  <line x1="240" y1="294" x2="240" y2="312" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <line x1="640" y1="294" x2="640" y2="312" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="box" x="60" y="316" width="360" height="56" rx="8" stroke-width="1"/>
+  <text class="muted" x="240" y="337" font-size="11.5" text-anchor="middle">최악의 경우 무엇이 일어나는가</text>
+  <text class="ink" x="240" y="358" font-size="12.5" text-anchor="middle">빈 문자열 → 목록 제목으로 물러선다</text>
+
+  <rect class="box" x="460" y="316" width="360" height="56" rx="8" stroke-width="1"/>
+  <text class="muted" x="640" y="337" font-size="11.5" text-anchor="middle">최악의 경우 무엇이 일어나는가</text>
+  <text class="ink" x="640" y="358" font-size="12.5" text-anchor="middle">파일 · 자격증명 · 네트워크에 도달</text>
+
+  <text x="440" y="396" font-size="12.5" text-anchor="middle" xml:space="preserve"><tspan class="muted">신뢰 경계는 코드의 출처가 아니라 </tspan><tspan class="acc" font-weight="600">그 코드가 얻는 능력</tspan><tspan class="muted">으로 긋는다</tspan></text>
+</svg>

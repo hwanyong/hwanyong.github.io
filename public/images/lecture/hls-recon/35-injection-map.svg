@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 468" role="img"
+     aria-label="8종의 결함 주입이 파이프라인의 서로 다른 여섯 층에 배치된 지도. 전송 결과 층에 세그먼트 404, 페이로드 정체 층에 세그먼트와 자막의 200 응답 HTML, 비트 수준 층에 TS 패킷 12개 제거, 동일성 층에 세그먼트 중복 송출, 시간축 층에 X-TIMESTAMP-MAP 60초 어긋남, 로컬 파일 상태 층에 잘린 MP4와 0바이트 파일 그리고 자막만 없는 회차가 놓인다. 각 층에는 실제로 관측된 장애가 대응한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#fff8c5; stroke:#d4a72c }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .num   { fill:#eaeef2 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#3b2300; stroke:#9e6a03 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .num   { fill:#21262d }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="14" width="840" height="440" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">8종은 한 층에 몰려 있지 않다 — 층마다 최소 하나</text>
+  <text class="muted" x="44" y="64" font-size="12">왼쪽은 무엇이 망가지는 층인가, 괄호는 실제로 관측된 대응 장애다. 오른쪽 노란 칩이 주입한 결함이다.</text>
+
+  <rect class="box" x="44" y="78" width="792" height="56" rx="8" stroke-width="1"/>
+  <circle class="num" cx="72" cy="106" r="14"/>
+  <text class="muted" x="72" y="111" font-size="12" text-anchor="middle" font-weight="600">1</text>
+  <text class="ink" x="98" y="102" font-size="13" font-weight="600">전송 결과</text>
+  <text class="muted" x="98" y="121" font-size="11.5">HTTP 가 조각을 주지 않는다 (토큰 만료 · 핫링크 차단 · 오리진 장애)</text>
+  <rect class="chip" x="600" y="94" width="180" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="690" y="112" font-size="12" text-anchor="middle" font-weight="600">3 세그먼트 404</text>
+
+  <rect class="box" x="44" y="140" width="792" height="56" rx="8" stroke-width="1"/>
+  <circle class="num" cx="72" cy="168" r="14"/>
+  <text class="muted" x="72" y="173" font-size="12" text-anchor="middle" font-weight="600">2</text>
+  <text class="ink" x="98" y="164" font-size="13" font-weight="600">페이로드 정체</text>
+  <text class="muted" x="98" y="183" font-size="11.5">200 인데 내용이 미디어가 아니다 (만료 토큰에 실려 오는 오류 페이지)</text>
+  <rect class="chip" x="560" y="156" width="122" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="621" y="174" font-size="12" text-anchor="middle" font-weight="600">4 세그먼트</text>
+  <rect class="chip" x="690" y="156" width="90" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="735" y="174" font-size="12" text-anchor="middle" font-weight="600">6 자막</text>
+
+  <rect class="box" x="44" y="202" width="792" height="56" rx="8" stroke-width="1"/>
+  <circle class="num" cx="72" cy="230" r="14"/>
+  <text class="muted" x="72" y="235" font-size="12" text-anchor="middle" font-weight="600">3</text>
+  <text class="ink" x="98" y="226" font-size="13" font-weight="600">비트 수준</text>
+  <text class="muted" x="98" y="245" font-size="11.5">조각은 왔는데 안이 비었다 (전송 중 패킷 유실 · CDN 원본 손상)</text>
+  <rect class="chip" x="560" y="218" width="220" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="670" y="236" font-size="12" text-anchor="middle" font-weight="600">1 TS 패킷 12개 제거</text>
+
+  <rect class="box" x="44" y="264" width="792" height="56" rx="8" stroke-width="1"/>
+  <circle class="num" cx="72" cy="292" r="14"/>
+  <text class="muted" x="72" y="297" font-size="12" text-anchor="middle" font-weight="600">4</text>
+  <text class="ink" x="98" y="288" font-size="13" font-weight="600">조각의 동일성</text>
+  <text class="muted" x="98" y="307" font-size="11.5">다른 조각이어야 할 것이 같다 (오리진 오설정으로 같은 조각 반복 송출)</text>
+  <rect class="chip" x="560" y="280" width="220" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="670" y="298" font-size="12" text-anchor="middle" font-weight="600">2 세그먼트 중복 송출</text>
+
+  <rect class="box" x="44" y="326" width="792" height="56" rx="8" stroke-width="1"/>
+  <circle class="num" cx="72" cy="354" r="14"/>
+  <text class="muted" x="72" y="359" font-size="12" text-anchor="middle" font-weight="600">5</text>
+  <text class="ink" x="98" y="350" font-size="13" font-weight="600">시간축의 대응</text>
+  <text class="muted" x="98" y="369" font-size="11.5">조각은 다 맞는데 시각이 어긋난다 (자막 패키징 시 기준 클럭 오설정)</text>
+  <rect class="chip" x="560" y="342" width="220" height="26" rx="6" stroke-width="1"/>
+  <text class="warn m" x="670" y="360" font-size="11.5" text-anchor="middle" font-weight="600">5 X-TIMESTAMP-MAP +60s</text>
+
+  <rect class="box" x="44" y="388" width="792" height="56" rx="8" stroke-width="1"/>
+  <circle class="num" cx="72" cy="416" r="14"/>
+  <text class="muted" x="72" y="421" font-size="12" text-anchor="middle" font-weight="600">6</text>
+  <text class="ink" x="98" y="412" font-size="13" font-weight="600">로컬 파일 상태</text>
+  <text class="muted" x="98" y="431" font-size="11.5">다음 실행이 보게 될 디스크 (먹싱 도중 중단 · 자막만 빠진 회차)</text>
+  <rect class="chip" x="500" y="404" width="182" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="591" y="422" font-size="12" text-anchor="middle" font-weight="600">7 잘림 · 0바이트</text>
+  <rect class="chip" x="690" y="404" width="90" height="26" rx="6" stroke-width="1"/>
+  <text class="warn" x="735" y="422" font-size="12" text-anchor="middle" font-weight="600">8 자막 결손</text>
+</svg>

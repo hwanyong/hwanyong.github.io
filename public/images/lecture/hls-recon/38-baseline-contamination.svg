@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 380" role="img"
+     aria-label="기준선 오염. 영상은 0에서 30초, 밀린 자막은 60에서 89초라는 같은 계측치를 두고, 기준선을 플레이리스트 선언 길이 30초로 잡으면 자막 끝 89초가 35초를 넘어 FAIL 로 검출되지만, 기준선을 컨테이너 실측 duration 으로 잡으면 그 값이 max(30, 89) = 89초가 되어 89 > 94 가 거짓이 되므로 PASS 가 된다. 자막이 밀린 만큼 기준선도 같이 밀리기 때문에 부등호는 결코 참이 되지 않는다.">
+  <style>
+    .bg     { fill:#ffffff; stroke:#d8dee6 }
+    .box    { fill:#f6f8fa; stroke:#d8dee6 }
+    .boxbad { fill:#ffebe9; stroke:#ff8182 }
+    .barv   { fill:#ddf4ff; stroke:#54aeff }
+    .bars   { fill:#fff8c5; stroke:#d4a72c }
+    .ink    { fill:#1f2328 }
+    .muted  { fill:#656d76 }
+    .acc    { fill:#0969da }
+    .warn   { fill:#9a6700 }
+    .bad    { fill:#cf222e }
+    .good   { fill:#1a7f37 }
+    .rule   { stroke:#d8dee6 }
+    .dashA  { stroke:#0969da }
+    .dashB  { stroke:#cf222e }
+    .mk     { fill:#8c959f }
+    .mkbad  { fill:#cf222e }
+    .arw    { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg     { fill:#0d1117; stroke:#30363d }
+      .box    { fill:#161b22; stroke:#30363d }
+      .boxbad { fill:#3c1618; stroke:#f85149 }
+      .barv   { fill:#0c2d6b; stroke:#4493f8 }
+      .bars   { fill:#3b2300; stroke:#d29922 }
+      .ink    { fill:#e6edf3 }
+      .muted  { fill:#8b949e }
+      .acc    { fill:#4493f8 }
+      .warn   { fill:#d29922 }
+      .bad    { fill:#f85149 }
+      .good   { fill:#3fb950 }
+      .rule   { stroke:#30363d }
+      .dashA  { stroke:#4493f8 }
+      .dashB  { stroke:#f85149 }
+      .mk     { fill:#6e7681 }
+      .mkbad  { fill:#f85149 }
+      .arw    { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="a38a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="a38b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mkbad"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="352" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">같은 계측치에 기준선만 바꾸면 판정이 뒤집힌다</text>
+
+  <text class="muted" x="44" y="74" font-size="11.5">① 계측 — 두 경우에 동일하다</text>
+
+  <rect class="barv" x="60" y="86" width="234" height="20" rx="4" stroke-width="1"/>
+  <text class="ink" x="302" y="101" font-size="12">영상 0.0 ~ 30.0s</text>
+
+  <rect class="bars" x="527" y="114" width="226" height="20" rx="4" stroke-width="1"/>
+  <text class="ink" x="519" y="129" font-size="12" text-anchor="end">밀린 자막 60.0 ~ 89.0s</text>
+
+  <path d="M60,148 H800" class="rule" fill="none" stroke-width="1"/>
+  <text class="muted" x="60" y="164" font-size="11" text-anchor="middle">0s</text>
+  <text class="muted" x="294" y="164" font-size="11" text-anchor="middle">30s</text>
+  <text class="muted" x="527" y="164" font-size="11" text-anchor="middle">60s</text>
+  <text class="muted" x="753" y="164" font-size="11" text-anchor="middle">89s</text>
+
+  <path d="M294,80 V198" class="dashA" fill="none" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <path d="M753,108 V198" class="dashB" fill="none" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <text class="acc" x="286" y="186" font-size="11" text-anchor="end">기준선 A</text>
+  <text class="bad" x="745" y="186" font-size="11" text-anchor="end">기준선 B — 자막 끝이 곧 기준선</text>
+
+  <rect class="box" x="52" y="200" width="380" height="104" rx="8" stroke-width="1"/>
+  <text class="muted" x="70" y="226" font-size="11.5">② 기준선 A — 플레이리스트가 선언한 길이</text>
+  <text class="acc m" x="70" y="250" font-size="13">video_len = declared_duration = 30.00s</text>
+  <text class="ink m" x="70" y="272" font-size="13">89.0 &gt; 30.0 + 5.0  →  참</text>
+  <text x="70" y="294" font-size="13" xml:space="preserve"><tspan class="bad" font-weight="600">FAIL</tspan><tspan class="good"> — 결함을 잡는다</tspan></text>
+
+  <rect class="boxbad" x="448" y="200" width="380" height="104" rx="8" stroke-width="1.2"/>
+  <text class="muted" x="466" y="226" font-size="11.5">②′ 기준선 B — 산출물에서 잰 실측 duration</text>
+  <text class="bad m" x="466" y="250" font-size="13">video_len = max(30.0, 89.0) = 89.00s</text>
+  <text class="ink m" x="466" y="272" font-size="13">89.0 &gt; 89.0 + 5.0  →  거짓</text>
+  <text x="466" y="294" font-size="13" xml:space="preserve"><tspan class="good" font-weight="600">PASS</tspan><tspan class="bad"> — 결함이 있는데 침묵한다</tspan></text>
+
+  <path d="M660,140 C700,160 700,176 640,196" class="dashB" fill="none" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#a38b)"/>
+  <text class="bad" x="706" y="178" font-size="11">자막이 기준선을 끌고 간다</text>
+
+  <text x="44" y="330" font-size="12.5" xml:space="preserve"><tspan class="warn" font-weight="600">컨테이너 duration = max(영상 끝, 자막 끝)</tspan><tspan class="muted"> — 자막이 밀린 만큼 기준선 B 도 정확히 같은 양만큼 밀린다.</tspan></text>
+  <text x="44" y="352" font-size="12.5" xml:space="preserve"><tspan class="muted">결함의 크기와 기준선의 이동량이 같으므로 부등호는 </tspan><tspan class="bad" font-weight="600">어떤 결함에도 참이 되지 않는다</tspan><tspan class="muted"> — 정탐률이 구조적으로 0 이다.</tspan></text>
+</svg>

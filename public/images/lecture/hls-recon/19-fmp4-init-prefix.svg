@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 344" role="img"
+     aria-label="fMP4 의 닫힘 회복. moof+mdat 미디어 조각들만으로는 코덱·트랙 설정이 없어 재생 불가지만, ftyp+moov 를 담은 init 세그먼트를 paths 맨 앞에 한 번 두면 전체가 유효한 fMP4 스트림이 된다. init 없이 조각만 이어붙이면 디코딩 문맥이 없어 재생되지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .accs  { stroke:#0969da }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    .initf { fill:#ddf4ff }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .accs  { stroke:#4493f8 }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+      .initf { fill:#123a63 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="312" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">fMP4 의 닫힘 회복 — init 세그먼트를 맨 앞에 한 번 둔다</text>
+
+  <!-- 패널 A: with init -->
+  <rect class="panel" x="40" y="62" width="800" height="146" rx="8" stroke-width="1"/>
+  <text class="good" x="56" y="86" font-size="12.5" font-weight="600">① init 을 맨 앞에 두면 — paths[0]</text>
+  <text class="muted m" x="640" y="86" font-size="11">cli.py:441-448</text>
+
+  <!-- init box -->
+  <rect class="initf accs" x="150" y="98" width="150" height="66" rx="6" stroke-width="1.5"/>
+  <text class="ink m" x="225" y="122" font-size="12.5" font-weight="600" text-anchor="middle">init.mp4</text>
+  <text class="acc m" x="225" y="140" font-size="11" text-anchor="middle">ftyp + moov</text>
+  <text class="muted" x="225" y="156" font-size="11" text-anchor="middle">코덱·트랙 설정</text>
+
+  <text class="ink" x="312" y="136" font-size="16" font-weight="700" text-anchor="middle">+</text>
+
+  <!-- seg boxes -->
+  <rect class="panel" x="330" y="98" width="118" height="66" rx="6" stroke-width="1"/>
+  <text class="ink m" x="389" y="126" font-size="11.5" text-anchor="middle">seg000.m4s</text>
+  <text class="muted m" x="389" y="144" font-size="10.5" text-anchor="middle">moof + mdat</text>
+  <text class="ink" x="460" y="136" font-size="16" font-weight="700" text-anchor="middle">+</text>
+  <rect class="panel" x="472" y="98" width="118" height="66" rx="6" stroke-width="1"/>
+  <text class="ink m" x="531" y="126" font-size="11.5" text-anchor="middle">seg001.m4s</text>
+  <text class="muted m" x="531" y="144" font-size="10.5" text-anchor="middle">moof + mdat</text>
+  <text class="muted" x="620" y="136" font-size="14" text-anchor="middle">+  …</text>
+
+  <text class="good" x="150" y="194" font-size="12.5" font-weight="600">= 유효한 fMP4 스트림 · concat_segments 가 그대로 합쳐 낸다</text>
+
+  <!-- 패널 B: without init -->
+  <rect class="panel" x="40" y="220" width="800" height="92" rx="8" stroke-width="1"/>
+  <text class="bad" x="56" y="244" font-size="12.5" font-weight="600">② init 없이 조각만 이어붙이면</text>
+
+  <rect class="panel bads" x="150" y="256" width="118" height="42" rx="6" stroke-width="1.5"/>
+  <text class="ink m" x="209" y="282" font-size="11.5" text-anchor="middle">seg000.m4s</text>
+  <text class="ink" x="280" y="284" font-size="16" font-weight="700" text-anchor="middle">+</text>
+  <rect class="panel bads" x="292" y="256" width="118" height="42" rx="6" stroke-width="1.5"/>
+  <text class="ink m" x="351" y="282" font-size="11.5" text-anchor="middle">seg001.m4s</text>
+  <text class="muted" x="432" y="284" font-size="14" text-anchor="middle">+  …</text>
+
+  <text class="bad" x="470" y="282" font-size="12.5" font-weight="600">✗ ftyp·moov 없음 → 트랙 구성 불가 → 재생 불가</text>
+</svg>

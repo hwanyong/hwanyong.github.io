@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 440" role="img"
+     aria-label="플레이리스트의 상대 URI 와 기준 URL 이 playlist 모듈의 _absolute 함수 한 곳으로만 들어가고, 거기서 나온 절대 URI 를 네 소비자가 나눠 쓴다. 소비자 중 둘이 다시 정규화하지만 정규화가 멱등이라 값이 변하지 않는다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .node  { fill:#ddf4ff; stroke:#0969da }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#656d76 }
+    .arw   { stroke:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .node  { fill:#123a63; stroke:#4493f8 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#8b949e }
+      .arw   { stroke:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="b7" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="408" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="50" font-size="15" font-weight="600">URI 를 낳는 유일한 지점 — 들어오는 문은 하나, 나가는 문은 넷</text>
+
+  <rect class="panel" x="56" y="68" width="768" height="66" rx="8"/>
+  <text x="74" y="94" font-size="13" xml:space="preserve"><tspan class="muted">상대 URI</tspan><tspan class="ink m">   seg/그렌 01.ts</tspan><tspan class="muted">   ← 플레이리스트 본문에 적힌 줄</tspan></text>
+  <text x="74" y="119" font-size="13" xml:space="preserve"><tspan class="muted">기준 URL</tspan><tspan class="ink m">   https://cdn/hls/index.m3u8</tspan><tspan class="muted">   ← 그 플레이리스트를 받은 주소</tspan></text>
+
+  <line class="arw" x1="440" y1="134" x2="440" y2="164" stroke-width="1.4" marker-end="url(#b7)"/>
+  <text class="muted" x="458" y="154" font-size="12.5">둘 다 이 함수로만 들어간다</text>
+
+  <rect class="node" x="200" y="166" width="480" height="78" rx="8" stroke-width="1.5"/>
+  <text x="220" y="192" font-size="13.5" xml:space="preserve"><tspan class="acc m" font-weight="600">playlist._absolute(base_url, uri)</tspan><tspan class="muted">   playlist.py:30-38</tspan></text>
+  <text class="ink m" x="220" y="214" font-size="12.5">urljoin(base, uri)  →  normalize_url(...)</text>
+  <text class="muted" x="220" y="233" font-size="12">절대화와 퍼센트 인코딩을 한 자리에서 끝낸다 (순서 고정)</text>
+
+  <line class="arw" x1="440" y1="244" x2="440" y2="274" stroke-width="1.4" marker-end="url(#b7)"/>
+  <text class="muted" x="458" y="264" font-size="12.5">여기서 나온 문자열만이 URI 다 — 호출 지점 4곳</text>
+
+  <rect class="panel" x="56" y="276" width="180" height="58" rx="7"/>
+  <text class="ink" x="70" y="299" font-size="12.5" font-weight="600">세그먼트 요청</text>
+  <text class="muted m" x="70" y="319" font-size="11">fetch.py:151</text>
+
+  <rect class="panel" x="252" y="276" width="180" height="58" rx="7"/>
+  <text class="ink" x="266" y="299" font-size="12.5" font-weight="600">ffmpeg 입력</text>
+  <text class="muted m" x="266" y="319" font-size="11">probe.py · assemble.py</text>
+
+  <rect class="panel" x="448" y="276" width="180" height="58" rx="7"/>
+  <text class="ink" x="462" y="299" font-size="12.5" font-weight="600">복호화 키 요청</text>
+  <text class="muted m" x="462" y="319" font-size="11">decrypt.py</text>
+
+  <rect class="panel" x="644" y="276" width="180" height="58" rx="7"/>
+  <text class="ink" x="658" y="299" font-size="12.5" font-weight="600">리포트 · 로그</text>
+  <text class="muted m" x="658" y="319" font-size="11">report.py</text>
+
+  <line class="rule" x1="56" y1="354" x2="824" y2="354" stroke-width="1"/>
+  <text x="56" y="380" font-size="13" xml:space="preserve"><tspan class="ink">앞의 둘은 받은 값을 </tspan><tspan class="ink" font-weight="600">다시 정규화한다</tspan><tspan class="ink">. 그래도 값이 변하지 않는 이유가 </tspan><tspan class="good" font-weight="600">멱등성</tspan><tspan class="ink">이다.</tspan></text>
+  <text class="muted" x="56" y="402" font-size="13">단일 출처를 어기지 않고도 계층마다 각자 방어할 수 있게 해 주는 성질이다.</text>
+</svg>

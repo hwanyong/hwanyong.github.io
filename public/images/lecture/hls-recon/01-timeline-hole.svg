@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 312" role="img"
+     aria-label="정상 스트림과 두 번째 세그먼트가 빠진 스트림의 재생 타임라인 비교. 총 길이는 30.02초로 같지만 결손본에는 5.99초부터 12.02초까지 6.03초의 구멍이 있다. ffmpeg 단독은 종료 코드 0을 내고 hls-recon 은 타임라인 연속성 검사로 종료 코드 2를 낸다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    .good  { fill:#1a7f37 }
+    .blk   { fill:#ddf4ff; stroke:#0969da }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+      .good  { fill:#3fb950 }
+      .blk   { fill:#123a63; stroke:#4493f8 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="278" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">결손은 총량이 아니라 타임라인의 구멍으로 나타난다</text>
+
+  <text class="muted m" x="140" y="68" font-size="10.5" text-anchor="middle">0s</text>
+  <text class="muted m" x="268" y="68" font-size="10.5" text-anchor="middle">6s</text>
+  <text class="muted m" x="396" y="68" font-size="10.5" text-anchor="middle">12s</text>
+  <text class="muted m" x="524" y="68" font-size="10.5" text-anchor="middle">18s</text>
+  <text class="muted m" x="652" y="68" font-size="10.5" text-anchor="middle">24s</text>
+  <text class="muted m" x="780" y="68" font-size="10.5" text-anchor="middle">30s</text>
+  <line class="rule" x1="140" y1="76" x2="780" y2="76" stroke-width="1"/>
+
+  <text class="muted" x="44" y="105" font-size="12">정상</text>
+  <rect class="blk" x="140" y="86" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect class="blk" x="268" y="86" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect class="blk" x="396" y="86" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect class="blk" x="524" y="86" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect class="blk" x="652" y="86" width="124" height="30" rx="3" stroke-width="1"/>
+  <text class="acc m" x="202" y="105" font-size="10.5" text-anchor="middle">seg000</text>
+  <text class="acc m" x="330" y="105" font-size="10.5" text-anchor="middle">seg001</text>
+  <text class="acc m" x="458" y="105" font-size="10.5" text-anchor="middle">seg002</text>
+  <text class="acc m" x="586" y="105" font-size="10.5" text-anchor="middle">seg003</text>
+  <text class="acc m" x="714" y="105" font-size="10.5" text-anchor="middle">seg004</text>
+  <text class="muted m" x="792" y="105" font-size="10.5">900프레임</text>
+
+  <text class="muted" x="44" y="160" font-size="12">seg001</text>
+  <text class="bad" x="44" y="176" font-size="12">404</text>
+  <rect class="blk" x="140" y="141" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect fill="none" class="bads" x="268" y="141" width="124" height="30" rx="3" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <rect class="blk" x="396" y="141" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect class="blk" x="524" y="141" width="124" height="30" rx="3" stroke-width="1"/>
+  <rect class="blk" x="652" y="141" width="124" height="30" rx="3" stroke-width="1"/>
+  <text class="acc m" x="202" y="160" font-size="10.5" text-anchor="middle">seg000</text>
+  <text class="bad" x="330" y="160" font-size="11" text-anchor="middle" font-weight="600">없음</text>
+  <text class="acc m" x="458" y="160" font-size="10.5" text-anchor="middle">seg002</text>
+  <text class="acc m" x="586" y="160" font-size="10.5" text-anchor="middle">seg003</text>
+  <text class="acc m" x="714" y="160" font-size="10.5" text-anchor="middle">seg004</text>
+  <text class="muted m" x="792" y="160" font-size="10.5">720프레임</text>
+
+  <path fill="none" class="bads" d="M268,180 L268,188 L392,188 L392,180" stroke-width="1.2"/>
+  <text class="bad m" x="330" y="205" font-size="10.5" text-anchor="middle">5.99 ~ 12.02s = 6.03s</text>
+
+  <text class="muted" x="396" y="205" font-size="11.5">← seg002 의 PTS 는 12.02s 그대로다. 뒤가 앞으로 당겨지지 않는다</text>
+
+  <line class="rule" x1="44" y1="222" x2="836" y2="222" stroke-width="1"/>
+  <text x="44" y="246" font-size="12.5" xml:space="preserve"><tspan class="bad" font-weight="600">ffmpeg -c copy </tspan><tspan class="ink">→ 종료 코드 0 · 총 길이 30.02s — 정상본과 한 자리도 다르지 않다</tspan></text>
+  <text x="44" y="268" font-size="12.5" xml:space="preserve"><tspan class="good" font-weight="600">hls-recon      </tspan><tspan class="ink">→ 종료 코드 2 · 타임라인 연속성 FAIL · 결손 1건 합계 6.03s</tspan></text>
+  <text class="muted" x="44" y="286" font-size="11.5">같은 입력, 같은 출력 파일. 다른 것은 무엇을 관측 지표로 골랐는가뿐이다.</text>
+</svg>

@@ -430,6 +430,10 @@ export const getLectureCourses = async (locale: Locale): Promise<LectureCourse[]
     byCourse.set(key, [...(byCourse.get(key) ?? []), { session, history }]);
   }
 
+  // project 축 계열의 집합. 강의 표지의 project 필드가 여기 있는 것만 가리킬 수 있다.
+  // 끊긴 링크(있지도 않은 프로젝트를 가리키는 강의)를 배포 전에 죽인다.
+  const projectSeries = new Set((await getSeriesHistories('project')).map((h) => h.path));
+
   const seenCourse = new Map<string, string>();
   const courses: LectureCourse[] = [];
 
@@ -438,6 +442,15 @@ export const getLectureCourses = async (locale: Locale): Promise<LectureCourse[]
     const { subject, course, rest } = lecturePartsOf(path, '코스 표지 경로');
     if (rest.length > 0)
       throw new Error(`코스 표지는 <과목>/<코스>/<로케일>.md 여야 합니다: ${cover.id}`);
+
+    const linkedProject = cover.data.project;
+    if (linkedProject && !projectSeries.has(linkedProject))
+      throw new Error(
+        `강의가 없는 프로젝트를 가리킵니다: "${course}" → project: "${linkedProject}"\n` +
+          `  src/content/project/${linkedProject}/ 가 없습니다.\n` +
+          `  쓸 수 있는 계열: ${[...projectSeries].sort().join(' · ') || '(없음)'}\n` +
+          `  표지의 project 필드를 실재하는 계열로 고치거나 그 줄을 지우세요.`,
+      );
 
     const previous = seenCourse.get(course);
     if (previous)
@@ -481,6 +494,27 @@ export const getCoursesBySubject = async (
     subject,
     courses: all.filter((course) => course.subject === subject),
   }));
+};
+
+/**
+ * 이 프로젝트 계열에서 파생된 강의(있으면). project 상세의 "딸림 강의 →" 역링크용.
+ *
+ * ★ 역방향은 프로젝트 쪽에 아무것도 적지 않는다 — 연결의 유일한 출처(SSOT)는
+ *   강의 표지의 project 필드이고, 여기서 그것을 되짚어 찾는다. 코스 이름이 사이트
+ *   전체에서 유일하므로 한 프로젝트가 가리켜지는 강의는 최대 하나다.
+ */
+export const getCompanionCourse = async (
+  locale: Locale,
+  series: string,
+): Promise<{ href: string; title: string } | null> => {
+  const course = (await getLectureCourses(locale)).find(
+    (c) => c.cover.data.project === series,
+  );
+  if (!course) return null;
+  return {
+    href: courseHref(locale, course.subject, course.course),
+    title: course.cover.data.title,
+  };
 };
 
 /**

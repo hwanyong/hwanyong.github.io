@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 388" role="img"
+     aria-label="신원 기반 접근 통제와 능력 기반 접근 통제의 대비. 신원 기반은 요청에 쿠키 같은 신원증표를 싣고 서버가 세션 저장소를 조회해 권한을 판정하므로 서버 측 상태가 필요하고 세션을 지우면 즉시 회수된다. 능력 기반은 요청에 서명과 만료가 박힌 URL 자체를 싣고 서버는 서명을 다시 계산해 대조할 뿐이므로 조회할 상태가 없고 발급된 증표는 회수할 수 없다. 회수할 수 없으므로 만료가 필수 구성 요소가 된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="356" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">권한을 어디에 두는가 — 주체를 가리키는 증표와, 권한 그 자체인 증표</text>
+
+  <rect class="panel" x="44" y="76" width="376" height="232" rx="8" stroke-width="1"/>
+  <text class="ink" x="64" y="102" font-size="13" font-weight="600">① 신원 기반 (identity-based)</text>
+
+  <text class="muted" x="64" y="126" font-size="11">요청이 싣는 것</text>
+  <text class="acc m" x="64" y="144" font-size="12">Cookie: sid=8f3a…</text>
+
+  <text class="muted" x="64" y="170" font-size="11">서버가 하는 일</text>
+  <text class="ink" x="64" y="188" font-size="12">세션 저장소를 조회해</text>
+  <text class="ink" x="64" y="204" font-size="12">이 주체에게 권한이 있는지 본다</text>
+
+  <text class="muted" x="64" y="228" font-size="11">필요한 것</text>
+  <text class="ink" x="64" y="246" font-size="12">서버 측 상태 — 세션 저장소</text>
+
+  <text class="muted" x="64" y="270" font-size="11">회수</text>
+  <text class="good" x="64" y="288" font-size="12" font-weight="600">즉시 — 세션을 지우면 끝난다</text>
+
+  <rect class="panel" x="460" y="76" width="376" height="232" rx="8" stroke-width="1"/>
+  <text class="ink" x="480" y="102" font-size="13" font-weight="600">② 능력 기반 (capability-based)</text>
+
+  <text class="muted" x="480" y="126" font-size="11">요청이 싣는 것</text>
+  <text class="acc m" x="480" y="144" font-size="12">?md5=&lt;서명&gt;&amp;expires=&lt;unix&gt;</text>
+
+  <text class="muted" x="480" y="170" font-size="11">서버가 하는 일</text>
+  <text class="ink" x="480" y="188" font-size="12">서명을 다시 계산해 대조한다</text>
+  <text class="ink" x="480" y="204" font-size="12">조회할 곳이 없다</text>
+
+  <text class="muted" x="480" y="228" font-size="11">필요한 것</text>
+  <text class="ink" x="480" y="246" font-size="12">비밀 키 하나 — 상태가 없다</text>
+
+  <text class="muted" x="480" y="270" font-size="11">회수</text>
+  <text class="bad" x="480" y="288" font-size="12" font-weight="600">불가능 — 나간 증표는 돌아오지 않는다</text>
+
+  <line class="rule" x1="44" y1="330" x2="836" y2="330" stroke-width="1"/>
+  <text x="44" y="356" font-size="13" xml:space="preserve"><tspan class="ink">회수할 수 없는 권한은 </tspan><tspan class="warn" font-weight="600">스스로 죽어야 한다</tspan><tspan class="ink"> — </tspan><tspan class="acc m" font-weight="600">expires</tspan><tspan class="ink"> 는 편의 기능이 아니라 구성 요소다.</tspan></text>
+</svg>

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 356" role="img"
+     aria-label="예측 가능한 IV 가 공격이 되려면 공격자가 같은 키로 자기가 고른 평문을 암호화시킬 수 있어야 한다. 왼쪽은 TLS 1.0 브라우저 상황으로, 공격자 스크립트가 평문을 주입하고 그것이 비밀 쿠키와 같은 키로 암호화되며 암호문을 관찰해 다시 주입하는 순환이 성립한다. 오른쪽은 HLS 세그먼트 암호화로, 암호화는 패키징 시점에 한 번 오프라인에서 끝나고 공격자가 평문을 넣을 경로가 없어 순환이 성립하지 않는다.">
+  <defs>
+    <marker id="e23a" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="e23b" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mkb"/>
+    </marker>
+  </defs>
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#eaeef2; stroke:#d8dee6 }
+    .chipb { fill:#ffebe9; stroke:#cf222e }
+    .chipg { fill:#dafbe1; stroke:#1a7f37 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .bad   { fill:#cf222e }
+    .bads  { stroke:#cf222e }
+    .good  { fill:#1a7f37 }
+    .rules { stroke:#656d76 }
+    .mk    { fill:#656d76 }
+    .mkb   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#21262d; stroke:#30363d }
+      .chipb { fill:#3d1618; stroke:#f85149 }
+      .chipg { fill:#123524; stroke:#3fb950 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .bad   { fill:#f85149 }
+      .bads  { stroke:#f85149 }
+      .good  { fill:#3fb950 }
+      .rules { stroke:#8b949e }
+      .mk    { fill:#8b949e }
+      .mkb   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="324" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">예측 가능한 IV 가 무기가 되려면 — 공격자가 평문을 넣을 자리가 있어야 한다</text>
+  <text class="muted" x="44" y="66" font-size="11.5">가르는 조건: 같은 키로 공격자가 고른 평문을 암호화시킬 수 있는가</text>
+
+  <!-- 왼쪽: 성립하는 경우 -->
+  <rect class="panel" x="44" y="80" width="386" height="212" rx="8" stroke-width="1"/>
+  <text class="bad" x="64" y="104" font-size="13" font-weight="600">TLS 1.0 브라우저 — 순환이 닫힌다</text>
+
+  <rect class="chipb" x="64" y="116" width="160" height="30" rx="5" stroke-width="1.2"/>
+  <text class="ink" x="144" y="136" font-size="11.5" text-anchor="middle">공격자가 평문을 주입</text>
+  <line class="rules" x1="144" y1="146" x2="144" y2="162" stroke-width="1.3" marker-end="url(#e23a)"/>
+  <rect class="chip" x="64" y="164" width="160" height="30" rx="5" stroke-width="1"/>
+  <text class="ink" x="144" y="184" font-size="11.5" text-anchor="middle">비밀과 같은 키로 암호화</text>
+  <line class="rules" x1="144" y1="194" x2="144" y2="210" stroke-width="1.3" marker-end="url(#e23a)"/>
+  <rect class="chip" x="64" y="212" width="160" height="30" rx="5" stroke-width="1"/>
+  <text class="ink" x="144" y="232" font-size="11.5" text-anchor="middle">암호문·다음 IV 관찰</text>
+  <polyline class="bads" points="224,227 262,227 262,131 228,131" fill="none" stroke-width="1.4" marker-end="url(#e23b)"/>
+  <text class="bad" x="272" y="176" font-size="11.5">추측을 바꿔</text>
+  <text class="bad" x="272" y="192" font-size="11.5">다시 주입한다</text>
+
+  <text class="bad" x="64" y="266" font-size="11.5" font-weight="600">세 조건이 모두 성립 → 예측 가능한 IV 가</text>
+  <text class="bad" x="64" y="282" font-size="11.5" font-weight="600">추측 검사 도구가 된다</text>
+
+  <!-- 오른쪽: 성립하지 않는 경우 -->
+  <rect class="panel" x="450" y="80" width="386" height="212" rx="8" stroke-width="1"/>
+  <text class="good" x="470" y="104" font-size="13" font-weight="600">HLS 세그먼트 — 순환이 열려 있다</text>
+
+  <rect class="chipg" x="470" y="116" width="190" height="30" rx="5" stroke-width="1.2"/>
+  <text class="ink" x="565" y="136" font-size="11.5" text-anchor="middle">패키징 시점 · 오프라인 · 1회</text>
+  <line class="rules" x1="565" y1="146" x2="565" y2="162" stroke-width="1.3" marker-end="url(#e23a)"/>
+  <rect class="chip" x="470" y="164" width="190" height="30" rx="5" stroke-width="1"/>
+  <text class="ink" x="565" y="184" font-size="11.5" text-anchor="middle">세그먼트 암호화</text>
+  <line class="rules" x1="565" y1="194" x2="565" y2="210" stroke-width="1.3" marker-end="url(#e23a)"/>
+  <rect class="chip" x="470" y="212" width="190" height="30" rx="5" stroke-width="1"/>
+  <text class="ink" x="565" y="232" font-size="11.5" text-anchor="middle">CDN 배포 · 암호문 관찰 가능</text>
+
+  <rect class="chipb" x="690" y="160" width="126" height="38" rx="5" stroke-width="1.2"/>
+  <text class="ink" x="753" y="184" font-size="11.5" text-anchor="middle">공격자의 평문</text>
+  <line class="bads" x1="686" y1="179" x2="668" y2="179" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text class="bad" x="677" y="164" font-size="14" text-anchor="middle" font-weight="700">✗</text>
+  <text class="bad" x="753" y="216" font-size="11.5" text-anchor="middle">주입 경로가 없다</text>
+
+  <text class="good" x="470" y="266" font-size="11.5" font-weight="600">공격자가 만질 수 있는 것은 암호문뿐 →</text>
+  <text class="good" x="470" y="282" font-size="11.5" font-weight="600">IV 예측 가능성을 쓸 자리가 없다</text>
+
+  <text class="muted" x="44" y="322" font-size="11.5">예측 가능한 IV 는 그 자체로 취약점이 아니다 — 평문 주입 경로와 결합했을 때 비로소 취약점이 된다. 위협 모델이 바뀌면 결론도 바뀐다.</text>
+</svg>

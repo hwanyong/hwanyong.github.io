@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 388" role="img"
+     aria-label="화수 판정은 단일 출처다. split_episode 가 Sky.Blue.2003 을 줄기 Sky.Blue.2 와 화수 003 으로 잘못 갈라내면 그 오분류가 세 소비자로 번진다. 시리즈 폴더 배치는 무관한 영화를 한 폴더로 묶고, 재고 조사는 영화를 3화로 세어 진짜 3화를 받지 않으며, 자막 후보는 없는 이름으로 주소를 조립한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .ln    { stroke:#656d76 }
+    .mk    { fill:#656d76 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .ln    { stroke:#8b949e }
+      .mk    { fill:#8b949e }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="a33" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="356" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">화수 판정은 단일 출처다 — 한 번의 오분류가 소비자 수만큼 번진다</text>
+
+  <rect class="panel" x="40" y="76" width="300" height="112" rx="8"/>
+  <text class="muted" x="56" y="98" font-size="11.5" font-weight="600">naming.py:29-38</text>
+  <text class="ink m" x="56" y="122" font-size="12.5">split_episode("Sky.Blue.2003")</text>
+  <line class="rule" x1="56" y1="136" x2="324" y2="136" stroke-width="1"/>
+  <text x="56" y="158" font-size="12.5" xml:space="preserve"><tspan class="muted">줄기 </tspan><tspan class="bad m" font-weight="700">Sky.Blue.2</tspan><tspan class="muted"> · 화수 </tspan><tspan class="bad m" font-weight="700">003</tspan></text>
+  <text class="muted" x="56" y="177" font-size="11.5">관문 한 줄이 빠졌을 때의 판정</text>
+
+  <path class="ln" d="M340,132 C398,132 412,106 462,106" fill="none" stroke-width="1.4" marker-end="url(#a33)"/>
+  <path class="ln" d="M340,132 C400,132 404,194 462,194" fill="none" stroke-width="1.4" marker-end="url(#a33)"/>
+  <path class="ln" d="M340,132 C398,132 412,282 462,282" fill="none" stroke-width="1.4" marker-end="url(#a33)"/>
+
+  <rect class="panel" x="468" y="68" width="376" height="76" rx="8"/>
+  <text class="acc m" x="484" y="90" font-size="12">series_of() → library.plan_tidy()</text>
+  <text class="ink" x="484" y="112" font-size="12.5">무관한 영화 두 편이 한 폴더로 묶인다</text>
+  <text class="muted" x="484" y="131" font-size="11.5">library.py:57-87 — 존재하지 않는 시리즈 Sky.Blue.2</text>
+
+  <rect class="panel" x="468" y="156" width="376" height="76" rx="8"/>
+  <text class="acc m" x="484" y="178" font-size="12">episode_of() → inventory.scan()</text>
+  <text class="ink" x="484" y="200" font-size="12.5">영화가 3화 재고로 잡힌다</text>
+  <text class="muted" x="484" y="219" font-size="11.5">inventory.py:187-201 — 진짜 3화를 영영 받지 않는다</text>
+
+  <rect class="panel" x="468" y="244" width="376" height="76" rx="8"/>
+  <text class="acc m" x="484" y="266" font-size="12">name_variants() → subtitles.sidecar_urls()</text>
+  <text class="ink" x="484" y="288" font-size="12.5">없는 이름으로 자막 주소를 조립한다</text>
+  <text class="muted" x="484" y="307" font-size="11.5">subtitles.py:398-414 — 후보 전부가 헛요청</text>
+
+  <line class="rule" x1="44" y1="340" x2="836" y2="340" stroke-width="1"/>
+  <text x="44" y="360" font-size="12.5" xml:space="preserve"><tspan class="ink">규칙을 한 곳에 둔 것은 옳다. 그 대가로 </tspan><tspan class="bad" font-weight="600">그 한 곳의 오분류율이 세 기능의 오분류율</tspan><tspan class="ink">이 된다.</tspan></text>
+</svg>

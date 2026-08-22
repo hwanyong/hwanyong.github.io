@@ -26,6 +26,7 @@ export const SUBJECT_SLUGS = [
   'math',
   'computer-science',
   'artificial-intelligence',
+  'engineering',
   'earth-science',
   'chemistry',
   'physics',
@@ -52,6 +53,11 @@ export const SUBJECTS: Record<Subject, SubjectMeta> = {
     code: 'AI',
     name: { en: 'Artificial Intelligence', ko: '인공지능' },
   },
+  // ★ 다른 여섯은 학문 분야다. engineering 만 분류의 축이 다르다 — 분야가 아니라
+  //   ★출신★ 이다. project 축에서 파생된 강의(만든 물건을 교재 삼아 가르치는 것)를
+  //   한 선반에 모은다. 그래서 한 코스가 네트워크·암호·비트를 가로질러도 여기 앉는다.
+  //   강의↔프로젝트 연결은 lectureCourse 의 project 필드가 데이터로 잇는다.
+  engineering: { code: 'ENG', name: { en: 'Engineering', ko: '공학' } },
   'earth-science': { code: 'EARTH', name: { en: 'Earth Science', ko: '지구과학' } },
   chemistry: { code: 'CHEM', name: { en: 'Chemistry', ko: '화학' } },
   physics: { code: 'PHYS', name: { en: 'Physics', ko: '물리' } },

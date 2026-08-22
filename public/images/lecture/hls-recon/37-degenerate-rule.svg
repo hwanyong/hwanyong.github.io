@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 344" role="img"
+     aria-label="안전한 실패가 퇴화하는 경로. 가릴 수 없으면 빈 재고를 준다는 규칙에서 두 구현이 갈라진다. 올바른 구현은 가릴 수 있으면 가리고 없을 때만 포기해 flat 모드에서도 빠진 회차만 받는다. 퇴화한 구현은 언제나 포기해 재고 조사가 죽은 코드가 되고 매 실행마다 전량을 다시 받는다. 모호할 때 포기하는지만 보는 단정은 두 구현을 모두 통과시키며, 가릴 수 있을 때 가리는지를 보는 단정만이 퇴화한 구현을 배제한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .okbx  { fill:#e6f6eb; stroke:#4ac26b }
+    .bdbx  { fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .okbx  { fill:#0f2d1a; stroke:#2ea043 }
+      .bdbx  { fill:#3d1417; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar37a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="316" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">안전한 실패는 퇴화하기 쉽다</text>
+
+  <rect class="box" x="44" y="106" width="196" height="86" rx="8" stroke-width="1"/>
+  <text class="muted m" x="60" y="130" font-size="11">inventory.py:229-230</text>
+  <text class="ink" x="60" y="152" font-size="12.5">가릴 수 없으면</text>
+  <text class="ink" x="60" y="172" font-size="12.5">빈 재고를 준다</text>
+
+  <path d="M240,132 L282,110" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37a)"/>
+  <path d="M240,166 L282,222" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37a)"/>
+
+  <rect class="okbx" x="286" y="68" width="238" height="84" rx="8" stroke-width="1.3"/>
+  <text class="muted" x="302" y="92" font-size="11.5">올바른 구현</text>
+  <text class="ink" x="302" y="114" font-size="12.5">가릴 수 있으면 가린다</text>
+  <text class="good" x="302" y="136" font-size="12.5">가릴 수 없을 때만 포기</text>
+
+  <rect class="bdbx" x="286" y="180" width="238" height="84" rx="8" stroke-width="1.3"/>
+  <text class="muted" x="302" y="204" font-size="11.5">퇴화한 구현</text>
+  <text class="ink" x="302" y="226" font-size="12.5">언제나 포기한다</text>
+  <text class="bad" x="302" y="248" font-size="12.5">규칙이 조건을 잃었다</text>
+
+  <path d="M524,110 L578,110" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37a)"/>
+  <path d="M524,222 L578,222" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar37a)"/>
+
+  <rect class="box" x="582" y="68" width="242" height="84" rx="8" stroke-width="1"/>
+  <text class="muted" x="598" y="92" font-size="11.5">결과</text>
+  <text x="598" y="114" font-size="12.5" xml:space="preserve"><tspan class="m ink">--flat</tspan><tspan class="ink"> 에서도 빠진</tspan></text>
+  <text class="ink" x="598" y="136" font-size="12.5">회차만 받는다</text>
+
+  <rect class="box" x="582" y="180" width="242" height="84" rx="8" stroke-width="1"/>
+  <text class="muted" x="598" y="204" font-size="11.5">결과</text>
+  <text class="bad" x="598" y="226" font-size="12.5" font-weight="600">재고 조사가 죽은 코드</text>
+  <text class="ink" x="598" y="248" font-size="12.5">매번 전량을 다시 받는다</text>
+
+  <text x="44" y="292" font-size="12.5" xml:space="preserve"><tspan class="warn" font-weight="600">A8 </tspan><tspan class="warn m" font-weight="600">MIXED 0</tspan><tspan class="muted"> 은 두 구현을 모두 통과시킨다 — 포기는 결코 남의 회차를 채택하지 않는다.</tspan></text>
+  <text x="44" y="314" font-size="12.5" xml:space="preserve"><tspan class="acc" font-weight="600">A9 </tspan><tspan class="acc m" font-weight="600">ALONE 2</tspan><tspan class="muted"> 만이 아래를 배제한다 — 실측에서 죽은 단정은 이 하나뿐이었다.</tspan></text>
+</svg>

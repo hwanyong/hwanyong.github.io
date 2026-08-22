@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" role="img"
+     aria-label="만료가 있는 서명 URL 을 미리 모아 두는 방식과 받기 직전에 해석하는 방식의 시간축 비교. 위쪽은 시각 0 에 27화 분량을 한꺼번에 발급받아 만료 시각 전에 처리한 앞쪽 회차만 열리고 뒤쪽은 전부 죽는다. 아래쪽은 회차마다 처리 직전에 다시 발급받으므로 각 증표의 대기 시간이 거의 0 이 되어 만료가 짧아도 성립한다. 다만 한 회차의 소요 시간이 증표의 수명을 넘으면 지연 해석도 그 회차 안에서 깨진다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .okbox { fill:#dafbe1; stroke:#1a7f37 }
+    .nobox { fill:#ffebe9; stroke:#cf222e }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .cut   { stroke:#cf222e }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .warn  { fill:#9a6700 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .okbox { fill:#12261a; stroke:#3fb950 }
+      .nobox { fill:#3d1618; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .cut   { stroke:#f85149 }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .warn  { fill:#d29922 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="328" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">시간축은 왼쪽에서 오른쪽 — 27화를 순서대로 처리한다</text>
+
+  <text class="ink" x="60" y="74" font-size="13" font-weight="600">① 미리 모으기(eager) — 시각 0 에 27화 분량의 서명 URL 을 한꺼번에 발급받는다</text>
+
+  <text class="bad" x="350" y="96" font-size="11" font-weight="600">expires — 이 선을 넘으면 서명이 죽는다</text>
+  <line class="cut" x1="346" y1="100" x2="346" y2="144" stroke-width="1.5" stroke-dasharray="5 4"/>
+
+  <rect class="okbox" x="60"  y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="156" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="252" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="nobox" x="348" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="nobox" x="444" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="nobox" x="540" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="nobox" x="636" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="nobox" x="732" y="104" width="92" height="28" rx="5" stroke-width="1"/>
+  <text class="good" x="106" y="123" font-size="12" text-anchor="middle" font-weight="600">1화</text>
+  <text class="good" x="202" y="123" font-size="12" text-anchor="middle" font-weight="600">2화</text>
+  <text class="good" x="298" y="123" font-size="12" text-anchor="middle" font-weight="600">3화</text>
+  <text class="bad"  x="394" y="123" font-size="12" text-anchor="middle" font-weight="600">4화</text>
+  <text class="bad"  x="490" y="123" font-size="12" text-anchor="middle" font-weight="600">5화</text>
+  <text class="bad"  x="586" y="123" font-size="12" text-anchor="middle" font-weight="600">6화</text>
+  <text class="bad"  x="682" y="123" font-size="12" text-anchor="middle" font-weight="600">⋯</text>
+  <text class="bad"  x="778" y="123" font-size="12" text-anchor="middle" font-weight="600">27화</text>
+
+  <text class="ink" x="60" y="160" font-size="12">앞쪽 회차만 열린다. 나머지는 403·404 로 돌아오고, 화면에는 그저 “수신 실패”로 보인다</text>
+
+  <text class="ink" x="60" y="192" font-size="13" font-weight="600">② 지연 해석(late resolution) — ▼ 표시마다 그 회차의 서명 URL 을 새로 발급받는다</text>
+
+  <path class="acc" d="M101,204 L111,204 L106,216 z"/>
+  <path class="acc" d="M197,204 L207,204 L202,216 z"/>
+  <path class="acc" d="M293,204 L303,204 L298,216 z"/>
+  <path class="acc" d="M389,204 L399,204 L394,216 z"/>
+  <path class="acc" d="M485,204 L495,204 L490,216 z"/>
+  <path class="acc" d="M581,204 L591,204 L586,216 z"/>
+  <path class="acc" d="M677,204 L687,204 L682,216 z"/>
+  <path class="acc" d="M773,204 L783,204 L778,216 z"/>
+
+  <rect class="okbox" x="60"  y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="156" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="252" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="348" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="444" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="540" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="636" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <rect class="okbox" x="732" y="218" width="92" height="28" rx="5" stroke-width="1"/>
+  <text class="good" x="106" y="237" font-size="12" text-anchor="middle" font-weight="600">1화</text>
+  <text class="good" x="202" y="237" font-size="12" text-anchor="middle" font-weight="600">2화</text>
+  <text class="good" x="298" y="237" font-size="12" text-anchor="middle" font-weight="600">3화</text>
+  <text class="good" x="394" y="237" font-size="12" text-anchor="middle" font-weight="600">4화</text>
+  <text class="good" x="490" y="237" font-size="12" text-anchor="middle" font-weight="600">5화</text>
+  <text class="good" x="586" y="237" font-size="12" text-anchor="middle" font-weight="600">6화</text>
+  <text class="good" x="682" y="237" font-size="12" text-anchor="middle" font-weight="600">⋯</text>
+  <text class="good" x="778" y="237" font-size="12" text-anchor="middle" font-weight="600">27화</text>
+
+  <text class="ink" x="60" y="274" font-size="12">각 증표의 대기 시간이 거의 0 이 된다 — 만료가 아무리 짧아도 성립한다</text>
+
+  <line class="rule" x1="44" y1="292" x2="836" y2="292" stroke-width="1"/>
+  <text x="44" y="314" font-size="12.5" xml:space="preserve"><tspan class="ink">일반 조건 — </tspan><tspan class="warn" font-weight="600">증표의 수명 &lt; 작업 전체의 소요 시간</tspan><tspan class="ink"> 이면 미리 모으기는 성립하지 않는다.</tspan></text>
+  <text x="44" y="334" font-size="12.5" xml:space="preserve"><tspan class="ink">지연 해석도 만능은 아니다 — </tspan><tspan class="bad" font-weight="600">한 회차의 소요가 수명을 넘으면</tspan><tspan class="ink"> 그 회차 안에서 깨진다.</tspan></text>
+</svg>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" role="img"
+     aria-label="두 종류의 재시도 비교. 왼쪽은 똑같은 요청을 반복하는 경우로 무상태 서버에서는 같은 403 이 돌아오므로 fetch.py 가 4xx 에서 즉시 중단한다. 오른쪽은 403 응답이 알려준 허용 origin 을 Referer 로 채택해 요청 자체를 바꾼 뒤 한 번 더 보내는 경우로, 이때는 200 이 돌아온다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .good  { fill:#1a7f37 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .good  { fill:#3fb950 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="308" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="46" font-size="15" font-weight="600">재시도가 뜻을 가지는 조건은 횟수가 아니라 “요청이 달라졌는가”다</text>
+
+  <rect class="panel" x="44" y="66" width="380" height="188" rx="8" stroke-width="1"/>
+  <text class="bad" x="64" y="90" font-size="13" font-weight="600">동일 요청 반복 — 뜻이 없다</text>
+  <text class="ink m"   x="64" y="116" font-size="12">GET master.m3u8   (Referer 없음)</text>
+  <text class="bad m"   x="64" y="136" font-size="12">→ 403 Forbidden</text>
+  <text class="ink m"   x="64" y="160" font-size="12">GET master.m3u8   (완전히 같은 요청)</text>
+  <text class="bad m"   x="64" y="180" font-size="12">→ 403 Forbidden</text>
+  <line class="rule" x1="64" y1="196" x2="404" y2="196" stroke-width="1"/>
+  <text class="muted" x="64" y="218" font-size="11.5">HTTP 는 무상태다 — 입력이 같으면 판정도 같다.</text>
+  <text class="muted" x="64" y="236" font-size="11.5">그래서 4xx 에서는 재시도 루프를 즉시 끊는다.</text>
+
+  <rect class="panel" x="456" y="66" width="380" height="188" rx="8" stroke-width="1"/>
+  <text class="good" x="476" y="90" font-size="13" font-weight="600">상태를 바꾼 반복 — 뜻이 있다</text>
+  <text class="ink m"   x="476" y="116" font-size="12">GET master.m3u8   (Referer 없음)</text>
+  <text class="bad m"   x="476" y="136" font-size="12">→ 403 + ACAO: https://site.example</text>
+  <text class="acc"     x="476" y="158" font-size="11.5" font-weight="600">채택: Referer / Origin 헤더에 그 값을 넣는다</text>
+  <text class="ink m"   x="476" y="180" font-size="12">GET master.m3u8   (다른 요청이 됐다)</text>
+  <text class="good m"  x="476" y="200" font-size="12" font-weight="600">→ 200 OK</text>
+  <line class="rule" x1="476" y1="214" x2="816" y2="214" stroke-width="1"/>
+  <text class="muted" x="476" y="236" font-size="11.5">두 번째 요청은 첫 번째의 반복이 아니라 새 요청이다.</text>
+
+  <line class="rule" x1="44" y1="272" x2="836" y2="272" stroke-width="1"/>
+  <text x="44" y="296" font-size="13" xml:space="preserve"><tspan class="ink">전송 계층의 재시도(</tspan><tspan class="m">fetch.py</tspan><tspan class="ink">)와 상태 변경 후의 재시도(</tspan><tspan class="m">cli.py</tspan><tspan class="ink">)는 다른 개념이다. 한 곳에 섞으면</tspan></text>
+  <text x="44" y="314" font-size="13" xml:space="preserve"><tspan class="ink">막힌 요청을 무한히 되풀이하거나, 열릴 수 있었던 요청을 한 번 만에 포기하거나 </tspan><tspan class="bad" font-weight="600">둘 중 하나가 된다</tspan><tspan class="ink">.</tspan></text>
+</svg>

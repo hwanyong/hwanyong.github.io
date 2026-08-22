@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 364" role="img"
+     aria-label="계측치가 하나의 종료 코드로 수렴하는 경로. 왼쪽에 수신 계측·TS 리포트·ffprobe 실측·타임라인 스캔·자막 결과·디코드 결과 여섯 종류의 계측 원천이 있고, 가운데에서 각각이 이름과 판정과 설명을 가진 Check 항목으로 바뀐다. 오른쪽에서 그 항목들의 최악값 하나가 verdict 가 되고, PASS 와 WARN 은 종료 코드 0 으로, FAIL 은 종료 코드 2 로 매핑된다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .neut  { fill:#eaeef2 }
+    .hl    { fill:#ffebe9; stroke:#ff8182 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .warn  { fill:#9a6700 }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .neut  { fill:#21262d }
+      .hl    { fill:#3c1618; stroke:#f85149 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .warn  { fill:#d29922 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="336" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">계측치가 하나의 종료 코드로 수렴한다</text>
+
+  <text class="muted" x="44" y="66" font-size="11.5">계측 원천</text>
+  <rect class="neut" x="44" y="78" width="170" height="28" rx="6"/>
+  <text x="56" y="97" font-size="11.5" xml:space="preserve"><tspan class="ink m">fetches</tspan><tspan class="muted"> — 수신 계측</tspan></text>
+  <rect class="neut" x="44" y="113" width="170" height="28" rx="6"/>
+  <text x="56" y="132" font-size="11.5" xml:space="preserve"><tspan class="ink m">TSReport</tspan><tspan class="muted"> — 패킷 헤더</tspan></text>
+  <rect class="neut" x="44" y="148" width="170" height="28" rx="6"/>
+  <text x="56" y="167" font-size="11.5" xml:space="preserve"><tspan class="ink m">MediaInfo</tspan><tspan class="muted"> — 실측</tspan></text>
+  <rect class="neut" x="44" y="183" width="170" height="28" rx="6"/>
+  <text x="56" y="202" font-size="11.5" xml:space="preserve"><tspan class="ink m">GapScan</tspan><tspan class="muted"> — 타임라인</tspan></text>
+  <rect class="neut" x="44" y="218" width="170" height="28" rx="6"/>
+  <text x="56" y="237" font-size="11.5" xml:space="preserve"><tspan class="ink m">SubtitleReport</tspan><tspan class="muted"> — 자막</tspan></text>
+  <rect class="neut" x="44" y="253" width="170" height="28" rx="6"/>
+  <text x="56" y="272" font-size="11.5" xml:space="preserve"><tspan class="ink m">decode_errors</tspan><tspan class="muted"> — 디코드</tspan></text>
+
+  <path d="M214,180 L268,180" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="241" y="168" font-size="11" text-anchor="middle">항목화</text>
+
+  <rect class="panel" x="274" y="78" width="294" height="204" rx="8" stroke-width="1"/>
+  <text x="292" y="102" font-size="11.5" xml:space="preserve"><tspan class="m muted">checks</tspan><tspan class="muted"> — 이름·판정·설명</tspan></text>
+
+  <text class="good" x="292" y="126" font-size="12">✓</text>
+  <text class="ink" x="312" y="126" font-size="12">플레이리스트</text>
+  <text class="good m" x="552" y="126" font-size="11.5" text-anchor="end">PASS</text>
+
+  <text class="good" x="292" y="154" font-size="12">✓</text>
+  <text class="ink" x="312" y="154" font-size="12">세그먼트 수신</text>
+  <text class="good m" x="552" y="154" font-size="11.5" text-anchor="end">PASS</text>
+
+  <text class="bad" x="292" y="182" font-size="12">✗</text>
+  <text class="ink" x="312" y="182" font-size="12">페이로드 유효성</text>
+  <text class="bad m" x="552" y="182" font-size="11.5" text-anchor="end">FAIL</text>
+
+  <text class="warn" x="292" y="210" font-size="12">!</text>
+  <text class="ink" x="312" y="210" font-size="12">세그먼트 고유성</text>
+  <text class="warn m" x="552" y="210" font-size="11.5" text-anchor="end">WARN</text>
+
+  <text class="warn" x="292" y="238" font-size="12">!</text>
+  <text class="ink" x="312" y="238" font-size="12">TS 무결성</text>
+  <text class="warn m" x="552" y="238" font-size="11.5" text-anchor="end">WARN</text>
+
+  <text class="bad" x="292" y="266" font-size="12">✗</text>
+  <text class="ink" x="312" y="266" font-size="12">타임라인 연속성</text>
+  <text class="bad m" x="552" y="266" font-size="11.5" text-anchor="end">FAIL</text>
+
+  <path d="M568,180 L612,180" class="arw" fill="none" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted m" x="590" y="168" font-size="11" text-anchor="middle">max</text>
+
+  <rect class="panel" x="618" y="78" width="218" height="204" rx="8" stroke-width="1"/>
+  <text class="muted m" x="634" y="102" font-size="11.5">verdict -&gt; exit</text>
+
+  <rect class="neut" x="634" y="126" width="186" height="30" rx="6"/>
+  <text class="good m" x="650" y="146" font-size="12">PASS</text>
+  <text class="muted" x="727" y="146" font-size="12" text-anchor="middle">→</text>
+  <text class="ink m" x="804" y="146" font-size="12" text-anchor="end">0</text>
+
+  <rect class="neut" x="634" y="164" width="186" height="30" rx="6"/>
+  <text class="warn m" x="650" y="184" font-size="12">WARN</text>
+  <text class="muted" x="727" y="184" font-size="12" text-anchor="middle">→</text>
+  <text class="ink m" x="804" y="184" font-size="12" text-anchor="end">0</text>
+
+  <rect class="hl" x="634" y="202" width="186" height="30" rx="6" stroke-width="1.4"/>
+  <text class="bad m" x="650" y="222" font-size="12" font-weight="600">FAIL</text>
+  <text class="muted" x="727" y="222" font-size="12" text-anchor="middle">→</text>
+  <text class="bad m" x="804" y="222" font-size="12" text-anchor="end" font-weight="600">2</text>
+
+  <text class="muted" x="727" y="262" font-size="11" text-anchor="middle">0 = 파이프라인 통과</text>
+
+  <text x="44" y="332" font-size="12.5" xml:space="preserve"><tspan class="ink" font-weight="600">FAIL 이 하나라도 있으면 FAIL, 없고 WARN 이 있으면 WARN.</tspan><tspan class="muted"> 순서와 개수는 판정을 바꾸지 않는다.</tspan></text>
+</svg>

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 430" role="img"
+     aria-label="EXT-X-STREAM-INF 의 SUBTITLES 속성이 EXT-X-MEDIA 의 GROUP-ID 를 이름으로 참조하는 구조. 이름이 일치하면 자막 트랙이 이어지고, 어긋나면 tracks() 가 빈 목록을 돌려주지만 예외도 경고도 없어 자막만 조용히 사라진다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa; stroke:#d8dee6 }
+    .card  { fill:#ffffff; stroke:#d8dee6 }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .good  { fill:#1a7f37 }
+    .bad   { fill:#cf222e }
+    .chipa { fill:#ddf4ff }
+    .chipb { fill:#ffebe9 }
+    .mk    { fill:#0969da }
+    .mks   { stroke:#0969da }
+    .mkb   { fill:#cf222e }
+    .mkbs  { stroke:#cf222e }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22; stroke:#30363d }
+      .card  { fill:#0d1117; stroke:#30363d }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .good  { fill:#3fb950 }
+      .bad   { fill:#f85149 }
+      .chipa { fill:#123a63 }
+      .chipb { fill:#4a1a1a }
+      .mk    { fill:#4493f8 }
+      .mks   { stroke:#4493f8 }
+      .mkb   { fill:#f85149 }
+      .mkbs  { stroke:#f85149 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+    <marker id="x" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mkb"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="16" width="840" height="398" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">세 번째 간접 — 같은 문서 안에서 이름으로 잇는다 (외래 키)</text>
+
+  <rect class="panel" x="44" y="64" width="792" height="112" rx="8" stroke-width="1"/>
+  <text class="muted" x="60" y="86" font-size="11.5" font-weight="600">마스터 플레이리스트 한 장 — 두 태그가 문자열 하나로 이어진다</text>
+
+  <rect class="card" x="60" y="96" width="326" height="64" rx="6" stroke-width="1"/>
+  <text class="ink m" x="76" y="118" font-size="12">#EXT-X-STREAM-INF</text>
+  <rect class="chipa" x="76" y="128" width="164" height="22" rx="5"/>
+  <text class="acc m" x="86" y="144" font-size="12">SUBTITLES="subs"</text>
+
+  <rect class="card" x="494" y="96" width="326" height="64" rx="6" stroke-width="1"/>
+  <text class="ink m" x="510" y="118" font-size="12">#EXT-X-MEDIA:TYPE=SUBTITLES</text>
+  <rect class="chipa" x="510" y="128" width="154" height="22" rx="5"/>
+  <text class="acc m" x="520" y="144" font-size="12">GROUP-ID="subs"</text>
+
+  <line class="mks" x1="392" y1="139" x2="486" y2="139" stroke-width="1.5" marker-end="url(#g)"/>
+  <text class="acc" x="439" y="126" font-size="11.5" text-anchor="middle" font-weight="600">이름 일치</text>
+
+  <text x="44" y="204" font-size="12.5" xml:space="preserve"><tspan class="muted">이름을 푸는 코드 </tspan><tspan class="ink m">Playlist.tracks("SUBTITLES", group)</tspan><tspan class="muted m">  playlist.py:177-183</tspan></text>
+
+  <rect class="panel" x="44" y="218" width="792" height="52" rx="8" stroke-width="1"/>
+  <text x="60" y="240" font-size="12.5" xml:space="preserve"><tspan class="good" font-weight="600">일치</tspan><tspan class="ink"> — </tspan><tspan class="ink m">[Media(ko), Media(en)]</tspan><tspan class="ink"> 반환 → 자막 트랙을 내려받는다</tspan></text>
+  <text class="muted" x="60" y="260" font-size="11.5">이 후보에 딸린 자막만 고른다. 다른 화질에 붙은 트랙은 섞이지 않는다</text>
+
+  <rect class="panel" x="44" y="282" width="792" height="96" rx="8" stroke-width="1"/>
+  <text x="60" y="306" font-size="12.5" xml:space="preserve"><tspan class="bad" font-weight="600">불일치</tspan><tspan class="ink"> — </tspan><tspan class="bad m">SUBTITLES="subs-v2"</tspan><tspan class="ink"> 인데 문서에는 </tspan><tspan class="acc m">GROUP-ID="subs"</tspan><tspan class="ink"> 뿐이면</tspan></text>
+  <line class="mkbs" x1="76" y1="318" x2="76" y2="336" stroke-width="1.4" marker-end="url(#x)"/>
+  <text x="96" y="340" font-size="12.5" xml:space="preserve"><tspan class="ink m">tracks()</tspan><tspan class="ink"> 는 </tspan><tspan class="bad m">[]</tspan><tspan class="ink"> 를 돌려준다 — </tspan><tspan class="bad" font-weight="600">예외도 경고도 없다</tspan></text>
+  <text class="muted" x="96" y="362" font-size="11.5">RFC 8216 은 MUST match 라고 쓰지만, 그 제약을 검사하는 주체가 어디에도 없다. 영상은 정상 재생되고 자막만 사라진다</text>
+</svg>

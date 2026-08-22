@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 416" role="img"
+     aria-label="부정 후방탐색 (?&lt;!\d) 는 화수 후보 바로 앞 글자만 보는 폭 0 의 관문이다. 원피스 500회는 앞 글자가 공백이라 통과해 화수 500 으로 갈리고, Sky.Blue.2003 은 앞 글자가 숫자 2 라 차단되어 화수 없는 이름으로 판정된다. 관문이 없으면 같은 이름이 줄기 Sky.Blue.2 와 화수 3 으로 잘못 갈린다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="384" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">화수 후보 바로 앞 글자만 보는 폭 0 의 관문</text>
+
+  <text class="m" x="44" y="76" font-size="12.5" xml:space="preserve"><tspan class="muted">^(?P&lt;stem&gt;.*?)(?P&lt;sep&gt;[\s._-]*)</tspan><tspan class="acc" font-weight="700">(?&lt;!\d)</tspan><tspan class="muted">(?P&lt;ep&gt;\d{1,3})(?P&lt;unit&gt;\s*[화회])?$</tspan></text>
+
+  <text class="muted" x="48" y="106" font-size="11.5" font-weight="600">이름</text>
+  <text class="muted" x="238" y="106" font-size="11.5" font-weight="600">화수 후보 · 바로 앞 글자</text>
+  <text class="muted" x="496" y="106" font-size="11.5" font-weight="600">관문</text>
+  <text class="muted" x="590" y="106" font-size="11.5" font-weight="600">split_episode() 의 결과</text>
+
+  <rect class="panel" x="36" y="118" width="808" height="58" rx="6"/>
+  <text class="ink m" x="48" y="152" font-size="13">원피스 500회</text>
+  <text x="238" y="142" font-size="12.5" xml:space="preserve"><tspan class="muted">화수 후보 </tspan><tspan class="ink m" font-weight="600">500</tspan><tspan class="muted"> · 앞 글자 </tspan><tspan class="ink m" font-weight="600">' '</tspan></text>
+  <text class="muted" x="238" y="162" font-size="11.5">공백은 숫자가 아니다</text>
+  <text class="good" x="496" y="152" font-size="13" font-weight="600">통과</text>
+  <text x="590" y="152" font-size="12.5" xml:space="preserve"><tspan class="muted">줄기 </tspan><tspan class="ink m" font-weight="600">원피스</tspan><tspan class="muted"> · 화수 </tspan><tspan class="ink m" font-weight="600">500</tspan><tspan class="muted"> · 단위 </tspan><tspan class="ink m" font-weight="600">회</tspan></text>
+
+  <rect class="panel" x="36" y="184" width="808" height="58" rx="6"/>
+  <text class="ink m" x="48" y="218" font-size="13">Sky.Blue.2003</text>
+  <text x="238" y="208" font-size="12.5" xml:space="preserve"><tspan class="muted">화수 후보 </tspan><tspan class="ink m" font-weight="600">003</tspan><tspan class="muted"> · 앞 글자 </tspan><tspan class="acc m" font-weight="700">2</tspan></text>
+  <text class="muted" x="238" y="228" font-size="11.5">숫자다 — 이 분할을 거부한다</text>
+  <text class="acc" x="496" y="218" font-size="13" font-weight="600">차단</text>
+  <text class="good" x="590" y="210" font-size="12.5" font-weight="600">매치 없음</text>
+  <text class="muted" x="590" y="228" font-size="11.5">화수 없는 이름(영화)으로 판정</text>
+
+  <line class="rule" x1="36" y1="260" x2="844" y2="260" stroke-width="1"/>
+  <text class="muted" x="44" y="282" font-size="11.5" font-weight="600">관문이 없다면 — 같은 이름, 같은 엔진</text>
+
+  <rect class="panel" x="36" y="294" width="808" height="58" rx="6"/>
+  <text class="ink m" x="48" y="328" font-size="13">Sky.Blue.2003</text>
+  <text x="238" y="318" font-size="12.5" xml:space="preserve"><tspan class="muted">화수 후보 </tspan><tspan class="ink m" font-weight="600">003</tspan><tspan class="muted"> · 앞 글자 </tspan><tspan class="muted m">2</tspan></text>
+  <text class="muted" x="238" y="338" font-size="11.5">보지 않는다</text>
+  <text class="bad" x="496" y="328" font-size="13" font-weight="600">통과</text>
+  <text x="590" y="320" font-size="12.5" xml:space="preserve"><tspan class="muted">줄기 </tspan><tspan class="bad m" font-weight="700">Sky.Blue.2</tspan><tspan class="muted"> · 화수 </tspan><tspan class="bad m" font-weight="700">003</tspan></text>
+  <text class="bad" x="590" y="338" font-size="11.5">연도를 화수로 오인한다</text>
+
+  <line class="rule" x1="44" y1="370" x2="836" y2="370" stroke-width="1"/>
+  <text x="44" y="390" font-size="12.5" xml:space="preserve"><tspan class="ink">관문은 문자를 소비하지 않는다 — 어느 그룹의 내용도 바꾸지 않고 </tspan><tspan class="acc" font-weight="600">"여기서 끊어도 되는가"</tspan><tspan class="ink"> 만 판정한다.</tspan></text>
+</svg>

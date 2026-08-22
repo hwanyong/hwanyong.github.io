@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 412" role="img"
+     aria-label="ISO-BMFF 박스 머리의 세 가지 형태. 보통은 크기 4바이트와 종류 4바이트로 머리가 8바이트이고, 크기 필드가 1이면 64비트 largesize 8바이트가 뒤따라 머리가 16바이트가 되며, 크기 필드가 0이면 그 박스가 파일 끝까지 이어진다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .chip  { fill:#eaeef2 }
+    .chipa { fill:#ddf4ff }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .chip  { fill:#21262d }
+      .chipa { fill:#123a63 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="380" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">ISO-BMFF 박스 머리 — 크기 4바이트 + 종류 4바이트, 그리고 두 개의 예약값</text>
+
+  <text class="muted m" x="56"  y="74" font-size="11" text-anchor="middle">0</text>
+  <text class="muted m" x="208" y="74" font-size="11" text-anchor="middle">4</text>
+  <text class="muted m" x="360" y="74" font-size="11" text-anchor="middle">8</text>
+  <text class="muted m" x="512" y="74" font-size="11" text-anchor="middle">12</text>
+  <text class="muted m" x="664" y="74" font-size="11" text-anchor="middle">16</text>
+  <text class="muted" x="756" y="74" font-size="11">바이트 오프셋</text>
+
+  <text class="ink" x="44" y="102" font-size="13" font-weight="600" xml:space="preserve"><tspan class="acc">①</tspan><tspan> size ≥ 8 — 보통의 박스 (머리 8바이트)</tspan></text>
+  <rect class="chipa" x="57"  y="110" width="150" height="34" rx="4"/>
+  <rect class="chip"  x="209" y="110" width="150" height="34" rx="4"/>
+  <rect class="panel" x="361" y="110" width="378" height="34" rx="4"/>
+  <text class="ink m"   x="132" y="132" font-size="12.5" text-anchor="middle">size = n</text>
+  <text class="ink m"   x="284" y="132" font-size="12.5" text-anchor="middle">type</text>
+  <text class="muted"   x="550" y="132" font-size="12.5" text-anchor="middle">본문 n − 8 바이트 — 읽지 않고 건너뛴다</text>
+  <text class="muted" x="56" y="163" font-size="12" xml:space="preserve"><tspan>머리 8바이트만 읽고 커서를 </tspan><tspan class="m">n</tspan><tspan> 만큼 옮긴다.</tspan></text>
+
+  <text class="ink" x="44" y="192" font-size="13" font-weight="600" xml:space="preserve"><tspan class="acc">②</tspan><tspan> size == 1 — 64비트 largesize 가 뒤따른다 (머리 16바이트)</tspan></text>
+  <rect class="chipa" x="57"  y="200" width="150" height="34" rx="4"/>
+  <rect class="chip"  x="209" y="200" width="150" height="34" rx="4"/>
+  <rect class="chipa" x="361" y="200" width="302" height="34" rx="4"/>
+  <rect class="panel" x="665" y="200" width="74"  height="34" rx="4"/>
+  <text class="ink m"   x="132" y="222" font-size="12.5" text-anchor="middle">size = 1</text>
+  <text class="ink m"   x="284" y="222" font-size="12.5" text-anchor="middle">type</text>
+  <text class="ink"     x="512" y="222" font-size="12.5" text-anchor="middle">largesize (64비트 크기)</text>
+  <text class="muted"   x="702" y="222" font-size="12" text-anchor="middle">본문…</text>
+  <text x="56" y="253" font-size="12" xml:space="preserve"><tspan class="bad" font-weight="600">이 분기를 빠뜨리면</tspan><tspan class="muted"> 크기가 1 인 채로 남아 «크기가 비정상» 판정 — 4 GiB 넘는 정상 파일이 손상이 된다.</tspan></text>
+
+  <text class="ink" x="44" y="282" font-size="13" font-weight="600" xml:space="preserve"><tspan class="acc">③</tspan><tspan> size == 0 — 이 박스가 파일 끝까지다 (머리 8바이트)</tspan></text>
+  <rect class="chipa" x="57"  y="290" width="150" height="34" rx="4"/>
+  <rect class="chip"  x="209" y="290" width="150" height="34" rx="4"/>
+  <rect class="panel" x="361" y="290" width="378" height="34" rx="4"/>
+  <text class="ink m"   x="132" y="312" font-size="12.5" text-anchor="middle">size = 0</text>
+  <text class="ink m"   x="284" y="312" font-size="12.5" text-anchor="middle">type</text>
+  <text class="muted"   x="550" y="312" font-size="12.5" text-anchor="middle">본문 — 파일 끝(EOF)까지 전부</text>
+  <text x="56" y="343" font-size="12" xml:space="preserve"><tspan class="bad" font-weight="600">이 분기를 빠뜨리면</tspan><tspan class="muted"> 같은 오판. 코드는 크기를 «파일 크기 − 현재 오프셋» 으로 채워 넣는다.</tspan></text>
+
+  <line class="rule" x1="44" y1="360" x2="836" y2="360" stroke-width="1"/>
+  <text x="44" y="382" font-size="13" xml:space="preserve"><tspan class="ink">두 예약값을 빠뜨리면 </tspan><tspan class="bad" font-weight="600">정상 파일을 손상으로 오판</tspan><tspan class="ink">하고, 크기 하한 검사가 없으면 </tspan><tspan class="m">largesize == 0</tspan><tspan class="ink"> 에서 무한 루프가 된다.</tspan></text>
+</svg>

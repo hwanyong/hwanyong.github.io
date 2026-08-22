@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 476" role="img"
+     aria-label="이 저장소의 세 판별 구현이 파일의 어느 범위를 읽는지 비교한 그림. tsanalyze.sniff 는 선두 189바이트만 읽고, subtitles._sniff_format 은 선두 4킬로바이트를 읽은 뒤 못 찾으면 전량을 다시 훑으며, inventory._isobmff_flaw 는 상자 머리만 골라 파일 끝까지 따라가 경계의 합이 파일 크기와 맞는지 확인한다. 보는 범위가 넓을수록 말할 수 있는 결론이 강해진다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .chip  { fill:#eaeef2; stroke:#d8dee6 }
+    .hi    { fill:#ddf4ff; stroke:#54aeff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .band  { fill:#eaeef2 }
+    .dash  { stroke:#54aeff }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .chip  { fill:#21262d; stroke:#30363d }
+      .hi    { fill:#123a63; stroke:#1f6feb }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .band  { fill:#21262d }
+      .dash  { stroke:#1f6feb }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="14" width="840" height="442" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">얼마나 보는가가 무엇을 말할 수 있는가를 정한다</text>
+
+  <text class="acc m" x="44" y="78" font-size="13" font-weight="600">tsanalyze.sniff()</text>
+  <text class="muted" x="270" y="78" font-size="12">188바이트 주기의 0x47 · 오프셋 4–8 의 상자 타입</text>
+  <rect class="chip" x="44" y="90" width="792" height="28" rx="4" stroke-width="1"/>
+  <rect class="hi" x="44" y="90" width="16" height="28" rx="4" stroke-width="1"/>
+  <text class="muted" x="72" y="109" font-size="11.5">선두 189 B — 0번째와 188번째 바이트만 읽는다</text>
+  <text class="muted" x="44" y="140" font-size="12" xml:space="preserve"><tspan class="good">말할 수 있는 것</tspan><tspan> — 이 바이트열은 MPEG-TS 처럼 시작한다.   </tspan><tspan class="bad">말할 수 없는 것</tspan><tspan> — 그 뒤가 온전한가</tspan></text>
+
+  <text class="acc m" x="44" y="186" font-size="13" font-weight="600">subtitles._sniff_format()</text>
+  <text class="muted" x="270" y="186" font-size="12">큐 타임코드 정규식 — 기댈 매직 넘버가 없다</text>
+  <rect class="chip" x="44" y="198" width="792" height="28" rx="4" stroke-width="1"/>
+  <rect class="hi" x="44" y="198" width="76" height="28" rx="4" stroke-width="1"/>
+  <rect class="dash" x="44" y="198" width="792" height="28" rx="4" fill="none" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text class="muted" x="132" y="217" font-size="11.5">선두 4 KB — 못 찾으면 점선 범위 전량을 다시 훑는다</text>
+  <text class="muted" x="44" y="248" font-size="12" xml:space="preserve"><tspan class="good">말할 수 있는 것</tspan><tspan> — 어딘가에 큐 타임코드가 있다.   </tspan><tspan class="bad">말할 수 없는 것</tspan><tspan> — 큐 전체가 유효한가</tspan></text>
+
+  <text class="acc m" x="44" y="294" font-size="13" font-weight="600">inventory._isobmff_flaw()</text>
+  <text class="muted" x="270" y="294" font-size="12">상자 경계의 합이 파일 크기와 맞는가</text>
+  <rect class="box" x="44" y="306" width="60" height="28" rx="4" stroke-width="1"/>
+  <rect class="hi" x="44" y="306" width="10" height="28" rx="4" stroke-width="1"/>
+  <text class="muted m" x="76" y="325" font-size="10.5" text-anchor="middle">ftyp</text>
+  <rect class="box" x="104" y="306" width="180" height="28" rx="4" stroke-width="1"/>
+  <rect class="hi" x="104" y="306" width="10" height="28" rx="4" stroke-width="1"/>
+  <text class="muted m" x="196" y="325" font-size="10.5" text-anchor="middle">moov</text>
+  <rect class="box" x="284" y="306" width="480" height="28" rx="4" stroke-width="1"/>
+  <rect class="hi" x="284" y="306" width="10" height="28" rx="4" stroke-width="1"/>
+  <text class="muted m" x="524" y="325" font-size="10.5" text-anchor="middle">mdat — 본문은 읽지 않고 건너뛴다</text>
+  <rect class="box" x="764" y="306" width="72" height="28" rx="4" stroke-width="1"/>
+  <rect class="hi" x="764" y="306" width="10" height="28" rx="4" stroke-width="1"/>
+  <text class="muted m" x="804" y="325" font-size="10.5" text-anchor="middle">free</text>
+  <path d="M44,340 L44,348 L836,348 L836,340" class="arw" fill="none" stroke-width="1.2"/>
+  <text class="muted" x="440" y="364" font-size="11.5" text-anchor="middle">읽는 것은 파랗게 칠한 상자 머리 8바이트뿐 — 합이 파일 크기와 맞아야 한다</text>
+  <text class="muted" x="44" y="386" font-size="12" xml:space="preserve"><tspan class="good">말할 수 있는 것</tspan><tspan> — 상자 사슬이 파일 끝까지 닿는다.   </tspan><tspan class="bad">말할 수 없는 것</tspan><tspan> — 본문이 재생 가능한가</tspan></text>
+
+  <rect class="band" x="44" y="400" width="792" height="42" rx="8"/>
+  <text class="ink" x="440" y="426" font-size="13" text-anchor="middle">보는 범위가 결론의 강도를 정한다 — 선두 판별은 시작만, 경계의 합은 끝까지를 말한다</text>
+</svg>

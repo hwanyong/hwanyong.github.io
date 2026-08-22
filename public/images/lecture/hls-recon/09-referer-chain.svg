@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" role="img"
+     aria-label="회차 하나를 여는 요청 사슬 네 단계와 각 단계가 요구하는 서로 다른 Referer 값. 회차 페이지는 사이트 루트를, 플레이어 iframe 은 회차 페이지의 전체 주소를, 재생 소스 XHR 은 플레이어의 전체 주소를, CDN 은 플레이어 origin 을 Referer 로 받는다. 네 값 중 하나라도 비면 403 이 아니라 404 가 돌아온다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .panel { fill:#f6f8fa }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .rule  { stroke:#d8dee6 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .chip  { fill:#eaeef2 }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .panel { fill:#161b22 }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .rule  { stroke:#30363d }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .chip  { fill:#21262d }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+
+  <rect class="bg" x="20" y="16" width="840" height="368" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="48" font-size="15" font-weight="600">회차 하나를 열기까지 — 사슬의 단계마다 Referer 가 다르다</text>
+
+  <rect class="panel" x="40" y="64" width="800" height="274" rx="8"/>
+  <text class="muted" x="92" y="86" font-size="11.5" font-weight="600">요청 — 무엇을 여는가</text>
+  <text class="muted" x="452" y="86" font-size="11.5" font-weight="600">이 요청에만 얹는 값</text>
+  <line class="rule" x1="56" y1="96" x2="824" y2="96" stroke-width="1"/>
+  <line class="rule" x1="436" y1="104" x2="436" y2="328" stroke-width="1"/>
+  <line class="rule" x1="56" y1="152" x2="824" y2="152" stroke-width="1"/>
+  <line class="rule" x1="56" y1="212" x2="824" y2="212" stroke-width="1"/>
+  <line class="rule" x1="56" y1="272" x2="824" y2="272" stroke-width="1"/>
+
+  <line class="rule" x1="70" y1="122" x2="70" y2="302" stroke-width="1"/>
+
+  <circle class="chip" cx="70" cy="122" r="13"/>
+  <text class="muted" x="70" y="127" font-size="12" text-anchor="middle" font-weight="600">1</text>
+  <text class="ink" x="92" y="117" font-size="13.5">회차 페이지 — 사이트 안에서 연다</text>
+  <text class="muted m" x="92" y="135" font-size="12">GET  site/e/ep3</text>
+  <text class="acc m" x="452" y="117" font-size="12.5" font-weight="600">Referer: https://site/</text>
+  <text class="muted m" x="452" y="135" font-size="11.5">Origin:  https://site</text>
+
+  <circle class="chip" cx="70" cy="182" r="13"/>
+  <text class="muted" x="70" y="187" font-size="12" text-anchor="middle" font-weight="600">2</text>
+  <text class="ink" x="92" y="177" font-size="13.5">플레이어 — 회차 페이지 안의 iframe</text>
+  <text class="muted m" x="92" y="195" font-size="12">GET  player/video/9f3a…</text>
+  <text class="acc m" x="452" y="177" font-size="12.5" font-weight="600">Referer: https://site/e/ep3</text>
+  <text class="muted m" x="452" y="195" font-size="11.5">Origin:  https://site</text>
+
+  <circle class="chip" cx="70" cy="242" r="13"/>
+  <text class="muted" x="70" y="247" font-size="12" text-anchor="middle" font-weight="600">3</text>
+  <text class="ink" x="92" y="237" font-size="13.5">재생 소스 — 플레이어 안의 XHR</text>
+  <text class="muted m" x="92" y="255" font-size="12">POST player/index.php?…do=getVideo</text>
+  <text class="acc m" x="452" y="237" font-size="12.5" font-weight="600">Referer: https://player/video/9f3a…</text>
+  <text class="muted m" x="452" y="255" font-size="11.5">Origin:  https://player</text>
+
+  <circle class="chip" cx="70" cy="302" r="13"/>
+  <text class="muted" x="70" y="307" font-size="12" text-anchor="middle" font-weight="600">4</text>
+  <text class="ink" x="92" y="297" font-size="13.5">m3u8 · 세그먼트 — CDN 직접 요청</text>
+  <text class="muted m" x="92" y="315" font-size="12">GET  cdn/…/master.m3u8?md5=…</text>
+  <text class="acc m" x="452" y="297" font-size="12.5" font-weight="600">Referer: https://player/</text>
+  <text class="muted m" x="452" y="315" font-size="11.5">Origin:  https://player</text>
+
+  <line class="rule" x1="44" y1="356" x2="836" y2="356" stroke-width="1"/>
+  <text x="44" y="376" font-size="13" xml:space="preserve"><tspan class="ink">네 값 중 </tspan><tspan class="bad" font-weight="600">하나라도 비면</tspan><tspan class="ink"> 403 이 아니라 </tspan><tspan class="bad" font-weight="600">404</tspan><tspan class="ink"> 가 온다 — 없는 페이지처럼 보여 원인이 감춰진다.</tspan></text>
+</svg>

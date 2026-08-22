@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 424" role="img"
+     aria-label="FFmpeg 8 의 세그먼트 확장자 방어 3층 구조. 첫째 층은 allowed_segment_extensions 로 원격과 로컬 모두에 적용되고, 둘째 층은 allowed_extensions 로 주로 로컬 경로에 적용되며, 셋째 층은 내용에서 추정한 포맷과 확장자를 대조한다.">
+  <style>
+    .bg    { fill:#ffffff; stroke:#d8dee6 }
+    .box   { fill:#f6f8fa; stroke:#d8dee6 }
+    .hi    { fill:#ddf4ff; stroke:#54aeff }
+    .ink   { fill:#1f2328 }
+    .muted { fill:#656d76 }
+    .acc   { fill:#0969da }
+    .bad   { fill:#cf222e }
+    .good  { fill:#1a7f37 }
+    .chip  { fill:#eaeef2 }
+    .pillG { fill:#dafbe1 }
+    .mk    { fill:#8c959f }
+    .arw   { stroke:#8c959f }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill:#0d1117; stroke:#30363d }
+      .box   { fill:#161b22; stroke:#30363d }
+      .hi    { fill:#123a63; stroke:#1f6feb }
+      .ink   { fill:#e6edf3 }
+      .muted { fill:#8b949e }
+      .acc   { fill:#4493f8 }
+      .bad   { fill:#f85149 }
+      .good  { fill:#3fb950 }
+      .chip  { fill:#21262d }
+      .pillG { fill:#12341f }
+      .mk    { fill:#6e7681 }
+      .arw   { stroke:#6e7681 }
+    }
+    text { font-family:-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif }
+    .m   { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="mk"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="20" y="14" width="840" height="396" rx="10" stroke-width="1"/>
+  <text class="ink" x="44" y="44" font-size="15" font-weight="600">FFmpeg 8 의 확장자 방어는 한 층이 아니라 셋이다</text>
+
+  <rect class="box" x="44" y="58" width="792" height="72" rx="8" stroke-width="1"/>
+  <circle class="chip" cx="72" cy="94" r="14"/>
+  <text class="muted" x="72" y="99" font-size="13" text-anchor="middle" font-weight="600">1</text>
+  <text class="ink m" x="98" y="82" font-size="13" font-weight="600">allowed_segment_extensions</text>
+  <text class="muted" x="98" y="102" font-size="12">세그먼트 URI 확장자 allowlist · 원격·로컬 모두에 적용</text>
+  <text class="muted m" x="98" y="120" font-size="11.5">URL ….txt is not in allowed_segment_extensions</text>
+  <text class="good" x="600" y="88" font-size="12" font-weight="600">기본 허용: html</text>
+  <text class="bad" x="600" y="108" font-size="12" font-weight="600">기본 거부: txt · png · jpg</text>
+
+  <line x1="440" y1="132" x2="440" y2="152" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="452" y="147" font-size="11.5">통과하면</text>
+
+  <rect class="hi" x="44" y="156" width="792" height="72" rx="8" stroke-width="1.5"/>
+  <circle class="chip" cx="72" cy="192" r="14"/>
+  <text class="acc" x="72" y="197" font-size="13" text-anchor="middle" font-weight="600">2</text>
+  <text class="ink m" x="98" y="180" font-size="13" font-weight="600">allowed_extensions</text>
+  <text class="muted" x="98" y="200" font-size="12">hls demuxer 가 접근을 허용하는 확장자 · 주로 로컬 경로 세그먼트</text>
+  <text class="acc" x="98" y="218" font-size="11.5" font-weight="600">이 저장소가 조정하는 층 — ALL 이 아니라 열거로 넘긴다</text>
+  <text class="bad" x="600" y="198" font-size="12" font-weight="600">기본 목록에 html 없음</text>
+
+  <line x1="440" y1="230" x2="440" y2="250" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+  <text class="muted" x="452" y="245" font-size="11.5">통과하면</text>
+
+  <rect class="box" x="44" y="254" width="792" height="72" rx="8" stroke-width="1"/>
+  <circle class="chip" cx="72" cy="290" r="14"/>
+  <text class="muted" x="72" y="295" font-size="13" text-anchor="middle" font-weight="600">3</text>
+  <text class="ink" x="98" y="278" font-size="13" font-weight="600">포맷–확장자 일치 검사</text>
+  <text class="muted" x="98" y="298" font-size="12">내용에서 포맷을 추정한 뒤 확장자와 대조한다</text>
+  <text class="muted m" x="98" y="316" font-size="11.5">detected format mpegts extension avi mismatches</text>
+  <text class="bad" x="600" y="296" font-size="12" font-weight="600">②를 열어도 여기서 막힌다</text>
+
+  <line x1="440" y1="328" x2="440" y2="346" class="arw" stroke-width="1.2" marker-end="url(#ar)"/>
+
+  <rect class="pillG" x="336" y="350" width="208" height="36" rx="8"/>
+  <text class="good" x="440" y="373" font-size="13" text-anchor="middle" font-weight="600">열기 성공</text>
+</svg>
