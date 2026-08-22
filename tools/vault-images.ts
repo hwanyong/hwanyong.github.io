@@ -40,7 +40,6 @@ const VAULT_SKIP = new Set(['.git', '.obsidian', '.claude', '90_보관', '__temp
 
 const CONTENT_DIRS = ['src/content/lecture', 'src/content/log'];
 const PUBLIC_DIR = 'public/images/figures';
-const URL_PREFIX = '/images/figures/';
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
 const BLOCKED = new Set(['book-scan', 'ext-src', 'replica']);

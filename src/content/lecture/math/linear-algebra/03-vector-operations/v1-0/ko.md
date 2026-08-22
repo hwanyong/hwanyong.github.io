@@ -1,7 +1,7 @@
 ---
 title: 벡터 연산
 description: 덧셈·뺄셈·스케일링·전치·브로드캐스팅. 그중 진짜 원시 연산은 둘뿐이다.
-date: 2026-08-21
+date: 2026-07-13
 version: '1.0'
 tags: ['수학', '선형대수', '벡터']
 thumbnail: /images/lecture/thumb/linear-algebra-03-vector-operations.svg

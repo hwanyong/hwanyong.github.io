@@ -1,120 +1,128 @@
 ---
-untranslated: ko
-title: 벡터 공리 — 방향·음수·역원
-description: 방향은 저장돼 있지 않다. 음수는 반대가 아니라 0으로 되돌리는 짝이다.
-date: 2026-08-21
+title: Vector Axioms — Direction, Negatives, Inverses
+description: Direction isn't stored anywhere. A negative isn't "the opposite" — it's the partner that returns you to zero.
+date: 2026-07-20
 version: '1.0'
-tags: ['수학', '선형대수', '벡터']
+tags: ['mathematics', 'linear algebra', 'vectors']
 thumbnail: /images/lecture/thumb/linear-algebra-04-vector-axioms.svg
 ---
 
-[03](/ko/lecture/math/linear-algebra/03-vector-operations/) 을 끝내고 나면 걸리는 게
-하나 있다. 덧셈은 성분을 따로따로 더할 뿐인데, **왜 결과의 방향이 바뀌지?**
+Finishing [03](/lecture/math/linear-algebra/03-vector-operations/) leaves one thing nagging.
+Addition just adds components separately, so **why does the direction of the result change?**
 
-성분끼리는 서로 아무 상관 없이 더해진다. $x$ 는 $x$ 끼리, $y$ 는 $y$ 끼리. 그런데
-그려 보면 화살표가 다른 쪽을 가리키고 있다. 덧셈이 방향을 만든 것처럼 보인다.
+Components are added with no regard for each other. $x$ with $x$, $y$ with $y$. And yet when you
+draw it, the arrow is pointing somewhere else. It looks as if addition created a direction.
 
-만들지 않았다. 이 차시는 그걸 푸는 데서 시작한다.
+It didn't. This session starts by taking that apart.
 
-## 왜 이걸 배우나
+## Why you need this
 
-연산이 왜 그렇게 동작하는지 모르면, 결과가 예상과 다를 때 무엇을 의심해야 할지 모른다.
-공리는 규칙을 외우자는 게 아니라 **연산의 결과가 어디까지 강제되는지**를 아는 일이다.
+If you don't know why an operation behaves the way it does, you don't know what to suspect when
+a result surprises you. Axioms aren't rules to memorise — they're **knowing how far the outcome
+of an operation is forced.**
 
-1. 성분을 따로 더했는데 방향이 변한다 → 방향이 무엇인지 다시 봐야 한다 → **방향은 파생값**
-2. 음수배가 왜 하필 반대 방향인지 근거가 없다 → 정의에서 끌어내야 한다 → **덧셈 역원**
-3. 스칼라를 "1차원 벡터" 로 뭉뚱그리면 나중에 차원 계산이 어긋난다 → **스칼라는 0차원**
+1. Components added separately, yet the direction changes → look again at what direction is → **direction is derived**
+2. No grounds for why a negative multiple flips the arrow → derive it from the definition → **additive inverse**
+3. Lumping scalars in as "1-D vectors" breaks dimension counting later → **a scalar is 0-dimensional**
 
-## 방향은 저장돼 있지 않다
+## Direction isn't stored
 
-벡터 $[3, 4]$ 어디에도 "각도 53.13도" 라는 값은 없다. 있는 것은 3과 4뿐이다.
+Nowhere in the vector $[3, 4]$ is there a value that says "angle 53.13 degrees." There is only
+3 and 4.
 
-방향은 **성분들의 비율에서 계산되는 파생값**이다.
+Direction is **a derived value computed from the ratio of the components.**
 
 $$
 \theta = \arctan\!\left(\frac{y}{x}\right)
 $$
 
-그래서 성분을 독립적으로 더하면 비율이 달라지고, 비율이 달라지면 계산된 각도도 달라진다.
-덧셈이 방향을 건드린 것이 아니라, **방향이라는 게 원래 성분에서 읽어 내는 값**이었을 뿐이다.
+So adding components independently changes the ratio, and a changed ratio gives a different
+computed angle. Addition didn't touch direction — **direction was always a value you read out
+of the components.**
 
 ```python
 import numpy as np
 
 v = np.array([3, 4])
-np.degrees(np.arctan2(v[1], v[0]))   # 53.13...  ← 저장된 값이 아니라 계산된 값
+np.degrees(np.arctan2(v[1], v[0]))   # 53.13...  ← computed, not stored
 ```
 
-이것을 **중첩(superposition)** 이라 부른다. 각 축의 성분은 서로 간섭하지 않고 독립적으로
-더해지며, 대각선 화살표는 그 독립적인 합들을 기하로 **읽어 낸 결과**다.
+This is called **superposition**. Components along each axis add independently without
+interfering, and the diagonal arrow is those independent sums **read back geometrically.**
 
-물리 시간에 힘을 성분으로 나눠 각각 더한 뒤 합력을 구하던 것과 같은 이야기다.
+It's the same story as resolving forces into components in physics class, adding each, and
+recovering the resultant.
 
-### 물리가 딱 맞는 건 신비가 아니다
+### Physics fitting isn't a mystery
 
-여기서 순서를 뒤집어 생각하기 쉽다. "수학이 물리와 이렇게 잘 맞다니 신기하다" 는 쪽으로.
+It's easy to get the causality backwards here — to land on "amazing how well mathematics fits
+physics."
 
-인과가 반대다. 벡터 공리는 **힘의 중첩 같은 현상을 기술하려고 만들어진 규칙**이다.
-물리가 수학을 따르는 게 아니라 수학이 물리를 본떠 설계됐다. 맞아떨어지는 게 당연하다.
+It's the other way round. The vector axioms are **rules built to describe phenomena like the
+superposition of forces.** Physics doesn't follow mathematics; mathematics was designed after
+physics. Of course it fits.
 
-## 스칼라는 0차원이다
+## A scalar is 0-dimensional
 
-"스칼라는 1차원, 벡터는 2차원 이상" 이라는 설명을 듣는 경우가 있는데 틀렸다.
+You sometimes hear "a scalar is 1-dimensional, a vector is 2-dimensional or more." That's wrong.
 
-| | 차원 | 방향 |
+| | Dimension | Direction |
 |---|---|---|
-| 스칼라 | **0** | 없다 |
-| $\mathbb{R}^1$ 의 벡터 | 1 | 있다 (부호) |
-| $\mathbb{R}^2$ 의 벡터 | 2 | 있다 |
+| Scalar | **0** | none |
+| Vector in $\mathbb{R}^1$ | 1 | yes (sign) |
+| Vector in $\mathbb{R}^2$ | 2 | yes |
 
-스칼라는 크기만 있고 방향이 없는 **배율**이다. 그리고 $\mathbb{R}^1$ 벡터는 엄연히
-존재한다 — 원소가 하나인 벡터다. 스칼라와 $\mathbb{R}^1$ 벡터는 값이 비슷해 보여도
-다른 대상이고, 코드에서 `5` 와 `np.array([5])` 의 `shape` 이 다른 것이 그 차이다.
+A scalar is a **scaling factor** with magnitude but no direction. And $\mathbb{R}^1$ vectors
+genuinely exist — vectors with one element. A scalar and an $\mathbb{R}^1$ vector may look
+alike in value but they're different objects, and in code that difference is the `shape` of `5`
+versus `np.array([5])`.
 
-## 음수 — 반대가 아니라 되돌리는 짝
+## Negatives — not "opposite" but "the partner that returns you"
 
-$-v$ 를 "반대 방향 벡터" 라고 배우면 절반만 아는 것이다. 정의는 이렇다.
+Learning $-v$ as "the vector in the opposite direction" gets you halfway. The definition is
+this:
 
-> $-v$ 는 $v$ 에 더했을 때 **항등원 $0$ 이 되게 하는 짝**이다.
+> $-v$ is **the partner that, added to $v$, gives the identity $0$.**
 > $$ v + (-v) = 0 $$
 
-이것을 **덧셈 역원(additive inverse)** 이라 한다. 방향이 뒤집히는 것은 정의가 아니라
-**정의에서 따라 나오는 결과**다.
+This is the **additive inverse**. The flip in direction isn't the definition — it's
+**a consequence of the definition.**
 
-썸네일이 그 그림이다. $v$ 와 $-v$ 가 원점을 가운데 두고 마주 본다. 둘을 더하면
-원점으로 돌아온다.
+That's what the thumbnail shows. $v$ and $-v$ facing each other across the origin. Add them and
+you're back at the origin.
 
-### $(-1)\cdot v = -v$ 는 직관이 아니라 강제다
+### $(-1)\cdot v = -v$ is forced, not intuited
 
-"당연한 거 아닌가" 싶지만, 이건 눈으로 보고 받아들이는 사실이 아니라 공리에서
-**빠져나갈 수 없게 유도되는** 결과다.
+It looks obvious, but this isn't a fact you accept by eye — it's a result **you can't escape**
+once you have the axioms.
 
 $$
 v + (-1)v = 1\cdot v + (-1)v = (1 + (-1))v = 0 \cdot v = 0
 $$
 
-분배 법칙과 $1\cdot v = v$ 만 인정하면, $(-1)v$ 는 $v$ 의 덧셈 역원일 수밖에 없다.
-역원은 유일하므로 $(-1)v = -v$ 다.
+Grant only distributivity and $1\cdot v = v$, and $(-1)v$ must be the additive inverse of $v$.
+Inverses are unique, so $(-1)v = -v$.
 
-이 차이가 왜 중요한가. 앞으로 만날 대상 중에는 화살표로 그릴 수 없는 것이 많다.
-함수도, 다항식도, 384차원 임베딩도 벡터 공간을 이룬다. 그때 "반대 방향" 이라는
-그림은 쓸 수 없지만 "더해서 0이 되는 짝" 은 그대로 통한다.
+Why does the difference matter? Many of the objects coming up can't be drawn as arrows.
+Functions form a vector space. So do polynomials, and 384-dimensional embeddings. At that point
+the picture of "the opposite direction" is unusable, but "the partner that sums to zero" still
+works.
 
-**그림은 특수한 경우고, 공리가 일반적인 경우다.**
+**The picture is the special case; the axioms are the general one.**
 
-## 한 장 요약
+## Recap
 
-| 물으면 | 답한다 |
+| Question | Answer |
 |---|---|
-| 방향은 어디 있나 | 저장돼 있지 않다. 성분 비율에서 계산된다 ($\arctan$) |
-| 덧셈이 방향을 바꾸나 | 아니다. 성분이 바뀌니 읽어 낸 각도가 달라질 뿐 |
-| 중첩 원리 | 축마다 독립으로 더해진다. 대각선은 그 결과를 읽은 것 |
-| 물리와 맞는 이유 | 수학이 물리를 본떠 설계됐다. 인과가 그 반대가 아니다 |
-| 스칼라의 차원 | **0차원.** $\mathbb{R}^1$ 벡터와 다른 대상이다 |
-| $-v$ 의 정의 | $v + (-v) = 0$ 인 짝(덧셈 역원). 방향 반전은 결과 |
-| $(-1)v = -v$ | 공리에서 강제된다. 직관으로 받아들이는 게 아니다 |
+| Where is direction stored | Nowhere. It's computed from the component ratio ($\arctan$) |
+| Does addition change direction | No. Components change, so the angle you read out changes |
+| Superposition | Each axis adds independently. The diagonal is that result, read back |
+| Why physics fits | Mathematics was designed after physics, not the reverse |
+| Dimension of a scalar | **0.** A different object from an $\mathbb{R}^1$ vector |
+| Definition of $-v$ | The partner with $v + (-v) = 0$. The flip is a consequence |
+| $(-1)v = -v$ | Forced by the axioms. Not something you accept intuitively |
 
-## 다음
+## Next
 
-두 벡터를 한 숫자로 묶는 연산이 남았다.
-→ [05 내적](/ko/lecture/math/linear-algebra/05-dot-product/)
+One operation left: turning two vectors into a single number.
+→ [05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/)

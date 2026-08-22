@@ -55,7 +55,7 @@ type Props = {
 const { locale, path, revisions, index, alternates }: Props = Astro.props;
 
 const entry = revisions[index]!;
-const { Content } = await render(entry);
+const { Content, headings } = await render(entry);
 
 const { stack, links, thumbnail, video } = entry.data;
 
@@ -74,6 +74,7 @@ const linkRow = LINK_LABELS.flatMap(([key, label]) => {
 ---
 
 <RevisionPage
+  headings={headings}
   locale={locale}
   alternates={alternates}
   collection="project"

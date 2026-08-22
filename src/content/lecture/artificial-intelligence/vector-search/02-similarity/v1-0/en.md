@@ -1,162 +1,164 @@
 ---
-untranslated: ko
-title: 유사도
-description: 왜 거리가 아니라 각도로 재는가. 검색이 길이를 먼저 버리는 이유.
-date: 2026-08-21
+title: Similarity
+description: Why angle instead of distance. Why search throws length away first.
+date: 2026-08-13
 version: '1.0'
-tags: ['인공지능', '검색', '임베딩']
+tags: ['artificial intelligence', 'search', 'embeddings']
 thumbnail: /images/lecture/thumb/vector-search-02-similarity.svg
 ---
 
-> **선수** — [수학 » 선형대수 02 노름](/ko/lecture/math/linear-algebra/02-norm/) ·
-> [05 내적](/ko/lecture/math/linear-algebra/05-dot-product/).
-> 코사인 유사도가 왜 크기를 지운 내적인지는 그쪽에서 유도한다. 여기서는 **왜 검색이
-> 하필 그 자를 고르는가**를 다룬다.
+> **Prerequisite** — [Mathematics » Linear Algebra 02 Norms](/lecture/math/linear-algebra/02-norm/) ·
+> [05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/).
+> Why cosine similarity is the dot product with magnitude removed is derived there. Here we deal
+> with **why search picks that particular ruler.**
 
-[01](/ko/lecture/artificial-intelligence/vector-search/01-embeddings/) 에서 문서들을
-같은 공간의 점으로 만들었다. 이제 질의도 같은 방법으로 점을 만들면, 검색은 한 문장이 된다.
+In [01](/lecture/artificial-intelligence/vector-search/01-embeddings/) we turned documents into
+points in one space. Turn the query into a point the same way and search becomes a single
+sentence.
 
-> **가장 가까운 점을 찾아라.**
+> **Find the nearest point.**
 
-문제는 '가깝다' 가 한 가지가 아니라는 것이다.
+The problem is that "near" isn't one thing.
 
-## 왜 이걸 배우나
+## Why you need this
 
-01 끝에서 거리를 썼다. `norm(a - b)` 가 작으면 비슷하다고 봤다. 그런데 실제 검색에
-그렇게 쓰면 이상한 일이 벌어진다.
+At the end of 01 we used distance. Small `norm(a - b)` meant similar. Put that into a real
+search and something strange happens.
 
-1. 거리로 재면 **긴 문서가 무조건 진다** → 길이의 영향을 빼야 한다 → **정규화**
-2. 길이를 빼고 나면 남는 건 방향뿐이다 → 방향의 닮음을 재는 자 → **코사인 유사도**
-3. 정규화를 미리 해 두면 매번 나눌 필요가 없다 → **내적 하나로 끝난다**
+1. Measured by distance, **long documents always lose** → remove the effect of length → **normalisation**
+2. With length removed, only direction is left → a ruler for direction → **cosine similarity**
+3. Normalise up front and you never divide again → **it collapses to one dot product**
 
-## 거리가 왜 지는가
+## Why distance loses
 
-임베딩 벡터의 길이는 대체로 **글의 길이나 강조 정도**를 따라간다. 같은 주제라도 길게
-쓴 문서가 원점에서 더 멀리 놓인다.
+The length of an embedding vector broadly tracks **how long or how emphatic the text is.** Two
+documents on the same topic sit at different distances from the origin if one is longer.
 
-같은 방향을 가리키는 두 문서를 놓고 보자.
+Take two documents pointing the same way.
 
 ```python
 import numpy as np
 
-query = np.array([1.0, 1.0])          # 질의
-short = np.array([1.2, 1.1])          # 같은 주제, 짧은 글
-long_ = np.array([6.0, 5.5])          # 같은 주제, 긴 글
+query = np.array([1.0, 1.0])          # the query
+short = np.array([1.2, 1.1])          # same topic, short text
+long_ = np.array([6.0, 5.5])          # same topic, long text
 
-np.linalg.norm(query - short)   # 0.22  가깝다
-np.linalg.norm(query - long_)   # 6.73  멀다!
+np.linalg.norm(query - short)   # 0.22  close
+np.linalg.norm(query - long_)   # 6.73  far!
 ```
 
-`long_` 은 `short` 와 **거의 같은 방향**이다. 주제가 같다는 뜻이다. 그런데 거리로
-재면 훨씬 멀다고 나온다. 길이만으로 밀려난 것이다.
+`long_` points in **almost exactly the same direction** as `short`. Same topic. And yet by
+distance it reads as far away. It was pushed out purely by length.
 
-이대로 검색을 만들면 **짧은 문서만 상위에 올라온다.** 내용과 무관하게.
+Build search this way and **only short documents reach the top.** Regardless of content.
 
-## 길이를 먼저 버린다
+## Throw length away first
 
-원인이 길이니까 길이를 지우면 된다.
-[선형대수 02 의 정규화](/ko/lecture/math/linear-algebra/02-norm/) 가 그 도구다.
+Length is the cause, so erase length.
+[The normalisation from Linear Algebra 02](/lecture/math/linear-algebra/02-norm/) is the tool.
 
 $$
 \hat v = \frac{v}{\lVert v \rVert}
 $$
 
-정규화하면 모든 벡터가 **같은 원 위**에 앉는다. 썸네일이 그 그림이다 — 길이는 이미
-지워졌고, 두 벡터 사이에 남은 차이는 **사잇각뿐**이다.
+Normalise and every vector sits on **the same circle.** That's what the thumbnail shows —
+length has already been erased, and the only difference left between two vectors is **the angle
+between them.**
 
 ```python
 def unit(v):
     return v / np.linalg.norm(v)
 
 unit(short)   # [0.737, 0.676]
-unit(long_)   # [0.737, 0.676]   ← 같은 벡터가 됐다
+unit(long_)   # [0.737, 0.676]   ← they became the same vector
 ```
 
-길이가 5배 차이 나던 두 벡터가 정규화 뒤에는 구분되지 않는다. 원하는 결과다 —
-검색에서 둘은 같은 것이어야 한다.
+Two vectors that differed by a factor of five are indistinguishable after normalisation. That's
+what we wanted — for search, they should be the same thing.
 
-## 그래서 코사인이다
+## Hence cosine
 
-정규화한 두 벡터의 내적이 곧 $\cos\theta$ 다.
+The dot product of two normalised vectors is exactly $\cos\theta$.
 
 $$
 \cos\theta = \frac{v \cdot w}{\lVert v \rVert \, \lVert w \rVert} = \hat v \cdot \hat w
 $$
 
-유도는 [선형대수 05](/ko/lecture/math/linear-algebra/05-dot-product/) 에 있다.
-여기서 쓸 것은 그 결과의 **성질**이다.
+The derivation is in [Linear Algebra 05](/lecture/math/linear-algebra/05-dot-product/). What we
+use here is the **behaviour** of that result.
 
-| $\cos\theta$ | 뜻 | 검색에서 |
+| $\cos\theta$ | Meaning | In search |
 |:---:|---|---|
-| $1$ | 같은 방향 | 같은 내용 |
-| $0$ | 직각 | 무관 |
-| $-1$ | 반대 방향 | — |
+| $1$ | same direction | same content |
+| $0$ | right angle | unrelated |
+| $-1$ | opposite direction | — |
 
-마지막 줄에 실무적인 사실이 하나 붙는다. **임베딩 검색에서 음수는 거의 안 나온다.**
-현대 임베딩 모델의 벡터는 좁은 원뿔 안에 몰려 있어서, 무관한 문서끼리도
-$\cos\theta$ 가 0.2~0.5 쯤 나온다.
+A practical fact attaches to that last row. **Negative values almost never appear in embedding
+search.** Modern embedding vectors cluster inside a narrow cone, so even unrelated documents
+score $\cos\theta$ around 0.2–0.5.
 
-그래서 **"0.5 이상이면 관련 있음" 같은 절대 기준은 쓸 수 없다.** 임계값은 모델마다
-다르고, 데이터마다 다르다. 쓸 수 있는 것은 **순위**다 — 상위 $k$ 개를 가져오는 방식이
-실무의 기본형인 이유가 이것이다.
+Which means **you can't use an absolute cut-off like "above 0.5 is relevant."** The threshold
+differs by model and by dataset. What you can use is **rank** — which is why "fetch the top
+$k$" is the standard shape in practice.
 
-## 미리 정규화해 두면 나눌 필요가 없다
+## Normalise up front and the division disappears
 
-인덱싱할 때 한 번 정규화해 두면, 검색할 때마다 하는 나눗셈이 사라진다.
+Normalise once at indexing time and the per-query division goes away.
 
 $$
 \hat v \cdot \hat w = \cos\theta
 $$
 
-단위벡터끼리는 분모가 1이라 **내적이 곧 코사인 유사도**다.
+Between unit vectors the denominator is 1, so **the dot product is cosine similarity.**
 
 ```python
-# 인덱싱 — 한 번만
+# Indexing — once
 index = np.array([unit(embed(d)) for d in docs])   # (N, 384)
 
-# 검색 — 행렬곱 한 번
+# Search — one matrix product
 def search(q, k=5):
     scores = index @ unit(embed(q))                # (N,)
     return np.argsort(-scores)[:k]
 ```
 
-`index @ q` 한 줄이 전체 문서와의 유사도를 한꺼번에 계산한다. 문서마다 for 문을 도는
-것과 결과는 같지만, NumPy 가 이 곱을 한 번의 행렬 연산으로 처리한다.
+`index @ q` computes the similarity against every document at once. Same result as looping over
+documents, except NumPy handles the whole product as a single matrix operation.
 
-여기서 벡터 검색의 실체가 드러난다.
+Which reveals what vector search actually is.
 
-> **뜻으로 하는 검색의 정체는 행렬곱 한 번이다.**
+> **Search by meaning is, underneath, one matrix multiplication.**
 
-## 그러면 거리는 언제 쓰나
+## So when do you use distance
 
-코사인이 항상 옳은 것은 아니다. **길이에 의미가 있으면** 지우면 안 된다.
+Cosine isn't always right. **If length carries meaning, don't erase it.**
 
-| 자 | 언제 |
+| Ruler | When |
 |---|---|
-| 코사인 유사도 | 텍스트 검색 — 문서 길이를 무시해야 할 때 |
-| 유클리드 거리 | 좌표·센서값처럼 크기 자체가 정보일 때 |
-| 내적 (정규화 없이) | 길이에 인기도·신뢰도 같은 걸 실어 둔 추천 시스템 |
+| Cosine similarity | text search — when document length must be ignored |
+| Euclidean distance | coordinates, sensor readings — when magnitude itself is information |
+| Dot product (unnormalised) | recommenders that load popularity or confidence into the length |
 
-세 번째가 재미있다. 어떤 추천 시스템은 인기 있는 항목의 벡터를 **일부러 길게** 만든다.
-그러면 정규화 없는 내적이 "방향 닮음 × 인기도" 를 한 번에 계산한다.
-[선형대수 05 에서 함정으로 본 성질](/ko/lecture/math/linear-algebra/05-dot-product/)
-— 내적이 각도와 크기를 함께 담는다는 것 — 을 도구로 쓰는 것이다.
+The third is the interesting one. Some recommender systems deliberately make popular items'
+vectors **longer**. Then an unnormalised dot product computes "direction match × popularity" in
+one step. The property
+[Linear Algebra 05 flagged as a trap](/lecture/math/linear-algebra/05-dot-product/) — that the
+dot product carries both angle and magnitude — used here as a tool.
 
-**어떤 자를 고르느냐는 수학이 정해 주지 않는다.** 길이가 정보인지 잡음인지를 아는 것은
-그 도메인을 아는 사람의 몫이다.
+**Which ruler to pick is not something mathematics decides for you.** Knowing whether length is
+signal or noise belongs to whoever knows the domain.
 
-## 한 장 요약
+## Recap
 
-| 물으면 | 답한다 |
+| Question | Answer |
 |---|---|
-| 왜 거리를 안 쓰나 | 임베딩 길이가 글 길이를 따라가 **긴 문서가 진다** |
-| 해법 | 정규화 — 길이를 지우고 방향만 남긴다 |
-| 코사인 유사도 | 단위벡터끼리의 내적. 1=같음 · 0=무관 |
-| 절대 임계값 | **쓰지 마라.** 모델마다 분포가 다르다. 순위를 써라 |
-| 미리 정규화하면 | 검색이 행렬곱 한 번(`index @ q`)이 된다 |
-| 거리를 쓸 때 | 크기 자체가 정보일 때(좌표·센서) |
+| Why not distance | Embedding length tracks text length, so **long documents lose** |
+| The fix | Normalisation — erase length, keep direction |
+| Cosine similarity | The dot product between unit vectors. 1 = same, 0 = unrelated |
+| Absolute thresholds | **Don't.** The distribution differs by model. Use rank |
+| Normalising up front | Search becomes one matrix product (`index @ q`) |
+| When to use distance | When magnitude itself is information (coordinates, sensors) |
 
-## 다음
+## Next
 
-유사도를 정했으니 이제 엔진을 조립할 차례다.
-→ 03 RAG 엔진 (준비 중)
+We have a similarity measure. Time to assemble the engine.
+→ 03 RAG engine (coming)

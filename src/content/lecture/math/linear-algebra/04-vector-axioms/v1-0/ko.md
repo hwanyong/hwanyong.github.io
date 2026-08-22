@@ -1,7 +1,7 @@
 ---
 title: 벡터 공리 — 방향·음수·역원
 description: 방향은 저장돼 있지 않다. 음수는 반대가 아니라 0으로 되돌리는 짝이다.
-date: 2026-08-21
+date: 2026-07-20
 version: '1.0'
 tags: ['수학', '선형대수', '벡터']
 thumbnail: /images/lecture/thumb/linear-algebra-04-vector-axioms.svg

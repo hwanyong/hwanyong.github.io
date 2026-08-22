@@ -1,79 +1,82 @@
 ---
-untranslated: ko
-title: 노름과 단위벡터
-description: 벡터의 길이를 재는 자. 그리고 길이를 버리고 방향만 남기는 법.
-date: 2026-08-21
+title: Norms and Unit Vectors
+description: The ruler for a vector's length. And how to throw the length away and keep only direction.
+date: 2026-07-06
 version: '1.0'
-tags: ['수학', '선형대수', '벡터']
+tags: ['mathematics', 'linear algebra', 'vectors']
 thumbnail: /images/lecture/thumb/linear-algebra-02-norm.svg
 ---
 
-벡터의 **노름**은 그 화살표의 길이다. 기호는 이중 수직 막대를 쓴다.
+The **norm** of a vector is the length of its arrow. The notation is a double vertical bar.
 
 $$
 \lVert v \rVert = \sqrt{\sum_{i=1}^{n} v_i^2}
 $$
 
-원소를 각각 제곱해 다 더하고, 마지막에 제곱근을 씌운다. $\mathbb{R}^2$ 에서는 이것이
-정확히 피타고라스 정리다. $\mathbb{R}^{384}$ 에서도 식은 그대로다 — 항이 384개일 뿐이다.
+Square each element, add them up, take the square root at the end. In $\mathbb{R}^2$ this is
+exactly the Pythagorean theorem. In $\mathbb{R}^{384}$ the formula is unchanged — there are just
+384 terms.
 
-## 왜 이걸 배우나
+## Why you need this
 
-[01](/ko/lecture/math/linear-algebra/01-vectors/) 에서 벡터를 만들었다. 그런데
-만들어 놓고 보니 **잴 수가 없다.** 이 벡터가 저 벡터보다 큰지, 원점에서 얼마나 먼지
-물을 방법이 없다. 크기를 못 재면 "두 벡터가 얼마나 가까운가" 도 물을 수 없다.
+In [01](/lecture/math/linear-algebra/01-vectors/) we made vectors. Having made them, we find we
+**can't measure them.** There's no way to ask whether this vector is bigger than that one, or
+how far it is from the origin. And without a size, you can't ask how *close* two vectors are
+either.
 
-1. 벡터의 크기를 못 잰다 → 길이를 재는 자가 필요하다 → **노름 $\lVert v \rVert$**
-2. 비교만 할 건데 매번 제곱근까지 구하는 건 낭비다 → 제곱근을 생략한 값이 필요하다 → **제곱 노름 $\lVert v \rVert^2$**
-3. 크기가 제각각이라 방향만 깨끗이 비교할 수 없다 → 크기를 1로 맞출 방법이 필요하다 → **단위벡터**
-4. 그런데 영벡터는 1로 못 만든다 → 예외를 정해야 한다 → **영벡터에는 단위벡터가 없다**
+1. You can't measure a vector's size → you need a ruler → **the norm $\lVert v \rVert$**
+2. Taking a square root every time is wasteful if you're only comparing → **the squared norm $\lVert v \rVert^2$**
+3. Sizes vary, so you can't compare direction cleanly → you need to fix size at 1 → **unit vectors**
+4. But zero can't be made into 1 → you need an exception → **the zero vector has no unit vector**
 
-한 줄로: 재는 자(노름) → 빠른 비교(제곱 노름) → 방향만 남기기(정규화).
+In one line: a ruler (norm) → fast comparison (squared norm) → keeping only direction
+(normalisation).
 
-## 수식을 읽는 법
+## How to read the formula
 
-$\sum$ 이 낯설면 이렇게 읽으면 된다. **for 문이다.**
+If $\sum$ is unfamiliar, read it this way. **It's a for loop.**
 
 $$
 \sum_{i=1}^{n} v_i^2 \quad \longleftrightarrow \quad
 \texttt{total = 0; for i in range(n): total += v[i]**2}
 $$
 
-$i=1$ 은 초기값, $n$ 은 끝, $v_i^2$ 는 루프 안에서 더할 것. 기호 셋이 for 문의 세
-부분과 그대로 대응한다. 수학 기호가 어려운 게 아니라 압축돼 있을 뿐이다.
+$i=1$ is the initial value, $n$ is the end, $v_i^2$ is what you add inside. Three symbols
+mapping onto the three parts of a for loop. Mathematical notation isn't hard, it's compressed.
 
 ```python
 import numpy as np
 
 v = np.array([3, 4])
 np.linalg.norm(v)        # 5.0
-np.sqrt(np.sum(v ** 2))  # 5.0  ← 같은 계산을 손으로
+np.sqrt(np.sum(v ** 2))  # 5.0  ← the same calculation by hand
 ```
 
-## 또 하나의 용어 충돌
+## Another collision of terms
 
-[01 에서 '차원' 이 두 뜻이었던 것](/ko/lecture/math/linear-algebra/01-vectors/) 과 같은 일이 여기서도 벌어진다.
+The same thing that happened with "dimension" in
+[01](/lecture/math/linear-algebra/01-vectors/) happens again here.
 
-| 코드 | 무엇을 주나 | 4원소 벡터에서 |
+| Code | What it gives | For a 4-element vector |
 |---|---|---|
-| `len(v)` | 수학적 **차원** (원소 수) | 4 |
-| `np.linalg.norm(v)` | 기하학적 **크기** (길이) | $\sqrt{\sum v_i^2}$ |
+| `len(v)` | mathematical **dimension** (element count) | 4 |
+| `np.linalg.norm(v)` | geometric **magnitude** (length) | $\sqrt{\sum v_i^2}$ |
 
-영어 length 가 두 가지를 다 가리켜서 생긴 혼선이다. 그래서 이 강의는 길이라는 말 대신
-**노름**이나 **크기**를 쓴다.
+The confusion comes from English *length* covering both. That's why this course says **norm**
+or **magnitude** rather than length.
 
-## 노름은 되돌릴 수 없다
+## The norm can't be undone
 
-노름을 구하는 것은 **여러 벡터를 한 숫자로 뭉개는** 일이다. $[3,4]$ 도 $[5,0]$ 도
-$[0,-5]$ 도 노름이 5다. 5라는 숫자만 보고 원래 벡터를 되살릴 방법은 없다.
+Taking a norm **crushes many vectors into one number.** $[3,4]$, $[5,0]$ and $[0,-5]$ all have
+norm 5. From the number 5 alone there is no way back to the original vector.
 
-당연해 보이지만 결과가 크다. 노름은 **정보를 버리는 연산**이고, 버려진 것은 방향이다.
-그래서 노름 하나로는 두 벡터가 닮았는지 말할 수 없다 —
-그건 [05 내적](/ko/lecture/math/linear-algebra/05-dot-product/) 의 일이다.
+Obvious, but consequential. The norm is an **operation that discards information**, and what it
+discards is direction. So a norm alone can never tell you whether two vectors are alike —
+that's the job of [05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/).
 
-## 노름은 하나가 아니다
+## There is more than one norm
 
-지금까지 쓴 것은 정확히는 **L2 노름**이다. 자를 다르게 만들 수도 있다.
+What we've used so far is precisely the **L2 norm**. You can build the ruler differently.
 
 $$
 \lVert v \rVert_1 = \sum_i |v_i| \qquad
@@ -81,83 +84,90 @@ $$
 \lVert v \rVert_\infty = \max_i |v_i|
 $$
 
-L1 은 절댓값의 합(격자를 따라 걷는 거리), L2 는 직선 거리, L∞ 는 가장 큰 성분 하나다.
+L1 is the sum of absolute values (distance walking along a grid), L2 is straight-line distance,
+L∞ is the single largest component.
 
-셋의 차이를 보는 가장 빠른 방법은 **"노름이 1인 점을 전부 모으면 무슨 모양인가"** 를
-그려 보는 것이다. L2 는 원, L1 은 마름모, L∞ 는 정사각형이 된다.
+The fastest way to see the difference is to draw **"all the points whose norm is 1."** L2 gives
+a circle, L1 a diamond, L∞ a square.
 
-![L1·L2·L∞ 단위구의 포함 관계](/images/figures/la1-3-norm-unit-balls-l1-l2-linf-inclusion.png)
+![Nesting of the L1, L2 and L∞ unit balls](/images/figures/la1-3-norm-unit-balls-l1-l2-linf-inclusion.png)
 
-기본값은 L2 다. 이 강의에서 노름이라고만 쓰면 L2 를 뜻한다.
+L2 is the default. When this course says "norm" with no qualifier, it means L2.
 
-## 제곱 노름 — 제곱근은 비싸다
+## The squared norm — square roots are expensive
 
-두 벡터 중 어느 쪽이 긴지만 알면 될 때가 많다. 그럴 때 제곱근은 **낭비다.**
+Often you only need to know which of two vectors is longer. In that case the square root is
+**waste.**
 
 $$
 \lVert a \rVert < \lVert b \rVert \iff \lVert a \rVert^2 < \lVert b \rVert^2
 $$
 
-제곱근은 단조증가 함수라 순서를 바꾸지 않는다. 그래서 크기를 **비교만** 할 때는
-제곱근을 생략해도 답이 같다. 미분도 제곱 노름 쪽이 훨씬 깔끔해서, 손실 함수는
-거의 언제나 제곱한 형태로 쓴다.
+Square root is monotonically increasing, so it doesn't change the ordering. When you're only
+**comparing** magnitudes, dropping it gives the same answer. Differentiation is also much
+cleaner on the squared form, which is why loss functions are almost always written squared.
 
 ```python
-# 가장 가까운 점 찾기 — 제곱근은 필요 없다
+# Finding the nearest point — no square root needed
 d2 = np.sum((points - query) ** 2, axis=1)
 nearest = points[np.argmin(d2)]
 ```
 
-## 단위벡터 — 길이를 버리고 방향만 남기기
+## Unit vectors — discard length, keep direction
 
-노름의 역수를 곱하면 길이가 1인 벡터가 된다.
+Multiply by the reciprocal of the norm and you get a vector of length 1.
 
 $$
 \hat v = \frac{1}{\lVert v \rVert}\, v
 $$
 
-방향은 그대로고 크기만 1이 된다. 이것을 **정규화(normalization)** 라 한다.
+The direction is untouched; only the magnitude becomes 1. This is called **normalisation**.
 
-썸네일이 그리는 것이 이 그림이다. 길이가 제각각인 화살표 넷이 모두 같은 원 위의
-점 하나로 떨어진다. 정규화는 **길이라는 정보를 버리는 연산**이고, 남는 것은 방향뿐이다.
+That's what the thumbnail draws. Four arrows of different lengths all land on a single point on
+the same circle. Normalisation is **an operation that throws length away**, and what remains is
+direction alone.
 
-버리는 게 왜 이득인가. "긴 문서" 와 "짧은 문서" 를 내용으로만 비교하고 싶을 때,
-길이가 남아 있으면 긴 쪽이 무조건 이긴다. 길이를 먼저 지워야 방향만 겨룰 수 있다.
+Why is throwing something away useful? When you want to compare a "long document" and a "short
+document" purely on content, leaving length in means the long one always wins. You have to
+erase length first for direction to compete on its own.
 
 ```python
 def normalize(v):
     n = np.linalg.norm(v)
     if n == 0:
-        raise ValueError('영벡터에는 단위벡터가 없다')
+        raise ValueError('the zero vector has no unit vector')
     return v / n
 ```
 
-### 하나뿐인 예외
+### The one exception
 
-$\lVert 0 \rVert = 0$ 이므로 $1/0$ 이 된다. **영벡터에는 대응하는 단위벡터가 없다.**
+$\lVert 0 \rVert = 0$, so the operation becomes $1/0$. **The zero vector has no corresponding
+unit vector.**
 
-수학적 트집이 아니라 실무에서 실제로 터지는 곳이다. 임베딩 벡터를 정규화하는 코드에
-빈 문자열이 들어오면 여기서 `nan` 이 나오고, `nan` 은 조용히 퍼져서 한참 뒤에야
-드러난다. 정규화 함수를 쓸 때는 영벡터를 어떻게 할지 먼저 정해 두는 편이 낫다.
+This isn't mathematical pedantry — it's a real production failure. Feed an empty string into
+code that normalises embedding vectors and you get `nan` here, and `nan` spreads quietly and
+surfaces much later. Decide what to do about the zero vector before you use a normalise
+function.
 
-## 한 장 요약
+## Recap
 
-| 물으면 | 답한다 |
+| Question | Answer |
 |---|---|
-| 노름 | $\lVert v \rVert = \sqrt{\sum v_i^2}$ — 화살표의 길이 |
-| $\sum$ 읽는 법 | for 문. 아래=초기값, 위=끝, 옆=더할 것 |
-| `len()` ↔ `norm()` | 원소 수(차원) ↔ 크기(길이) |
-| 왜 제곱 노름을 쓰나 | 비교는 순서만 필요한데 제곱근이 비싸다 |
-| 단위벡터 | $\hat v = v / \lVert v \rVert$ — 방향만 남긴다 |
-| 영벡터는 | 단위벡터가 **없다** ($1/0$) |
-| L1 · L2 · L∞ | 절댓값 합 · 직선 거리 · 최댓값. 기본은 L2 |
+| Norm | $\lVert v \rVert = \sqrt{\sum v_i^2}$ — the length of the arrow |
+| Reading $\sum$ | A for loop. Bottom = start, top = end, right = what to add |
+| `len()` ↔ `norm()` | Element count (dimension) ↔ magnitude (length) |
+| Why the squared norm | Comparison only needs ordering, and square roots are expensive |
+| Unit vector | $\hat v = v / \lVert v \rVert$ — keeps only direction |
+| The zero vector | Has **no** unit vector ($1/0$) |
+| L1 · L2 · L∞ | Sum of absolutes · straight line · maximum. L2 is the default |
 
-## 이 개념이 일하는 곳
+## Where this shows up
 
-- **인공지능 » 벡터 검색 02 유사도** — 문서 길이를 지우고 내용만 겨루게 하는 것이 정규화다.
-  → [/ko/lecture/artificial-intelligence/vector-search/02-similarity/](/ko/lecture/artificial-intelligence/vector-search/02-similarity/)
+- **Artificial Intelligence » Vector Search 02 Similarity** — normalisation is what erases
+  document length so only content competes.
+  → [/lecture/artificial-intelligence/vector-search/02-similarity/](/lecture/artificial-intelligence/vector-search/02-similarity/)
 
-## 다음
+## Next
 
-잴 수 있게 됐으니 이제 다룰 차례다.
-→ [03 벡터 연산](/ko/lecture/math/linear-algebra/03-vector-operations/)
+We can measure. Now we can operate.
+→ [03 Vector Operations](/lecture/math/linear-algebra/03-vector-operations/)

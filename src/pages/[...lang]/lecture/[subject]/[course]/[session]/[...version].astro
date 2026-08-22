@@ -78,10 +78,11 @@ type Props = {
 const { locale, subject, course, session, courseTitle, path, revisions, index, alternates }: Props =
   Astro.props;
 
-const { Content } = await render(revisions[index]!);
+const { Content, headings } = await render(revisions[index]!);
 ---
 
 <RevisionPage
+  headings={headings}
   locale={locale}
   alternates={alternates}
   collection="lecture"

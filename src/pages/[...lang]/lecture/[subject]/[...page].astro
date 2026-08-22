@@ -7,11 +7,18 @@ import type { Page, PaginateFunction } from 'astro';
 import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import Gallery from '../../../../components/Gallery.astro';
 import Pagination from '../../../../components/Pagination.astro';
+import PostNav from '../../../../components/PostNav.astro';
 import { PAGE_SIZE, courseCard, getCoursesBySubject } from '../../../../lib/content';
 import type { GalleryCard } from '../../../../lib/content';
 import { LOCALE_CODES } from '../../../../lib/i18n';
 import type { Locale } from '../../../../lib/i18n';
-import { langParam, subjectAlternates, subjectHref } from '../../../../lib/routes';
+import {
+  langParam,
+  sectionHref,
+  sectionLabel,
+  subjectAlternates,
+  subjectHref,
+} from '../../../../lib/routes';
 import { SUBJECTS } from '../../../../lib/subjects';
 import type { Subject } from '../../../../lib/subjects';
 import { UI } from '../../../../lib/ui';
@@ -52,6 +59,12 @@ const alternates = subjectAlternates(subject, page.currentPage);
   section="lecture"
 >
   <div class="column">
+    {/* ★ 이 줄이 없으면 과목 화면이 위로 나가는 문이 없는 막다른 곳이 된다.
+        차시 → 코스 → 과목까지는 각 화면이 상위로 돌아가는데 여기서만 끊겨 있었다.
+        축(/lecture/)으로 잇는 이유: 과목 위에는 축밖에 없다.
+        라벨을 번역하지 않는 것은 축 이름이 계기판 어휘이기 때문이다(routes.ts). */}
+    <PostNav locale={locale} href={sectionHref(locale, 'lecture')} label={sectionLabel('lecture')} />
+
     <h2 class="section-bar">
       <b>{SUBJECTS[subject].code}</b>
       <span>{name}</span>

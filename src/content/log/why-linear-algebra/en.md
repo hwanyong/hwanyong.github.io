@@ -1,78 +1,78 @@
 ---
-untranslated: ko
-title: 왜 선형대수인가
-description: 설명이 안 되던 것은 생각이 부족해서가 아니라 어휘가 없어서였다.
-date: 2026-08-21
-tags: ['선형대수', '수학', '메타인지']
+title: Why Linear Algebra
+description: What I couldn't explain wasn't a gap in my thinking. It was a gap in my vocabulary.
+date: 2026-06-22
+tags: ['linear algebra', 'mathematics', 'metacognition']
 ---
 
-나는 코드를 짜기 전에 **데이터의 모양과 흐름을 머릿속으로 먼저 그린다.** 어떤 형태로
-들어와서 어디를 지나 무엇이 되어 나가는지. 로직은 그다음이다.
+Before I write code, I **picture the shape of the data and how it flows.** What comes in,
+what it passes through, what comes out. The logic comes after that.
 
-그런데 그 그림을 말로 옮기면 매번 흐릿해졌다. "여기서 데이터가 이렇게 좀 접히고
-저쪽으로 흘러서…" 회의실에서 손을 휘저으며 설명하다 보면, 듣는 쪽 표정이 대체로
-비슷했다. 틀렸다는 표정이 아니라 **못 알아듣겠다는 표정**이었다.
+But every time I tried to put that picture into words, it went blurry. "So the data kind of
+folds here and then flows over that way…" Waving my hands in a meeting room, I'd watch the
+same expression form on the other side of the table. Not *you're wrong*. **I don't follow you.**
 
-한동안 이걸 내 설명 능력 문제라고 생각했다. 아니었다.
+For a long time I thought this was a problem with how I explain things. It wasn't.
 
-## 두 개의 언어
+## Two languages
 
-같은 시스템을 놓고 동료와 나는 다른 언어를 쓰고 있었다.
+My colleague and I were describing the same system in different languages.
 
-동료의 언어는 **절차**였다. "조건이 맞으면 for 문을 돌면서 리스트에 넣고, 다 돌면
-정렬해서 반환한다." 시간 순서대로 따라가는 서술이다.
+Theirs was **procedure**. "If the condition holds, loop through and append to a list, then
+sort and return." A narrative that follows time.
 
-내 언어는 **구조와 흐름**이었다. "이 덩어리를 이렇게 눕혀서 저 덩어리와 맞물리게 한 다음
-필요한 축만 남긴다." 시간이 없고 모양만 있는 서술이다.
+Mine was **structure and flow**. "Lay this block on its side so it meshes with that one, then
+keep only the axis you need." A narrative with no time in it, only shape.
 
-두 언어 모두 같은 프로그램을 가리킨다. 문제는 두 번째 언어에 **정해진 단어가 없다는
-것**이었다. 절차의 언어에는 for 와 if 라는 공용 어휘가 있는데, 구조의 언어에서 나는
-매번 즉석에서 비유를 만들어 내고 있었다. 즉석 비유는 만든 사람에게만 선명하다.
+Both point at the same program. The problem was that the second language **had no settled
+words.** Procedure has `for` and `if` as shared vocabulary; in the language of structure I was
+inventing a fresh metaphor every time. A metaphor invented on the spot is vivid only to the
+person who invented it.
 
-선형대수를 다시 펴게 된 이유가 이것이다. AI 때문이라고 생각했는데, 실은 **이미 하고
-있던 사고에 이름을 붙이러** 간 것이었다.
+That's why I went back to linear algebra. I thought it was because of AI. It turned out I was
+going to **put names on thinking I was already doing.**
 
-## 이름표를 달아 보면
+## Putting labels on it
 
-| 내가 하던 말 | 있는 말 | 회의실에서 |
+| What I used to say | The word that exists | In a meeting |
 |---|---|---|
-| 데이터 구조를 잡는다 | 벡터 공간을 정한다 | "이 데이터가 가질 유효 차원과 범위를 정의했습니다" |
-| 가로세로 칸수를 맞춘다 | 차원 · shape | "입출력 행렬의 shape 을 맞춰 파이프라인 병목을 없앴습니다" |
-| 원하는 형태로 바꾼다 | 선형 변환 | "목적에 맞는 부분공간으로 변환했습니다" |
-| 필요한 것만 남긴다 | 투영 | "노이즈를 걷어내려 특정 기저 위로 투영했습니다" |
+| Nail down the data structure | Define the vector space | "I defined the effective dimensions and range this data will have" |
+| Match up the rows and columns | Dimension · shape | "I matched the input and output matrix shapes to remove the pipeline bottleneck" |
+| Reshape it into what I want | Linear transformation | "I transformed it into the subspace the task needs" |
+| Keep only what matters | Projection | "I projected onto a chosen basis to strip the noise" |
 
-오른쪽 칸이 왼쪽 칸보다 똑똑한 말이라는 뜻이 아니다. **같은 말인데 듣는 쪽이 이미
-아는 단어**라는 뜻이다. 내 비유는 매번 새로 배워야 하지만 저 단어들은 이미 배운 것들이다.
+The right column isn't smarter than the left. It's **the same thing said in words the listener
+already knows.** My metaphors have to be learned each time; those words were learned years ago.
 
-### 다만, 정확히 하자
+### But let's be precise
 
-이 표를 만들고 나서 나는 잠깐 신이 났다가 곧 조심스러워졌다. **이건 1:1 대응이 아니라
-느슨한 유비다.** 그대로 믿으면 틀린다.
+I got excited about that table, then quickly got careful. **It's a loose analogy, not a
+one-to-one correspondence.** Take it literally and you'll be wrong.
 
-가장 흔한 함정이 "map 은 선형 변환이다" 라는 말이다. 절반만 맞다. 선형 변환은
-두 조건을 **둘 다** 만족하는 특수한 함수다.
+The most common trap is "map is a linear transformation." Half true. A linear transformation
+is a special function satisfying **both** of these:
 
 $$
 f(a+b) = f(a) + f(b), \qquad f(cx) = c\,f(x)
 $$
 
-그런데 map 은 임의의 함수를 받는다. `x → x²` 도 map 이고 `x → x+1` 도 map 이다.
-둘 다 선형이 아니다. 특히 두 번째가 재미있는데, 평행이동은 원점을 원점으로 보내지
-않아서 선형 변환이 아니다. 그래서 컴퓨터 그래픽스는 동차좌표라는 장치를 따로 만들어
-이동을 행렬 안에 밀어 넣는다.
+But `map` takes an arbitrary function. `x → x²` is a map. So is `x → x+1`. Neither is linear.
+The second one is the interesting case: translation doesn't send the origin to the origin, so
+it isn't a linear transformation at all. That's exactly why computer graphics invented
+homogeneous coordinates — to push translation inside a matrix.
 
-filter 는 더 나쁘다. 조건에 따라 원소를 빼 버리므로 출력 차원이 입력에 따라 달라진다.
-선형 변환은 정해진 공간에서 정해진 공간으로 가는 사상이다.
+`filter` is worse. It drops elements based on a condition, so the output dimension depends on
+the input. A linear transformation is a map from a fixed space to a fixed space.
 
-**이름표는 소통을 또렷하게 하려고 다는 것이지 수학적 등가를 주장하려고 다는 게 아니다.**
-이 선을 넘으면 어휘를 얻는 대신 정확성을 잃는다.
+**Labels exist to sharpen communication, not to assert mathematical equivalence.** Cross that
+line and you trade accuracy for vocabulary.
 
-## 데이터만이 아니었다
+## It wasn't only about data
 
-여기까지는 예상했던 이득이다. 예상 못 한 쪽은 **알고리즘**이었다.
+Everything above was the payoff I expected. The one I didn't expect was **algorithms.**
 
-피보나치를 예로 들어 보자. 재귀는 지수 시간, 반복은 $O(N)$ 이다. 여기까지가 보통
-알고리즘 수업에서 끝나는 지점이다. 그런데 점화식을 이렇게 쓰면 이야기가 달라진다.
+Take Fibonacci. Recursion is exponential; iteration is $O(N)$. That's usually where the
+algorithms course stops. But write the recurrence like this and the story changes.
 
 $$
 \begin{bmatrix} F_{n+1} \\ F_n \end{bmatrix} =
@@ -80,46 +80,47 @@ $$
 \begin{bmatrix} F_n \\ F_{n-1} \end{bmatrix}
 $$
 
-$n$ 번째 항은 저 행렬을 $n$ 번 곱한 것이다. 그리고 거듭제곱은 분할정복으로
-$O(\log N)$ 에 된다. **점화식을 행렬로 바꾸는 것만으로 복잡도 차수가 내려간다.**
+The $n$-th term is that matrix raised to the $n$-th power. And exponentiation by squaring gets
+you there in $O(\log N)$. **Rewriting a recurrence as a matrix drops the complexity class.**
 
-같은 종류의 이야기가 더 있다. 그래프를 인접 행렬로 쓰면 $A^k$ 의 원소가 길이 $k$
-경로의 개수가 된다. PageRank 는 링크 구조 행렬의 고유벡터다. 검색 순위 문제가
-고유값 문제로 번역된 것이다.
+There are more of these. Write a graph as an adjacency matrix and the entries of $A^k$ count
+paths of length $k$. PageRank is an eigenvector of the link-structure matrix — a ranking
+problem translated into an eigenvalue problem.
 
-절차의 언어로는 "루프를 어떻게 줄일까" 가 최선이다. 구조의 언어에서는 **문제 자체를
-다른 문제로 번역**할 수 있다.
+In the language of procedure, the best you can do is "how do I shrink this loop." In the
+language of structure you can **translate the problem into a different problem.**
 
-## 만능은 아니다
+## It isn't a universal tool
 
-여기서 멈추면 과장이 된다. 선형대수로 안 되는 것이 훨씬 많다.
+Stop here and it becomes an overstatement. Far more things don't yield to linear algebra.
 
-정렬, 탐색, 트리 순회, 문자열 매칭, 암호, 조합 최적화 — 이쪽은 **이산수학**의 영역이다.
-연속적이지도 않고 선형적이지도 않아서 행렬로 번역할 자리가 없다.
+Sorting, searching, tree traversal, string matching, cryptography, combinatorial optimization —
+that's **discrete mathematics** territory. Nothing continuous, nothing linear, no place for a
+matrix to land.
 
-그러니 결론은 "선형대수를 배워라" 가 아니다. **선형대수와 이산수학 둘 다** 있어야
-문제를 보고 어느 쪽 언어로 번역할지 고를 수 있다. 하나만 들고 있으면 모든 문제가
-그 도구의 모양으로 보인다.
+So the conclusion isn't "learn linear algebra." It's that you need **both**, so that you can
+look at a problem and choose which language to translate it into. Hold only one and every
+problem starts to look like that tool's shape.
 
-## 남는 것
+## What's left
 
-세 줄로 줄이면 이렇다.
+Three lines:
 
-- 내 직관은 틀리지 않았다. **표현할 어휘가 없었을 뿐이다.**
-- 어휘를 얻으면 소통이 되고, 그 어휘가 때때로 **문제를 다른 문제로 번역**해 준다.
-- 대신 어휘를 등식으로 착각하지 않는다. 유비는 유비다.
+- My intuition wasn't wrong. **I just had no vocabulary for it.**
+- Vocabulary buys communication, and occasionally it **translates a problem into another problem.**
+- But a label is not an equation. An analogy stays an analogy.
 
-수학을 다시 공부하기로 한 것은 AI 때문이었다. 그런데 막상 시작하고 보니, 얻고 있는
-것 중 가장 큰 것은 AI 와 상관이 없었다. **십 년 동안 설명 못 하던 것을 설명할 수 있게
-된 것**이 그것이다.
+I went back to mathematics because of AI. Now that I'm some way in, the biggest thing I'm
+getting has nothing to do with AI: **I can finally explain something I'd been failing to
+explain for ten years.**
 
-그 공부의 기록을 [수학 » 선형대수](/ko/lecture/math/linear-algebra/) 에 정리해 두고 있다.
+I'm keeping the record of that study in [Mathematics » Linear Algebra](/lecture/math/linear-algebra/).
 
 ---
 
-**개발자가 수학으로 내려가는 이유** — 네 편 묶음
+**Why a developer goes down into mathematics** — a four-part set
 
-1. **왜 선형대수인가** ← 지금 글
-2. [벡터의 한 뿌리](/ko/log/one-root-of-vectors/)
-3. [신경망은 왜 행렬인가](/ko/log/why-neural-nets-are-matrices/)
-4. [LLM 전체 그림](/ko/log/llm-big-picture/)
+1. **Why Linear Algebra** ← you are here
+2. [The One Root of Vectors](/log/one-root-of-vectors/)
+3. [Why Neural Networks Are Matrices](/log/why-neural-nets-are-matrices/)
+4. [The Whole Picture of an LLM](/log/llm-big-picture/)

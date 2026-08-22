@@ -1,45 +1,47 @@
 ---
-untranslated: ko
-title: 벡터 검색
-description: 뜻으로 찾는 검색은 어떻게 동작하나. 임베딩부터 손으로 만드는 RAG 엔진까지.
-date: 2026-08-21
-tags: ['인공지능', '검색', '임베딩']
+title: Vector Search
+description: How search-by-meaning actually works. From embeddings to a RAG engine built by hand.
+date: 2026-08-04
+tags: ['artificial intelligence', 'search', 'embeddings']
 thumbnail: /images/lecture/thumb/vector-search.svg
 ---
 
-키워드 검색은 글자가 겹쳐야 찾는다. "강아지" 로 검색하면 "개" 가 나오지 않는다.
+Keyword search only finds you things that share characters. Search for "puppy" and you won't
+get "dog."
 
-**벡터 검색**은 글자가 아니라 **뜻**으로 찾는다. 이 강의는 그게 어떻게 가능한지를
-바닥부터 본다 — 문장이 숫자 뭉치가 되는 곳에서 시작해, 라이브러리 없이 검색 엔진
-하나를 손으로 만드는 데서 끝난다.
+**Vector search** matches on **meaning** instead of characters. This course looks at how that
+is possible, from the bottom — starting where a sentence becomes a bundle of numbers, ending
+with a search engine built by hand without a library.
 
-## 이 강의는 수학을 가르치지 않는다
+## This course does not teach mathematics
 
-벡터 검색은 선형대수 위에서 돈다. 그런데 여기서 벡터의 정의나 내적의 성질을 다시
-설명하지는 않는다.
+Vector search runs on linear algebra. But nothing here re-explains what a vector is or how the
+dot product behaves.
 
-이유가 있다. 개념 설명과 응용 설명을 한 화면에 섞어 두면, 읽는 쪽에서 **개념을
-이해한 것인지 이 응용에서의 쓰임을 외운 것인지** 구분이 안 된다. 코사인 유사도를 안다고
-생각했는데 실은 "검색에서 쓰는 그 공식" 을 알고 있는 상태가 된다.
+There's a reason. Mix the concept and the application on one screen and the reader can no
+longer tell whether they **understood the concept or memorised its use here.** You end up
+thinking you know cosine similarity when what you know is "the formula search uses."
 
-그래서 수학은 [수학 » 선형대수](/ko/lecture/math/linear-algebra/) 가 맡는다.
-각 차시 머리에 **선수** 줄이 있고, 필요한 개념은 그 링크를 따라가면 된다.
-여기서는 그 개념들이 검색 엔진 안에서 **무슨 일을 하는지**만 다룬다.
+So the mathematics is handled by
+[Mathematics » Linear Algebra](/lecture/math/linear-algebra/). Each session opens with a
+**Prerequisite** line; follow the link when you need the concept. What's covered here is only
+**what those concepts do inside a search engine.**
 
-## 무엇을 배우나
+## What you'll learn
 
-| 차시 | 다루는 것 |
+| Session | Topic |
 |---|---|
-| 01 임베딩 | 문장이 어떻게 벡터가 되나. 왜 그 벡터가 뜻을 담나 |
-| 02 유사도 | '비슷하다' 를 무엇으로 재나. 왜 거리가 아니라 각도인가 |
-| 03 RAG 엔진 | 인덱싱과 질의. 라이브러리 없이 손으로 만든다 |
+| 01 Embeddings | How a sentence becomes a vector. Why that vector carries meaning |
+| 02 Similarity | What "alike" is measured with. Why angle instead of distance |
+| 03 RAG engine | Indexing and querying. Built by hand, no libraries |
 
-지금 공개된 것은 01·02 다.
+01 and 02 are published.
 
-## 선수 지식
+## Prerequisites
 
-- **수학** — [선형대수 01~05](/ko/lecture/math/linear-algebra/). 벡터·노름·내적까지면 충분하다.
-- **코드** — 파이썬과 NumPy 를 읽을 수 있으면 된다.
+- **Mathematics** — [Linear Algebra 01–05](/lecture/math/linear-algebra/). Vectors, norms and
+  the dot product are enough.
+- **Code** — being able to read Python and NumPy.
 
-머신러닝 경험은 필요 없다. 모델을 훈련시키지 않는다 — 이미 훈련된 모델이 내놓은
-벡터를 **어떻게 쓰는가**가 이 강의의 주제다.
+No machine learning experience needed. We don't train a model — the subject here is **how to
+use** the vectors an already-trained model gives you.

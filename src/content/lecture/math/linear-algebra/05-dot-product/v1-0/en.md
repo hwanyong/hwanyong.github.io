@@ -1,14 +1,14 @@
 ---
-untranslated: ko
-title: 내적
-description: 두 벡터를 한 숫자로 압축한다. 그 숫자의 부호가 사잇각을 말한다.
-date: 2026-08-21
+title: The Dot Product
+description: Two vectors compressed into a single number. The sign of that number tells you the angle.
+date: 2026-07-27
 version: '1.0'
-tags: ['수학', '선형대수', '벡터']
+tags: ['mathematics', 'linear algebra', 'vectors']
 thumbnail: /images/lecture/thumb/linear-algebra-05-dot-product.svg
 ---
 
-**내적**은 두 벡터를 받아 **숫자 하나**를 내놓는다. 대응하는 원소끼리 곱해서 다 더한다.
+The **dot product** takes two vectors and returns **one number**. Multiply corresponding
+elements and add them all up.
 
 $$
 \delta = \sum_{i=1}^{n} a_i b_i
@@ -18,24 +18,26 @@ $$
 [1, 2, 3, 4] \cdot [5, 6, 7, 8] = 5 + 12 + 21 + 32 = 70
 $$
 
-곱하고 더한다. 계산은 이게 전부다. 이 차시의 나머지는 **왜 이 숫자가 의미를 갖는가**에
-관한 것이다.
+Multiply, then add. That's the entire computation. The rest of this session is about **why that
+number means something.**
 
-## 왜 이걸 배우나
+## Why you need this
 
-여기까지 벡터 하나를 다루는 법만 배웠다. 만들고([01](/ko/lecture/math/linear-algebra/01-vectors/)),
-재고([02](/ko/lecture/math/linear-algebra/02-norm/)),
-움직였다([03](/ko/lecture/math/linear-algebra/03-vector-operations/)).
+So far we've only handled one vector at a time. We made them
+([01](/lecture/math/linear-algebra/01-vectors/)), measured them
+([02](/lecture/math/linear-algebra/02-norm/)) and moved them
+([03](/lecture/math/linear-algebra/03-vector-operations/)).
 
-이제 두 벡터를 놓고 물어야 한다. **이 둘이 얼마나 닮았나.**
+Now we put two side by side and ask: **how alike are these?**
 
-1. 두 벡터의 "닮음" 을 하나의 수로 못 요약한다 → 둘을 한 스칼라로 압축할 연산 → **내적**
-2. 그 숫자가 왜 닮음인지 기하 의미가 없다 → 사잇각과 잇는 정의 → **$\delta = \lVert v \rVert \lVert w \rVert \cos\theta$**
-3. 크기가 큰 벡터가 점수를 부풀린다 → 크기를 빼고 방향만 → **코사인 유사도**
+1. You can't reduce "alikeness" to one number → an operation compressing two vectors to a scalar → **the dot product**
+2. That number has no geometric meaning yet → connect it to the angle between them → **$\delta = \lVert v \rVert \lVert w \rVert \cos\theta$**
+3. Large vectors inflate the score → strip magnitude, keep direction → **cosine similarity**
 
-## 직관 하나 — 취향 일치 점수
+## Intuition one — a taste-matching score
 
-영화 세 편에 대한 두 사람의 선호도라고 하자. 양수는 좋아함, 음수는 싫어함이다.
+Say these are two people's ratings of three films. Positive means they liked it, negative means
+they didn't.
 
 $$
 a = [\,2,\ -1,\ 3\,] \qquad b = [\,1,\ -2,\ 2\,]
@@ -45,124 +47,127 @@ $$
 a \cdot b = (2)(1) + (-1)(-2) + (3)(2) = 2 + 2 + 6 = 10
 $$
 
-세 항 모두 양수가 나왔다. **둘 다 좋아하면** 양수 × 양수 = 양수. **둘 다 싫어해도**
-음수 × 음수 = 양수. 의견이 갈릴 때만 항이 음수가 된다.
+All three terms came out positive. **Both liked it** gives positive × positive = positive.
+**Both disliked it** gives negative × negative = positive too. A term only goes negative when
+they disagree.
 
-즉 곱셈이 **항목마다 일치 여부를 채점하고**, 덧셈이 그것을 **총점으로 합산한다.**
-내적이 "닮음 점수" 인 이유가 이 두 단계에 있다.
+So multiplication **scores agreement item by item**, and addition **totals it up.** That two-step
+structure is why the dot product reads as a "similarity score."
 
-![내적 = 취향 일치 점수](/images/figures/la1-7-dot-matching-score.png)
+![The dot product as a taste-matching score](/images/figures/la1-7-dot-matching-score.png)
 
-## 직관 둘 — 그림자의 길이
+## Intuition two — the length of a shadow
 
-같은 숫자를 기하로 읽으면 이렇게 된다.
+Read the same number geometrically and you get this.
 
 $$
 \delta = \lVert v \rVert \, \lVert w \rVert \cos\theta
 $$
 
-$w$ 를 $v$ 위로 수직으로 내리면 **그림자**가 생긴다. 그 그림자의 길이가
-$\lVert w \rVert \cos\theta$ 다. 내적은 거기에 $\lVert v \rVert$ 를 곱한 값이다.
+Drop $w$ perpendicularly onto $v$ and you get a **shadow**. The length of that shadow is
+$\lVert w \rVert \cos\theta$. The dot product is that, times $\lVert v \rVert$.
 
-썸네일의 굵은 회색 선분이 그 그림자다.
+The thick grey segment in the thumbnail is that shadow.
 
-![투영으로 보는 내적](/images/figures/la1-6-dot-projection-intuition.png)
+![The dot product as a projection](/images/figures/la1-6-dot-projection-intuition.png)
 
-두 정의가 같은 값이라는 것은 코사인 법칙으로 증명된다. 여기서 중요한 것은
-**원소곱의 합이라는 대수적 정의 안에 각도 정보가 이미 들어 있었다**는 사실이다.
-각도를 따로 넣어 준 적이 없는데도 그렇다.
+The two definitions agree, provable via the law of cosines. What matters here is that **angle
+information was already inside the algebraic definition** — the sum of element-wise products.
+Nobody fed the angle in.
 
-## 부호가 각도를 말한다
+## The sign tells you the angle
 
-$\lVert v \rVert$ 와 $\lVert w \rVert$ 는 항상 0 이상이다. 그러니 내적의 **부호는
-$\cos\theta$ 의 부호**다.
+$\lVert v \rVert$ and $\lVert w \rVert$ are never negative. So the **sign of the dot product is
+the sign of $\cos\theta$.**
 
-| 내적 | $\cos\theta$ | 사잇각 | 뜻 |
+| Dot product | $\cos\theta$ | Angle | Meaning |
 |:---:|:---:|:---:|---|
-| $> 0$ | 양수 | 예각 | 대체로 같은 쪽을 본다 |
-| $= 0$ | 0 | **직각** | 아무 관계 없다 |
-| $< 0$ | 음수 | 둔각 | 대체로 반대쪽을 본다 |
+| $> 0$ | positive | acute | broadly facing the same way |
+| $= 0$ | 0 | **right angle** | no relationship |
+| $< 0$ | negative | obtuse | broadly facing opposite ways |
 
-가운데 줄이 이 차시에서 가장 많이 쓰이는 사실이다.
+The middle row is the fact you'll use most in this course.
 
-> **직교 $\iff$ 내적이 0**
+> **Orthogonal $\iff$ dot product is zero**
 
-"수직" 을 각도로 재지 않고 **곱셈과 덧셈만으로** 판정할 수 있다는 뜻이다.
-384차원에서도 각도기 없이 직교를 확인할 수 있다.
+Which means you can decide "perpendicular" **using only multiplication and addition.** You can
+confirm orthogonality in 384 dimensions with no protractor.
 
-![내적의 부호와 사잇각](/images/figures/la1-5-dot-product-sign-vs-angle.png)
+![The sign of the dot product versus the angle](/images/figures/la1-5-dot-product-sign-vs-angle.png)
 
-## 함정 — 내적이 크다고 각도가 작은 건 아니다
+## Trap — a big dot product doesn't mean a small angle
 
-$\delta = \lVert v \rVert \lVert w \rVert \cos\theta$ 에는 값이 세 개 곱해져 있다.
-그래서 내적이 크다는 것은 **각도가 작다** 는 뜻일 수도, 그냥 **벡터가 길다** 는 뜻일
-수도 있다.
+$\delta = \lVert v \rVert \lVert w \rVert \cos\theta$ multiplies three quantities. So a large
+dot product might mean **the angle is small**, or it might just mean **the vectors are long.**
 
 ```python
 import numpy as np
 
-a = np.array([1, 0]);      b = np.array([0.7, 0.7])   # 45도, 짧다
-c = np.array([100, 0]);    d = np.array([50, 90])     # 약 61도, 길다
+a = np.array([1, 0]);      b = np.array([0.7, 0.7])   # 45 degrees, short
+c = np.array([100, 0]);    d = np.array([50, 90])     # about 61 degrees, long
 
 a @ b    # 0.7
-c @ d    # 5000   ← 각도는 더 큰데 내적이 훨씬 크다
+c @ d    # 5000   ← larger angle, far larger dot product
 ```
 
-방향만 비교하려면 크기를 나눠 없애야 한다. 그것이 **코사인 유사도**다.
+To compare direction alone, you have to divide the magnitudes out. That's **cosine similarity**.
 
 $$
 \cos\theta = \frac{v \cdot w}{\lVert v \rVert \, \lVert w \rVert}
 $$
 
-[02 의 정규화](/ko/lecture/math/linear-algebra/02-norm/) 를 미리 해 두면, 코사인
-유사도는 그냥 내적이 된다. 단위벡터끼리는 $\lVert v \rVert = \lVert w \rVert = 1$
-이기 때문이다.
+If you normalise in advance — [see 02](/lecture/math/linear-algebra/02-norm/) — cosine
+similarity is just the dot product, because between unit vectors
+$\lVert v \rVert = \lVert w \rVert = 1$.
 
-## 전치의 위치가 결과를 가른다
+## Where the transpose sits decides the result
 
-같은 두 벡터로 전혀 다른 것을 만들 수 있다. 차이는 $\mathsf{T}$ 가 어디 붙느냐뿐이다.
+The same two vectors can produce completely different things. The only difference is where the
+$\mathsf{T}$ goes.
 
-| 쓰는 법 | 이름 | 결과 |
+| Written as | Name | Result |
 |---|---|---|
-| $v^{\mathsf{T}} w$ | 내적 | **스칼라** 하나 |
-| $v \odot w$ | 아다마르곱 | 원소별 곱. 차원 그대로인 **벡터** |
-| $v\, w^{\mathsf{T}}$ | 외적 | $n \times n$ **행렬** |
+| $v^{\mathsf{T}} w$ | dot product | a single **scalar** |
+| $v \odot w$ | Hadamard product | element-wise product. A **vector**, same dimension |
+| $v\, w^{\mathsf{T}}$ | outer product | an $n \times n$ **matrix** |
 
-$(1,n) \times (n,1) = (1,1)$ 이고 $(n,1) \times (1,n) = (n,n)$ 이다.
-[03 의 브로드캐스팅 함정](/ko/lecture/math/linear-algebra/03-vector-operations/) 과
-같은 이야기가 여기서도 나온다 — **방향이 결과의 모양을 정한다.**
+$(1,n) \times (n,1) = (1,1)$ and $(n,1) \times (1,n) = (n,n)$. The same story as
+[the broadcasting trap in 03](/lecture/math/linear-algebra/03-vector-operations/) shows up
+again: **orientation decides the shape of the result.**
 
 ```python
 v = np.array([[1], [2], [3]])   # (3, 1)
 w = np.array([[4], [5], [6]])   # (3, 1)
 
-v.T @ w        # [[32]]     내적 → (1, 1)
-v * w          # 원소별 곱  → (3, 1)
-v @ w.T        # 외적       → (3, 3)
+v.T @ w        # [[32]]      dot product → (1, 1)
+v * w          # element-wise → (3, 1)
+v @ w.T        # outer product → (3, 3)
 ```
 
-`np.dot` 이 이름과 달리 실제로는 행렬곱이라는 점도 같이 알아 두면 좋다.
-1차원 배열 두 개를 주면 내적처럼 동작하지만, `(1,N)` 과 `(N,1)` 을 주면 `(1,1)` 행렬이
-나온다. 이름을 믿지 말고 `shape` 을 믿는 편이 낫다.
+Worth knowing too: `np.dot` is, despite the name, a matrix product. Give it two 1-D arrays and
+it behaves like a dot product, but give it `(1,N)` and `(N,1)` and you get a `(1,1)` matrix.
+Trust the `shape`, not the name.
 
-## 한 장 요약
+## Recap
 
-| 물으면 | 답한다 |
+| Question | Answer |
 |---|---|
-| 내적 | $\sum a_i b_i$ — 대응 원소 곱의 합. 같은 차원끼리만 |
-| 기하 정의 | $\lVert v \rVert \lVert w \rVert \cos\theta$ |
-| 부호가 뜻하는 것 | 양수=예각 · 0=**직각** · 음수=둔각 |
-| 직교 판정 | 내적이 0. 각도를 재지 않아도 된다 |
-| 내적이 크면 | 각도가 작을 수도, 벡터가 길 수도 있다 |
-| 코사인 유사도 | $\dfrac{v \cdot w}{\lVert v \rVert \lVert w \rVert}$ — 크기를 지운 내적 |
-| $v^{\mathsf{T}}w$ vs $vw^{\mathsf{T}}$ | 스칼라 vs $n\times n$ 행렬 |
+| Dot product | $\sum a_i b_i$ — sum of element-wise products. Equal dimensions only |
+| Geometric definition | $\lVert v \rVert \lVert w \rVert \cos\theta$ |
+| What the sign means | Positive = acute · 0 = **right angle** · negative = obtuse |
+| Testing orthogonality | Dot product is zero. No angle measurement needed |
+| A large dot product | Could be a small angle, could be long vectors |
+| Cosine similarity | $\dfrac{v \cdot w}{\lVert v \rVert \lVert w \rVert}$ — the dot product with magnitude erased |
+| $v^{\mathsf{T}}w$ vs $vw^{\mathsf{T}}$ | Scalar vs $n\times n$ matrix |
 
-## 이 개념이 일하는 곳
+## Where this shows up
 
-- **인공지능 » 벡터 검색 02 유사도** — 검색 엔진이 "가장 가까운 문서" 를 고르는 계산이
-  이 내적 하나다. → [/ko/lecture/artificial-intelligence/vector-search/02-similarity/](/ko/lecture/artificial-intelligence/vector-search/02-similarity/)
+- **Artificial Intelligence » Vector Search 02 Similarity** — the calculation a search engine
+  uses to pick "the nearest document" is this one dot product.
+  → [/lecture/artificial-intelligence/vector-search/02-similarity/](/lecture/artificial-intelligence/vector-search/02-similarity/)
 
-## 다음
+## Next
 
-여기까지가 지금 공개된 앞머리다. 06 직교 분해부터는 쓰는 대로 붙는다.
-→ [강의 목록](/ko/lecture/math/linear-algebra/)
+That's the published opening. From 06, orthogonal decomposition onward, sessions go up as
+they're written.
+→ [Course index](/lecture/math/linear-algebra/)

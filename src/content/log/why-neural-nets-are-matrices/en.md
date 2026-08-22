@@ -1,120 +1,125 @@
 ---
-untranslated: ko
-title: 신경망은 왜 행렬인가
-description: 편해서 쓰는 게 아니다. 학습 가능하려면 행렬 말고 선택지가 없다.
-date: 2026-08-21
-tags: ['AI', '선형대수', '신경망']
+title: Why Neural Networks Are Matrices
+description: Not because it's convenient. If you want the thing to be learnable, there is no other choice.
+date: 2026-08-02
+tags: ['AI', 'linear algebra', 'neural networks']
 ---
 
-신경망 설명에는 늘 그 그림이 나온다. 동그라미가 세로로 늘어서고 선이 그물처럼 잇는
-그림. 그 옆에는 행렬 수식이 붙어 있다.
+Every explanation of neural networks has that picture. Circles in vertical columns, lines
+webbing across. And next to it, matrix notation.
 
-나는 오랫동안 이 둘이 **다른 두 설명**이라고 생각했다. 그림은 직관용, 수식은 계산용.
-아니었다. **같은 것을 두 가지 표기로 쓴 것**이다.
+For a long time I read those as **two different explanations**. The picture for intuition, the
+formula for computation. They aren't. They're **the same thing in two notations.**
 
-## 그림이 곧 행렬이다
+## The picture *is* the matrix
 
-입력 뉴런 3개, 출력 뉴런 2개인 층 하나를 보자. 선은 $3 \times 2 = 6$ 개다.
+Take one layer: 3 input neurons, 2 output neurons. That's $3 \times 2 = 6$ lines.
 
-각 선에는 **가중치**라는 숫자가 하나씩 붙어 있다. 그 여섯 숫자를 표로 정리하면
-$2 \times 3$ 행렬이 된다.
+Each line carries one number, its **weight**. Arrange those six numbers in a table and you have
+a $2 \times 3$ matrix.
 
-![신경망 그림과 가중치 행렬의 대응](/images/figures/neural-net-diagram-to-weight-matrix-mapping.png)
+![A neural network diagram mapped onto its weight matrix](/images/figures/neural-net-diagram-to-weight-matrix-mapping.png)
 
-동그라미는 벡터의 원소이고 **선은 행렬의 원소다.** 층 하나가 하는 일은 $y = Wx$ 한 줄이다.
-그림을 그리는 것과 행렬을 쓰는 것은 같은 행위다.
+The circles are the entries of a vector and **the lines are the entries of a matrix.** What one
+layer does is $y = Wx$, one line long. Drawing the picture and writing the matrix are the same act.
 
-그러면 이런 결론이 따라온다. **가중치가 곧 모델이다.** "학습한다" 는 것은 저 행렬 안의
-숫자들을 데이터에 맞춰 고치는 일이고, 모델이 아는 전부가 그 숫자들이다. 파라미터가
-몇 조 개라는 말은 **행렬 원소가 몇 조 개**라는 말이다.
+Which gives you this: **the weights are the model.** "Training" means adjusting the numbers
+inside that matrix to fit data, and everything the model knows is those numbers. When someone
+says a model has trillions of parameters, they mean **trillions of matrix entries.**
 
-## 그런데 왜 하필 행렬인가
+## But why a matrix
 
-여기서 진짜 질문이 나온다. 계산이 편해서? GPU 가 잘해서?
+Here's the real question. Because it's computationally convenient? Because GPUs are good at it?
 
-둘 다 결과지 이유가 아니다. 이유는 더 앞에 있다.
+Both are consequences, not reasons. The reason is further upstream.
 
-학습 가능한 모델이 되려면 한 형식이 **세 가지를 동시에** 만족해야 한다.
+To be a learnable model, one format has to satisfy **three things at once.**
 
-**① 표현** — 입력들을 섞어야 한다. 가중합, 즉 내적이다.
-**② 합성** — 단순한 블록을 쌓아 복잡한 것을 만들 수 있어야 한다.
-**③ 미분** — 경사하강이 $\partial \text{loss} / \partial W$ 를 요구한다.
+**① Representation** — you must be able to mix inputs. A weighted sum, i.e. a dot product.
+**② Composition** — you must be able to stack simple blocks into complex ones.
+**③ Differentiation** — gradient descent demands $\partial \text{loss} / \partial W$.
 
-행렬은 셋 다 된다. 그런데 결정적인 것은 **셋을 적용해도 결과가 다시 행렬**이라는 점이다.
+A matrix does all three. But the decisive part is that **applying any of the three gives you
+back a matrix.**
 
-- 가중합 → 행렬곱의 한 칸
-- 층을 쌓기 → 행렬곱의 연쇄. 결과는 또 행렬
-- 행렬곱을 미분 → 전치 $W^{\mathsf{T}}$. **결과가 또 행렬**
+- Weighted sum → one cell of a matrix product
+- Stacking layers → a chain of matrix products. Still a matrix
+- Differentiating a matrix product → the transpose $W^{\mathsf{T}}$. **Still a matrix**
 
-세 번째가 핵심이다. 미분했는데 행렬이 아닌 무언가가 나온다면, 역전파는 매 층마다 다른
-도구로 갈아타야 한다. 행렬이라서 **역전파 전체가 행렬 연산 안에서 끝난다.** 밖으로
-새지 않는다.
+The third is the crux. If differentiation handed you something that wasn't a matrix,
+backpropagation would have to switch tools at every layer. Because it's a matrix, **the whole
+of backpropagation stays inside matrix operations.** Nothing leaks out.
 
-이 성질을 **닫혀 있다(closure)** 고 한다. 그리고 이게 "왜 행렬인가" 에 대한 가장 깊은 답이다.
+That property is called being **closed** under the operations. And it's the deepest answer to
+"why a matrix."
 
-> 편해서 행렬을 쓰는 게 아니라, **학습 가능성이 행렬 형식을 강제한다.**
+> You don't use matrices because they're convenient. **Learnability forces the matrix form.**
 
-## 행렬의 약점이 깊이를 설명한다
+## The weakness of matrices explains depth
 
-여기서 뒤집히는 지점이 하나 있다.
+Here's where it flips.
 
-행렬곱만 계속 쌓으면 어떻게 되나. 이렇게 된다.
+What happens if you keep stacking matrix products? This:
 
 $$
 W_2(W_1 x) = (W_2 W_1)\, x
 $$
 
-두 층이 **한 층으로 붕괴**한다. 100층을 쌓아도 결국 행렬 하나와 같다. 선형 변환의
-합성은 선형 변환이기 때문이다. 깊이에 아무 의미가 없어진다.
+Two layers **collapse into one.** Stack a hundred and you still have the equivalent of a single
+matrix, because the composition of linear maps is linear. Depth stops meaning anything.
 
-그래서 층 사이에 ReLU 같은 **비선형**을 끼운다. 붕괴를 막으려고.
+So you slot a **nonlinearity** like ReLU between the layers. To stop the collapse.
 
-나는 활성화 함수를 "성능이 좋아지는 요소" 쯤으로 알고 있었다. 아니었다. **깊이를
-성립시키는 필수 부품**이다. 없으면 깊이라는 개념 자체가 무의미해진다.
+I used to file activation functions under "things that improve performance." They aren't.
+They're **the part that makes depth exist at all.** Without them the concept is empty.
 
-그러니까 이렇게 된다. 행렬의 강점이 신경망의 형식을 정하고, 행렬의 **약점**이 신경망의
-구조를 정한다. 선형과 비선형의 교대가 표현력을 만든다.
+So it goes like this. The strength of matrices fixes the *form* of a neural network, and the
+**weakness** of matrices fixes its *structure*. The alternation of linear and nonlinear is what
+creates expressive power.
 
-행렬을 이해하면 활성화 함수가 왜 필수인지까지 따라온다. 두 사실이 하나의 사실이다.
+Understand matrices and you get why activation functions are mandatory for free. The two facts
+are one fact.
 
-## 모양이 곧 설계다
+## Shape is design
 
-$W$ 가 $m \times n$ 이면 $n$ 차원이 들어와 $m$ 차원으로 나간다. 그러면 shape 하나가
-그 층의 역할을 정한다.
+If $W$ is $m \times n$, then $n$ dimensions go in and $m$ come out. So a single shape decides
+what that layer is for.
 
-| shape | 하는 일 |
+| shape | what it does |
 |---|---|
-| $m < n$ | 압축 — 병목, 차원 축소 |
-| $m > n$ | 확장 |
-| 마지막에 $m = $ 클래스 수 | 분류기 |
+| $m < n$ | compression — bottleneck, dimensionality reduction |
+| $m > n$ | expansion |
+| final $m = $ number of classes | classifier |
 
-오토인코더가 좁아졌다 넓어지는 모양인 것은 은유가 아니라 **행렬 shape 사슬을 그대로
-말한 것**이다. 신경망 아키텍처 설계는 상당 부분 shape 사슬 설계다.
+An autoencoder being "narrow in the middle" isn't a metaphor — it's **a literal description of
+the chain of matrix shapes.** A large part of architecture design is designing that chain.
 
-## 코드를 숫자로 쓴다
+## Writing code as numbers
 
-마지막으로 한 걸음 더 나가면, 이게 프로그래밍의 다른 형태라는 게 보인다.
+One step further and you can see this is another form of programming.
 
-전통적인 프로그램은 사람이 `if` 와 `for` 를 짠다. 신경망은 **행렬 원소가 데이터로
-정해지는 연속적이고 미분 가능한 프로그램**이다.
+A traditional program is `if` and `for` written by a person. A neural network is a
+**continuous, differentiable program whose matrix entries are set by data.**
 
-행렬은 코드를 숫자로 바꿔 놓은 것이고, 숫자이기 때문에 경사하강으로 "프로그래밍" 할 수
-있다. 안드레이 카파시가 Software 2.0 이라고 부른 게 이 이야기다.
+A matrix is code turned into numbers, and because it's numbers you can "program" it with
+gradient descent. That's what Andrej Karpathy called Software 2.0.
 
-## 세 줄
+## Three lines
 
-- 신경망 그림 = 행렬. 선이 원소이고, 가중치가 곧 모델의 지식이다.
-- 행렬인 이유 = 표현·합성·**미분**이 전부 행렬 안에서 닫힌다. 학습 가능성이 강제한다.
-- 선형만 쌓으면 한 층으로 붕괴한다. 그래서 비선형이 필수다.
+- The diagram is the matrix. Lines are entries, and the weights are the model's knowledge.
+- The reason it's a matrix: representation, composition and **differentiation** are all closed
+  inside it. Learnability forces it.
+- Stack only linear layers and they collapse into one. That's why nonlinearity is mandatory.
 
-행렬 곱셈 자체는 [선형대수 13](/ko/lecture/math/linear-algebra/) 에서 다룰 예정이고,
-가중합의 뿌리인 내적은 [05 내적](/ko/lecture/math/linear-algebra/05-dot-product/) 에 있다.
+Matrix multiplication itself is coming in [Linear Algebra 13](/lecture/math/linear-algebra/),
+and the dot product at the root of the weighted sum is in
+[05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/).
 
 ---
 
-**개발자가 수학으로 내려가는 이유** — 네 편 묶음
+**Why a developer goes down into mathematics** — a four-part set
 
-1. [왜 선형대수인가](/ko/log/why-linear-algebra/)
-2. [벡터의 한 뿌리](/ko/log/one-root-of-vectors/)
-3. **신경망은 왜 행렬인가** ← 지금 글
-4. [LLM 전체 그림](/ko/log/llm-big-picture/)
+1. [Why Linear Algebra](/log/why-linear-algebra/)
+2. [The One Root of Vectors](/log/one-root-of-vectors/)
+3. **Why Neural Networks Are Matrices** ← you are here
+4. [The Whole Picture of an LLM](/log/llm-big-picture/)

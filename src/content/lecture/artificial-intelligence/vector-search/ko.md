@@ -1,7 +1,7 @@
 ---
 title: 벡터 검색
 description: 뜻으로 찾는 검색은 어떻게 동작하나. 임베딩부터 손으로 만드는 RAG 엔진까지.
-date: 2026-08-21
+date: 2026-08-04
 tags: ['인공지능', '검색', '임베딩']
 thumbnail: /images/lecture/thumb/vector-search.svg
 ---
@@ -37,7 +37,7 @@ thumbnail: /images/lecture/thumb/vector-search.svg
 
 ## 선수 지식
 
-- **수학** — [선형대수 01~05](/ko/lecture/math/linear-algebra/). 벡터·노름·내적까지면 충분하다.
+- **수학** — [선형대수 01–05](/ko/lecture/math/linear-algebra/). 벡터·노름·내적까지면 충분하다.
 - **코드** — 파이썬과 NumPy 를 읽을 수 있으면 된다.
 
 머신러닝 경험은 필요 없다. 모델을 훈련시키지 않는다 — 이미 훈련된 모델이 내놓은
