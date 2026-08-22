@@ -126,7 +126,6 @@ That problem and its fix are the next session.
 | If you swap models | You must **rebuild every stored vector** |
 | Dimension count | The model decides. Not higher-is-better, but as much as needed |
 
-## Next
+---
 
 We have points in one space. Now we have to define "close."
-→ [02 Similarity](/lecture/artificial-intelligence/vector-search/02-similarity/)

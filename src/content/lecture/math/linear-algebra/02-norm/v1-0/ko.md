@@ -156,7 +156,6 @@ $\lVert 0 \rVert = 0$ 이므로 $1/0$ 이 된다. **영벡터에는 대응하는
 - **인공지능 » 벡터 검색 02 유사도** — 문서 길이를 지우고 내용만 겨루게 하는 것이 정규화다.
   → [/ko/lecture/artificial-intelligence/vector-search/02-similarity/](/ko/lecture/artificial-intelligence/vector-search/02-similarity/)
 
-## 다음
+---
 
 잴 수 있게 됐으니 이제 다룰 차례다.
-→ [03 벡터 연산](/ko/lecture/math/linear-algebra/03-vector-operations/)

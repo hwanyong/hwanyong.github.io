@@ -126,7 +126,6 @@ $\mathbb{R}^2$ 나 $\mathbb{R}^3$ 의 벡터는 그림으로 그릴 수 있다. 
 - **인공지능 » 벡터 검색 01 임베딩** — 문장 하나가 384개의 수로 바뀌어 이 강의의 벡터가 된다.
   → [/ko/lecture/artificial-intelligence/vector-search/01-embeddings/](/ko/lecture/artificial-intelligence/vector-search/01-embeddings/)
 
-## 다음
+---
 
 벡터가 생겼으니 이제 잴 수 있어야 한다.
-→ [02 노름과 단위벡터](/ko/lecture/math/linear-algebra/02-norm/)

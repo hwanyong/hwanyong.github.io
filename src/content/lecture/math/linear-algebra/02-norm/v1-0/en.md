@@ -167,7 +167,6 @@ function.
   document length so only content competes.
   → [/lecture/artificial-intelligence/vector-search/02-similarity/](/lecture/artificial-intelligence/vector-search/02-similarity/)
 
-## Next
+---
 
 We can measure. Now we can operate.
-→ [03 Vector Operations](/lecture/math/linear-algebra/03-vector-operations/)

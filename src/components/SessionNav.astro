@@ -1,0 +1,57 @@
+---
+/**
+ * 앞 차시 · 다음 차시로 가는 두 판.
+ *
+ * ★ 이 정보를 본문에 손으로 적지 않는다. 차시 순서는 디렉터리 이름이 이미 정하고
+ *   있는 사실이라(docs/lecture.md), 마크다운에 또 적으면 같은 사실이 두 벌이 된다.
+ *   차시를 사이에 끼우거나 번호를 다시 매기는 날 본문의 링크만 조용히 어긋난다.
+ *   실제로 처음에는 각 차시 끝에 "## 다음" 을 손으로 적어 두었고, 그래서
+ *   ★앞 차시로 가는 길이 아예 없었다★ — 한쪽만 적으면 한쪽만 생긴다.
+ *
+ * ★ 글자 링크가 아니라 판이다. 본문 끝의 평문 링크는 눌러 보기 전에는 링크인지
+ *   알 수 없다는 지적을 받았다. 테두리를 두르고 방향 라벨을 얹어 "여기를 누르면
+ *   옮겨간다" 가 형태로 읽히게 한다. 가리킴·포커스 표시는 전역 규칙이 준다.
+ *
+ * ★ 한쪽이 없으면 그 자리를 비워 둔다(빈 <div>). 남은 하나가 가운데로 흘러오면
+ *   그것이 앞인지 뒤인지 위치로 알 수 없게 된다 — 왼쪽=앞, 오른쪽=다음이 규칙이다.
+ */
+import { UI } from '../lib/ui';
+import type { Locale } from '../lib/i18n';
+
+export interface SessionLink {
+  href: string;
+  title: string;
+}
+
+interface Props {
+  locale: Locale;
+  prev: SessionLink | null;
+  next: SessionLink | null;
+}
+
+const { locale, prev, next } = Astro.props;
+const t = UI[locale];
+---
+
+{
+  (prev || next) && (
+    <nav class="session-nav" aria-label={t.sessionNav}>
+      {prev ? (
+        <a class="session-nav__item session-nav__item--prev" href={prev.href}>
+          <span class="session-nav__dir">← {t.prev}</span>
+          <span class="session-nav__title">{prev.title}</span>
+        </a>
+      ) : (
+        <div />
+      )}
+      {next ? (
+        <a class="session-nav__item session-nav__item--next" href={next.href}>
+          <span class="session-nav__dir">{t.next} →</span>
+          <span class="session-nav__title">{next.title}</span>
+        </a>
+      ) : (
+        <div />
+      )}
+    </nav>
+  )
+}

@@ -122,7 +122,6 @@ works.
 | Definition of $-v$ | The partner with $v + (-v) = 0$. The flip is a consequence |
 | $(-1)v = -v$ | Forced by the axioms. Not something you accept intuitively |
 
-## Next
+---
 
 One operation left: turning two vectors into a single number.
-→ [05 The Dot Product](/lecture/math/linear-algebra/05-dot-product/)
