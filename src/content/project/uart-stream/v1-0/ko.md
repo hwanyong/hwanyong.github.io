@@ -1,7 +1,6 @@
 ---
-untranslated: en
 title: UART_Stream
-description: Lightweight buffered UART interface for embedded systems.
+description: 임베디드 시스템을 위한 경량 버퍼드 UART 인터페이스.
 date: 2019-09-25
 tags: ["cpp", "embedded", "library"]
 version: "1.0"
@@ -14,13 +13,13 @@ links:
   repo: https://github.com/hwanyong/UART_Stream
 ---
 
-A lightweight C++ library designed to simplify UART communication in embedded systems by providing a stream-like interface.
+스트림 같은 인터페이스를 제공해 임베디드 시스템의 UART 통신을 단순하게 만드는 경량 C++ 라이브러리.
 
-Developed to address the complexity of raw serial data handling. This library implements efficient buffering and data stream abstractions, allowing developers to handle serial communication as easily as standard input/output streams, ensuring no data loss even at high baud rates.
+원시 직렬 데이터 처리의 복잡함을 덜려고 만들었다. 효율적인 버퍼링과 데이터 스트림 추상화를 구현해, 개발자가 직렬 통신을 표준 입출력 스트림만큼 쉽게 다루면서도 높은 보드레이트에서도 데이터 손실이 없도록 한다.
 
-## Key features
+## 핵심 기능
 
-- **Stream abstraction.** Provides a clean C++ interface (similar to `iostream`) for reading and writing serial data, abstracting away low-level register manipulations.
-- **Circular buffering.** Implemented efficient ring buffers for both TX and RX to handle high-speed data transmission without blocking the main loop.
-- **Data integrity.** Ensures reliable data reception through interrupt-based handling, preventing buffer overflows and data loss.
-- **Portability.** Designed with a modular architecture to be easily ported across different microcontroller platforms (AVR, ESP32, STM32).
+- **스트림 추상화.** 저수준 레지스터 조작을 감추고, 직렬 데이터를 읽고 쓰기 위한 깔끔한 C++ 인터페이스(`iostream`과 유사)를 제공한다.
+- **원형 버퍼링.** TX와 RX 모두에 효율적인 링 버퍼를 구현해, 메인 루프를 막지 않고 고속 데이터 전송을 처리한다.
+- **데이터 무결성.** 인터럽트 기반 처리로 데이터 수신의 신뢰성을 확보하고, 버퍼 오버플로와 데이터 손실을 막는다.
+- **이식성.** 모듈식 아키텍처로 설계해 서로 다른 마이크로컨트롤러 플랫폼(AVR, ESP32, STM32)으로 쉽게 이식할 수 있다.

@@ -1,7 +1,6 @@
 ---
-untranslated: en
 title: Germ Warfare (세균전)
-description: Serverless client-side PvE strategy web game.
+description: 서버 없는 클라이언트 사이드 PvE 전략 웹 게임.
 date: 2026-07-22
 tags: ["game", "web", "pwa"]
 version: "1.0"
@@ -15,27 +14,27 @@ links:
   repo: https://github.com/hwanyong/germ-warfare
 ---
 
-Ataxx-style client-side PvE web game, shipped without a server.
+Ataxx 스타일의 클라이언트 사이드 PvE 웹 게임 — 서버 없이 배포했다.
 
-## Architecture
+## 아키텍처
 
-- Isolated the rule engine as a pure, zero-I/O module and made it the single source of truth, so client, AI search, and future server-side validation run identical logic.
-- Routed all in-rule randomness through a seeded PRNG, making matches deterministic and reproducible for replays and server re-simulation.
-- Captured 12 architecture decisions as ADRs, scoping multiplayer and monetization out to a separate app.
+- 규칙 엔진을 순수한 무(無)I/O 모듈로 떼어 내 단일 진실 공급원(SSOT)으로 삼았다. 그래서 클라이언트·AI 탐색·향후 서버 검증이 동일한 로직으로 돈다.
+- 규칙 안의 모든 무작위성을 시드 기반 PRNG로 통과시켜, 리플레이와 서버 재시뮬레이션에서 대국이 결정적이고 재현 가능하도록 했다.
+- 아키텍처 결정 12건을 ADR로 남기고, 멀티플레이어와 수익화는 별도 앱으로 범위에서 뺐다.
 
-## Game AI
+## 게임 AI
 
-- Move generation, board simulation, evaluation (infection gain, clone gain, risk exposure), then negamax with alpha-beta pruning at depth 3 and root move ordering.
-- Built difficulty as parameters, not separate systems — search depth, evaluation noise, blunder rate — with the stage-authored base level split from the player-facing knob.
+- 수 생성, 보드 시뮬레이션, 평가(감염 이득, 복제 이득, 위험 노출), 그다음 깊이 3의 알파-베타 가지치기를 얹은 네가맥스와 루트 수 정렬.
+- 난이도를 별도 시스템이 아니라 매개변수로 만들었다 — 탐색 깊이, 평가 노이즈, 실수율 — 스테이지가 정한 기본 레벨과 플레이어가 조절하는 노브를 분리했다.
 
-## Content
+## 콘텐츠
 
-- Generated a 20-stage campaign (4 chapters × 5) from data specs and builders, not hardcoded boards: terrain patterns, seeding handicaps, procedural village placement. Tests assert a monotonic difficulty curve and that every stage stays winnable.
-- Generalized the two-team engine into N-team free-for-all, with a seat-based human/AI controller model for hot-seat local play.
+- 20개 스테이지 캠페인(4장 × 5)을 하드코딩한 보드가 아니라 데이터 명세와 빌더로 생성했다: 지형 패턴, 초기 배치 핸디캡, 절차적 마을 배치. 테스트는 난이도 곡선이 단조 증가하는지, 모든 스테이지가 클리어 가능한지를 검증한다.
+- 2팀 엔진을 N팀 난전으로 일반화하고, 핫시트 로컬 플레이를 위한 좌석 기반 사람/AI 컨트롤러 모델을 얹었다.
 
-## Platform
+## 플랫폼
 
-- PWA: Service Worker precache for offline play, plus a manual update check-and-apply flow.
-- Cross-device save transfer over binary QR codes, with QR libraries dynamically imported out of the bundle.
-- Korean/English i18n, Web Audio BGM/SFX, DOM/CSS/SVG effects, audited asset and font licenses.
-- GitHub Actions: push to main runs the test gate, then deploys to Pages.
+- PWA: 오프라인 플레이용 Service Worker 프리캐시와 수동 업데이트 확인·적용 흐름.
+- 바이너리 QR 코드로 기기 간 세이브 이전, QR 라이브러리는 번들 밖에서 동적으로 임포트.
+- 한국어/영어 i18n, Web Audio BGM/SFX, DOM/CSS/SVG 이펙트, 에셋·폰트 라이선스 감사.
+- GitHub Actions: main에 푸시하면 테스트 게이트가 돌고, 통과하면 Pages로 배포한다.

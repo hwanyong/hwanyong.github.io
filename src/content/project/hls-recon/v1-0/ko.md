@@ -1,7 +1,6 @@
 ---
-untranslated: en
 title: hls-recon
-description: HLS delivery integrity verifier.
+description: HLS 전송 무결성 검증기.
 date: 2026-08-15
 tags: ["cli", "streaming", "testing"]
 version: "1.0"
@@ -14,32 +13,32 @@ links:
   repo: https://github.com/hwanyong/hls-recon
 ---
 
-Reassembles HLS (HTTP Live Streaming) delivery into a local file and measures whether the delivery was intact.
+HLS(HTTP Live Streaming) 전송을 로컬 파일로 재조립하고, 그 전송이 온전했는지를 측정한다.
 
-## Problem
+## 문제
 
-`ffmpeg -i master.m3u8 -c copy out.mp4` silently skips 404 segments and still exits 0. MPEG-TS carries absolute presentation timestamps, so duration stays correct even when a chunk is gone. Measured: one missing 6s segment, exit 0, output 30.03s identical to a clean run, 5.99–12.02s empty.
+`ffmpeg -i master.m3u8 -c copy out.mp4`는 404 세그먼트를 조용히 건너뛰고도 종료 코드 0으로 끝난다. MPEG-TS는 절대 표시 타임스탬프를 담기 때문에 청크 하나가 빠져도 재생 길이는 그대로 맞는다. 측정 결과: 6초 세그먼트 하나 누락, 종료 코드 0, 출력 30.03초로 정상 실행과 동일, 5.99–12.02초 구간은 빈 화면.
 
-## Approach
+## 접근
 
-ffmpeg does the reassembly; only what it does not report is measured.
+재조립은 ffmpeg에 맡기고, ffmpeg가 보고하지 않는 것만 측정한다.
 
-- Per-segment HTTP outcome, TTFB p50/p95, SHA-256 duplicate detection
-- MPEG-TS continuity counter jumps, sync loss, undecrypted packets
-- Timeline gaps that survive a correct total duration
-- HTTP 200 whose body is not media, classified by leading bytes, not `Content-Type`
-- WebVTT `X-TIMESTAMP-MAP` alignment, which ffmpeg skips for standalone subtitle input
+- 세그먼트별 HTTP 결과, TTFB p50/p95, SHA-256 중복 감지
+- MPEG-TS 연속성 카운터 점프, 동기 손실, 복호화되지 않은 패킷
+- 총 재생 길이는 맞는데도 남아 있는 타임라인 공백
+- 본문이 미디어가 아닌 HTTP 200 — `Content-Type`이 아니라 앞부분 바이트로 분류
+- ffmpeg가 단독 자막 입력에서 건너뛰는 WebVTT `X-TIMESTAMP-MAP` 정렬
 
-Verdicts collapse to PASS/WARN/FAIL and exit codes for CI.
+판정은 CI를 위해 PASS/WARN/FAIL과 종료 코드로 수렴한다.
 
-## Idempotent resume
+## 멱등 재개
 
-A re-run refetches only what is missing or corrupt, judging completeness by container structure (moov presence, box boundary vs EOF), not filename: a truncated file from a killed run would otherwise read as "already have it" and never be repaired. URLs resolve late, per item, since issued ones expire.
+재실행은 빠졌거나 손상된 것만 다시 받는다. 완전함은 파일 이름이 아니라 컨테이너 구조(moov 존재 여부, 박스 경계 대 EOF)로 판단한다 — 그러지 않으면 중단된 실행이 남긴 잘린 파일을 '이미 갖고 있음'으로 읽고 영영 복구하지 않는다. 발급된 URL은 만료되므로, URL은 항목마다 늦게 해석한다.
 
-## Verifying the verifier
+## 검증기를 검증하기
 
-A checker that only emits PASS verifies nothing. The suite generates local HLS streams (plain TS, AES-128, fMP4, multi-variant, subtitles), injects faults, and asserts each is caught, with ffmpeg alone silently succeeding on the same stream as the control. 62 tests.
+PASS만 내보내는 검사기는 아무것도 검증하지 않는다. 테스트 스위트는 로컬 HLS 스트림(평문 TS, AES-128, fMP4, 다중 변형, 자막)을 생성하고 결함을 주입한 뒤 각각이 잡히는지 단언한다. 같은 스트림에 ffmpeg만 돌리면 조용히 성공하는 것을 대조군으로 둔다. 테스트 62개.
 
-## Process
+## 과정
 
-Built by driving Claude Code well past its default envelope under a fixed operating protocol. Agent output is plausible by default, so trust was engineered rather than assumed: every claim in the 39-chapter companion docs (~33k lines) carries a `file.py:line` anchor that a checker resolves against the real line range; fault injection does the same for the code. The harness, not the prompting, is what makes output at this scale reviewable.
+고정된 운영 프로토콜 아래에서 Claude Code를 기본 한계 훨씬 너머로 몰아붙여 만들었다. 에이전트 출력은 기본적으로 그럴듯하기 때문에, 신뢰는 가정하지 않고 설계했다: 39장짜리 동반 문서(약 3만 3천 줄)의 모든 주장은 `file.py:line` 앵커를 달고, 검사기가 이를 실제 줄 범위에 대조해 확인한다. 결함 주입도 코드에 같은 일을 한다. 이 규모의 출력을 리뷰 가능하게 만드는 것은 프롬프팅이 아니라 하네스다.

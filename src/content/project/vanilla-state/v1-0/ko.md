@@ -1,7 +1,6 @@
 ---
-untranslated: en
 title: Vanilla State
-description: Lightweight, zero-dependency state management for vanilla JavaScript.
+description: 바닐라 JavaScript를 위한 경량·무의존성 상태 관리.
 date: 2025-02-16
 tags: ["javascript", "library", "npm"]
 version: "1.0"
@@ -15,12 +14,12 @@ links:
   demo: https://blog.hwanyong.com/vanilla-state/
 ---
 
-A lightweight, zero-dependency state management library for vanilla JavaScript.
+바닐라 JavaScript를 위한 경량·무의존성 상태 관리 라이브러리.
 
-Developed to provide efficient reactivity and state management without the overhead of heavy frameworks. Published as an NPM package.
+무거운 프레임워크의 부담 없이 효율적인 반응성과 상태 관리를 제공하려고 만들었다. NPM 패키지로 배포했다.
 
-## Key features
+## 핵심 기능
 
-- **Zero dependency.** Optimized for performance with a minimal bundle size.
-- **Proxy-based reactivity.** Utilizes the JavaScript Proxy API for precise state detection and updates.
-- **Framework agnostic.** Designed to work seamlessly in any environment, including React, Vue, or plain JS.
+- **무의존성.** 최소 번들 크기로 성능에 맞춰 최적화했다.
+- **Proxy 기반 반응성.** JavaScript Proxy API를 활용해 상태 변화를 정밀하게 감지하고 갱신한다.
+- **프레임워크 독립적.** React, Vue, 순수 JS 등 어떤 환경에서도 매끄럽게 동작하도록 설계했다.

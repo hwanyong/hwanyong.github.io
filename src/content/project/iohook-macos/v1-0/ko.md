@@ -1,7 +1,6 @@
 ---
-untranslated: en
 title: iohook-macos
-description: High-performance system event hooking for macOS.
+description: macOS를 위한 고성능 시스템 이벤트 후킹.
 date: 2025-07-20
 tags: ["macos", "native", "electron"]
 version: "1.0"
@@ -18,13 +17,13 @@ links:
   repo: https://github.com/hwanyong/iohook-macos
 ---
 
-A high-performance global system event hooking library for macOS, designed for Electron and Node.js applications.
+Electron·Node.js 애플리케이션을 위해 설계한 macOS용 고성능 전역 시스템 이벤트 후킹 라이브러리.
 
-I developed this library to solve the fragmentation and stability issues of existing hooking solutions. By directly integrating with the macOS Core Graphics API via Node-API (N-API), it delivers enterprise-grade performance and reliability.
+기존 후킹 솔루션의 파편화와 안정성 문제를 풀려고 이 라이브러리를 개발했다. Node-API(N-API)를 통해 macOS Core Graphics API와 직접 통합해 엔터프라이즈급 성능과 신뢰성을 낸다.
 
-## Key technical achievements
+## 핵심 기술 성과
 
-- **Native integration.** Built with Objective-C++ and N-API to bridge Node.js with macOS system events, minimizing performance overhead.
-- **Stability and compatibility.** Resolved complex native dependency issues found in legacy libraries, ensuring seamless integration with modern Electron versions.
-- **Developer experience.** Implemented built-in handling for macOS accessibility permissions and provided full TypeScript support for type safety.
-- **AI-enhanced documentation.** Designed documentation specifically optimized for LLMs to help AI assistants generate accurate implementation code.
+- **네이티브 통합.** Objective-C++와 N-API로 Node.js와 macOS 시스템 이벤트를 잇고, 성능 오버헤드를 최소화했다.
+- **안정성과 호환성.** 기존 라이브러리에 있던 복잡한 네이티브 의존성 문제를 해결해 최신 Electron 버전과 매끄럽게 통합되도록 했다.
+- **개발자 경험.** macOS 손쉬운 사용(accessibility) 권한 처리를 내장하고, 타입 안전을 위한 완전한 TypeScript 지원을 제공한다.
+- **AI 강화 문서.** AI 어시스턴트가 정확한 구현 코드를 생성하도록, LLM에 맞춰 최적화한 문서를 설계했다.
